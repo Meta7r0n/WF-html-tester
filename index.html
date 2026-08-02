@@ -1312,7 +1312,7 @@ const WORLD = {
     const wasGrounded = state.grounded;
     state.grounded = false;
     state.landed = false;
-    let groundY = 0;
+    let groundY = this.defaultGroundAt(pos.x, pos.z, opt.layerId);
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
       if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
@@ -1339,6 +1339,7 @@ const WORLD = {
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
       if (layerId && layerId !== 'surface' && s.minY >= -0.2) continue;
+      if (s.tag && s.tag.indexOf('ceiling') !== -1) continue;
       if (x <= s.minX || x >= s.maxX || z <= s.minZ || z >= s.maxZ) continue;
       if (s.maxY > g && s.maxY <= (ceil === undefined ? 8 : ceil)) g = s.maxY;
     }
@@ -2602,8 +2603,12 @@ const LEVEL = (() => {
       (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2);
     room.box(MAX_X - MIN_X + 0.4, 3.7, 0.30, (MIN_X + MAX_X) * 0.5,
       (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2);
-    room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MIN_X - 0.2,
-      (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
+    // West wall is split around a 3.2 m service doorway. This becomes the
+    // stable connection point for every later underground expansion.
+    room.box(0.30, 3.7, 7.1, MIN_X - 0.2,
+      (FLOOR_Y + CEIL_Y) * 0.5, -16.65);
+    room.box(0.30, 3.7, 7.1, MIN_X - 0.2,
+      (FLOOR_Y + CEIL_Y) * 0.5, -6.35);
     room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MAX_X + 0.2,
       (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
     // Ceiling underside is visual only for now; a later pass can add
@@ -2619,8 +2624,10 @@ const LEVEL = (() => {
       MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
     WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2,
       MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
-    WORLD.add(MIN_X - 0.2, (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5,
-      0.30, 3.7, MAX_Z - MIN_Z + 0.4, 'basement_wall');
+    WORLD.add(MIN_X - 0.2, (FLOOR_Y + CEIL_Y) * 0.5, -16.65,
+      0.30, 3.7, 7.1, 'basement_wall');
+    WORLD.add(MIN_X - 0.2, (FLOOR_Y + CEIL_Y) * 0.5, -6.35,
+      0.30, 3.7, 7.1, 'basement_wall');
     WORLD.add(MAX_X + 0.2, (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5,
       0.30, 3.7, MAX_Z - MIN_Z + 0.4, 'basement_wall');
     WORLD.add(10.3, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5,
@@ -2702,6 +2709,101 @@ const LEVEL = (() => {
       bottomExitX: HX, bottomExitZ: HZ, normalZ: 1,
       topLayer: 'surface', bottomLayer: 'basement', tag: 'basement_hatch_ladder'
     });
+
+    /* ---- v0.06.02 underground expansion ----
+       One westbound service spine joins the first basement to a utility room,
+       while a north spur reaches a separate root cellar. These are permanent
+       circulation volumes; future rooms can branch from them without moving
+       either of the two current test entrances. */
+    const wallH = CEIL_Y - FLOOR_Y;
+    const wallY = (FLOOR_Y + CEIL_Y) * 0.5;
+    const shell = new PRIM.Batch(concrete, 0.028);
+
+    function addSlab(cx, cz, w, d, tag) {
+      shell.box(w, 0.22, d, cx, FLOOR_Y - 0.11, cz);
+      shell.box(w, 0.30, d, cx, CEIL_Y - 0.15, cz);
+      WORLD.addFloor(cx, FLOOR_Y - 0.22, cz, w, 0.22, d, tag + '_floor');
+      WORLD.add(cx, CEIL_Y - 0.15, cz, w, 0.30, d, tag + '_ceiling');
+    }
+
+    function addWall(cx, cz, w, d, tag) {
+      shell.box(w, wallH, d, cx, wallY, cz);
+      WORLD.add(cx, wallY, cz, w, wallH, d, tag + '_wall');
+    }
+
+    // Main 3.2 m-wide west service tunnel. Its north wall is split at x=-4
+    // for the root-cellar spur; the south wall remains a stable sightline.
+    addSlab(-2.1, -11.5, 20.2, 3.6, 'service_tunnel');
+    addWall(-2.1, -9.75, 20.4, 0.30, 'service_tunnel');
+    addWall(-8.95, -13.25, 6.5, 0.30, 'service_tunnel');
+    addWall(2.85, -13.25, 10.3, 0.30, 'service_tunnel');
+
+    // Utility room beneath the water-tower side of the farm. The east wall
+    // shares the same full-width doorway as the service tunnel.
+    addSlab(-18.5, -11.5, 13.0, 13.0, 'utility_room');
+    addWall(-25.15, -11.5, 0.30, 13.3, 'utility_room');
+    addWall(-18.5, -18.15, 13.3, 0.30, 'utility_room');
+    addWall(-18.5, -4.85, 13.3, 0.30, 'utility_room');
+    addWall(-11.85, -15.625, 0.30, 5.05, 'utility_room');
+    addWall(-11.85, -7.375, 0.30, 5.05, 'utility_room');
+
+    // North spur and root cellar. The room is offset under the windmill side
+    // of the farm, making it a strong candidate area for a later hatch without
+    // committing to that entrance in this milestone.
+    addSlab(-4.0, -18.55, 3.6, 10.9, 'root_spur');
+    addWall(-5.75, -18.55, 0.30, 11.1, 'root_spur');
+    addWall(-2.25, -18.55, 0.30, 11.1, 'root_spur');
+    addSlab(-4.0, -30.0, 12.0, 12.0, 'root_cellar');
+    addWall(-10.15, -30.0, 0.30, 12.3, 'root_cellar');
+    addWall(2.15, -30.0, 0.30, 12.3, 'root_cellar');
+    addWall(-4.0, -36.15, 12.3, 0.30, 'root_cellar');
+    addWall(-7.925, -23.85, 4.45, 0.30, 'root_cellar');
+    addWall(-0.075, -23.85, 4.45, 0.30, 'root_cellar');
+    shell.build(parent);
+
+    // Repeated timber portals make junctions obvious at sprint speed. They are
+    // visual-only so no tiny trim collider can catch a shoulder or foot.
+    const frames = new PRIM.Batch(trim, 0.022);
+    function doorwayFrame(cx, cz, alongX) {
+      if (alongX) {
+        frames.box(0.22, 3.20, 0.22, cx - 1.72, FLOOR_Y + 1.60, cz);
+        frames.box(0.22, 3.20, 0.22, cx + 1.72, FLOOR_Y + 1.60, cz);
+        frames.box(3.66, 0.22, 0.22, cx, CEIL_Y - 0.20, cz);
+      } else {
+        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz - 1.72);
+        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz + 1.72);
+        frames.box(0.22, 0.22, 3.66, cx, CEIL_Y - 0.20, cz);
+      }
+    }
+    doorwayFrame(7.78, -11.5, false);
+    doorwayFrame(-11.82, -11.5, false);
+    doorwayFrame(-4.0, -13.22, true);
+    doorwayFrame(-4.0, -23.82, true);
+    // Wall-side braces add rhythm without narrowing any walkable lane.
+    [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
+    [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
+    frames.build(parent);
+
+    // Sparse cover gives both rooms gameplay purpose while preserving wide
+    // loops for later four-player combat tests.
+    const machinery = new PRIM.Batch(MAT.toon(PAL.blueDeep, { map: TEX.metal() }), 0.032);
+    machinery.box(3.6, 1.35, 1.25, -21.8, FLOOR_Y + 0.675, -15.8, 0, 0.04, 0, 0.015);
+    machinery.box(1.4, 1.9, 1.4, -22.2, FLOOR_Y + 0.95, -7.4, 0, -0.05, 0, 0.015);
+    machinery.box(2.2, 0.35, 0.9, -16.8, FLOOR_Y + 0.175, -16.4, 0, 0.08, 0, 0.012);
+    machinery.build(parent);
+    WORLD.addFloor(-21.8, FLOOR_Y, -15.8, 3.8, 1.35, 1.45, 'utility_cover');
+    WORLD.addFloor(-22.2, FLOOR_Y, -7.4, 1.6, 1.9, 1.6, 'utility_cover');
+    WORLD.addFloor(-16.8, FLOOR_Y, -16.4, 2.4, 0.35, 1.1, 'utility_cover');
+
+    PROPS.crate(parent, -8.3, FLOOR_Y, -33.8, 0.95, 0.15);
+    PROPS.crate(parent, -7.3, FLOOR_Y, -33.4, 0.78, -0.25);
+    PROPS.crate(parent, 0.2, FLOOR_Y, -27.0, 0.9, 0.4);
+    PROPS.hayBale(parent, 0.0, FLOOR_Y, -33.5, -0.2);
+    PROPS.hayBale(parent, -1.3, FLOOR_Y, -34.0, 0.16);
+
+    PROPS.lantern(parent, -2.0, -0.78, -11.5, 0);
+    PROPS.lantern(parent, -18.5, -0.78, -11.5, 0);
+    PROPS.lantern(parent, -4.0, -0.78, -30.0, 0);
   }
 
   function buildScatter(parent) {
