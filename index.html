@@ -2743,7 +2743,8 @@ const LEVEL = (() => {
     addSlab(-18.5, -11.5, 13.0, 13.0, 'utility_room');
     addWall(-25.15, -11.5, 0.30, 13.3, 'utility_room');
     addWall(-18.5, -18.15, 13.3, 0.30, 'utility_room');
-    addWall(-18.5, -4.85, 13.3, 0.30, 'utility_room');
+    addWall(-22.675, -4.85, 4.95, 0.30, 'utility_room');
+    addWall(-14.325, -4.85, 4.95, 0.30, 'utility_room');
     addWall(-11.85, -15.625, 0.30, 5.05, 'utility_room');
     addWall(-11.85, -7.375, 0.30, 5.05, 'utility_room');
 
@@ -2755,10 +2756,52 @@ const LEVEL = (() => {
     addWall(-2.25, -18.55, 0.30, 11.1, 'root_spur');
     addSlab(-4.0, -30.0, 12.0, 12.0, 'root_cellar');
     addWall(-10.15, -30.0, 0.30, 12.3, 'root_cellar');
-    addWall(2.15, -30.0, 0.30, 12.3, 'root_cellar');
+    addWall(2.15, -33.925, 0.30, 4.45, 'root_cellar');
+    addWall(2.15, -26.075, 0.30, 4.45, 'root_cellar');
     addWall(-4.0, -36.15, 12.3, 0.30, 'root_cellar');
     addWall(-7.925, -23.85, 4.45, 0.30, 'root_cellar');
     addWall(-0.075, -23.85, 4.45, 0.30, 'root_cellar');
+
+    /* ---- v0.06.03 full-farm circulation ----
+       The southern run reaches toward the gate side of the farm. The eastern
+       run bends north into a relay room rather than becoming one giant open
+       basement, preserving ambushes, navigation choices and occlusion. */
+    addSlab(-18.5, 2.55, 3.6, 14.9, 'south_tunnel');
+    addWall(-20.25, 2.55, 0.30, 15.2, 'south_tunnel');
+    addWall(-16.75, 2.55, 0.30, 15.2, 'south_tunnel');
+
+    addSlab(-17.5, 17.5, 15.0, 15.0, 'generator_hall');
+    addWall(-25.15, 17.5, 0.30, 15.3, 'generator_hall');
+    addWall(-9.85, 17.5, 0.30, 15.3, 'generator_hall');
+    addWall(-17.5, 25.15, 15.3, 0.30, 'generator_hall');
+    addWall(-22.675, 9.85, 4.95, 0.30, 'generator_hall');
+    addWall(-13.325, 9.85, 6.95, 0.30, 'generator_hall');
+
+    addSlab(9.55, -30.0, 15.1, 3.6, 'east_tunnel');
+    addWall(9.55, -28.25, 15.4, 0.30, 'east_tunnel');
+    addWall(8.55, -31.75, 13.4, 0.30, 'east_tunnel');
+    addSlab(17.0, -34.55, 3.6, 6.9, 'north_turn');
+    addWall(15.25, -34.55, 0.30, 5.8, 'north_turn');
+    addWall(18.75, -34.55, 0.30, 5.8, 'north_turn');
+    // Extend the outside wall through the corner pocket so players naturally
+    // stop in the turn instead of walking beyond the authored tunnel floor.
+    addWall(18.75, -29.95, 0.30, 3.7, 'north_turn');
+
+    addSlab(17.0, -44.0, 16.0, 13.0, 'relay_room');
+    addWall(8.85, -44.0, 0.30, 13.3, 'relay_room');
+    addWall(17.0, -50.65, 16.3, 0.30, 'relay_room');
+    addWall(12.075, -37.35, 6.45, 0.30, 'relay_room');
+    addWall(21.925, -37.35, 6.45, 0.30, 'relay_room');
+    // East wall is split around the secret panel at z=-44.
+    addWall(25.15, -48.025, 0.30, 5.25, 'relay_room');
+    addWall(25.15, -39.975, 0.30, 5.25, 'relay_room');
+
+    // The cache is intentionally tiny and otherwise sealed. Its west doorway
+    // is covered only by a visual panel, never a collider.
+    addSlab(27.5, -44.0, 5.0, 6.0, 'secret_cache');
+    addWall(30.15, -44.0, 0.30, 6.3, 'secret_cache');
+    addWall(27.5, -47.15, 5.3, 0.30, 'secret_cache');
+    addWall(27.5, -40.85, 5.3, 0.30, 'secret_cache');
     shell.build(parent);
 
     // Repeated timber portals make junctions obvious at sprint speed. They are
@@ -2779,10 +2822,32 @@ const LEVEL = (() => {
     doorwayFrame(-11.82, -11.5, false);
     doorwayFrame(-4.0, -13.22, true);
     doorwayFrame(-4.0, -23.82, true);
+    doorwayFrame(-18.5, -4.82, true);
+    doorwayFrame(-18.5, 9.82, true);
+    doorwayFrame(2.12, -30.0, false);
+    doorwayFrame(17.0, -31.72, true);
+    doorwayFrame(17.0, -37.32, true);
     // Wall-side braces add rhythm without narrowing any walkable lane.
     [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
     [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
+    [-1, 4, 9].forEach(z => frames.box(3.25, 0.16, 0.16, -18.5, CEIL_Y - 0.25, z));
+    [5, 10].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -30));
     frames.build(parent);
+
+    // Opaque, wall-matched, and deliberately non-colliding: the only way to
+    // discover the supply cache is to test this relay-room panel. A faint
+    // inset seam rewards close inspection without announcing the secret.
+    const secretPanel = PRIM.box(0.10, wallH, 2.76, concrete, {
+      pos: [25.14, wallY, -44.0], parent: parent, ray: false, outline: 0.024
+    });
+    secretPanel.userData.secretPassage = true;
+    const seamMat = MAT.toon(PAL.charcoal);
+    PRIM.box(0.055, 0.06, 2.58, seamMat, {
+      pos: [25.08, CEIL_Y - 0.18, -44.0], parent: parent, ray: false, outline: 0.010
+    });
+    [-45.27, -42.73].forEach(z => PRIM.box(0.055, wallH - 0.18, 0.05, seamMat, {
+      pos: [25.08, wallY, z], parent: parent, ray: false, outline: 0.008
+    }));
 
     // Sparse cover gives both rooms gameplay purpose while preserving wide
     // loops for later four-player combat tests.
@@ -2790,20 +2855,73 @@ const LEVEL = (() => {
     machinery.box(3.6, 1.35, 1.25, -21.8, FLOOR_Y + 0.675, -15.8, 0, 0.04, 0, 0.015);
     machinery.box(1.4, 1.9, 1.4, -22.2, FLOOR_Y + 0.95, -7.4, 0, -0.05, 0, 0.015);
     machinery.box(2.2, 0.35, 0.9, -16.8, FLOOR_Y + 0.175, -16.4, 0, 0.08, 0, 0.012);
+    machinery.box(3.2, 1.4, 1.25, -22.2, FLOOR_Y + 0.70, 14.2, 0, 0.05, 0, 0.015);
+    machinery.box(1.35, 1.65, 3.0, -12.4, FLOOR_Y + 0.825, 21.7, 0, -0.04, 0, 0.015);
+    machinery.box(2.4, 0.82, 1.05, -21.1, FLOOR_Y + 0.41, 22.2, 0, 0.08, 0, 0.012);
+    machinery.box(3.0, 1.25, 1.15, 12.0, FLOOR_Y + 0.625, -40.6, 0, -0.05, 0, 0.014);
+    machinery.box(2.8, 1.25, 1.15, 21.2, FLOOR_Y + 0.625, -47.2, 0, 0.08, 0, 0.014);
+    machinery.box(1.1, 0.75, 2.6, 22.0, FLOOR_Y + 0.375, -40.5, 0, -0.04, 0, 0.012);
     machinery.build(parent);
     WORLD.addFloor(-21.8, FLOOR_Y, -15.8, 3.8, 1.35, 1.45, 'utility_cover');
     WORLD.addFloor(-22.2, FLOOR_Y, -7.4, 1.6, 1.9, 1.6, 'utility_cover');
     WORLD.addFloor(-16.8, FLOOR_Y, -16.4, 2.4, 0.35, 1.1, 'utility_cover');
+    WORLD.addFloor(-22.2, FLOOR_Y, 14.2, 3.4, 1.4, 1.45, 'generator_cover');
+    WORLD.addFloor(-12.4, FLOOR_Y, 21.7, 1.55, 1.65, 3.2, 'generator_cover');
+    WORLD.addFloor(-21.1, FLOOR_Y, 22.2, 2.6, 0.82, 1.25, 'generator_cover');
+    WORLD.addFloor(12.0, FLOOR_Y, -40.6, 3.2, 1.25, 1.35, 'relay_cover');
+    WORLD.addFloor(21.2, FLOOR_Y, -47.2, 3.0, 1.25, 1.35, 'relay_cover');
+    WORLD.addFloor(22.0, FLOOR_Y, -40.5, 1.3, 0.75, 2.8, 'relay_cover');
+
+    // Two low service platforms add deliberate vertical play without putting
+    // the player's head into the ceiling. Every step is at or below 0.5 m.
+    const platforms = new PRIM.Batch(trim, 0.028);
+    platforms.box(4.2, 1.2, 3.8, -17.5, FLOOR_Y + 0.60, 17.5, 0, 0.015, 0, 0.012);
+    for (let i = 0; i < 3; i++) {
+      const h = 0.4 * (i + 1), x = -13.95 - i * 0.70;
+      platforms.box(0.74, h, 1.8, x, FLOOR_Y + h * 0.5, 17.5, 0, 0, 0, 0.010);
+      WORLD.addFloor(x, FLOOR_Y, 17.5, 0.78, h, 1.84, 'generator_step');
+    }
+    WORLD.addFloor(-17.5, FLOOR_Y, 17.5, 4.2, 1.2, 3.8, 'generator_platform');
+
+    platforms.box(4.0, 1.0, 3.0, 13.0, FLOOR_Y + 0.50, -47.5, 0, -0.015, 0, 0.012);
+    for (let i = 0; i < 2; i++) {
+      const h = 0.5 * (i + 1), z = -45.05 - i * 0.72;
+      platforms.box(2.0, h, 0.76, 13.0, FLOOR_Y + h * 0.5, z, 0, 0, 0, 0.010);
+      WORLD.addFloor(13.0, FLOOR_Y, z, 2.04, h, 0.80, 'relay_step');
+    }
+    WORLD.addFloor(13.0, FLOOR_Y, -47.5, 4.0, 1.0, 3.0, 'relay_platform');
+
+    // Full-height columns break long firing lanes and create reliable hiding
+    // spots while leaving multiple routes around every obstacle.
+    [[-23.2, 21.5, 'generator_pillar'], [-11.8, 12.6, 'generator_pillar'],
+     [10.8, -48.5, 'relay_pillar'], [23.2, -39.2, 'relay_pillar']].forEach(p => {
+      platforms.box(0.72, wallH, 0.72, p[0], wallY, p[1]);
+      WORLD.add(p[0], wallY, p[1], 0.82, wallH, 0.82, p[2]);
+    });
+    platforms.build(parent);
 
     PROPS.crate(parent, -8.3, FLOOR_Y, -33.8, 0.95, 0.15);
     PROPS.crate(parent, -7.3, FLOOR_Y, -33.4, 0.78, -0.25);
     PROPS.crate(parent, 0.2, FLOOR_Y, -27.0, 0.9, 0.4);
     PROPS.hayBale(parent, 0.0, FLOOR_Y, -33.5, -0.2);
     PROPS.hayBale(parent, -1.3, FLOOR_Y, -34.0, 0.16);
+    PROPS.crate(parent, -23.4, FLOOR_Y, 11.8, 0.82, 0.25);
+    PROPS.crate(parent, -10.9, FLOOR_Y, 23.6, 0.92, -0.2);
+    PROPS.crate(parent, 23.3, FLOOR_Y, -49.2, 0.86, 0.35);
+    PROPS.crate(parent, 10.5, FLOOR_Y, -38.7, 0.78, -0.25);
 
     PROPS.lantern(parent, -2.0, -0.78, -11.5, 0);
     PROPS.lantern(parent, -18.5, -0.78, -11.5, 0);
     PROPS.lantern(parent, -4.0, -0.78, -30.0, 0);
+    PROPS.lantern(parent, -17.5, -0.78, 17.5, 0);
+    PROPS.lantern(parent, 9.0, -0.78, -30.0, 0);
+    PROPS.lantern(parent, 17.0, -0.78, -44.0, 0);
+
+    // The cache has no bright exterior tell. A warm strip only becomes visible
+    // after the player has crossed the false panel.
+    PRIM.box(0.18, 0.16, 3.8, MAT.flat(PAL.mustard), {
+      pos: [29.75, CEIL_Y - 0.28, -44.0], parent: parent, ray: false, outline: 0.018
+    });
   }
 
   function buildScatter(parent) {
@@ -5075,7 +5193,24 @@ const PICKUP = (() => {
     { id: 'healthTonic', x: 6.2, z: 13.0 },
     { id: 'shieldCell', x: 25.0, z: -10.0 },
     { id: 'carbineAmmo', x: 19.0, z: -39.8 },
-    { id: 'shieldCell', x: 17.9, z: -29.5 }
+    { id: 'shieldCell', x: 17.9, z: -29.5 },
+
+    // Underground combat-room resources. Explicit y values keep surface and
+    // basement pickups independent even when they share map coordinates.
+    { id: 'healthTonic', x: -14.0, y: -4.0, z: 13.0 },
+    { id: 'shieldCell', x: -20.3, y: -4.0, z: 11.8 },
+    { id: 'shellBox', x: -15.0, y: -4.0, z: 23.0 },
+    { id: 'lightAmmo', x: -17.5, y: -2.8, z: 17.5 },
+    { id: 'shieldCell', x: 11.0, y: -4.0, z: -44.0 },
+    { id: 'healthTonic', x: 20.0, y: -4.0, z: -44.0 },
+    { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },
+
+    // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
+    { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
+    { id: 'lightAmmo', x: 27.5, y: -4.0, z: -42.0 },
+    { id: 'carbineAmmo', x: 28.9, y: -4.0, z: -42.0 },
+    { id: 'healthTonic', x: 26.7, y: -4.0, z: -45.5 },
+    { id: 'shieldCell', x: 28.3, y: -4.0, z: -45.5 }
   ];
 
   function define(id, def) {
@@ -5253,7 +5388,7 @@ const PICKUP = (() => {
 
   function init(mainScene) {
     scene = mainScene;
-    spawns.forEach(s => spawn(s.id, { x: s.x, z: s.z }));
+    spawns.forEach(s => spawn(s.id, { x: s.x, y: s.y, z: s.z }));
   }
 
   function update(dt, time, canCollect) {
