@@ -74,7 +74,14 @@
   #crosshair.kick{transform:scale(1.35);}
   #crosshair{transition:opacity .18s ease, transform .09s ease;}
 
-  /* ---------- Ammo ---------- */
+  /* ---------- Weapon + ammo ---------- */
+  #weaponName{
+    position:fixed;right:26px;bottom:88px;z-index:30;
+    font-size:12px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+    color:var(--cream);opacity:0;transform:rotate(-1deg);transition:opacity .2s ease;
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #weaponName.on{opacity:1;}
   #ammo{
     position:fixed;right:26px;bottom:22px;z-index:30;
     display:flex;align-items:flex-end;gap:12px;
@@ -97,8 +104,10 @@
     transform:rotate(-2deg);
   }
   #ammoNum.low{color:var(--mustard);}
+  #ammoNum small{font-size:16px;letter-spacing:0;color:var(--cream);opacity:.82;}
+  #ammoNum.melee{font-size:23px;letter-spacing:2px;line-height:1;}
   #reloadTag{
-    position:fixed;right:26px;bottom:74px;z-index:30;
+    position:fixed;right:26px;bottom:105px;z-index:30;
     font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;
     color:var(--mustard);opacity:0;transform:rotate(-2deg);
     text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
@@ -128,6 +137,26 @@
     transition:width .16s ease, background .2s ease;
   }
   #pepFill.hurt{background:var(--rust);}
+  #shieldRow{margin-top:9px;}
+  #shieldRow .lbl{color:var(--blue);margin-bottom:4px;}
+  #shieldBar{
+    width:156px;height:16px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;
+    background:rgba(30,22,18,.55);transform:rotate(.8deg);
+    box-shadow:3px 4px 0 rgba(22,18,15,.35);overflow:hidden;
+  }
+  #shieldFill{
+    height:100%;width:0;background:var(--blue);
+    box-shadow:inset 0 -5px 0 rgba(22,18,15,.18);transition:width .16s ease;
+  }
+  #pickupToast{
+    position:fixed;left:50%;bottom:115px;z-index:33;max-width:min(80vw,440px);
+    transform:translate(-50%,12px) rotate(-1deg);opacity:0;pointer-events:none;
+    padding:10px 16px;background:var(--cream);border:3px solid var(--ink);
+    border-radius:9px 13px 8px 12px;box-shadow:4px 5px 0 rgba(22,18,15,.42);
+    font:900 13px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--rust-deep);transition:opacity .14s ease,transform .14s ease;text-align:center;
+  }
+  #pickupToast.on{opacity:1;transform:translate(-50%,0) rotate(-1deg);}
   #tally{
     position:fixed;left:26px;top:22px;z-index:30;
     font-size:14px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
@@ -242,16 +271,22 @@
 
   <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
 
+  <div id="weaponName">Pipe Popper</div>
   <div id="ammo">
     <div id="shells"></div>
-    <div id="ammoNum">6</div>
+    <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
   </div>
   <div id="reloadTag">Press R to reload</div>
 
   <div id="vitals">
     <p class="lbl">Pep</p>
     <div id="pepBar"><div id="pepFill"></div></div>
+    <div id="shieldRow">
+      <p class="lbl">Guard</p>
+      <div id="shieldBar"><div id="shieldFill"></div></div>
+    </div>
   </div>
+  <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
   <div id="hurt"></div>
   <div id="modeChip">
@@ -274,7 +309,9 @@
         <li><kbd>Mouse</kbd> Look</li>
         <li><kbd>Space</kbd> Jump</li>
         <li><kbd>Shift</kbd> Sprint</li>
-        <li><kbd>Click</kbd> Fire</li>
+        <li><kbd>Click</kbd> Fire / punch</li>
+        <li><kbd>V / RMB</kbd> Quick melee</li>
+        <li><kbd>1–4</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
@@ -328,7 +365,8 @@
      [AUDIO]     procedural audio manager
      [INPUT]     input manager (keyboard/mouse, pointer lock)
      [PLAYER]    first-person controller
-     [WEAPON]    viewmodel + firing
+     [WEAPON]    inventory, viewmodels, gunfire + melee
+     [PICKUP]    extensible world pickup registry
      [UI]        HUD + overlays
      [GAME]      bootstrap + main loop
      [SPAWN]     enemy spawn markers reserved for Phase 2 (data only)
@@ -351,7 +389,7 @@ const CONFIG = {
     bobFreq: 9.2, bobAmp: 0.042, bobSide: 0.028, bobRoll: 0.012,
     landDip: 0.18, landRecover: 9,
     startPos: { x: 0, y: 0, z: 31 }, startYaw: 0,
-    maxHealth: 100, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
+    maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
     invulnAfterHit: 0.45, reviveDelay: 2.2
   },
   enemy: {
@@ -364,12 +402,38 @@ const CONFIG = {
     pelletDamage: 15, headMultiplier: 2.4,
     respawnDelay: 18            // 0 to leave the farm quiet once cleared
   },
-  weapon: {
-    magSize: 6, fireInterval: 0.44, reloadTime: 1.45,
-    pellets: 8, spread: 0.05, range: 95,
-    recoilBack: 0.19, recoilUp: 0.09, recoilPitch: 0.062, recoilRoll: 0.05,
-    swayAmount: 0.028, swayLerp: 8, bobAmount: 0.028,
-    muzzleFlashTime: 0.09
+  weapons: {
+    unarmed: {
+      id: 'unarmed', name: 'Bare Knuckles', slot: 1, kind: 'melee',
+      meleeDamage: 30, meleeRange: 2.15, meleeArc: 0.64, fireInterval: 0.48
+    },
+    pipePopper: {
+      id: 'pipePopper', name: 'Pipe Popper', slot: 2, kind: 'gun', ammoType: 'shells',
+      magSize: 6, startMag: 6, startReserve: 18, maxReserve: 42,
+      fireInterval: 0.44, reloadTime: 1.45, automatic: false,
+      pellets: 8, damage: 15, spread: 0.05, range: 95,
+      recoilBack: 0.19, meleeDamage: 42, meleeRange: 2.35, meleeArc: 0.58
+    },
+    tinSixer: {
+      id: 'tinSixer', name: 'Tin Sixer', slot: 3, kind: 'gun', ammoType: 'light',
+      magSize: 6, startMag: 0, startReserve: 0, maxReserve: 60,
+      fireInterval: 0.3, reloadTime: 1.2, automatic: false,
+      pellets: 1, damage: 44, spread: 0.012, range: 115,
+      recoilBack: 0.13, meleeDamage: 38, meleeRange: 2.25, meleeArc: 0.58
+    },
+    fieldhand: {
+      id: 'fieldhand', name: 'Fieldhand Carbine', slot: 4, kind: 'gun', ammoType: 'carbine',
+      magSize: 24, startMag: 0, startReserve: 0, maxReserve: 144,
+      fireInterval: 0.11, reloadTime: 1.65, automatic: true,
+      pellets: 1, damage: 18, spread: 0.021, range: 105,
+      recoilBack: 0.065, meleeDamage: 40, meleeRange: 2.3, meleeArc: 0.58
+    }
+  },
+  weaponView: {
+    swayAmount: 0.028, swayLerp: 8, bobAmount: 0.028, muzzleFlashTime: 0.09
+  },
+  pickup: {
+    collectRadius: 1.18, bobHeight: 0.13, bobSpeed: 2.4, spinSpeed: 0.7
   },
   fx: {
     maxDecals: 34, maxParticles: 190, maxTracers: 14,
@@ -2321,8 +2385,8 @@ const FX = (() => {
 
   /* Bullet resolution. Returns the hit point or null. */
   const raycaster = new THREE.Raycaster();
-  raycaster.far = CONFIG.weapon.range;
-  function trace(origin, dir) {
+  function trace(origin, dir, range) {
+    raycaster.far = range || 120;
     raycaster.set(origin, dir);
     const hits = raycaster.intersectObjects(RAY_TARGETS, true);
     for (let i = 0; i < hits.length; i++) {
@@ -2443,9 +2507,23 @@ const AUDIO = (() => {
 
   /* A scattergun that sounds drawn rather than recorded: a fat noise thump,
      a descending "pop", and a little rubbery boing on the tail. */
-  function gunshot() {
+  function gunshot(kind) {
     if (!started) return;
     const t0 = ctx.currentTime;
+    if (kind === 'tinSixer') {
+      const f = noiseBurst(t0, 0.12, 2300, 1.4, 0.42);
+      f.frequency.exponentialRampToValueAtTime(420, t0 + 0.1);
+      tone(t0, 980, 130, 0.13, 0.24, 'square');
+      tone(t0 + 0.025, 260, 92, 0.16, 0.12, 'triangle');
+      return;
+    }
+    if (kind === 'fieldhand') {
+      const f = noiseBurst(t0, 0.075, 1900, 1.1, 0.26);
+      f.frequency.exponentialRampToValueAtTime(310, t0 + 0.065);
+      tone(t0, 620, 105, 0.085, 0.18, 'square');
+      tone(t0, 145, 70, 0.1, 0.08, 'triangle');
+      return;
+    }
     const f = noiseBurst(t0, 0.26, 1500, 0.8, 0.55);
     f.frequency.exponentialRampToValueAtTime(180, t0 + 0.22);
     noiseBurst(t0, 0.06, 320, 1.2, 0.5, 'lowpass');
@@ -2469,6 +2547,34 @@ const AUDIO = (() => {
     const t0 = ctx.currentTime;
     noiseBurst(t0, 0.05, 2600, 4, 0.28);
     tone(t0, 900, 400, 0.05, 0.1, 'square');
+  }
+
+  function melee(kind, connected) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const f = noiseBurst(t0, 0.16, kind === 'unarmed' ? 950 : 1350, 1.2, 0.18);
+    f.frequency.exponentialRampToValueAtTime(250, t0 + 0.13);
+    tone(t0, 150, 360, 0.12, 0.07, 'triangle');
+    if (connected) {
+      noiseBurst(t0 + 0.07, 0.13, 260, 0.8, 0.3, 'lowpass');
+      tone(t0 + 0.07, 125, 48, 0.14, 0.15, 'sine');
+    }
+  }
+
+  function pickup(kind) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const base = kind === 'shield' ? 680 : kind === 'health' ? 520 : kind === 'weapon' ? 360 : 440;
+    tone(t0, base, base * 1.35, 0.12, 0.08, 'triangle');
+    tone(t0 + 0.08, base * 1.28, base * 1.8, 0.16, 0.075, 'sine');
+    if (kind === 'weapon') tone(t0 + 0.17, base * 1.7, base * 2.3, 0.2, 0.07, 'square');
+  }
+
+  function shieldHit() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    tone(t0, 760, 260, 0.16, 0.1, 'sine');
+    noiseBurst(t0, 0.12, 2400, 3.5, 0.12);
   }
 
   function reloadClick(kind) {
@@ -2632,7 +2738,7 @@ const AUDIO = (() => {
 
   return {
     start, resume, suspend, update,
-    gunshot, dryFire, reloadClick, footstep, land, jump, creak, bird,
+    gunshot, dryFire, melee, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
     get running() { return started; }
   };
@@ -2655,7 +2761,8 @@ const AUDIO = (() => {
 const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
-    jump: false, sprint: false, fire: false, reload: false, lantern: false
+    jump: false, sprint: false, fire: false, reload: false, lantern: false,
+    melee: false, slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
   let mouseDX = 0, mouseDY = 0;
@@ -2676,7 +2783,12 @@ const INPUT = (() => {
     'Space': 'jump',
     'ShiftLeft': 'sprint', 'ShiftRight': 'sprint',
     'KeyR': 'reload',
-    'KeyF': 'lantern'
+    'KeyF': 'lantern',
+    'KeyV': 'melee',
+    'Digit1': 'slot1', 'Numpad1': 'slot1',
+    'Digit2': 'slot2', 'Numpad2': 'slot2',
+    'Digit3': 'slot3', 'Numpad3': 'slot3',
+    'Digit4': 'slot4', 'Numpad4': 'slot4'
   };
 
   function on(evt, fn) { (listeners[evt] || (listeners[evt] = [])).push(fn); }
@@ -2745,7 +2857,7 @@ const INPUT = (() => {
     }
     const a = KEYMAP[e.code];
     if (!a) return;
-    if ((a === 'jump' || a === 'reload' || a === 'lantern') && e.preventDefault) e.preventDefault();
+    if ((a === 'jump' || a === 'reload' || a === 'lantern' || a === 'melee' || a.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     if (down && !actions[a]) { pressed[a] = true; emit('press', a); }
     actions[a] = down;
   }
@@ -2766,6 +2878,7 @@ const INPUT = (() => {
     document.addEventListener('mousedown', e => {
       if (!engaged) return;
       if (e.button === 0) { actions.fire = true; pressed.fire = true; emit('press', 'fire'); }
+      if (e.button === 2) { pressed.melee = true; emit('press', 'melee'); }
     });
     document.addEventListener('mouseup', e => {
       if (e.button === 0) actions.fire = false;
@@ -2859,7 +2972,7 @@ const PLAYER = (() => {
   let bobPhase = 0, bobY = 0, bobX = 0, bobRoll = 0;
   let landOffset = 0, landVel = 0;
   let stepDist = 0;
-  let health = C.maxHealth, dead = false, deadTime = 0, deadTilt = 0;
+  let health = C.maxHealth, shield = 0, dead = false, deadTime = 0, deadTilt = 0;
   let invuln = 0, regenTimer = 0, shake = 0;
   let camera = null;
   let sprinting = false;
@@ -2880,11 +2993,18 @@ const PLAYER = (() => {
   /* ---- vitality ---- */
   function damage(amount, fromPos) {
     if (dead || invuln > 0) return;
-    health -= amount;
+    const absorbed = Math.min(shield, amount);
+    if (absorbed > 0) {
+      shield -= absorbed;
+      amount -= absorbed;
+      UI.setShield(shield, C.maxShield);
+      AUDIO.shieldHit();
+    }
+    health = Math.max(0, health - amount);
     invuln = C.invulnAfterHit;
     regenTimer = 0;
     shake = C.hurtShake;
-    UI.hurtFlash(UTIL.clamp(amount / 20, 0.35, 1));
+    UI.hurtFlash(UTIL.clamp((amount + absorbed * 0.35) / 20, 0.22, 1));
     UI.setHealth(health, C.maxHealth);
     if (fromPos) {
       const dx = pos.x - fromPos.x, dz = pos.z - fromPos.z;
@@ -2893,21 +3013,38 @@ const PLAYER = (() => {
       vel.z += dz / d * 4.2;
     }
     if (health <= 0) {
-      health = 0;
       dead = true;
       deadTime = 0;
       AUDIO.playerDie();
-    } else {
+    } else if (amount > 0) {
       AUDIO.playerHurt();
     }
   }
 
+  function heal(amount) {
+    if (dead || amount <= 0 || health >= C.maxHealth) return 0;
+    const before = health;
+    health = Math.min(C.maxHealth, health + amount);
+    UI.setHealth(health, C.maxHealth);
+    return health - before;
+  }
+
+  function addShield(amount) {
+    if (dead || amount <= 0 || shield >= C.maxShield) return 0;
+    const before = shield;
+    shield = Math.min(C.maxShield, shield + amount);
+    UI.setShield(shield, C.maxShield);
+    return shield - before;
+  }
+
   function revive() {
     health = C.maxHealth;
+    shield = 0;
     dead = false;
     deadTime = 0; deadTilt = 0; shake = 0; invuln = 1.2; regenTimer = 0;
     respawn();
     UI.setHealth(health, C.maxHealth);
+    UI.setShield(shield, C.maxShield);
   }
 
   function moveAxis(axis, amount) {
@@ -3076,8 +3213,9 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, revive,
+    init, update, respawn, forwardVector, damage, heal, addShield, revive,
     get health() { return health; },
+    get shield() { return shield; },
     get isDead() { return dead; },
     get deadTime() { return deadTime; },
     get position() { return pos; },
@@ -3094,19 +3232,21 @@ const PLAYER = (() => {
 /* The Pipe Popper: a scattergun somebody welded together out of plumbing.
    Rendered in its own scene so it can never clip through a barn wall. */
 const WEAPON = (() => {
-  const C = CONFIG.weapon;
-  let rig = null, gun = null, forend = null, flash = null, flash2 = null;
-  let boots = null, leftArm = null, rightArm = null;
-  let ammo = C.magSize;
-  let fireTimer = 0, reloadTimer = 0, reloading = false;
-  let recoil = 0, recoilVel = 0;
-  let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0;
-  let bobPhase = 0;
+  const DEFS = CONFIG.weapons;
+  const VIEW = CONFIG.weaponView;
+  const models = {};
+  const inventory = {};
+  const casings = [];
+
+  let rig = null, boots = null, armedHands = null;
+  let fistLeft = null, fistRight = null;
+  let currentId = 'pipePopper';
+  let fireTimer = 0, reloadTimer = 0, reloading = false, reloadStage = 0;
+  let meleeTimer = 0, meleeSide = 1;
+  let recoil = 0, recoilVel = 0, squash = 0, squashVel = 0;
+  let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0, bobPhase = 0;
   let flashTimer = 0;
-  let squash = 0, squashVel = 0;
-  const shells = [];
-  const reloadMarks = [0.16, 0.34, 0.52, 0.70, 0.88];
-  let reloadStage = 0;
+  const reloadMarks = [0.18, 0.5, 0.82];
 
   const _o = new THREE.Vector3();
   const _d = new THREE.Vector3();
@@ -3125,12 +3265,13 @@ const WEAPON = (() => {
     return new THREE.ShapeGeometry(s);
   }
 
-  function glove(parent, x, y, z, rotY) {
+  function glove(parent, x, y, z, rotY, scale) {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     g.rotation.y = rotY || 0;
+    g.scale.setScalar(scale || 1);
     const white = MAT.toon(PAL.white);
-    PRIM.sph(0.062, white, { parent: g, scale: [1, 0.92, 1.15], outline: 0.011 });
+    PRIM.sph(0.062, white, { parent: g, scale: [1, 0.92, 1.15], outline: 0.011, ray: false });
     for (let i = 0; i < 4; i++) {
       PRIM.sph(0.03, white, {
         pos: [-0.028 + i * 0.019, 0.028, -0.062 - (i === 3 ? 0.01 : 0)],
@@ -3138,91 +3279,149 @@ const WEAPON = (() => {
       });
     }
     PRIM.sph(0.028, white, { pos: [0.05, -0.005, -0.02], parent: g, outline: 0.009, ray: false });
-    // cuff
-    PRIM.cyl(0.058, 0.05, 0.045, 10, white, { pos: [0, -0.02, 0.062], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
+    PRIM.cyl(0.058, 0.05, 0.045, 10, white, {
+      pos: [0, -0.02, 0.062], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false
+    });
+    parent.add(g);
     return g;
   }
 
-  function build(viewScene) {
-    const rayCount = RAY_TARGETS.length;
-    rig = new THREE.Group();
-    viewScene.add(rig);
+  function flashes(parent, y, z, scale) {
+    const f1 = new THREE.Mesh(starGeometry(5, 0.07, 0.26),
+      new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    f1.position.set(0, y, z);
+    f1.scale.setScalar(scale || 1);
+    f1.visible = false;
+    parent.add(f1);
+    const f2 = new THREE.Mesh(starGeometry(6, 0.05, 0.16),
+      new THREE.MeshBasicMaterial({ color: PAL.mustard, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    f2.position.set(0, y, z - 0.02);
+    f2.scale.setScalar(scale || 1);
+    f2.visible = false;
+    parent.add(f2);
+    return { flash: f1, flash2: f2 };
+  }
 
-    gun = new THREE.Group();
-    gun.position.set(0.27, -0.27, -0.52);
-    gun.rotation.set(0.03, -0.09, 0.02);
-    rig.add(gun);
-
+  function buildPipePopper() {
+    const g = new THREE.Group();
+    rig.add(g);
     const steel = MAT.toon(PAL.blueGray, { map: TEX.metal() });
     const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
     const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
     const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
 
-    // receiver — a fat crooked junction box
-    PRIM.box(0.15, 0.17, 0.42, steel, { pos: [0, 0, -0.06], rot: [0, 0, 0.03], parent: gun, warp: 0.008, outline: 0.012 });
-    PRIM.box(0.17, 0.06, 0.2, steelDark, { pos: [0, 0.09, -0.02], parent: gun, outline: 0.011, ray: false });
+    PRIM.box(0.15, 0.17, 0.42, steel, { pos: [0, 0, -0.06], rot: [0, 0, 0.03], parent: g, warp: 0.008, outline: 0.012, ray: false });
+    PRIM.box(0.17, 0.06, 0.2, steelDark, { pos: [0, 0.09, -0.02], parent: g, outline: 0.011, ray: false });
+    PRIM.cyl(0.045, 0.048, 0.86, 10, steel, { pos: [-0.042, 0.028, -0.66], rot: [Math.PI / 2, 0, 0.012], parent: g, outline: 0.012, ray: false });
+    PRIM.cyl(0.045, 0.048, 0.82, 10, steel, { pos: [0.044, 0.02, -0.63], rot: [Math.PI / 2 - 0.018, 0, -0.02], parent: g, outline: 0.012, ray: false });
+    [-0.35, -0.66, -0.95].forEach(z =>
+      PRIM.cyl(0.075, 0.075, 0.05, 10, steelDark, { pos: [0, 0.024, z], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false })
+    );
+    PRIM.cyl(0.115, 0.06, 0.17, 12, steelDark, { pos: [0, 0.024, -1.06], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.014, ray: false });
+    PRIM.torus(0.105, 0.018, MAT.toon(PAL.mustard), { pos: [0, 0.024, -1.135], parent: g, outline: 0.01, ray: false });
+    PRIM.box(0.11, 0.16, 0.4, timberDark, { pos: [0, -0.055, 0.3], rot: [-0.13, 0, 0.02], parent: g, warp: 0.012, outline: 0.012, ray: false });
+    PRIM.box(0.1, 0.19, 0.14, timberDark, { pos: [0.002, -0.145, 0.52], rot: [-0.2, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.box(0.09, 0.2, 0.11, timber, { pos: [0, -0.13, 0.09], rot: [0.32, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.055, 0.012, MAT.toon(PAL.charcoal), { pos: [0, -0.1, -0.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.009, ray: false });
 
-    // twin pipe barrels, one deliberately out of true
-    PRIM.cyl(0.045, 0.048, 0.86, 10, steel, { pos: [-0.042, 0.028, -0.66], rot: [Math.PI / 2, 0, 0.012], parent: gun, outline: 0.012, ray: false });
-    PRIM.cyl(0.045, 0.048, 0.82, 10, steel, { pos: [0.044, 0.02, -0.63], rot: [Math.PI / 2 - 0.018, 0, -0.02], parent: gun, outline: 0.012, ray: false });
-    // pipe collars
-    [-0.35, -0.66, -0.95].forEach(z => {
-      PRIM.cyl(0.075, 0.075, 0.05, 10, steelDark, { pos: [0, 0.024, z], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.011, ray: false });
-    });
-    // flared muzzle
-    PRIM.cyl(0.115, 0.06, 0.17, 12, steelDark, { pos: [0, 0.024, -1.06], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.014, ray: false });
-    PRIM.torus(0.105, 0.018, MAT.toon(PAL.mustard), { pos: [0, 0.024, -1.135], parent: gun, outline: 0.01, ray: false });
-
-    // wooden stock, tilted like it was carved with a hatchet
-    PRIM.box(0.11, 0.16, 0.4, timberDark, { pos: [0, -0.055, 0.3], rot: [-0.13, 0, 0.02], parent: gun, warp: 0.012, outline: 0.012 });
-    PRIM.box(0.1, 0.19, 0.14, timberDark, { pos: [0.002, -0.145, 0.52], rot: [-0.2, 0, 0], parent: gun, outline: 0.012, ray: false });
-    // grip
-    PRIM.box(0.09, 0.2, 0.11, timber, { pos: [0, -0.13, 0.09], rot: [0.32, 0, 0], parent: gun, outline: 0.012, ray: false });
-    // trigger guard + trigger
-    PRIM.torus(0.055, 0.012, MAT.toon(PAL.charcoal), { pos: [0, -0.1, -0.02], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.009, ray: false });
-    PRIM.box(0.016, 0.05, 0.02, MAT.toon(PAL.charcoal), { pos: [0, -0.085, -0.02], parent: gun, outline: 0.008, ray: false });
-
-    // sliding forend
-    forend = new THREE.Group();
+    const forend = new THREE.Group();
     forend.position.set(0, -0.015, -0.44);
-    gun.add(forend);
-    PRIM.box(0.13, 0.11, 0.27, timber, { rot: [0, 0, -0.02], parent: forend, warp: 0.01, outline: 0.012 });
+    g.add(forend);
+    PRIM.box(0.13, 0.11, 0.27, timber, { rot: [0, 0, -0.02], parent: forend, warp: 0.01, outline: 0.012, ray: false });
     [-0.08, 0, 0.08].forEach(z =>
       PRIM.box(0.14, 0.015, 0.02, timberDark, { pos: [0, 0.045, z], parent: forend, outline: 0.007, ray: false })
     );
+    PRIM.cyl(0.045, 0.045, 0.03, 12, MAT.toon(PAL.cream), { pos: [0.095, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.011, ray: false });
+    PRIM.cyl(0.05, 0.05, 0.02, 12, steelDark, { pos: [0.085, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.01, ray: false });
+    PRIM.cyl(0.052, 0.052, 0.06, 10, MAT.toon(PAL.mustardDk), { pos: [0, 0.024, -0.16], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.01, ray: false });
+    const fx = flashes(g, 0.024, -1.2, 1);
+    models.pipePopper = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2,
+      base: [0.27, -0.27, -0.52], rot: [0.03, -0.09, 0.02]
+    };
+  }
 
-    // pressure gauge, because it is plumbing
-    PRIM.cyl(0.045, 0.045, 0.03, 12, MAT.toon(PAL.cream), { pos: [0.095, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: gun, outline: 0.011, ray: false });
-    PRIM.cyl(0.05, 0.05, 0.02, 12, steelDark, { pos: [0.085, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: gun, outline: 0.01, ray: false });
-    PRIM.box(0.02, 0.006, 0.03, MAT.toon(PAL.rust), { pos: [0.112, 0.026, 0.028], rot: [0, 0, 0], parent: gun, outline: 0.005, ray: false });
+  function buildTinSixer() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
 
-    // a bit of tape holding it all together
-    PRIM.cyl(0.052, 0.052, 0.06, 10, MAT.toon(PAL.mustardDk), { pos: [0, 0.024, -0.16], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.01, ray: false });
+    PRIM.box(0.14, 0.16, 0.34, steel, { pos: [0, 0, -0.12], parent: g, warp: 0.006, outline: 0.012, ray: false });
+    PRIM.cyl(0.115, 0.115, 0.19, 10, steelLight, { pos: [0, 0.025, -0.3], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.013, ray: false });
+    for (let i = 0; i < 6; i++) {
+      const a = i / 6 * Math.PI * 2;
+      PRIM.cyl(0.016, 0.016, 0.205, 6, MAT.toon(PAL.charcoal), {
+        pos: [Math.cos(a) * 0.065, 0.025 + Math.sin(a) * 0.065, -0.3],
+        rot: [0, 0, Math.PI / 2], parent: g, outline: 0.004, ray: false
+      });
+    }
+    PRIM.cyl(0.042, 0.052, 0.72, 10, steel, { pos: [0, 0.025, -0.67], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
+    PRIM.cyl(0.065, 0.045, 0.12, 10, MAT.toon(PAL.mustardDk), { pos: [0, 0.025, -1.04], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.01, ray: false });
+    PRIM.box(0.11, 0.32, 0.15, timber, { pos: [0, -0.22, 0.02], rot: [0.22, 0, 0.02], parent: g, warp: 0.009, outline: 0.013, ray: false });
+    PRIM.torus(0.052, 0.012, MAT.toon(PAL.charcoal), { pos: [0, -0.11, -0.05], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+    PRIM.box(0.025, 0.09, 0.07, steel, { pos: [0, 0.13, -0.06], rot: [0.2, 0, 0], parent: g, outline: 0.007, ray: false });
+    const fx = flashes(g, 0.025, -1.13, 0.78);
+    models.tinSixer = {
+      root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      base: [0.31, -0.3, -0.5], rot: [0.02, -0.08, 0.015]
+    };
+  }
 
-    // --- muzzle flash stars ---
-    flash = new THREE.Mesh(starGeometry(5, 0.07, 0.26),
-      new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-    flash.position.set(0, 0.024, -1.2);
-    flash.visible = false;
-    gun.add(flash);
-    flash2 = new THREE.Mesh(starGeometry(6, 0.05, 0.16),
-      new THREE.MeshBasicMaterial({ color: PAL.mustard, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
-    flash2.position.set(0, 0.024, -1.22);
-    flash2.visible = false;
-    gun.add(flash2);
+  function buildFieldhand() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const olive = MAT.toon(PAL.oliveDeep);
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
 
-    // --- rubber-hose arms and white gloves ---
+    PRIM.box(0.16, 0.19, 0.5, olive, { pos: [0, 0, -0.08], parent: g, warp: 0.008, outline: 0.013, ray: false });
+    PRIM.box(0.14, 0.08, 0.55, steel, { pos: [0, 0.09, -0.24], parent: g, outline: 0.011, ray: false });
+    PRIM.cyl(0.032, 0.038, 0.82, 9, steel, { pos: [0, 0.045, -0.72], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.01, ray: false });
+    PRIM.cyl(0.075, 0.045, 0.14, 9, MAT.toon(PAL.mustardDk), { pos: [0, 0.045, -1.12], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
+    PRIM.box(0.14, 0.17, 0.38, timber, { pos: [0, -0.03, 0.37], rot: [-0.12, 0, 0], parent: g, warp: 0.01, outline: 0.013, ray: false });
+    PRIM.box(0.13, 0.22, 0.14, timber, { pos: [0, -0.18, 0.02], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.box(0.12, 0.31, 0.12, MAT.toon(PAL.mustardDk), { pos: [0, -0.19, -0.25], rot: [-0.17, 0, 0], parent: g, warp: 0.006, outline: 0.012, ray: false });
+    const handguard = new THREE.Group();
+    handguard.position.set(0, 0, -0.52);
+    g.add(handguard);
+    PRIM.cyl(0.085, 0.085, 0.38, 10, timber, { rot: [Math.PI / 2, 0, 0], parent: handguard, outline: 0.012, ray: false });
+    for (let i = -1; i <= 1; i++) {
+      PRIM.torus(0.087, 0.012, MAT.toon(PAL.rustDeep), { pos: [0, 0, i * 0.11], parent: handguard, outline: 0.007, ray: false });
+    }
+    PRIM.box(0.025, 0.12, 0.025, steel, { pos: [0, 0.17, -0.48], parent: g, outline: 0.006, ray: false });
+    const fx = flashes(g, 0.045, -1.22, 0.72);
+    models.fieldhand = {
+      root: g, forend: handguard, flash: fx.flash, flash2: fx.flash2,
+      base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
+  function buildHandsAndBoots() {
     const black = MAT.toon(PAL.charcoal);
-    rightArm = PRIM.hose(
-      new THREE.Vector3(0.42, -0.72, 0.42), new THREE.Vector3(0.28, -0.40, -0.44),
-      0.10, 0.048, black, { parent: rig, outline: 0.013, ray: false });
-    leftArm = PRIM.hose(
-      new THREE.Vector3(-0.46, -0.72, 0.20), new THREE.Vector3(0.24, -0.30, -0.95),
-      0.16, 0.048, black, { parent: rig, outline: 0.013, ray: false });
-    rig.add(glove(0.278, -0.40, -0.40, -0.1));    // trigger hand
-    rig.add(glove(0.262, -0.295, -0.96, 0.12));   // forend hand
+    armedHands = new THREE.Group();
+    rig.add(armedHands);
+    PRIM.hose(new THREE.Vector3(0.42, -0.72, 0.42), new THREE.Vector3(0.28, -0.40, -0.4),
+      0.1, 0.048, black, { parent: armedHands, outline: 0.013, ray: false });
+    PRIM.hose(new THREE.Vector3(-0.46, -0.72, 0.2), new THREE.Vector3(0.24, -0.30, -0.88),
+      0.16, 0.048, black, { parent: armedHands, outline: 0.013, ray: false });
+    glove(armedHands, 0.278, -0.40, -0.4, -0.1);
+    glove(armedHands, 0.252, -0.295, -0.89, 0.12);
 
-    // --- boots, visible when you look at your feet ---
+    const fists = new THREE.Group();
+    rig.add(fists);
+    PRIM.hose(new THREE.Vector3(-0.46, -0.74, 0.24), new THREE.Vector3(-0.19, -0.27, -0.47),
+      0.13, 0.055, black, { parent: fists, outline: 0.014, ray: false });
+    PRIM.hose(new THREE.Vector3(0.46, -0.74, 0.28), new THREE.Vector3(0.21, -0.3, -0.52),
+      0.13, 0.055, black, { parent: fists, outline: 0.014, ray: false });
+    fistLeft = glove(fists, -0.19, -0.27, -0.47, -0.25, 1.18);
+    fistRight = glove(fists, 0.21, -0.3, -0.52, 0.25, 1.18);
+    models.unarmed = {
+      root: fists, forend: null, flash: null, flash2: null,
+      base: [0, 0, 0], rot: [0, 0, 0]
+    };
+
     boots = new THREE.Group();
     const bootMat = MAT.toon(PAL.mustard);
     [-1, 1].forEach(s => {
@@ -3237,28 +3436,92 @@ const WEAPON = (() => {
     });
     boots.position.set(0, -1.35, -0.62);
     rig.add(boots);
-
-    // --- ejected shells ---
-    for (let i = 0; i < 4; i++) {
-      const m = PRIM.cyl(0.028, 0.028, 0.075, 8, MAT.toon(PAL.rust), { parent: rig, outline: 0.008, ray: false });
-      m.visible = false;
-      shells.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
-    }
-
-    // Nothing in the viewmodel scene may ever stop one of the player's own
-    // pellets, so roll the raycast list back to where it was.
-    RAY_TARGETS.length = rayCount;
-
-    UI.setAmmo(ammo, C.magSize);
   }
 
-  function ejectShell() {
-    for (let i = 0; i < shells.length; i++) {
-      const s = shells[i];
+  function initInventory() {
+    Object.keys(DEFS).forEach(id => {
+      const d = DEFS[id];
+      inventory[id] = {
+        owned: id === 'unarmed' || id === 'pipePopper',
+        mag: d.kind === 'gun' ? (d.startMag || 0) : 0,
+        reserve: d.kind === 'gun' ? (d.startReserve || 0) : 0
+      };
+    });
+  }
+
+  function build(viewScene) {
+    const rayCount = RAY_TARGETS.length;
+    rig = new THREE.Group();
+    viewScene.add(rig);
+    buildPipePopper();
+    buildTinSixer();
+    buildFieldhand();
+    buildHandsAndBoots();
+
+    for (let i = 0; i < 8; i++) {
+      const m = PRIM.cyl(0.024, 0.024, 0.072, 8, MAT.toon(i % 2 ? PAL.rust : PAL.mustardDk), {
+        parent: rig, outline: 0.007, ray: false
+      });
+      m.visible = false;
+      casings.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+    }
+
+    RAY_TARGETS.length = rayCount;
+    initInventory();
+    setCurrent('pipePopper', true);
+  }
+
+  function stateFor(id) { return inventory[id || currentId]; }
+  function defFor(id) { return DEFS[id || currentId]; }
+
+  function setMuzzleVisible(on) {
+    Object.keys(models).forEach(id => {
+      const m = models[id];
+      if (m.flash) m.flash.visible = on && id === currentId;
+      if (m.flash2) m.flash2.visible = on && id === currentId;
+    });
+  }
+
+  function syncHUD() {
+    const d = defFor(), s = stateFor();
+    UI.setWeapon(d.name, d.kind, s.mag, s.reserve, d.magSize || 0);
+    if (d.kind !== 'gun') UI.showReloadHint(false);
+    else if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+    else UI.showReloadHint(false);
+  }
+
+  function setCurrent(id, silent) {
+    const d = DEFS[id], s = inventory[id];
+    if (!d || !s) return false;
+    if (!s.owned) {
+      if (!silent) UI.toast(d.name + ' has not been found yet', 1.25);
+      return false;
+    }
+    currentId = id;
+    reloading = false;
+    reloadTimer = 0;
+    meleeTimer = 0;
+    setMuzzleVisible(false);
+    Object.keys(models).forEach(k => { models[k].root.visible = k === id; });
+    armedHands.visible = d.kind === 'gun';
+    syncHUD();
+    if (!silent) UI.toast(d.name, 0.75);
+    return true;
+  }
+
+  function selectSlot(slot) {
+    const id = Object.keys(DEFS).find(k => DEFS[k].slot === slot);
+    return id ? setCurrent(id, false) : false;
+  }
+
+  function ejectCasing(id) {
+    for (let i = 0; i < casings.length; i++) {
+      const s = casings[i];
       if (s.life > 0) continue;
-      s.life = 0.75;
+      s.life = id === 'fieldhand' ? 0.48 : 0.72;
       s.mesh.visible = true;
       s.mesh.position.set(0.3, -0.24, -0.42);
+      s.mesh.scale.setScalar(id === 'pipePopper' ? 1.2 : 0.82);
       s.vel.set(UTIL.rng(0.5, 1.0), UTIL.rng(0.9, 1.5), UTIL.rng(-0.2, 0.4));
       s.spin.set(UTIL.rng(-12, 12), UTIL.rng(-12, 12), UTIL.rng(-12, 12));
       return;
@@ -3266,89 +3529,167 @@ const WEAPON = (() => {
   }
 
   function startReload() {
-    if (reloading || ammo >= C.magSize) return;
+    const d = defFor(), s = stateFor();
+    if (d.kind !== 'gun' || reloading || s.mag >= d.magSize) return false;
+    if (s.reserve <= 0) {
+      AUDIO.dryFire();
+      UI.showReloadHint(true, 'Out of ammo');
+      return false;
+    }
     reloading = true;
     reloadTimer = 0;
     reloadStage = 0;
+    meleeTimer = 0;
     AUDIO.reloadClick('open');
     UI.showReloadHint(false);
+    return true;
   }
 
-  function fire(camera) {
-    if (reloading || fireTimer > 0) return;
-    if (ammo <= 0) {
+  function finishReload() {
+    const d = defFor(), s = stateFor();
+    const moved = Math.min(d.magSize - s.mag, s.reserve);
+    s.mag += moved;
+    s.reserve -= moved;
+    reloading = false;
+    reloadTimer = 0;
+    squashVel += 6;
+    syncHUD();
+  }
+
+  function fireGun(camera) {
+    const d = defFor(), s = stateFor(), model = models[currentId];
+    if (reloading || fireTimer > 0 || meleeTimer > 0) return;
+    if (s.mag <= 0) {
       AUDIO.dryFire();
-      UI.showReloadHint(true);
-      startReload();
+      UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+      if (s.reserve > 0) startReload();
       return;
     }
-    ammo--;
-    fireTimer = C.fireInterval;
-    UI.setAmmo(ammo, C.magSize);
+
+    s.mag--;
+    fireTimer = d.fireInterval;
+    syncHUD();
     UI.crosshairKick();
-    AUDIO.gunshot();
+    AUDIO.gunshot(currentId);
 
-    // recoil + squash
-    recoilVel += C.recoilBack * 46;
-    squashVel += 9.5;
-    flashTimer = C.muzzleFlashTime;
-    flash.rotation.z = UTIL.rng(0, 6.28);
-    flash2.rotation.z = UTIL.rng(0, 6.28);
-    const fs = UTIL.rng(0.85, 1.25);
-    flash.scale.setScalar(fs);
-    flash2.scale.setScalar(fs * UTIL.rng(1.0, 1.4));
-    flash.visible = flash2.visible = true;
-    ejectShell();
+    recoilVel += d.recoilBack * 46;
+    squashVel += currentId === 'fieldhand' ? 4.8 : 9.2;
+    flashTimer = VIEW.muzzleFlashTime;
+    model.flash.rotation.z = UTIL.rng(0, 6.28);
+    model.flash2.rotation.z = UTIL.rng(0, 6.28);
+    const fs = UTIL.rng(0.84, 1.22);
+    model.flash.scale.setScalar(fs * (currentId === 'pipePopper' ? 1 : 0.76));
+    model.flash2.scale.setScalar(fs * UTIL.rng(0.95, 1.3) * (currentId === 'pipePopper' ? 1 : 0.76));
+    model.flash.visible = model.flash2.visible = true;
+    ejectCasing(currentId);
 
-    // muzzle position in world space, for the tracer origin and the flash light
-    gun.updateMatrixWorld(true);
-    flash.getWorldPosition(_muzzleWorld);
-    _muzzleWorld.applyMatrix4(camera.matrixWorld); // view-space rig -> world
+    model.root.updateMatrixWorld(true);
+    model.flash.getWorldPosition(_muzzleWorld);
+    _muzzleWorld.applyMatrix4(camera.matrixWorld);
     FX.muzzleFlashLight(_muzzleWorld);
 
-    // pellets
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
-    for (let i = 0; i < C.pellets; i++) {
+    for (let i = 0; i < d.pellets; i++) {
       _t.copy(_d);
-      _t.x += UTIL.rng(-C.spread, C.spread);
-      _t.y += UTIL.rng(-C.spread, C.spread);
-      _t.z += UTIL.rng(-C.spread, C.spread);
+      _t.x += UTIL.rng(-d.spread, d.spread);
+      _t.y += UTIL.rng(-d.spread, d.spread);
+      _t.z += UTIL.rng(-d.spread, d.spread);
       _t.normalize();
-      const hit = FX.trace(_o, _t);
+      const hit = FX.trace(_o, _t, d.range);
       if (hit) {
-        if (i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
-        // enemies own their own hit feedback, so only decal the world
-        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance)) {
+        if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
+        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, {
+          damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+        })) {
           const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
                              : _t.clone().negate();
-          if (i < 4) FX.impact(hit.point, n, { big: i === 0 });
-          FX.hitWobbler(hit.object, _t, 1 / C.pellets * 2.4);
+          if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
+          FX.hitWobbler(hit.object, _t, 1 / d.pellets * 2.4);
         }
       } else if (i === 0) {
-        _t.multiplyScalar(C.range).add(_o);
+        _t.copy(_d).multiplyScalar(d.range).add(_o);
         FX.tracer(_muzzleWorld, _t);
       }
     }
-    if (ammo === 0) UI.showReloadHint(true);
+    if (s.mag === 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+  }
+
+  function beginMelee(camera) {
+    const d = defFor();
+    if (meleeTimer > 0 || fireTimer > 0.08) return false;
+    reloading = false;
+    reloadTimer = 0;
+    meleeTimer = d.kind === 'melee' ? d.fireInterval : 0.5;
+    meleeSide *= -1;
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    const connected = ENEMY.melee(_o, _d, {
+      damage: d.meleeDamage,
+      range: d.meleeRange,
+      arc: d.meleeArc,
+      force: d.kind === 'melee' ? 1.45 : 1.8
+    });
+    AUDIO.melee(d.kind === 'melee' ? 'unarmed' : 'gun', connected);
+    UI.crosshairKick();
+    recoilVel += connected ? 5.4 : 2.4;
+    squashVel += connected ? 7 : 3;
+    syncHUD();
+    return true;
+  }
+
+  function addAmmo(ammoType, quantity) {
+    quantity = Math.max(0, Math.floor(quantity || 0));
+    let added = 0;
+    const ids = Object.keys(DEFS).filter(id => DEFS[id].ammoType === ammoType);
+    for (let i = 0; i < ids.length && quantity > 0; i++) {
+      const id = ids[i], d = DEFS[id], s = inventory[id];
+      const room = Math.max(0, d.maxReserve - s.reserve);
+      const take = Math.min(room, quantity);
+      s.reserve += take;
+      quantity -= take;
+      added += take;
+    }
+    if (added > 0) syncHUD();
+    return added;
+  }
+
+  function grantWeapon(id, reserveBonus) {
+    const d = DEFS[id], s = inventory[id];
+    if (!d || d.kind !== 'gun') return { consumed: false, newlyOwned: false, ammoAdded: 0 };
+    const newlyOwned = !s.owned;
+    s.owned = true;
+    if (newlyOwned && s.mag <= 0) s.mag = d.magSize;
+    const before = s.reserve;
+    s.reserve = Math.min(d.maxReserve, s.reserve + Math.max(0, Math.floor(reserveBonus || 0)));
+    const ammoAdded = s.reserve - before;
+    if (newlyOwned) setCurrent(id, true);
+    else syncHUD();
+    return { consumed: newlyOwned || ammoAdded > 0, newlyOwned: newlyOwned, ammoAdded: ammoAdded };
   }
 
   function update(dt, time, camera, active) {
     if (!rig) return;
-
     if (fireTimer > 0) fireTimer -= dt;
+    if (meleeTimer > 0) meleeTimer -= dt;
 
     if (active) {
-      if (INPUT.actions.fire && fireTimer <= 0 && !reloading) fire(camera);
+      for (let slot = 1; slot <= 4; slot++) {
+        if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
+      }
+      const pressedFire = INPUT.consumePress('fire');
+      const d = defFor();
+      if (INPUT.consumePress('melee')) beginMelee(camera);
+      else if (d.kind === 'melee' && pressedFire) beginMelee(camera);
+      else if (d.kind === 'gun' && (d.automatic ? INPUT.actions.fire : pressedFire)) fireGun(camera);
       if (INPUT.consumePress('reload')) startReload();
     }
 
-    // ---- reload choreography ----
     let reloadPitch = 0, reloadRoll = 0, reloadDrop = 0, forendZ = 0;
     if (reloading) {
+      const d = defFor();
       reloadTimer += dt;
-      const k = UTIL.clamp(reloadTimer / C.reloadTime, 0, 1);
-      // tip the gun down and to the left, thumb shells in, snap it shut
+      const k = UTIL.clamp(reloadTimer / d.reloadTime, 0, 1);
       const openK = UTIL.clamp(k / 0.22, 0, 1);
       const closeK = UTIL.clamp((k - 0.78) / 0.22, 0, 1);
       const hold = openK - closeK;
@@ -3358,19 +3699,11 @@ const WEAPON = (() => {
       forendZ = Math.sin(UTIL.clamp((k - 0.2) / 0.6, 0, 1) * Math.PI * 2) * 0.09;
       while (reloadStage < reloadMarks.length && k >= reloadMarks[reloadStage]) {
         AUDIO.reloadClick(reloadStage === reloadMarks.length - 1 ? 'close' : 'shell');
-        if (reloadStage < 2) ejectShell();
         reloadStage++;
       }
-      if (k >= 1) {
-        reloading = false;
-        ammo = C.magSize;
-        UI.setAmmo(ammo, C.magSize);
-        UI.showReloadHint(false);
-        squashVel += 6; // little snap-shut overshoot
-      }
+      if (k >= 1) finishReload();
     }
 
-    // ---- recoil spring with overshoot ----
     recoilVel += (-recoil * 260 - recoilVel * 22) * dt;
     recoil += recoilVel * dt;
     recoil = UTIL.clamp(recoil, -0.05, 0.4);
@@ -3378,60 +3711,67 @@ const WEAPON = (() => {
     squash += squashVel * dt;
     squash = UTIL.clamp(squash, -0.35, 0.45);
 
-    // ---- sway from looking ----
     tSwayX = UTIL.damp(tSwayX, 0, 3.2, dt);
     tSwayY = UTIL.damp(tSwayY, 0, 3.2, dt);
-    swayX = UTIL.damp(swayX, tSwayX, C.swayLerp, dt);
-    swayY = UTIL.damp(swayY, tSwayY, C.swayLerp, dt);
+    swayX = UTIL.damp(swayX, tSwayX, VIEW.swayLerp, dt);
+    swayY = UTIL.damp(swayY, tSwayY, VIEW.swayLerp, dt);
 
-    // ---- bob from moving ----
     const sr = PLAYER.speedRatio;
-    if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9.0 * (0.7 + sr * 0.8);
-    const bobAmt = C.bobAmount * sr;
+    if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9 * (0.7 + sr * 0.8);
+    const bobAmt = VIEW.bobAmount * sr;
     const bx = Math.sin(bobPhase) * bobAmt;
     const by = Math.abs(Math.cos(bobPhase)) * bobAmt * 0.8;
-
-    // ---- idle breathing ----
     const idle = 1 - sr;
     const ix = Math.sin(time * 1.15) * 0.008 * idle;
     const iy = Math.sin(time * 1.6 + 1.1) * 0.009 * idle;
 
-    // ---- assemble ----
-    gun.position.set(
-      0.27 + swayX + bx + ix,
-      -0.27 + swayY + by + iy - reloadDrop + recoil * 0.28,
-      -0.52 + recoil
-    );
-    gun.rotation.set(
-      0.03 + reloadPitch - recoil * 0.85 + iy * 0.6,
-      -0.09 - swayX * 1.6 + ix * 0.5,
-      0.02 + reloadRoll + swayY * 0.9 - recoil * 0.4
-    );
-    // squash and stretch: the whole gun stretches along its barrel then rebounds
-    gun.scale.set(1 - squash * 0.35, 1 - squash * 0.35, 1 + squash * 0.55);
-    forend.position.z = -0.44 + forendZ + recoil * 0.5;
+    const d = defFor(), model = models[currentId];
+    const meleeTotal = d.kind === 'melee' ? d.fireInterval : 0.5;
+    const meleeK = meleeTimer > 0 ? 1 - meleeTimer / meleeTotal : 0;
+    const swing = meleeTimer > 0 ? Math.sin(UTIL.clamp(meleeK, 0, 1) * Math.PI) : 0;
 
-    // arms and gloves ride the gun a little softer than the gun itself
-    rig.position.set(swayX * 0.35, swayY * 0.35 + by * 0.4, 0);
-    rig.rotation.z = swayY * 0.25;
+    if (d.kind === 'gun') {
+      model.root.position.set(
+        model.base[0] + swayX + bx + ix - swing * 0.23,
+        model.base[1] + swayY + by + iy - reloadDrop + recoil * 0.28 + swing * 0.1,
+        model.base[2] + recoil - swing * 0.2
+      );
+      model.root.rotation.set(
+        model.rot[0] + reloadPitch - recoil * 0.85 + iy * 0.6 + swing * 0.48,
+        model.rot[1] - swayX * 1.6 + ix * 0.5 - swing * 0.72 * meleeSide,
+        model.rot[2] + reloadRoll + swayY * 0.9 - recoil * 0.4 + swing * 0.38 * meleeSide
+      );
+      model.root.scale.set(1 - squash * 0.35, 1 - squash * 0.35, 1 + squash * 0.55);
+      if (model.forend) model.forend.position.z = (currentId === 'pipePopper' ? -0.44 : -0.52) + forendZ + recoil * 0.5;
+      armedHands.position.set(swayX * 0.35 - swing * 0.12, swayY * 0.35 + by * 0.4 + swing * 0.06, -swing * 0.1);
+      armedHands.rotation.z = swayY * 0.25 + swing * 0.28 * meleeSide;
+    } else {
+      model.root.position.set(swayX * 0.4 + bx, swayY * 0.4 + by, 0);
+      model.root.rotation.set(-swing * 0.15, swing * 0.12 * meleeSide, swing * 0.08 * meleeSide);
+      fistLeft.position.z = -0.47 - (meleeSide < 0 ? swing * 0.54 : 0);
+      fistRight.position.z = -0.52 - (meleeSide > 0 ? swing * 0.54 : 0);
+      fistLeft.position.y = -0.27 + (meleeSide < 0 ? swing * 0.1 : 0);
+      fistRight.position.y = -0.3 + (meleeSide > 0 ? swing * 0.1 : 0);
+    }
 
-    // boots slide into frame as you look down
+    rig.position.set(0, 0, 0);
     boots.position.y = -1.34 - PLAYER.pitch * 1.75;
     boots.position.z = -0.62 + PLAYER.pitch * 0.25;
     boots.children[0].position.z = Math.sin(bobPhase) * 0.07;
     boots.children[1].position.z = -Math.sin(bobPhase) * 0.07;
 
-    // ---- muzzle flash, stepped so it pops rather than fades ----
     if (flashTimer > 0) {
       flashTimer -= dt;
       const on = Math.floor(flashTimer * CONFIG.fx.weaponStepFPS * 3) % 2 === 0;
-      flash.visible = flash2.visible = on;
-      if (flashTimer <= 0) flash.visible = flash2.visible = false;
+      if (model.flash) {
+        model.flash.visible = on;
+        model.flash2.visible = on;
+      }
+      if (flashTimer <= 0) setMuzzleVisible(false);
     }
 
-    // ---- flying shells ----
-    for (let i = 0; i < shells.length; i++) {
-      const s = shells[i];
+    for (let i = 0; i < casings.length; i++) {
+      const s = casings[i];
       if (s.life <= 0) continue;
       s.life -= dt;
       if (s.life <= 0) { s.mesh.visible = false; continue; }
@@ -3443,28 +3783,38 @@ const WEAPON = (() => {
   }
 
   function addLook(dx, dy) {
-    tSwayX = UTIL.clamp(tSwayX - dx * 0.00016, -C.swayAmount, C.swayAmount);
-    tSwayY = UTIL.clamp(tSwayY + dy * 0.00016, -C.swayAmount, C.swayAmount);
+    tSwayX = UTIL.clamp(tSwayX - dx * 0.00016, -VIEW.swayAmount, VIEW.swayAmount);
+    tSwayY = UTIL.clamp(tSwayY + dy * 0.00016, -VIEW.swayAmount, VIEW.swayAmount);
   }
 
   function reset() {
-    ammo = C.magSize; reloading = false; reloadTimer = 0;
-    UI.setAmmo(ammo, C.magSize); UI.showReloadHint(false);
+    initInventory();
+    fireTimer = reloadTimer = meleeTimer = recoil = recoilVel = squash = squashVel = 0;
+    reloading = false;
+    setCurrent('pipePopper', true);
   }
 
-  return { build, update, addLook, reset, get ammo() { return ammo; }, get reloading() { return reloading; } };
+  return {
+    build, update, addLook, reset, setCurrent, selectSlot, addAmmo, grantWeapon,
+    hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
+    get currentId() { return currentId; },
+    get ammo() { return stateFor().mag; },
+    get reserve() { return stateFor().reserve; },
+    get reloading() { return reloading; }
+  };
 })();
 
 /* ================================ [UI] =============================== */
 const UI = (() => {
   const el = {};
-  let kickTimer = 0;
+  let kickTimer = 0, toastTimer = 0;
 
   function init() {
     el.start = document.getElementById('start');
     el.pause = document.getElementById('pause');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
+    el.weaponName = document.getElementById('weaponName');
     el.ammo = document.getElementById('ammo');
     el.shells = document.getElementById('shells');
     el.ammoNum = document.getElementById('ammoNum');
@@ -3473,6 +3823,8 @@ const UI = (() => {
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
     el.pepFill = document.getElementById('pepFill');
+    el.shieldFill = document.getElementById('shieldFill');
+    el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
     el.killNum = document.getElementById('killNum');
     el.hurt = document.getElementById('hurt');
@@ -3485,26 +3837,49 @@ const UI = (() => {
     el.scratches.style.backgroundImage = 'url(' + TEX.scratchDataURL(512, 512) + ')';
   }
 
-  function setAmmo(n, max) {
-    if (el.shells.children.length !== max) {
+  function setWeapon(name, kind, n, reserve, max) {
+    el.weaponName.textContent = name;
+    if (kind !== 'gun') {
       el.shells.innerHTML = '';
-      for (let i = 0; i < max; i++) el.shells.appendChild(document.createElement('span'));
+      el.ammoNum.textContent = 'FISTS';
+      el.ammoNum.className = 'melee';
+      return;
     }
-    for (let i = 0; i < max; i++) {
-      el.shells.children[i].className = i < n ? '' : 'spent';
+    const marks = Math.min(max, 12);
+    const loadedMarks = max > 0 ? Math.ceil(n / max * marks) : 0;
+    if (el.shells.children.length !== marks) {
+      el.shells.innerHTML = '';
+      for (let i = 0; i < marks; i++) el.shells.appendChild(document.createElement('span'));
     }
-    el.ammoNum.textContent = n;
-    el.ammoNum.className = n <= 2 ? 'low' : '';
+    for (let i = 0; i < marks; i++) {
+      el.shells.children[i].className = i < loadedMarks ? '' : 'spent';
+    }
+    el.ammoNum.innerHTML = '<b>' + n + '</b> <small>/ ' + reserve + '</small>';
+    el.ammoNum.className = n <= Math.max(2, Math.floor(max * 0.2)) ? 'low' : '';
   }
 
-  function showReloadHint(on) { el.reloadTag.className = on ? 'on' : ''; }
+  function showReloadHint(on, message) {
+    if (message) el.reloadTag.textContent = message;
+    el.reloadTag.className = on ? 'on' : '';
+  }
 
   function setHealth(n, max) {
     const pct = UTIL.clamp(n / max, 0, 1);
     el.pepFill.style.width = (pct * 100).toFixed(1) + '%';
     el.pepFill.className = pct <= 0.34 ? 'hurt' : '';
   }
+  function setShield(n, max) {
+    const pct = UTIL.clamp(n / max, 0, 1);
+    el.shieldFill.style.width = (pct * 100).toFixed(1) + '%';
+  }
   function setKills(n) { el.killNum.textContent = n; }
+
+  function toast(message, seconds) {
+    if (!message) return;
+    el.pickupToast.textContent = message;
+    el.pickupToast.classList.add('on');
+    toastTimer = seconds || 1.45;
+  }
 
   let hurtTimer = 0;
   function hurtFlash(strength) {
@@ -3545,6 +3920,7 @@ const UI = (() => {
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     el.crosshair.classList.add('on');
+    el.weaponName.classList.add('on');
     el.ammo.classList.add('on');
     el.vitals.classList.add('on');
     el.tally.classList.add('on');
@@ -3570,6 +3946,10 @@ const UI = (() => {
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
       if (hurtTimer <= 0) el.hurt.style.opacity = 0;
     }
+    if (toastTimer > 0) {
+      toastTimer -= dt;
+      if (toastTimer <= 0) el.pickupToast.classList.remove('on');
+    }
     // shuffle the paper grain on a 12fps clock so the world looks hand-inked
     grainAcc += dt;
     if (grainAcc > 1 / 12) {
@@ -3587,11 +3967,251 @@ const UI = (() => {
   }
 
   return {
-    init, setAmmo, showReloadHint, crosshairKick, enterGame,
+    init, setWeapon, showReloadHint, crosshairKick, enterGame, toast,
     showPause, hidePause, hideLoading, update,
-    setHealth, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
+    setHealth, setShield, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
     get deadShown() { return deadShown; },
     el
+  };
+})();
+
+/* ============================== [PICKUP] =============================
+   Definitions, collection behavior and world placement are deliberately
+   separate. New pickup families can register one handler and any number of
+   data definitions without changing the update loop. */
+const PICKUP = (() => {
+  const C = CONFIG.pickup;
+  const definitions = {};
+  const handlers = {};
+  const items = [];
+  let scene = null;
+
+  const spawns = [
+    { id: 'tinSixerWeapon', x: -4.0, z: 23.0 },
+    { id: 'fieldhandWeapon', x: -19.0, z: 15.0 },
+    { id: 'shellBox', x: 0.0, z: 18.0 },
+    { id: 'lightAmmo', x: -13.0, z: 2.0 },
+    { id: 'carbineAmmo', x: 18.8, z: -4.0 },
+    { id: 'healthTonic', x: 6.2, z: 13.0 },
+    { id: 'shieldCell', x: 25.0, z: -10.0 }
+  ];
+
+  function define(id, def) {
+    definitions[id] = Object.assign({
+      id: id, type: 'generic', label: id, quantity: 1, respawn: 0, color: PAL.cream
+    }, def || {});
+    return definitions[id];
+  }
+
+  function registerHandler(type, fn) { handlers[type] = fn; }
+
+  define('tinSixerWeapon', {
+    type: 'weapon', label: 'Tin Sixer', weaponId: 'tinSixer',
+    quantity: 18, color: PAL.rust, respawn: 0
+  });
+  define('fieldhandWeapon', {
+    type: 'weapon', label: 'Fieldhand Carbine', weaponId: 'fieldhand',
+    quantity: 48, color: PAL.olive, respawn: 0
+  });
+  define('shellBox', {
+    type: 'ammo', label: 'Pipe Shells', ammoType: 'shells',
+    quantity: 12, color: PAL.rust, respawn: 22
+  });
+  define('lightAmmo', {
+    type: 'ammo', label: 'Sixer Rounds', ammoType: 'light',
+    quantity: 18, color: PAL.mustard, respawn: 24
+  });
+  define('carbineAmmo', {
+    type: 'ammo', label: 'Carbine Rounds', ammoType: 'carbine',
+    quantity: 36, color: PAL.olive, respawn: 26
+  });
+  define('healthTonic', {
+    type: 'health', label: 'Pep Tonic', quantity: 30,
+    color: PAL.mustard, respawn: 24
+  });
+  define('shieldCell', {
+    type: 'shield', label: 'Guard Cell', quantity: 25,
+    color: PAL.blue, respawn: 28
+  });
+
+  registerHandler('weapon', def => {
+    const result = WEAPON.grantWeapon(def.weaponId, def.quantity);
+    if (!result.consumed) return null;
+    const slot = CONFIG.weapons[def.weaponId].slot;
+    return {
+      message: result.newlyOwned
+        ? def.label + ' acquired — slot ' + slot
+        : '+' + result.ammoAdded + ' ' + def.label + ' rounds'
+    };
+  });
+  registerHandler('ammo', def => {
+    const amount = WEAPON.addAmmo(def.ammoType, def.quantity);
+    return amount > 0 ? { message: '+' + amount + ' ' + def.label } : null;
+  });
+  registerHandler('health', def => {
+    const amount = PLAYER.heal(def.quantity);
+    return amount > 0 ? { message: '+' + Math.round(amount) + ' Pep' } : null;
+  });
+  registerHandler('shield', def => {
+    const amount = PLAYER.addShield(def.quantity);
+    return amount > 0 ? { message: '+' + Math.round(amount) + ' Guard' } : null;
+  });
+
+  function labelSprite(text, color) {
+    const c = document.createElement('canvas');
+    c.width = 384; c.height = 96;
+    const x = c.getContext('2d');
+    x.clearRect(0, 0, c.width, c.height);
+    x.fillStyle = '#F6E9D2';
+    x.strokeStyle = '#16120F';
+    x.lineWidth = 9;
+    x.beginPath();
+    x.roundRect ? x.roundRect(8, 8, 368, 80, 18) : x.rect(8, 8, 368, 80);
+    x.fill(); x.stroke();
+    x.fillStyle = '#' + color.toString(16).padStart(6, '0');
+    x.font = '900 31px Rockwell, Georgia, serif';
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText(text.toUpperCase(), 192, 50, 340);
+    const tex = new THREE.CanvasTexture(c);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: tex, transparent: true, depthWrite: false, fog: false
+    }));
+    sprite.scale.set(2.6, 0.65, 1);
+    return sprite;
+  }
+
+  function buildWeaponVisual(parent, def) {
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const accent = MAT.toon(def.color);
+    if (def.weaponId === 'tinSixer') {
+      PRIM.box(0.18, 0.18, 0.44, metal, { pos: [0, 0.05, 0], parent: parent, outline: 0.025, ray: false });
+      PRIM.cyl(0.13, 0.13, 0.22, 10, accent, { pos: [0, 0.06, -0.25], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.024, ray: false });
+      PRIM.cyl(0.055, 0.055, 0.72, 9, metal, { pos: [0, 0.08, -0.62], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.02, ray: false });
+      PRIM.box(0.14, 0.45, 0.18, MAT.toon(PAL.rustDeep), { pos: [0, -0.25, 0.1], rot: [0.2, 0, 0], parent: parent, outline: 0.023, ray: false });
+    } else {
+      PRIM.box(0.2, 0.22, 0.65, accent, { pos: [0, 0.04, -0.08], parent: parent, outline: 0.026, ray: false });
+      PRIM.cyl(0.05, 0.05, 0.95, 9, metal, { pos: [0, 0.08, -0.82], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.02, ray: false });
+      PRIM.box(0.17, 0.34, 0.16, MAT.toon(PAL.mustardDk), { pos: [0, -0.24, -0.2], rot: [-0.16, 0, 0], parent: parent, outline: 0.023, ray: false });
+      PRIM.box(0.18, 0.24, 0.52, MAT.toon(PAL.rust), { pos: [0, -0.02, 0.5], rot: [-0.1, 0, 0], parent: parent, outline: 0.024, ray: false });
+    }
+  }
+
+  function buildAmmoVisual(parent, def) {
+    const box = MAT.toon(def.color);
+    PRIM.box(0.72, 0.46, 0.55, box, { parent: parent, warp: 0.02, outline: 0.035, ray: false });
+    PRIM.box(0.76, 0.08, 0.59, MAT.toon(PAL.creamDim), { pos: [0, 0.24, 0], parent: parent, outline: 0.025, ray: false });
+    for (let i = -1; i <= 1; i++) {
+      PRIM.cyl(0.055, 0.045, 0.3, 8, MAT.toon(PAL.mustard), {
+        pos: [i * 0.18, 0.3, 0], parent: parent, outline: 0.012, ray: false
+      });
+    }
+  }
+
+  function buildHealthVisual(parent) {
+    PRIM.cyl(0.19, 0.22, 0.55, 10, MAT.toon(PAL.cream), { parent: parent, outline: 0.03, ray: false });
+    PRIM.cyl(0.11, 0.11, 0.16, 10, MAT.toon(PAL.rust), { pos: [0, 0.35, 0], parent: parent, outline: 0.02, ray: false });
+    PRIM.box(0.3, 0.1, 0.07, MAT.toon(PAL.mustardDk), { pos: [0, 0, 0.205], parent: parent, outline: 0.014, ray: false });
+    PRIM.box(0.1, 0.3, 0.07, MAT.toon(PAL.mustardDk), { pos: [0, 0, 0.21], parent: parent, outline: 0.014, ray: false });
+  }
+
+  function buildShieldVisual(parent) {
+    PRIM.sph(0.34, MAT.toon(PAL.blue), { parent: parent, scale: [1, 1.18, 0.36], outline: 0.04, ray: false });
+    PRIM.torus(0.36, 0.055, MAT.toon(PAL.cream), { rot: [0, 0, 0], parent: parent, outline: 0.022, ray: false });
+    PRIM.box(0.08, 0.4, 0.1, MAT.toon(PAL.blueDeep), { pos: [0, -0.05, 0.14], parent: parent, outline: 0.015, ray: false });
+  }
+
+  function spawn(defId, position, options) {
+    const def = definitions[defId];
+    if (!def) throw new Error('PICKUP: unknown definition "' + defId + '"');
+    options = options || {};
+    const root = new THREE.Group();
+    const x = position.x, z = position.z;
+    const ground = position.y === undefined ? WORLD.groundAt(x, z, 8) : position.y;
+    root.position.set(x, ground, z);
+    scene.add(root);
+    PROPS.blobShadow(root, 0, 0, 0.58, 0.42);
+
+    const visual = new THREE.Group();
+    visual.position.y = 0.72;
+    root.add(visual);
+    if (def.type === 'weapon') buildWeaponVisual(visual, def);
+    else if (def.type === 'ammo') buildAmmoVisual(visual, def);
+    else if (def.type === 'health') buildHealthVisual(visual);
+    else if (def.type === 'shield') buildShieldVisual(visual);
+    else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
+
+    const ring = PRIM.torus(0.5, 0.045, MAT.toon(def.color), {
+      pos: [0, 0.12, 0], rot: [Math.PI / 2, 0, 0], parent: root, outline: 0.018, ray: false
+    });
+    const label = labelSprite(def.label, def.color);
+    label.position.y = 1.62;
+    root.add(label);
+
+    const p = {
+      def: def, root: root, visual: visual, ring: ring, label: label,
+      active: true, timer: 0, phase: UTIL.rng(0, Math.PI * 2),
+      respawn: options.respawn === undefined ? def.respawn : options.respawn
+    };
+    items.push(p);
+    return p;
+  }
+
+  function collect(p) {
+    const handler = handlers[p.def.type];
+    if (!handler) return false;
+    const result = handler(p.def, p);
+    if (!result) return false;
+    p.active = false;
+    p.root.visible = false;
+    p.timer = p.respawn || 0;
+    AUDIO.pickup(p.def.type);
+    UI.toast(result.message || p.def.label, 1.55);
+    return true;
+  }
+
+  function init(mainScene) {
+    scene = mainScene;
+    spawns.forEach(s => spawn(s.id, { x: s.x, z: s.z }));
+  }
+
+  function update(dt, time, canCollect) {
+    const pp = PLAYER.position;
+    for (let i = 0; i < items.length; i++) {
+      const p = items[i];
+      if (!p.active) {
+        if (p.timer > 0) {
+          p.timer -= dt;
+          if (p.timer <= 0) {
+            p.active = true;
+            p.root.visible = true;
+          }
+        }
+        continue;
+      }
+      p.visual.position.y = 0.72 + Math.sin(time * C.bobSpeed + p.phase) * C.bobHeight;
+      p.visual.rotation.y += dt * C.spinSpeed;
+      p.ring.rotation.z -= dt * C.spinSpeed * 0.55;
+      const dx = pp.x - p.root.position.x;
+      const dz = pp.z - p.root.position.z;
+      const dy = pp.y - p.root.position.y;
+      if (canCollect && !PLAYER.isDead && dx * dx + dz * dz <= C.collectRadius * C.collectRadius && Math.abs(dy) < 1.75) {
+        collect(p);
+      }
+    }
+  }
+
+  function reset() {
+    items.forEach(p => {
+      p.active = true;
+      p.timer = 0;
+      p.root.visible = true;
+    });
+  }
+
+  return {
+    init, update, reset, define, registerHandler, spawn,
+    get definitions() { return definitions; },
+    get items() { return items; }
   };
 })();
 
@@ -3650,7 +4270,9 @@ const GAME = (() => {
     // ENEMY.init runs last so its line-of-sight snapshot contains level
     // geometry only, with no viewmodel or enemy proxies mixed in.
     const spawned = ENEMY.init(scene);
+    PICKUP.init(scene);
     UI.setHealth(CONFIG.player.maxHealth, CONFIG.player.maxHealth);
+    UI.setShield(0, CONFIG.player.maxShield);
     UI.setKills(0);
     INPUT.init(renderer.domElement);
 
@@ -3703,6 +4325,7 @@ const GAME = (() => {
     PLAYER.revive();
     WEAPON.reset();
     ENEMY.reset();
+    PICKUP.reset();
     UI.setKills(0);
     UI.hideDead();
     deathPending = false;
@@ -3735,6 +4358,7 @@ const GAME = (() => {
     PLAYER.update(dt, running, look);
     WEAPON.update(dt, time, camera, running && !PLAYER.isDead);
     if (running) ENEMY.update(dt, time);
+    PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
     FX.update(dt, time);
     AUDIO.update(dt);
@@ -4330,13 +4954,14 @@ const ENEMY = (() => {
   }
 
   /* ---------------- damage ---------------- */
-  function applyDamage(e, amount, point, dir, zone) {
+  function applyDamage(e, amount, point, dir, zone, force) {
     if (!e.alive) return;
     e.hp -= amount;
     e.hitFlash = 0.12;
     e.squashVel -= 7;
-    e.vel.x += dir.x * 1.6 * (1 / e.def.stats.weight);
-    e.vel.z += dir.z * 1.6 * (1 / e.def.stats.weight);
+    const shove = force === undefined ? 1.6 : force;
+    e.vel.x += dir.x * shove * (1 / e.def.stats.weight);
+    e.vel.z += dir.z * shove * (1 / e.def.stats.weight);
     e.lastSeen = 0;
     e.sawPlayer = true;
 
@@ -4379,15 +5004,55 @@ const ENEMY = (() => {
   }
 
   /* Called by WEAPON for every pellet that connects. */
-  function hit(object, point, dir, distance) {
+  function hit(object, point, dir, distance, shot) {
     const info = object.userData && object.userData.enemyHit;
     if (!info) return false;
     const e = info.enemy;
     if (!e.alive) return false;
-    const falloff = UTIL.clamp(1 - distance / CONFIG.weapon.range, 0.22, 1);
-    const dmg = C.pelletDamage * falloff * (info.zone === 'head' ? C.headMultiplier : 1);
+    shot = shot || {};
+    const range = shot.range || 95;
+    const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
+    const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
+    const head = shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier;
+    const dmg = base * falloff * (info.zone === 'head' ? head : 1);
     applyDamage(e, dmg, point, dir, info.zone);
     FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' });
+    return true;
+  }
+
+  /* Broad but obstruction-aware close-range query used by fists and gun butts. */
+  function melee(origin, dir, opts) {
+    opts = opts || {};
+    const range = opts.range || 2.2;
+    const arc = opts.arc === undefined ? 0.6 : opts.arc;
+    let best = null, bestScore = Infinity;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive) continue;
+      _v.set(e.pos.x, e.pos.y + 0.92, e.pos.z).sub(origin);
+      const distance = _v.length();
+      if (distance > range || distance < 0.001) continue;
+      _v.multiplyScalar(1 / distance);
+      const facing = _v.dot(dir);
+      if (facing < arc) continue;
+
+      raycaster.far = distance;
+      raycaster.set(origin, _v);
+      const blocks = raycaster.intersectObjects(LOS_TARGETS, true);
+      let blocked = false;
+      for (let j = 0; j < blocks.length; j++) {
+        if (blocks[j].object.userData.outline) continue;
+        if (blocks[j].distance < distance - 0.25) blocked = true;
+        break;
+      }
+      if (blocked) continue;
+      const score = distance - facing * 0.35;
+      if (score < bestScore) { best = e; bestScore = score; }
+    }
+    if (!best) return false;
+    _v.set(best.pos.x, best.pos.y + 0.98, best.pos.z);
+    applyDamage(best, opts.damage || 30, _v, dir, 'body', opts.force);
+    FX.impact(_v, _v2.copy(dir).negate(), { big: true, scale: 0.82 });
     return true;
   }
 
@@ -4677,7 +5342,7 @@ const ENEMY = (() => {
   }
 
   return {
-    init, update, hit, reset, applyDamage,
+    init, update, hit, melee, reset, applyDamage,
     get list() { return list; },
     get kills() { return kills; },
     aliveCount
