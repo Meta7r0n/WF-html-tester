@@ -1864,21 +1864,23 @@ const LEVEL = (() => {
     // support posts + beam
     lb.box(0.3, 3.1, 0.3, 9.5, 1.55, -9.2);
     lb.box(0.3, 3.1, 0.3, 18.5, 1.55, -9.2);
-    lb.box(15.6, 0.3, 0.34, 14, 3.0, -9.15);
-    // loft railing with a gap at the stair head
-    for (let x = 6.6; x < 20.0; x += 1.6) lb.box(0.14, 0.9, 0.14, x, 3.85, -9.2, 0, 0, UTIL.rng(-.05, .05));
-    lb.box(13.6, 0.12, 0.12, 13.2, 4.28, -9.2);
-    // stairs up the east wall
+    // Stop the cross-beam and railing well before the stair head. Their old
+    // ends visually and physically pinched the final two steps.
+    lb.box(12.4, 0.3, 0.34, 12.4, 3.0, -9.15);
+    for (let x = 6.6; x < 18.7; x += 1.6) lb.box(0.14, 0.9, 0.14, x, 3.85, -9.2, 0, 0, UTIL.rng(-.05, .05));
+    lb.box(12.2, 0.12, 0.12, 12.5, 4.28, -9.2);
+    // A wider flight leaves enough steering room for two players to pass
+    // without scraping the east wall or having to align perfectly.
     for (let i = 0; i < 9; i++) {
       const top = (i + 1) * 0.34;
-      lb.box(1.6, top, 0.72, 21.0, top / 2, -3.0 - i * 0.72, 0, 0, 0, 0.012);
-      WORLD.addFloor(21.0, 0, -3.0 - i * 0.72, 1.6, top, 0.72, 'stair');
+      lb.box(2.3, top, 0.72, 20.4, top / 2, -3.0 - i * 0.72, 0, 0, 0, 0.012);
+      WORLD.addFloor(20.4, 0, -3.0 - i * 0.72, 2.3, top, 0.72, 'stair');
     }
     lb.build(parent);
     WORLD.addFloor(14, 3.08, -11.9, 15.6, 0.32, 5.9, 'loft');
     WORLD.add(9.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
     WORLD.add(18.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
-    WORLD.add(13.2, 3.85, -9.2, 13.6, 1.0, 0.35, 'railing');
+    WORLD.add(12.5, 3.85, -9.2, 12.2, 1.0, 0.35, 'railing');
 
     // --- interior dressing ---
     PROPS.hayBale(parent, 9.4, 0, -4.2, 0.2);
@@ -1886,26 +1888,26 @@ const LEVEL = (() => {
     PROPS.hayBale(parent, 11.0, 0, -3.6, -0.5);
     PROPS.hayBale(parent, 16.5, 3.4, -12.6, 0.1);
     PROPS.hayBale(parent, 12.2, 3.4, -13.0, -0.3);
-    // Keep the full stair footprint open: the barrel and its bottle now sit
-    // beside the workbench instead of crowding the first steps.
-    PROPS.barrel(parent, 17.2, -3.35);
+    // Store the barrel under the loft, completely away from the stair approach.
+    PROPS.barrel(parent, 19.4, -13.2);
     PROPS.crate(parent, 8.2, 0, -13.4, 1.0);
     PROPS.crate(parent, 8.4, 1.0, -13.2, 0.85, 0.4);
     PROPS.crate(parent, 9.4, 0, -12.6, 0.9, -0.3);
     PROPS.can(parent, 8.4, 1.85, -13.2);
     PROPS.can(parent, 9.4, 0.9, -12.6);
-    PROPS.bottle(parent, 17.2, 1.25, -3.35);
+    PROPS.bottle(parent, 19.4, 1.25, -13.2);
     PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
     PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
 
-    // workbench along the south wall
+    // Workbench stays along the south wall but no longer forms a funnel into
+    // the first step.
     const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.04);
-    wb.box(3.4, 0.14, 0.9, 18.6, 0.92, -1.9, 0, 0, 0.01, 0.02);
-    [[17.1, -1.55], [20.1, -1.55], [17.1, -2.25], [20.1, -2.25]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
+    wb.box(2.8, 0.14, 0.9, 16.6, 0.92, -1.9, 0, 0, 0.01, 0.02);
+    [[15.35, -1.55], [17.85, -1.55], [15.35, -2.25], [17.85, -2.25]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
     wb.build(parent);
-    WORLD.addFloor(18.6, 0, -1.9, 3.4, 1.0, 0.9, 'bench');
-    PROPS.can(parent, 17.6, 1.0, -1.9);
-    PROPS.bottle(parent, 19.4, 1.0, -2.0);
+    WORLD.addFloor(16.6, 0, -1.9, 2.8, 1.0, 0.9, 'bench');
+    PROPS.can(parent, 15.8, 1.0, -1.9);
+    PROPS.bottle(parent, 17.2, 1.0, -2.0);
 
     // Pitchfork still leans on the east wall, beyond the stair head.
     const pf = new THREE.Group();
@@ -2162,15 +2164,31 @@ const LEVEL = (() => {
   function buildPipes(parent) {
     const pipe = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
     const b = new PRIM.Batch(pipe, 0.045);
-    // long run behind the yard, high enough to walk under
+    // Long run behind the yard, high enough to walk under and narrow enough
+    // that using it as a shortcut still feels like balancing on a real pipe.
     for (let x = -14; x <= 10; x += 6) {
-      b.cyl(0.17, 0.17, 6.2, 8, x + 3, 2.65 + Math.sin(x * 0.3) * 0.06, -20, 0, 0, Math.PI / 2);
+      const pipeY = 2.65 + Math.sin(x * 0.3) * 0.06;
+      b.cyl(0.17, 0.17, 6.2, 8, x + 3, pipeY, -20, 0, 0, Math.PI / 2);
+      WORLD.addFloor(x + 3, pipeY + 0.17 - 0.18, -20, 6.16, 0.18, 0.42, 'balance_pipe');
+
+      // Raised collars produce small, walkable bumps instead of invisible
+      // snags where authored pipe sections meet.
       b.cyl(0.22, 0.22, 0.35, 8, x + 6, 2.65, -20, 0, 0, Math.PI / 2);
+      WORLD.addFloor(x + 6, 2.69, -20, 0.48, 0.18, 0.50, 'balance_pipe_joint');
     }
-    // branch running south past the yard
+    // Branch running south past the yard; it shares the same narrow walking
+    // surface so daring players can take the full L-shaped route.
     for (let z = -20; z <= 4; z += 6) {
       b.cyl(0.15, 0.15, 6.2, 8, 2, 2.6, z + 3, Math.PI / 2, 0, 0);
+      WORLD.addFloor(2, 2.57, z + 3, 0.40, 0.18, 6.16, 'balance_pipe');
     }
+    // The newer catwalk crosses above this branch. Matching maintenance
+    // collars at both edges give the player two legal 0.4 m step-ups instead
+    // of letting the catwalk become an invisible wall across the pipe route.
+    [-18.6, -15.4].forEach(z => {
+      b.box(0.92, 0.33, 0.72, 2, 2.915, z, 0, 0, UTIL.rng(-0.018, 0.018), 0.012);
+      WORLD.addFloor(2, 2.75, z, 0.92, 0.33, 0.72, 'balance_pipe_step');
+    });
     // stands
     [[-11, -20], [1, -20], [9, -20], [2, -14], [2, -6], [2, 2]].forEach(p => {
       b.box(0.22, 2.6, 0.22, p[0], 1.3, p[1], 0, 0, UTIL.rng(-.03, .03));
@@ -2477,18 +2495,24 @@ const LEVEL = (() => {
     const westX = LINK_X - 1.3, eastX = LINK_X + 1.3;
     const eastRailLen = 8.75, eastRailCenter = (TZ - 15.5) * 0.5;
     const sideStart = LINK_X + 1.3, sideEnd = MAIN_X - 1.8;
-    const sideLen = sideEnd - sideStart, sideCenter = (sideStart + sideEnd) * 0.5;
+    // Split both east/west rails around x=2 where the balance pipe passes
+    // through. The 2.2 m opening keeps the pipe usable in both directions.
+    const sideSegments = [[sideStart, 0.9], [3.1, sideEnd]];
 
-    // Low-route rails leave both the corner and main-catwalk junction open.
+    // Low-route rails leave the corner, pipe crossing and main junction open.
     support.box(0.14, 0.14, northSpan, westX, railTop, northCenter);
     support.box(0.14, 0.14, eastRailLen, eastX, railTop, eastRailCenter);
-    support.box(sideLen, 0.14, 0.14, sideCenter, railTop, TURN_Z - 1.3);
-    support.box(sideLen, 0.14, 0.14, sideCenter, railTop, TURN_Z + 1.3);
+    sideSegments.forEach(seg => {
+      const len = seg[1] - seg[0], center = (seg[0] + seg[1]) * 0.5;
+      support.box(len, 0.14, 0.14, center, railTop, TURN_Z - 1.3);
+      support.box(len, 0.14, 0.14, center, railTop, TURN_Z + 1.3);
+    });
     for (let z = -7.4; z >= -16.6; z -= 2.3) {
       support.box(0.14, railH, 0.14, westX, railY, z, 0, 0, UTIL.rng(-0.03, 0.03));
       if (z > -15.5) support.box(0.14, railH, 0.14, eastX, railY, z, 0, 0, UTIL.rng(-0.03, 0.03));
     }
     for (let x = -4.5; x <= 15.8; x += 2.3) {
+      if (x > 0.7 && x < 3.3) continue;
       support.box(0.14, railH, 0.14, x, railY, TURN_Z - 1.3, 0, 0, UTIL.rng(-0.03, 0.03));
       support.box(0.14, railH, 0.14, x, railY, TURN_Z + 1.3, 0, 0, UTIL.rng(-0.03, 0.03));
     }
@@ -2496,8 +2520,11 @@ const LEVEL = (() => {
 
     WORLD.add(westX, railY, northCenter, 0.26, railH, northSpan, 'tower_catwalk_rail');
     WORLD.add(eastX, railY, eastRailCenter, 0.26, railH, eastRailLen, 'tower_catwalk_rail');
-    WORLD.add(sideCenter, railY, TURN_Z - 1.3, sideLen, railH, 0.26, 'tower_catwalk_rail');
-    WORLD.add(sideCenter, railY, TURN_Z + 1.3, sideLen, railH, 0.26, 'tower_catwalk_rail');
+    sideSegments.forEach(seg => {
+      const len = seg[1] - seg[0], center = (seg[0] + seg[1]) * 0.5;
+      WORLD.add(center, railY, TURN_Z - 1.3, len, railH, 0.26, 'tower_catwalk_rail');
+      WORLD.add(center, railY, TURN_Z + 1.3, len, railH, 0.26, 'tower_catwalk_rail');
+    });
 
     PROPS.lantern(parent, LINK_X - 0.95, LOW_Y + 1.45, -12.0, 0);
     WORLD.addSpawn(4, LOW_Y, TURN_Z, 'tower_catwalk');
