@@ -433,7 +433,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; Phase 1 Prototype</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.05 North Pasture Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -524,6 +524,13 @@ const CONFIG = {
     startPos: { x: 0, y: 0, z: 31 }, startYaw: 0,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
     invulnAfterHit: 0.45, reviveDelay: 2.2
+  },
+  map: {
+    // The south gate stays fixed while the first expansion pushes the farm
+    // north. Keeping these limits together makes later horizontal slices less
+    // error-prone than scattering invisible-wall coordinates through LEVEL.
+    west: -31.2, east: 31.2, south: 32.6, north: -51.6,
+    northTransition: -32
   },
   enemy: {
     count: 8,
@@ -1545,25 +1552,37 @@ const LEVEL = (() => {
     const b = new PRIM.Batch(MAT.flat(0xffffff, {
       map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.9
     }), 0);
-    const route = [
-      [0, 31], [0, 24], [1, 18], [1.5, 12], [2, 7],          // gate to yard
-      [4, 4], [6, 1], [6, -3], [5.6, -7.4],                   // yard to barn door
-      [2, -4], [-3, -1], [-8, 1], [-13, 3], [-16, 6],         // yard to tower stair
-      [-17, 8], [-18, 11], [-18.5, 13.5],                     // tower to shed
-      [-15, 15], [-10, 16], [-4, 17], [2, 18],                // shed to field
-      [8, 17], [13, 15], [16, 14],                            // into the field
-      [10, 20], [4, 22], [-1, 26], [0, 29]                    // field back to gate
+    const routes = [
+      [
+        [0, 31], [0, 24], [1, 18], [1.5, 12], [2, 7],          // gate to yard
+        [4, 4], [6, 1], [6, -3], [5.6, -7.4],                   // yard to barn door
+        [2, -4], [-3, -1], [-8, 1], [-13, 3], [-16, 6],         // yard to tower stair
+        [-17, 8], [-18, 11], [-18.5, 13.5],                     // tower to shed
+        [-15, 15], [-10, 16], [-4, 17], [2, 18],                // shed to field
+        [8, 17], [13, 15], [16, 14],                            // into the field
+        [10, 20], [4, 22], [-1, 26], [0, 29]                    // field back to gate
+      ],
+      [
+        [12.5, -15.5], [12, -21], [10, -27], [11, -31.5],      // barn to east breach
+        [14, -37], [19, -42], [20, -46]                         // feed shelter
+      ],
+      [
+        [-21, -27], [-18, -31.5], [-16, -37], [-10, -42],      // ruins to west breach
+        [-1, -45], [8, -43], [14, -37]                          // pasture loop rejoins east route
+      ]
     ];
-    for (let i = 0; i < route.length - 1; i++) {
-      const a = route[i], c = route[i + 1];
-      const steps = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / 0.9);
-      for (let s = 0; s <= steps; s++) {
-        const t = s / steps;
-        const x = UTIL.lerp(a[0], c[0], t) + UTIL.rng(-.35, .35);
-        const z = UTIL.lerp(a[1], c[1], t) + UTIL.rng(-.35, .35);
-        b.plane(UTIL.rng(2.4, 3.6), UTIL.rng(2.4, 3.6), x, 0.015, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+    routes.forEach(route => {
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i], c = route[i + 1];
+        const steps = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / 0.9);
+        for (let s = 0; s <= steps; s++) {
+          const t = s / steps;
+          const x = UTIL.lerp(a[0], c[0], t) + UTIL.rng(-.35, .35);
+          const z = UTIL.lerp(a[1], c[1], t) + UTIL.rng(-.35, .35);
+          b.plane(UTIL.rng(2.4, 3.6), UTIL.rng(2.4, 3.6), x, 0.015, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+        }
       }
-    }
+    });
     b.build(parent, { ray: false });
   }
 
@@ -1638,9 +1657,15 @@ const LEVEL = (() => {
     // perimeter, bowed so nothing reads as a square arena
     fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8 });
     fenceRun(b, 3.6, 31.2, 30, 32, { bow: -0.8 });
-    fenceRun(b, 30, 32, 30.5, -32, { bow: 1.4, broken: true });
-    fenceRun(b, 30.5, -32, -30, -32, { bow: 1.2, broken: true });
-    fenceRun(b, -30, -32, -30.5, 32, { bow: -1.4, broken: true });
+    fenceRun(b, 30, 32, 30.5, -51, { bow: 1.4, broken: true });
+    fenceRun(b, 30.5, -51, -30, -51, { bow: 1.2, broken: true });
+    fenceRun(b, -30, -51, -30.5, 32, { bow: -1.4, broken: true });
+
+    // The former north edge now reads as an old cross-fence. Two deliberate
+    // six-metre breaches make a proper loop instead of a single campable gate.
+    fenceRun(b, 30.5, -32, 14, -32, { bow: 0.45, broken: true });
+    fenceRun(b, 8, -32, -14, -32, { bow: -0.35, broken: true });
+    fenceRun(b, -20, -32, -30, -32, { bow: 0.3, broken: true });
 
     // interior guide fencing: curves the walk from the gate toward the yard
     fenceRun(b, -8, 24, -12, 14, { bow: 2.2 });
@@ -1654,10 +1679,13 @@ const LEVEL = (() => {
 
     // Solid boundary. Tall enough that a jump cannot clear it, hidden behind
     // the fence line by hedges, trees and rock piles.
-    WORLD.addFloor(0, 0, 32.6, 70, 5, 1.6, 'bounds');   // just behind the gate
-    WORLD.addFloor(0, 0, -32.6, 70, 5, 1.6, 'bounds');
-    WORLD.addFloor(-31.2, 0, 0, 1.6, 5, 70, 'bounds');
-    WORLD.addFloor(31.2, 0, 0, 1.6, 5, 70, 'bounds');
+    const M = CONFIG.map;
+    const sideCenterZ = (M.south + M.north) * 0.5;
+    const sideDepth = M.south - M.north + 2.0;
+    WORLD.addFloor(0, 0, M.south, 70, 5, 1.6, 'bounds');   // just behind the gate
+    WORLD.addFloor(0, 0, M.north, 70, 5, 1.6, 'bounds');
+    WORLD.addFloor(M.west, 0, sideCenterZ, 1.6, 5, sideDepth, 'bounds');
+    WORLD.addFloor(M.east, 0, sideCenterZ, 1.6, 5, sideDepth, 'bounds');
     // gate line itself: two stubs either side of the opening
     WORLD.addFloor(-17, 0, 31.4, 27, 2.4, 0.8, 'fence');
     WORLD.addFloor(17, 0, 31.4, 27, 2.4, 0.8, 'fence');
@@ -1666,6 +1694,10 @@ const LEVEL = (() => {
     WORLD.addFloor(4, 0, 1.5, 0.6, 1.6, 5.6, 'fence');
     WORLD.addFloor(17.5, 0, 9.2, 13.4, 1.6, 0.7, 'fence');
     WORLD.addFloor(24, 0, 15.2, 0.7, 1.6, 12, 'fence');
+    // Cross-fence colliders preserve both authored breaches.
+    WORLD.addFloor(22.25, 0, M.northTransition, 16.5, 1.6, 0.7, 'fence');
+    WORLD.addFloor(-3, 0, M.northTransition, 22, 1.6, 0.7, 'fence');
+    WORLD.addFloor(-25, 0, M.northTransition, 10, 1.6, 0.7, 'fence');
   }
 
   /* Blobby hedges: one merged sphere soup, no per-lobe outline cost. */
@@ -1689,9 +1721,9 @@ const LEVEL = (() => {
     // a tight bounding sphere, so frustum culling and bullet raycasts can
     // reject the hedges you are nowhere near.
     const runs = [
-      [[[-33, 34], [-33, -34]], 1.9, 0.5],            // outside the west fence
-      [[[33, 34], [33.5, -34]], 1.9, 0.5],            // outside the east fence
-      [[[-33, -34.5], [33, -34.5]], 2.0, 0.5],        // outside the north fence
+      [[[-33, 34], [-33, -53]], 1.9, 0.5],            // outside the west fence
+      [[[33, 34], [33.5, -53]], 1.9, 0.5],            // outside the east fence
+      [[[-33, -53.5], [33, -53.5]], 2.0, 0.5],        // outside the new north fence
       [[[-33, 34.5], [-8, 34]], 1.9, 0.5],            // south-west of the gate
       [[[8, 34], [33, 34.5]], 1.9, 0.5],              // south-east of the gate
       [[[23, -2.5], [28, -3], [28.5, -15]], 1.5, 0.35], // walls the hidden nook
@@ -2186,13 +2218,54 @@ const LEVEL = (() => {
     WORLD.addSpawn(25.5, 0, -10, 'nook');
   }
 
+  /* ---------------- north pasture expansion ----------------
+     This is intentionally a modest first slice: two ground routes, useful
+     cover and one destination. The shelter roof sits at loft height so a later
+     catwalk milestone can connect here without rebuilding the landmark. */
+  function buildNorthPasture(parent) {
+    const CX = 19, CZ = -43;
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const b = new PRIM.Batch(timber, 0.045);
+
+    [[-2.8, -2.0], [2.8, -2.0], [-2.8, 2.0], [2.8, 2.0]].forEach(p => {
+      b.box(0.34, 3.3, 0.34, CX + p[0], 1.65, CZ + p[1], 0, 0, UTIL.rng(-.05, .05), 0.02);
+      WORLD.addFloor(CX + p[0], 0, CZ + p[1], 0.52, 3.3, 0.52, 'feed_shelter_post');
+    });
+    // Back windbreak and a flat, walkable roof reserved as a future catwalk landing.
+    b.box(6.2, 2.7, 0.22, CX, 1.35, CZ - 2.15, 0, 0, 0.02, 0.025);
+    b.box(6.9, 0.30, 5.1, CX, 3.42, CZ, 0, 0, -0.018, 0.03);
+    b.build(parent);
+    WORLD.addFloor(CX, 0, CZ - 2.15, 6.2, 2.7, 0.42, 'feed_shelter_wall');
+    WORLD.add(CX, 3.42, CZ, 6.9, 0.30, 5.1, 'future_catwalk_deck');
+
+    PROPS.hayBale(parent, CX - 1.8, 0, CZ - 1.35, -0.2);
+    PROPS.hayBale(parent, CX - 0.4, 0, CZ - 1.45, 0.18);
+    PROPS.crate(parent, CX + 2.0, 0, CZ - 1.45, 0.9, -0.3);
+    PROPS.barrel(parent, CX + 2.1, CZ + 1.25, { color: PAL.blueDeep });
+    PROPS.lantern(parent, CX, 2.85, CZ - 1.95, 0);
+
+    PROPS.signPost(parent, 9.4, -35.0, ['NORTH', 'PASTURE'], 0.12,
+      { w: 1.8, h: 0.82, bg: PAL.mustard, fg: PAL.rustDeep, postH: 1.7 });
+    PROPS.signPost(parent, -21.5, -35.0, ['BACK FORTY', '→'], -0.18,
+      { w: 1.9, h: 0.78, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
+
+    // Sparse windbreaks frame the new play space without turning it into a maze.
+    [[-26, -45, 1.05], [-17, -48, 0.9], [-6, -49, 0.95], [6, -48, 0.88], [28, -44, 0.92]]
+      .forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
+    [[-23, -38, 0.8], [-12, -46, 0.7], [4, -39, 0.65], [27, -37, 0.85]]
+      .forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
+
+    // Reserved for later enemy-count/multiplayer passes; count stays at eight today.
+    WORLD.addSpawn(-7, 0, -43, 'north_pasture');
+  }
+
   function buildScatter(parent) {
     // trees + rocks masking the boundary and framing views
     const treeSpots = [
       [-27, 26, 1.1], [-24, 30, 0.9], [26, 27, 1.0], [29, 20, 0.85],
       [-28, -20, 1.15], [-24, -29, 1.0], [22, -28, 1.05], [28, -12, 0.9],
       [-12, 28, 0.95], [13, 27, 0.9], [-29, 2, 1.1], [30, 1, 1.0],
-      [-2, -30, 0.95], [10, -30, 0.9]
+      [-2, -30, 0.95], [5.5, -29, 0.9]
     ];
     treeSpots.forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
 
@@ -2247,6 +2320,7 @@ const LEVEL = (() => {
     buildPipes(root);
     buildNook(root);
     buildScatter(root);
+    buildNorthPasture(root);
     return root;
   }
 
@@ -4353,7 +4427,8 @@ const PICKUP = (() => {
     { id: 'lightAmmo', x: -13.0, z: 2.0 },
     { id: 'carbineAmmo', x: 18.8, z: -4.0 },
     { id: 'healthTonic', x: 6.2, z: 13.0 },
-    { id: 'shieldCell', x: 25.0, z: -10.0 }
+    { id: 'shieldCell', x: 25.0, z: -10.0 },
+    { id: 'carbineAmmo', x: 19.0, z: -39.8 }
   ];
 
   function define(id, def) {
