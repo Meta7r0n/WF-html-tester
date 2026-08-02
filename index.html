@@ -20,7 +20,10 @@
   }
 
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--ink);}
+  html,body{
+    margin:0;padding:0;height:100%;overflow:hidden;background:var(--ink);
+    overscroll-behavior:none;
+  }
   body{
     font-family:"Rockwell","Courier New",Georgia,serif;
     color:var(--ink);
@@ -181,6 +184,120 @@
   }
   #modeChip u{display:block;margin-top:6px;font-size:11px;color:var(--blue-deep);}
 
+  /* ---------- Mobile controls ---------- */
+  #mobileControls{
+    position:fixed;inset:0;z-index:34;display:none;pointer-events:none;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+  }
+  body.touch-device{touch-action:none;user-select:none;-webkit-user-select:none;}
+  body.touch-device #mobileControls.on{display:block;}
+  #mobileLookZone{
+    position:absolute;right:0;top:0;bottom:0;width:56%;z-index:0;
+    pointer-events:auto;touch-action:none;
+  }
+  #mobileLookZone span{
+    position:absolute;right:max(18px,env(safe-area-inset-right));top:45%;
+    color:var(--cream);font:900 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;opacity:.28;
+    text-shadow:2px 2px 0 var(--ink);transform:rotate(-2deg);
+    transition:opacity .2s ease;
+  }
+  #mobileControls.looked #mobileLookZone span{opacity:0;}
+
+  #movePad{
+    position:absolute;left:max(16px,env(safe-area-inset-left));
+    bottom:max(16px,env(safe-area-inset-bottom));
+    width:clamp(126px,24vw,166px);aspect-ratio:1;z-index:2;
+    border:4px solid rgba(22,18,15,.88);border-radius:48% 52% 46% 54%;
+    background:rgba(246,233,210,.2);box-shadow:inset 0 0 0 3px rgba(246,233,210,.24),5px 6px 0 rgba(22,18,15,.25);
+    pointer-events:auto;touch-action:none;transform:rotate(-1.5deg);
+  }
+  #movePad:before{
+    content:"";position:absolute;inset:22%;border:3px dashed rgba(246,233,210,.42);
+    border-radius:50%;pointer-events:none;
+  }
+  #moveKnob{
+    position:absolute;left:50%;top:50%;width:43%;aspect-ratio:1;
+    margin:-21.5% 0 0 -21.5%;display:grid;place-items:center;
+    border:4px solid var(--ink);border-radius:52% 48% 55% 45%;
+    background:rgba(232,163,61,.88);box-shadow:4px 5px 0 rgba(22,18,15,.45);
+    color:var(--ink);font:900 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:1px;text-transform:uppercase;pointer-events:none;
+    will-change:transform;transition:background .1s ease;
+  }
+  #movePad.active #moveKnob{background:var(--cream);}
+
+  #mobileActions{
+    position:absolute;right:max(12px,env(safe-area-inset-right));
+    bottom:max(12px,env(safe-area-inset-bottom));
+    width:clamp(225px,36vw,292px);height:clamp(190px,30vw,238px);
+    z-index:3;pointer-events:none;
+  }
+  .mobile-btn{
+    position:absolute;display:grid;place-items:center;pointer-events:auto;touch-action:none;
+    width:clamp(54px,8vw,70px);aspect-ratio:1;border:4px solid var(--ink);
+    border-radius:45% 55% 48% 52%;background:rgba(246,233,210,.86);
+    color:var(--ink);box-shadow:4px 5px 0 rgba(22,18,15,.62);
+    font:900 clamp(9px,1.4vw,12px)/1 "Rockwell",Georgia,serif;
+    letter-spacing:.8px;text-transform:uppercase;text-align:center;
+    transform:rotate(-2deg);opacity:.9;-webkit-appearance:none;appearance:none;
+  }
+  .mobile-btn:nth-child(even){transform:rotate(2deg);}
+  .mobile-btn.active{
+    background:var(--mustard);box-shadow:1px 2px 0 rgba(22,18,15,.7);
+    transform:translateY(4px) rotate(1deg);opacity:1;
+  }
+  #mobileFire{
+    right:0;bottom:0;width:clamp(78px,12vw,98px);
+    background:rgba(168,90,60,.9);color:var(--cream);
+    font-size:clamp(12px,1.8vw,15px);letter-spacing:1.5px;
+    text-shadow:1px 1px 0 var(--ink);
+  }
+  #mobileFire.active{background:var(--mustard);color:var(--ink);text-shadow:none;}
+  #mobileJump{right:clamp(80px,13vw,108px);bottom:clamp(74px,11vw,92px);}
+  #mobileMelee{right:2px;bottom:clamp(94px,15vw,122px);}
+  #mobileReload{right:clamp(88px,14vw,118px);bottom:0;}
+  #mobileSwap{right:clamp(151px,23vw,194px);bottom:clamp(18px,3vw,28px);}
+  #mobilePause{
+    right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
+    z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
+  }
+
+  .touch-help{
+    display:none;margin:0 0 18px;padding:12px 14px;border:3px dashed rgba(22,18,15,.38);
+    border-radius:11px;font-size:13px;line-height:1.45;color:var(--ink-soft);
+  }
+  .touch-help b{color:var(--rust-deep);}
+  body.touch-device .touch-help{display:block;}
+  body.touch-device .keys{display:none;}
+  body.touch-device .alt{display:none;}
+  body.touch-device #modeChip{display:none!important;}
+  body.touch-device #weaponName{
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
+    max-width:42vw;text-align:right;font-size:10px;
+  }
+  body.touch-device #ammo{
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(39px,calc(env(safe-area-inset-top) + 25px));bottom:auto;
+    transform:scale(.72);transform-origin:right top;
+  }
+  body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
+  body.touch-device #vitals{
+    left:max(14px,env(safe-area-inset-left));top:max(48px,calc(env(safe-area-inset-top) + 38px));bottom:auto;
+    transform:scale(.72);transform-origin:left top;
+  }
+  body.touch-device #reloadTag{right:50%;bottom:18%;transform:translateX(50%) rotate(-2deg);font-size:12px;}
+  body.touch-device #pickupToast{bottom:24%;max-width:54vw;font-size:11px;}
+
+  @media (orientation:landscape) and (max-height:540px){
+    body.touch-device .veil{padding:10px max(14px,env(safe-area-inset-right)) 10px max(14px,env(safe-area-inset-left));overflow:auto;}
+    body.touch-device .card{max-width:660px;padding:18px 24px 16px;}
+    body.touch-device h1{font-size:34px;}
+    body.touch-device .sub{margin:8px 0 10px;font-size:12px;line-height:1.35;}
+    body.touch-device .touch-help{margin-bottom:10px;padding:8px 12px;font-size:11px;}
+    body.touch-device .go{padding:11px 20px;font-size:16px;border-width:4px;}
+    body.touch-device .foot{margin-top:8px;}
+  }
+
   .alt{
     display:block;margin:14px 0 0;padding:0;background:none;border:0;cursor:pointer;
     font:700 12px/1.4 "Rockwell",Georgia,serif;letter-spacing:.6px;
@@ -295,6 +412,21 @@
     <u>Try mouse lock again</u>
   </div>
 
+  <div id="mobileControls" aria-hidden="true">
+    <div id="mobileLookZone" aria-label="Drag to look"><span>Drag to look</span></div>
+    <div id="movePad" aria-label="Movement joystick">
+      <div id="moveKnob">Move</div>
+    </div>
+    <div id="mobileActions">
+      <button type="button" class="mobile-btn" id="mobileFire" aria-label="Fire and drag to aim">Fire</button>
+      <button type="button" class="mobile-btn" id="mobileJump" aria-label="Jump">Jump</button>
+      <button type="button" class="mobile-btn" id="mobileMelee" aria-label="Melee attack">Bash</button>
+      <button type="button" class="mobile-btn" id="mobileReload" aria-label="Reload weapon">Load</button>
+      <button type="button" class="mobile-btn" id="mobileSwap" aria-label="Switch weapon">Swap</button>
+    </div>
+    <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
+  </div>
+
   <div id="grain"></div>
   <div id="scratches"></div>
   <div id="vignette"></div>
@@ -316,6 +448,7 @@
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
+      <div class="touch-help"><b>Left stick</b> moves and runs. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting.</div>
       <button class="go" id="enterBtn">Click to enter →</button>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Sound starts when you enter</p>
@@ -444,7 +577,8 @@ const CONFIG = {
   input: {
     // free-look fallback: how close to the window edge starts a steady turn,
     // as a fraction of the viewport, and how fast that turn goes
-    edgeMargin: 0.14, edgeTurnX: 980, edgeTurnY: 420
+    edgeMargin: 0.14, edgeTurnX: 980, edgeTurnY: 420,
+    touchLookScale: 1.5, stickDeadZone: 0.14, stickSprint: 0.86
   },
   palette: {
     peach:      0xF2CDBB,
@@ -2745,30 +2879,38 @@ const AUDIO = (() => {
 })();
 
 /* ============================== [INPUT] ==============================
-   Two mouse modes:
+   Three control modes feed one named-action table:
 
-     'lock'  Pointer Lock. Infinite look, cursor hidden by the browser.
-     'free'  Fallback for anywhere Pointer Lock is refused (sandboxed
-             iframes, some embedded previews, locked-down policies).
-             Look still comes from movementX/movementY, plus an edge-steer
-             so you can keep turning once the cursor reaches the window edge.
+     'lock'   Pointer Lock mouse controls.
+     'free'   Mouse fallback for previews that refuse Pointer Lock.
+     'touch'  Multitouch movement, right-side look and action buttons.
 
-   The game NEVER gets stuck because a lock request failed. If the browser
-   says no, we fall through to 'free' and carry on, and we say why on screen.
-
-   Actions are named, so a touch or gamepad layer can write into the same
-   table later without the player or weapon knowing anything changed. */
+   Touch keeps separate pointer captures for movement and aim, so both thumbs
+   can work at once. The fire button is also an aim surface: press to shoot,
+   then keep dragging that same held finger to turn. */
 const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, slot1: false, slot2: false, slot3: false, slot4: false
+    melee: false, nextWeapon: false, pause: false,
+    slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
+  const touchResetters = [];
+  const moveOut = { x: 0, y: 0 };
   let mouseDX = 0, mouseDY = 0;
   let pointerX = 0, pointerY = 0;
+  let touchMoveX = 0, touchMoveY = 0, touchSprint = false;
   let locked = false, engaged = false;
-  let mode = 'lock';
+  let touchMode = false;
+  try {
+    const hasTouch = typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0;
+    const hasMedia = !!window.matchMedia;
+    const coarse = hasMedia && window.matchMedia('(pointer: coarse)').matches;
+    const noHover = hasMedia && window.matchMedia('(hover: none)').matches;
+    touchMode = !!(coarse || (hasTouch && (!hasMedia || noHover)));
+  } catch (e) {}
+  let mode = touchMode ? 'touch' : 'lock';
   let element = null;
   let lockTimer = null, lastRequest = 0, lockedAt = 0, quickDrops = 0;
   let diagnosis = '';
@@ -2793,16 +2935,39 @@ const INPUT = (() => {
 
   function on(evt, fn) { (listeners[evt] || (listeners[evt] = [])).push(fn); }
   function emit(evt, a) { (listeners[evt] || []).forEach(f => f(a)); }
-  function clearActions() { Object.keys(actions).forEach(k => actions[k] = false); }
   function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
 
-  /* The single source of truth for "is the game receiving input". In lock mode
-     it follows the browser; in free mode we drive it ourselves. */
+  function setAction(action, down) {
+    if (!(action in actions)) return;
+    down = !!down;
+    if (down && !actions[action]) {
+      pressed[action] = true;
+      emit('press', action);
+    }
+    actions[action] = down;
+  }
+
+  function triggerAction(action) {
+    if (!(action in actions)) return;
+    pressed[action] = true;
+    emit('press', action);
+  }
+
+  function clearActions() {
+    Object.keys(actions).forEach(k => actions[k] = false);
+    Object.keys(pressed).forEach(k => delete pressed[k]);
+    touchMoveX = touchMoveY = 0;
+    touchSprint = false;
+    touchResetters.forEach(reset => reset());
+  }
+
+  /* The single source of truth for "is the game receiving input". Lock mode
+     follows the browser; free and touch modes drive engagement themselves. */
   function setEngaged(v) {
     if (engaged === v) return;
     engaged = v;
     mouseDX = mouseDY = 0;
-    if (element) element.style.cursor = v ? 'none' : '';
+    if (element) element.style.cursor = v && mode !== 'touch' ? 'none' : '';
     if (v) emit('lock');
     else { clearActions(); emit('unlock'); }
   }
@@ -2830,6 +2995,7 @@ const INPUT = (() => {
   }
 
   function goFree(why) {
+    if (mode === 'touch') { setEngaged(true); return; }
     if (mode === 'free') { setEngaged(true); return; }
     mode = 'free';
     if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
@@ -2855,33 +3021,182 @@ const INPUT = (() => {
       setEngaged(false);
       return;
     }
-    const a = KEYMAP[e.code];
-    if (!a) return;
-    if ((a === 'jump' || a === 'reload' || a === 'lantern' || a === 'melee' || a.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
-    if (down && !actions[a]) { pressed[a] = true; emit('press', a); }
-    actions[a] = down;
+    const action = KEYMAP[e.code];
+    if (!action) return;
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    setAction(action, down);
+  }
+
+  function safeCapture(el, pointerId) {
+    try { if (el.setPointerCapture) el.setPointerCapture(pointerId); } catch (e) {}
+  }
+
+  function bindAimSurface(el, action) {
+    if (!el) return;
+    let pointerId = null, lastX = 0, lastY = 0;
+    const controls = document.getElementById('mobileControls');
+
+    function reset() {
+      if (action) setAction(action, false);
+      pointerId = null;
+      el.classList.remove('active');
+    }
+    touchResetters.push(reset);
+
+    el.addEventListener('pointerdown', e => {
+      if (!engaged || pointerId !== null) return;
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+      pointerId = e.pointerId;
+      lastX = e.clientX; lastY = e.clientY;
+      safeCapture(el, pointerId);
+      if (controls) controls.classList.add('looked');
+      el.classList.add('active');
+      if (action) setAction(action, true);
+    });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerId !== pointerId) return;
+      if (e.preventDefault) e.preventDefault();
+      mouseDX += (e.clientX - lastX) * CONFIG.input.touchLookScale;
+      mouseDY += (e.clientY - lastY) * CONFIG.input.touchLookScale;
+      lastX = e.clientX; lastY = e.clientY;
+    });
+    const end = e => {
+      if (e.pointerId !== pointerId) return;
+      if (e.preventDefault) e.preventDefault();
+      reset();
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    el.addEventListener('lostpointercapture', end);
+  }
+
+  function bindTouchButton(id, action) {
+    const button = document.getElementById(id);
+    if (!button) return;
+    let pointerId = null;
+
+    function reset() {
+      setAction(action, false);
+      pointerId = null;
+      button.classList.remove('active');
+    }
+    touchResetters.push(reset);
+
+    button.addEventListener('pointerdown', e => {
+      if (!engaged || pointerId !== null) return;
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+      pointerId = e.pointerId;
+      safeCapture(button, pointerId);
+      button.classList.add('active');
+      setAction(action, true);
+    });
+    const end = e => {
+      if (e.pointerId !== pointerId) return;
+      if (e.preventDefault) e.preventDefault();
+      reset();
+    };
+    button.addEventListener('pointerup', end);
+    button.addEventListener('pointercancel', end);
+    button.addEventListener('lostpointercapture', end);
+  }
+
+  function bindMovePad() {
+    const pad = document.getElementById('movePad');
+    const knob = document.getElementById('moveKnob');
+    if (!pad || !knob) return;
+    let pointerId = null;
+
+    function reset() {
+      pointerId = null;
+      touchMoveX = touchMoveY = 0;
+      touchSprint = false;
+      knob.style.transform = 'translate(0px,0px)';
+      pad.classList.remove('active');
+    }
+    touchResetters.push(reset);
+
+    function updateStick(e) {
+      const rect = pad.getBoundingClientRect();
+      const range = Math.max(1, Math.min(rect.width, rect.height) * 0.31);
+      let dx = e.clientX - (rect.left + rect.width * 0.5);
+      let dy = e.clientY - (rect.top + rect.height * 0.5);
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance > range) { dx *= range / distance; dy *= range / distance; }
+      const nx = dx / range, ny = dy / range;
+      const magnitude = Math.min(1, Math.sqrt(nx * nx + ny * ny));
+      const dead = CONFIG.input.stickDeadZone;
+      const strength = magnitude <= dead ? 0 : (magnitude - dead) / (1 - dead);
+      if (magnitude > 0.0001) {
+        touchMoveX = nx / magnitude * strength;
+        touchMoveY = -ny / magnitude * strength;
+      } else {
+        touchMoveX = touchMoveY = 0;
+      }
+      touchSprint = strength >= CONFIG.input.stickSprint && touchMoveY > 0.35;
+      knob.style.transform = 'translate(' + dx.toFixed(1) + 'px,' + dy.toFixed(1) + 'px)';
+    }
+
+    pad.addEventListener('pointerdown', e => {
+      if (!engaged || pointerId !== null) return;
+      if (e.preventDefault) e.preventDefault();
+      if (e.stopPropagation) e.stopPropagation();
+      pointerId = e.pointerId;
+      safeCapture(pad, pointerId);
+      pad.classList.add('active');
+      updateStick(e);
+    });
+    pad.addEventListener('pointermove', e => {
+      if (e.pointerId !== pointerId) return;
+      if (e.preventDefault) e.preventDefault();
+      updateStick(e);
+    });
+    const end = e => {
+      if (e.pointerId !== pointerId) return;
+      if (e.preventDefault) e.preventDefault();
+      reset();
+    };
+    pad.addEventListener('pointerup', end);
+    pad.addEventListener('pointercancel', end);
+    pad.addEventListener('lostpointercapture', end);
+  }
+
+  function initTouchControls() {
+    document.body.classList.add('touch-device');
+    if (element) element.style.touchAction = 'none';
+    bindMovePad();
+    bindAimSurface(document.getElementById('mobileLookZone'), null);
+    bindAimSurface(document.getElementById('mobileFire'), 'fire');
+    bindTouchButton('mobileJump', 'jump');
+    bindTouchButton('mobileMelee', 'melee');
+    bindTouchButton('mobileReload', 'reload');
+    bindTouchButton('mobileSwap', 'nextWeapon');
+    bindTouchButton('mobilePause', 'pause');
+    document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
 
   function init(el) {
     element = el;
+    if (touchMode) initTouchControls();
     window.addEventListener('keydown', e => onKey(e, true));
     window.addEventListener('keyup', e => onKey(e, false));
-    window.addEventListener('blur', () => clearActions());
+    window.addEventListener('blur', clearActions);
 
     document.addEventListener('mousemove', e => {
       pointerX = e.clientX || 0;
       pointerY = e.clientY || 0;
-      if (!engaged) return;
+      if (!engaged || mode === 'touch') return;
       mouseDX += e.movementX || 0;
       mouseDY += e.movementY || 0;
     });
     document.addEventListener('mousedown', e => {
-      if (!engaged) return;
-      if (e.button === 0) { actions.fire = true; pressed.fire = true; emit('press', 'fire'); }
-      if (e.button === 2) { pressed.melee = true; emit('press', 'melee'); }
+      if (!engaged || mode === 'touch') return;
+      if (e.button === 0) setAction('fire', true);
+      if (e.button === 2) triggerAction('melee');
     });
     document.addEventListener('mouseup', e => {
-      if (e.button === 0) actions.fire = false;
+      if (e.button === 0 && mode !== 'touch') setAction('fire', false);
     });
     document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
 
@@ -2899,12 +3214,12 @@ const INPUT = (() => {
       }
       if (mode === 'lock') setEngaged(locked);
     });
-    document.addEventListener('pointerlockerror', () => goFree());
+    document.addEventListener('pointerlockerror', () => { if (mode === 'lock') goFree(); });
   }
 
   function requestLock() {
     if (!element) return;
-    if (mode === 'free') { setEngaged(true); return; }
+    if (mode === 'touch' || mode === 'free') { setEngaged(true); return; }
     // Browsers rate-limit re-locking right after an exit; spamming it is what
     // turned a failed lock into an inescapable pause loop.
     const t = now();
@@ -2919,7 +3234,7 @@ const INPUT = (() => {
   }
 
   function releaseLock() {
-    if (mode === 'free') { setEngaged(false); return; }
+    if (mode === 'touch' || mode === 'free') { setEngaged(false); return; }
     if (document.pointerLockElement) document.exitPointerLock();
     else setEngaged(false);
   }
@@ -2928,6 +3243,15 @@ const INPUT = (() => {
     const d = { x: mouseDX, y: mouseDY };
     mouseDX = mouseDY = 0;
     return d;
+  }
+
+  function moveAxes() {
+    let x = (actions.right ? 1 : 0) - (actions.left ? 1 : 0) + touchMoveX;
+    let y = (actions.forward ? 1 : 0) - (actions.back ? 1 : 0) + touchMoveY;
+    const length = Math.sqrt(x * x + y * y);
+    if (length > 1) { x /= length; y /= length; }
+    moveOut.x = x; moveOut.y = y;
+    return moveOut;
   }
 
   /* Free mode only: how hard the cursor is pushing into a window edge, in
@@ -2947,17 +3271,19 @@ const INPUT = (() => {
     return edge;
   }
 
-  function consumePress(a) {
-    if (pressed[a]) { pressed[a] = false; return true; }
+  function consumePress(action) {
+    if (pressed[action]) { pressed[action] = false; return true; }
     return false;
   }
 
   return {
-    init, on, actions, requestLock, releaseLock, consumeMouse, consumePress,
+    init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
     edgeTurn, forceFree: goFree, tryLockAgain,
     get locked() { return locked; },
     get engaged() { return engaged; },
     get mode() { return mode; },
+    get mobile() { return touchMode; },
+    get sprinting() { return actions.sprint || touchSprint; },
     get diagnosis() { return diagnosis; }
   };
 })();
@@ -3088,17 +3414,17 @@ const PLAYER = (() => {
     fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     wish.set(0, 0, 0);
+    const moveInput = INPUT.moveAxes();
     if (active) {
-      if (INPUT.actions.forward) wish.add(fwd);
-      if (INPUT.actions.back) wish.sub(fwd);
-      if (INPUT.actions.right) wish.add(right);
-      if (INPUT.actions.left) wish.sub(right);
+      wish.addScaledVector(fwd, moveInput.y);
+      wish.addScaledVector(right, moveInput.x);
     }
     const moving = wish.lengthSq() > 0.0001;
+    const inputStrength = moving ? Math.min(1, wish.length()) : 0;
     if (moving) wish.normalize();
 
-    sprinting = active && INPUT.actions.sprint && INPUT.actions.forward && grounded;
-    const target = sprinting ? C.sprintSpeed : C.walkSpeed;
+    sprinting = active && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength;
 
     // ---- horizontal acceleration with real friction, no ice ----
     const accel = (grounded ? C.accel : C.airAccel) * dt;
@@ -3514,6 +3840,17 @@ const WEAPON = (() => {
     return id ? setCurrent(id, false) : false;
   }
 
+  function cycleWeapon(direction) {
+    const ids = Object.keys(DEFS).sort((a, b) => DEFS[a].slot - DEFS[b].slot);
+    const start = Math.max(0, ids.indexOf(currentId));
+    const step = direction < 0 ? -1 : 1;
+    for (let offset = 1; offset <= ids.length; offset++) {
+      const index = (start + offset * step + ids.length) % ids.length;
+      if (inventory[ids[index]] && inventory[ids[index]].owned) return setCurrent(ids[index], false);
+    }
+    return false;
+  }
+
   function ejectCasing(id) {
     for (let i = 0; i < casings.length; i++) {
       const s = casings[i];
@@ -3677,11 +4014,12 @@ const WEAPON = (() => {
       for (let slot = 1; slot <= 4; slot++) {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
+      if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
       const pressedFire = INPUT.consumePress('fire');
       const d = defFor();
       if (INPUT.consumePress('melee')) beginMelee(camera);
       else if (d.kind === 'melee' && pressedFire) beginMelee(camera);
-      else if (d.kind === 'gun' && (d.automatic ? INPUT.actions.fire : pressedFire)) fireGun(camera);
+      else if (d.kind === 'gun' && (d.automatic ? (INPUT.actions.fire || pressedFire) : pressedFire)) fireGun(camera);
       if (INPUT.consumePress('reload')) startReload();
     }
 
@@ -3795,7 +4133,7 @@ const WEAPON = (() => {
   }
 
   return {
-    build, update, addLook, reset, setCurrent, selectSlot, addAmmo, grantWeapon,
+    build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon,
     hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
     get currentId() { return currentId; },
     get ammo() { return stateFor().mag; },
@@ -3832,9 +4170,15 @@ const UI = (() => {
     el.modeChip = document.getElementById('modeChip');
     el.modeWhy = document.getElementById('modeWhy');
     el.pauseHint = document.getElementById('pauseHint');
+    el.mobileControls = document.getElementById('mobileControls');
 
     el.grain.style.backgroundImage = 'url(' + TEX.grainDataURL(128) + ')';
     el.scratches.style.backgroundImage = 'url(' + TEX.scratchDataURL(512, 512) + ')';
+    if (INPUT.mobile) {
+      document.body.classList.add('touch-device');
+      document.getElementById('enterBtn').textContent = 'Tap to enter →';
+      document.getElementById('resumeBtn').textContent = 'Back to it →';
+    }
   }
 
   function setWeapon(name, kind, n, reserve, max) {
@@ -3859,6 +4203,7 @@ const UI = (() => {
   }
 
   function showReloadHint(on, message) {
+    if (INPUT.mobile && message === 'Press R to reload') message = 'Tap Load to reload';
     if (message) el.reloadTag.textContent = message;
     el.reloadTag.className = on ? 'on' : '';
   }
@@ -3902,16 +4247,24 @@ const UI = (() => {
   }
 
   let deadShown = false;
+  function showMobileControls(on) {
+    if (!el.mobileControls) return;
+    const visible = !!on && INPUT.mobile;
+    el.mobileControls.classList.toggle('on', visible);
+    el.mobileControls.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  }
   function showDead() {
     deadShown = true;
     el.dead.classList.remove('hidden');
     el.pause.classList.add('hidden');
     el.crosshair.classList.remove('on');
+    showMobileControls(false);
   }
   function hideDead() {
     deadShown = false;
     el.dead.classList.add('hidden');
     el.crosshair.classList.add('on');
+    showMobileControls(false);
   }
   function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
 
@@ -3924,14 +4277,17 @@ const UI = (() => {
     el.ammo.classList.add('on');
     el.vitals.classList.add('on');
     el.tally.classList.add('on');
+    showMobileControls(true);
   }
   function showPause() {
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
+    showMobileControls(false);
   }
   function hidePause() {
     el.pause.classList.add('hidden');
     el.crosshair.classList.add('on');
+    showMobileControls(true);
   }
   function hideLoading() { el.loading.classList.add('hidden'); }
 
@@ -3968,7 +4324,7 @@ const UI = (() => {
 
   return {
     init, setWeapon, showReloadHint, crosshairKick, enterGame, toast,
-    showPause, hidePause, hideLoading, update,
+    showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
     get deadShown() { return deadShown; },
     el
@@ -4040,7 +4396,7 @@ const PICKUP = (() => {
     const slot = CONFIG.weapons[def.weaponId].slot;
     return {
       message: result.newlyOwned
-        ? def.label + ' acquired — slot ' + slot
+        ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Swap to cycle' : 'slot ' + slot)
         : '+' + result.ammoAdded + ' ' + def.label + ' rounds'
     };
   });
@@ -4276,7 +4632,7 @@ const GAME = (() => {
     UI.setKills(0);
     INPUT.init(renderer.domElement);
 
-    // pointer lock wiring
+    // shared mouse/touch engagement wiring
     INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); });
     INPUT.on('unlock', () => {
       running = false;
@@ -4302,6 +4658,7 @@ const GAME = (() => {
     scene.add(camera);
     INPUT.on('press', a => {
       if (a === 'lantern') lampKey.intensity = lampKey.intensity > 0 ? 0 : 1.35;
+      if (a === 'pause' && INPUT.engaged && !PLAYER.isDead) INPUT.releaseLock();
     });
 
     window.addEventListener('resize', onResize);
