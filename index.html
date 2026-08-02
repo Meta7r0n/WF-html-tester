@@ -1173,6 +1173,10 @@ const PRIM = (() => {
 const WORLD = {
   solids: [],
   ladders: [],
+  layers: {
+    surface: { id: 'surface', floorY: 0 }
+  },
+  portals: [],
   /* [SPAWN] Phase 2 reads these. Nothing renders or spawns from them today. */
   spawnMarkers: [],
 
@@ -1193,6 +1197,45 @@ const WORLD = {
   addSpawn(x, y, z, kind) {
     this.spawnMarkers.push({ position: new THREE.Vector3(x, y, z), kind: kind || 'generic' });
   },
+  addLayer(id, options) {
+    options = options || {};
+    this.layers[id] = {
+      id: id,
+      floorY: options.floorY === undefined ? 0 : options.floorY,
+      ceilingY: options.ceilingY === undefined ? 999 : options.ceilingY,
+      tag: options.tag || id
+    };
+    return this.layers[id];
+  },
+  addPortal(id, cx, cz, w, d, options) {
+    options = options || {};
+    const portal = {
+      id: id,
+      minX: cx - w / 2, maxX: cx + w / 2,
+      minY: options.minY === undefined ? -5 : options.minY,
+      maxY: options.maxY === undefined ? 0.3 : options.maxY,
+      minZ: cz - d / 2, maxZ: cz + d / 2,
+      from: options.from || 'surface',
+      to: options.to || 'surface',
+      normalX: options.normalX || 0,
+      normalZ: options.normalZ || 0
+    };
+    this.portals.push(portal);
+    return portal;
+  },
+  portalAt(x, y, z, layerId) {
+    for (let i = 0; i < this.portals.length; i++) {
+      const p = this.portals[i];
+      if (layerId !== p.from && layerId !== p.to) continue;
+      if (x <= p.minX || x >= p.maxX || y <= p.minY || y >= p.maxY || z <= p.minZ || z >= p.maxZ) continue;
+      return p;
+    }
+    return null;
+  },
+  defaultGroundAt(x, z, layerId) {
+    const layer = this.layers[layerId || 'surface'];
+    return layer ? layer.floorY : 0;
+  },
   addLadder(cx, bottomY, cz, w, h, d, options) {
     options = options || {};
     const ladder = {
@@ -1208,14 +1251,17 @@ const WORLD = {
       bottomExitZ: options.bottomExitZ === undefined ? cz : options.bottomExitZ,
       normalX: options.normalX || 0,
       normalZ: options.normalZ || 0,
+      topLayer: options.topLayer || 'surface',
+      bottomLayer: options.bottomLayer || 'surface',
       tag: options.tag || 'ladder'
     };
     this.ladders.push(ladder);
     return ladder;
   },
-  ladderAt(x, y, z, radius, height) {
+  ladderAt(x, y, z, radius, height, layerId) {
     for (let i = 0; i < this.ladders.length; i++) {
       const l = this.ladders[i];
+      if (layerId && l.topLayer !== layerId && l.bottomLayer !== layerId) continue;
       if (x + radius <= l.minX || x - radius >= l.maxX) continue;
       if (z + radius <= l.minZ || z - radius >= l.maxZ) continue;
       if (y + height <= l.minY || y >= l.maxY + 0.12) continue;
@@ -1226,6 +1272,8 @@ const WORLD = {
   reset() {
     this.solids.length = 0;
     this.ladders.length = 0;
+    this.layers = { surface: { id: 'surface', floorY: 0 } };
+    this.portals.length = 0;
     this.spawnMarkers.length = 0;
   },
 
@@ -1285,11 +1333,12 @@ const WORLD = {
   },
 
   /* Highest walkable surface under a point, ignoring anything above `ceil`. */
-  groundAt(x, z, ceil) {
-    let g = 0;
+  groundAt(x, z, ceil, layerId) {
+    let g = this.defaultGroundAt(x, z, layerId);
     const solids = this.solids;
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
+      if (layerId && layerId !== 'surface' && s.minY >= -0.2) continue;
       if (x <= s.minX || x >= s.maxX || z <= s.minZ || z >= s.maxZ) continue;
       if (s.maxY > g && s.maxY <= (ceil === undefined ? 8 : ceil)) g = s.maxY;
     }
@@ -2530,6 +2579,113 @@ const LEVEL = (() => {
     WORLD.addSpawn(4, LOW_Y, TURN_Z, 'tower_catwalk');
   }
 
+  /* ---------------- first basement vertical slice ----------------
+     This is intentionally a small, self-contained underground room. The
+     layer/portal data lets the player cross below the surface without making
+     every future collider aware of tunnels yet. The barn stair is the main
+     route; the east-side hatch is a second, ladder-only route for testing. */
+  function buildBasement(parent) {
+    const FLOOR_Y = -4.0, CEIL_Y = -0.45;
+    const MIN_X = 8, MAX_X = 28, MIN_Z = -20, MAX_Z = -3;
+    WORLD.addLayer('basement', { floorY: FLOOR_Y, ceilingY: CEIL_Y, tag: 'basement' });
+
+    const concrete = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const trim = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const room = new PRIM.Batch(concrete, 0.032);
+    // A continuous floor and four low walls keep the first test room easy to
+    // reason about while leaving the surface map untouched above it.
+    room.box(MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, (MIN_X + MAX_X) * 0.5,
+      FLOOR_Y - 0.11, (MIN_Z + MAX_Z) * 0.5);
+    room.box(MAX_X - MIN_X + 0.4, 3.7, 0.30, (MIN_X + MAX_X) * 0.5,
+      (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2);
+    room.box(MAX_X - MIN_X + 0.4, 3.7, 0.30, (MIN_X + MAX_X) * 0.5,
+      (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2);
+    room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MIN_X - 0.2,
+      (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
+    room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MAX_X + 0.2,
+      (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
+    // Ceiling underside is visual only for now; a later pass can add
+    // deliberate low-clearance sections without changing the room footprint.
+    // Leave a 3.2 m shaft open above the barn stair so its top step is not
+    // trapped underneath the room ceiling.
+    room.box(4.2, 0.30, MAX_Z - MIN_Z + 0.4, 10.3, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5);
+    room.box(12.2, 0.30, MAX_Z - MIN_Z + 0.4, 21.9, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5);
+    room.build(parent);
+    WORLD.addFloor((MIN_X + MAX_X) * 0.5, FLOOR_Y - 0.22, (MIN_Z + MAX_Z) * 0.5,
+      MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, 'basement_floor');
+    WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2,
+      MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
+    WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2,
+      MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
+    WORLD.add(MIN_X - 0.2, (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5,
+      0.30, 3.7, MAX_Z - MIN_Z + 0.4, 'basement_wall');
+    WORLD.add(MAX_X + 0.2, (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5,
+      0.30, 3.7, MAX_Z - MIN_Z + 0.4, 'basement_wall');
+    WORLD.add(10.3, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5,
+      4.2, 0.30, MAX_Z - MIN_Z + 0.4, 'basement_ceiling');
+    WORLD.add(21.9, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5,
+      12.2, 0.30, MAX_Z - MIN_Z + 0.4, 'basement_ceiling');
+
+    // Square timber columns make the underground scale readable without
+    // creating a maze or introducing extra navigation blockers.
+    const columns = new PRIM.Batch(trim, 0.028);
+    [[10, -5], [26, -5], [10, -18], [26, -18]].forEach(p => {
+      columns.box(0.32, 3.25, 0.32, p[0], -2.375, p[1]);
+      WORLD.add(p[0], -2.375, p[1], 0.40, 3.25, 0.40, 'basement_column');
+    });
+    columns.box(17.2, 0.24, 0.24, 18, -0.82, -11.5);
+    columns.box(0.24, 0.24, 14.2, 18, -0.82, -11.5);
+    columns.build(parent);
+    PROPS.lantern(parent, 18, -0.72, -11.5, 0);
+    PROPS.lantern(parent, 11.6, -0.72, -6.2, 0);
+    PROPS.lantern(parent, 24.2, -0.72, -17.1, 0);
+
+    // Ten shallow steps descend from the barn's north side. Every rise stays
+    // below PLAYER.stepHeight so walking up never needs a jump or snap.
+    const stairMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
+    const stairs = new PRIM.Batch(stairMat, 0.030);
+    const stairCount = 10, stairW = 2.6, stairZ0 = -7.6, stairStep = 0.68;
+    for (let i = 0; i < stairCount; i++) {
+      const top = -0.4 + (FLOOR_Y + 0.4) * i / (stairCount - 1);
+      const z = stairZ0 - stairStep * i;
+      stairs.box(stairW, 0.22, 0.72, 14, top - 0.11, z, 0, 0, 0, 0.012);
+      WORLD.addFloor(14, top - 0.22, z, stairW, 0.22, 0.76, 'basement_stair');
+    }
+    // A small timber frame marks the opening at surface height; it is not a
+    // blocking lid, so the portal remains a genuine walkable entrance.
+    stairs.box(0.18, 0.36, 0.18, 12.55, 0.18, -7.15);
+    stairs.box(0.18, 0.36, 0.18, 15.45, 0.18, -7.15);
+    stairs.box(3.08, 0.18, 0.18, 14, 0.34, -7.15);
+    stairs.build(parent);
+    WORLD.addPortal('barn_basement_stair', 14, -10.7, 2.9, 7.4, {
+      minY: FLOOR_Y - 0.3, maxY: 0.26, from: 'surface', to: 'basement', normalZ: -1
+    });
+
+    // East hatch: one compact vertical ladder gives us a second entrance and
+    // proves the layer-aware ladder controller independently of the stair.
+    const HX = 24, HZ = -9.5;
+    const ladderMat = MAT.toon(PAL.rustDeep, { map: TEX.metal() });
+    const ladder = new PRIM.Batch(ladderMat, 0.024);
+    ladder.box(0.14, 4.0, 0.14, HX - 0.56, -2.0, HZ);
+    ladder.box(0.14, 4.0, 0.14, HX + 0.56, -2.0, HZ);
+    for (let y = -3.65; y <= -0.35; y += 0.47) ladder.box(1.25, 0.12, 0.14, HX, y, HZ);
+    // Raised hatch rim and a dark inset sell the surface entry from above.
+    ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ - 0.72);
+    ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ + 0.72);
+    ladder.box(0.18, 0.18, 1.26, HX - 0.82, 0.12, HZ);
+    ladder.box(0.18, 0.18, 1.26, HX + 0.82, 0.12, HZ);
+    ladder.build(parent);
+    const hatch = PRIM.box(1.45, 0.04, 1.15, MAT.toon(PAL.charcoal), {
+      pos: [HX, 0.035, HZ], parent: parent, ray: false, outline: 0.025
+    });
+    hatch.rotation.y = 0.03;
+    WORLD.addLadder(HX, FLOOR_Y, HZ, 1.4, 4.0, 1.1, {
+      topY: 0, topExitX: HX, topExitZ: HZ - 1.35,
+      bottomExitX: HX, bottomExitZ: HZ, normalZ: 1,
+      topLayer: 'surface', bottomLayer: 'basement', tag: 'basement_hatch_ladder'
+    });
+  }
+
   function buildScatter(parent) {
     // trees + rocks masking the boundary and framing views
     const treeSpots = [
@@ -2594,6 +2750,7 @@ const LEVEL = (() => {
     buildNorthPasture(root);
     buildCatwalks(root);
     buildTowerCatwalk(root);
+    buildBasement(root);
     return root;
   }
 
@@ -3653,6 +3810,7 @@ const PLAYER = (() => {
   let sprinting = false;
   let speedRatio = 0;
   let climbing = false, activeLadder = null, ladderCooldown = 0;
+  let layerId = 'surface';
 
   const fwd = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -3665,6 +3823,7 @@ const PLAYER = (() => {
     vel.set(0, 0, 0);
     yaw = C.startYaw; pitch = 0;
     climbing = false; activeLadder = null; ladderCooldown = 0;
+    layerId = 'surface';
     grounded = true; wasGrounded = true;
   }
 
@@ -3775,6 +3934,18 @@ const PLAYER = (() => {
     const inputStrength = moving ? Math.min(1, wish.length()) : 0;
     if (moving) wish.normalize();
 
+    // Directional portals switch the active floor before gravity resolves.
+    // The return trip is limited to the top of the stair so the basement
+    // remains stable while the player explores its room.
+    if (!climbing && moving) {
+      const portal = WORLD.portalAt(pos.x, pos.y, pos.z, layerId);
+      if (portal) {
+        const toward = wish.x * portal.normalX + wish.z * portal.normalZ;
+        if (layerId === portal.from && toward > 0.08) layerId = portal.to;
+        else if (layerId === portal.to && toward < -0.08 && pos.y > -0.72) layerId = portal.from;
+      }
+    }
+
     ladderCooldown = Math.max(0, ladderCooldown - dt);
     if (dead && climbing) { climbing = false; activeLadder = null; }
 
@@ -3782,7 +3953,7 @@ const PLAYER = (() => {
     // mobile stick behave identically. The short exit cooldown prevents held
     // input from snapping the player straight back onto the ladder volume.
     const ladderHere = ladderCooldown <= 0
-      ? WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height)
+      ? WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height, layerId)
       : null;
     if (!climbing && active && ladderHere && Math.abs(moveInput.y) > 0.16) {
       climbing = true;
@@ -3845,11 +4016,13 @@ const PLAYER = (() => {
         pos.set(ladder.topExitX, ladder.topY, ladder.topExitZ);
         vel.set(0, 0, 0);
         climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        layerId = ladder.topLayer;
         grounded = true; wasGrounded = true;
       } else if (pos.y <= ladder.bottomY) {
         pos.set(ladder.bottomExitX, ladder.bottomY, ladder.bottomExitZ);
         vel.set(0, 0, 0);
         climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        layerId = ladder.bottomLayer;
         grounded = true; wasGrounded = true;
       }
     } else {
@@ -3861,7 +4034,7 @@ const PLAYER = (() => {
 
       wasGrounded = grounded;
       grounded = false;
-      let groundY = 0;
+      let groundY = WORLD.defaultGroundAt(pos.x, pos.z, layerId);
       const r = C.radius, h = C.height;
       const solids = WORLD.solids;
       for (let i = 0; i < solids.length; i++) {
@@ -3955,6 +4128,7 @@ const PLAYER = (() => {
     get isClimbing() { return climbing; },
     get sprinting() { return sprinting; },
     get speedRatio() { return speedRatio; },
+    get layerId() { return layerId; },
     get pitch() { return pitch; },
     get yaw() { return yaw; }
   };
