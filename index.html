@@ -433,7 +433,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.05 North Pasture Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06 Catwalk Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -530,7 +530,8 @@ const CONFIG = {
     // north. Keeping these limits together makes later horizontal slices less
     // error-prone than scattering invisible-wall coordinates through LEVEL.
     west: -31.2, east: 31.2, south: 32.6, north: -51.6,
-    northTransition: -32
+    northTransition: -32,
+    catwalkY: 3.5
   },
   enemy: {
     count: 8,
@@ -2220,8 +2221,8 @@ const LEVEL = (() => {
 
   /* ---------------- north pasture expansion ----------------
      This is intentionally a modest first slice: two ground routes, useful
-     cover and one destination. The shelter roof sits at loft height so a later
-     catwalk milestone can connect here without rebuilding the landmark. */
+     cover and one destination. The shelter roof sits at loft height and now
+     serves as the north landing for the barn catwalk. */
   function buildNorthPasture(parent) {
     const CX = 19, CZ = -43;
     const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
@@ -2231,12 +2232,12 @@ const LEVEL = (() => {
       b.box(0.34, 3.3, 0.34, CX + p[0], 1.65, CZ + p[1], 0, 0, UTIL.rng(-.05, .05), 0.02);
       WORLD.addFloor(CX + p[0], 0, CZ + p[1], 0.52, 3.3, 0.52, 'feed_shelter_post');
     });
-    // Back windbreak and a flat, walkable roof reserved as a future catwalk landing.
+    // Back windbreak and a flat, walkable roof serving as the north catwalk landing.
     b.box(6.2, 2.7, 0.22, CX, 1.35, CZ - 2.15, 0, 0, 0.02, 0.025);
     b.box(6.9, 0.30, 5.1, CX, 3.42, CZ, 0, 0, -0.018, 0.03);
     b.build(parent);
     WORLD.addFloor(CX, 0, CZ - 2.15, 6.2, 2.7, 0.42, 'feed_shelter_wall');
-    WORLD.add(CX, 3.42, CZ, 6.9, 0.30, 5.1, 'future_catwalk_deck');
+    WORLD.add(CX, 3.42, CZ, 6.9, 0.30, 5.1, 'catwalk_landing_deck');
 
     PROPS.hayBale(parent, CX - 1.8, 0, CZ - 1.35, -0.2);
     PROPS.hayBale(parent, CX - 0.4, 0, CZ - 1.45, 0.18);
@@ -2257,6 +2258,102 @@ const LEVEL = (() => {
 
     // Reserved for later enemy-count/multiplayer passes; count stays at eight today.
     WORLD.addSpawn(-7, 0, -43, 'north_pasture');
+  }
+
+  /* ---------------- barn-to-pasture catwalk ----------------
+     A multiplayer-width elevated lane joins the barn loft to the feed shelter.
+     The midpoint stair creates a second entrance so the loft is not the only
+     way onto the route. All decorative planks are merged into a few meshes;
+     collision remains a small set of predictable AABBs. */
+  function buildCatwalks(parent) {
+    const DECK_Y = CONFIG.map.catwalkY;
+    const CX = 18.2, Z0 = -14.8, Z1 = -41.0;
+    const deckH = 0.24;
+    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const deck = new PRIM.Batch(deckMat, 0.038);
+
+    // Crooked cross-planks over two continuous under-beams. The collision deck
+    // below is intentionally continuous so tiny visual gaps never catch feet.
+    for (let z = Z0; z >= Z1; z -= 0.68) {
+      deck.box(2.62, 0.18, 0.52, CX + UTIL.rng(-0.035, 0.035), DECK_Y - 0.09, z,
+        0, UTIL.rng(-0.025, 0.025), UTIL.rng(-0.018, 0.018), 0.018);
+    }
+    const span = Z0 - Z1;
+    const spanCenter = (Z0 + Z1) * 0.5;
+    deck.box(0.18, 0.22, span, CX - 0.92, DECK_Y - 0.25, spanCenter, 0, 0, 0.01, 0.012);
+    deck.box(0.18, 0.22, span, CX + 0.92, DECK_Y - 0.25, spanCenter, 0, 0, -0.01, 0.012);
+
+    // Wider passing/turning platform above the old cross-fence.
+    for (let x = 15.65; x <= 20.75; x += 0.62) {
+      deck.box(0.54, 0.18, 4.0, x, DECK_Y - 0.09, -29.5,
+        0, UTIL.rng(-0.018, 0.018), UTIL.rng(-0.015, 0.015), 0.015);
+    }
+    deck.build(parent);
+    WORLD.addFloor(CX, DECK_Y - deckH, spanCenter, 2.6, deckH, span, 'catwalk_deck');
+    // Three boxes leave a real stairwell opening in the platform's west edge.
+    // A single broad box would catch the actor before the final two steps.
+    WORLD.addFloor(19.05, DECK_Y - deckH, -29.5, 3.7, deckH, 4.0, 'catwalk_platform');
+    WORLD.addFloor(16.35, DECK_Y - deckH, -31.10, 1.7, deckH, 0.8, 'catwalk_platform');
+    WORLD.addFloor(16.35, DECK_Y - deckH, -27.90, 1.7, deckH, 0.8, 'catwalk_platform');
+
+    // Ground stair rises west-to-east onto the midpoint platform. Each rise is
+    // 0.35 m, comfortably below the shared player/enemy step limits.
+    const stairs = new PRIM.Batch(deckMat, 0.035);
+    const stairZ = -29.5, stairStartX = 9.4, stairCount = 10, stairW = 0.78;
+    for (let i = 0; i < stairCount; i++) {
+      const top = DECK_Y * (i + 1) / stairCount;
+      const x = stairStartX + stairW * (i + 0.5);
+      stairs.box(stairW + 0.04, top, 2.35, x, top * 0.5, stairZ, 0, 0, 0, 0.012);
+      WORLD.addFloor(x, 0, stairZ, stairW + 0.06, top, 2.35, 'catwalk_stair');
+    }
+    stairs.build(parent);
+
+    // Support trestles create useful ground-level cover without filling the
+    // whole lane with collision. The stair landing deliberately stays clear.
+    const support = new PRIM.Batch(MAT.toon(PAL.rustDeep, {
+      map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2)
+    }), 0.035);
+    [-18, -23, -35, -39.2].forEach(z => {
+      [-1.08, 1.08].forEach(o => {
+        support.box(0.30, DECK_Y - 0.12, 0.30, CX + o, (DECK_Y - 0.12) * 0.5, z,
+          0, 0, o * 0.02, 0.015);
+        WORLD.addFloor(CX + o, 0, z, 0.48, DECK_Y - 0.12, 0.48, 'catwalk_support');
+      });
+      support.box(2.55, 0.14, 0.14, CX, 1.55, z, 0, 0, 0.52, 0.012);
+      support.box(2.55, 0.14, 0.14, CX, 1.55, z, 0, 0, -0.52, 0.012);
+    });
+    support.build(parent);
+
+    // Railings: full east side, split west side around the midpoint stair.
+    const railXWest = CX - 1.30, railXEast = CX + 1.30;
+    const railBottom = DECK_Y, railH = 1.08, railTop = DECK_Y + railH;
+    const rail = new PRIM.Batch(MAT.toon(PAL.rustDeep, {
+      map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1)
+    }), 0.025);
+    for (let z = -16; z >= -40.2; z -= 2.25) {
+      rail.box(0.14, railH, 0.14, railXEast, railBottom + railH * 0.5, z,
+        0, 0, UTIL.rng(-0.04, 0.04), 0.01);
+      if (z > -27.2 || z < -31.8) {
+        rail.box(0.14, railH, 0.14, railXWest, railBottom + railH * 0.5, z,
+          0, 0, UTIL.rng(-0.04, 0.04), 0.01);
+      }
+    }
+    rail.box(0.14, 0.14, span - 0.8, railXEast, railTop, spanCenter, 0, 0, 0.012, 0.01);
+    const westSouthLen = 12.3, westNorthLen = 9.0;
+    rail.box(0.14, 0.14, westSouthLen, railXWest, railTop, -21.0, 0, 0, -0.012, 0.01);
+    rail.box(0.14, 0.14, westNorthLen, railXWest, railTop, -36.4, 0, 0, 0.012, 0.01);
+    rail.build(parent);
+
+    WORLD.add(railXEast, railBottom + railH * 0.5, spanCenter, 0.26, railH, span, 'catwalk_rail');
+    WORLD.add(railXWest, railBottom + railH * 0.5, -21.0, 0.26, railH, westSouthLen, 'catwalk_rail');
+    WORLD.add(railXWest, railBottom + railH * 0.5, -36.4, 0.26, railH, westNorthLen, 'catwalk_rail');
+
+    // Small cover and a light make the midpoint readable from both levels.
+    PROPS.crate(parent, 20.25, DECK_Y, -29.6, 0.82, -0.25);
+    PROPS.lantern(parent, railXEast - 0.05, DECK_Y + 1.45, -29.5, 0);
+
+    // Reserved until a later enemy-count or multiplayer spawn pass.
+    WORLD.addSpawn(CX, DECK_Y, -24.0, 'catwalk');
   }
 
   function buildScatter(parent) {
@@ -2321,6 +2418,7 @@ const LEVEL = (() => {
     buildNook(root);
     buildScatter(root);
     buildNorthPasture(root);
+    buildCatwalks(root);
     return root;
   }
 
@@ -4428,7 +4526,8 @@ const PICKUP = (() => {
     { id: 'carbineAmmo', x: 18.8, z: -4.0 },
     { id: 'healthTonic', x: 6.2, z: 13.0 },
     { id: 'shieldCell', x: 25.0, z: -10.0 },
-    { id: 'carbineAmmo', x: 19.0, z: -39.8 }
+    { id: 'carbineAmmo', x: 19.0, z: -39.8 },
+    { id: 'shieldCell', x: 17.9, z: -29.5 }
   ];
 
   function define(id, def) {
