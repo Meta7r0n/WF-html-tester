@@ -441,6 +441,7 @@
         <li><kbd>Mouse</kbd> Look</li>
         <li><kbd>Space</kbd> Jump</li>
         <li><kbd>Shift</kbd> Sprint</li>
+        <li><kbd>W / S</kbd> Climb ladders</li>
         <li><kbd>Click</kbd> Fire / punch</li>
         <li><kbd>V / RMB</kbd> Quick melee</li>
         <li><kbd>1–4</kbd> Switch weapon</li>
@@ -448,7 +449,7 @@
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
-      <div class="touch-help"><b>Left stick</b> moves and runs. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting.</div>
+      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting.</div>
       <button class="go" id="enterBtn">Click to enter →</button>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Sound starts when you enter</p>
@@ -517,6 +518,7 @@ const CONFIG = {
     walkSpeed: 5.1, sprintSpeed: 8.2,
     accel: 52, airAccel: 12, friction: 11.5,
     gravity: 27, jumpForce: 8.6,
+    ladderSpeed: 3.25, ladderSnap: 13,
     stepHeight: 0.56,
     mouseSensitivity: 0.0021, pitchLimit: 1.44,
     bobFreq: 9.2, bobAmp: 0.042, bobSide: 0.028, bobRoll: 0.012,
@@ -1170,6 +1172,7 @@ const PRIM = (() => {
    of boxes. Every collider is registered in world space at build time. */
 const WORLD = {
   solids: [],
+  ladders: [],
   /* [SPAWN] Phase 2 reads these. Nothing renders or spawns from them today. */
   spawnMarkers: [],
 
@@ -1190,7 +1193,41 @@ const WORLD = {
   addSpawn(x, y, z, kind) {
     this.spawnMarkers.push({ position: new THREE.Vector3(x, y, z), kind: kind || 'generic' });
   },
-  reset() { this.solids.length = 0; this.spawnMarkers.length = 0; },
+  addLadder(cx, bottomY, cz, w, h, d, options) {
+    options = options || {};
+    const ladder = {
+      minX: cx - w / 2, maxX: cx + w / 2,
+      minY: bottomY, maxY: bottomY + h,
+      minZ: cz - d / 2, maxZ: cz + d / 2,
+      snapX: cx, snapZ: cz,
+      bottomY: bottomY,
+      topY: options.topY === undefined ? bottomY + h : options.topY,
+      topExitX: options.topExitX === undefined ? cx : options.topExitX,
+      topExitZ: options.topExitZ === undefined ? cz : options.topExitZ,
+      bottomExitX: options.bottomExitX === undefined ? cx : options.bottomExitX,
+      bottomExitZ: options.bottomExitZ === undefined ? cz : options.bottomExitZ,
+      normalX: options.normalX || 0,
+      normalZ: options.normalZ || 0,
+      tag: options.tag || 'ladder'
+    };
+    this.ladders.push(ladder);
+    return ladder;
+  },
+  ladderAt(x, y, z, radius, height) {
+    for (let i = 0; i < this.ladders.length; i++) {
+      const l = this.ladders[i];
+      if (x + radius <= l.minX || x - radius >= l.maxX) continue;
+      if (z + radius <= l.minZ || z - radius >= l.maxZ) continue;
+      if (y + height <= l.minY || y >= l.maxY + 0.12) continue;
+      return l;
+    }
+    return null;
+  },
+  reset() {
+    this.solids.length = 0;
+    this.ladders.length = 0;
+    this.spawnMarkers.length = 0;
+  },
 
   /* ---- shared actor collision ----
      A general capsule-ish solver over the same AABB list the player uses.
@@ -1849,13 +1886,15 @@ const LEVEL = (() => {
     PROPS.hayBale(parent, 11.0, 0, -3.6, -0.5);
     PROPS.hayBale(parent, 16.5, 3.4, -12.6, 0.1);
     PROPS.hayBale(parent, 12.2, 3.4, -13.0, -0.3);
-    PROPS.barrel(parent, 19.6, -2.6);
+    // Keep the full stair footprint open: the barrel and its bottle now sit
+    // beside the workbench instead of crowding the first steps.
+    PROPS.barrel(parent, 17.2, -3.35);
     PROPS.crate(parent, 8.2, 0, -13.4, 1.0);
     PROPS.crate(parent, 8.4, 1.0, -13.2, 0.85, 0.4);
     PROPS.crate(parent, 9.4, 0, -12.6, 0.9, -0.3);
     PROPS.can(parent, 8.4, 1.85, -13.2);
     PROPS.can(parent, 9.4, 0.9, -12.6);
-    PROPS.bottle(parent, 19.6, 1.25, -2.6);
+    PROPS.bottle(parent, 17.2, 1.25, -3.35);
     PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
     PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
 
@@ -1868,9 +1907,9 @@ const LEVEL = (() => {
     PROPS.can(parent, 17.6, 1.0, -1.9);
     PROPS.bottle(parent, 19.4, 1.0, -2.0);
 
-    // pitchfork leaning on the wall
+    // Pitchfork still leans on the east wall, beyond the stair head.
     const pf = new THREE.Group();
-    pf.position.set(21.4, 0, -6.4);
+    pf.position.set(21.4, 0, -12.4);
     pf.rotation.z = 0.22; pf.rotation.y = 0.5;
     PRIM.cyl(0.05, 0.05, 2.2, 8, MAT.toon(PAL.rustDeep), { pos: [0, 1.1, 0], parent: pf, outline: 0.028 });
     const tb = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.028);
@@ -1905,39 +1944,51 @@ const LEVEL = (() => {
 
     // platform deck
     b.box(7.2, 0.34, 7.6, CX, 6.03, CZ, 0, 0, 0, 0.02);
-    // railings on three sides; the south edge is left open where the stair lands
+    // Railings leave a ladder opening on the south and a catwalk opening east.
     for (let x = CX - 3.3; x <= CX + 3.3; x += 1.5) {
       b.box(0.13, 0.95, 0.13, x, 6.68, CZ - 3.6, 0, 0, UTIL.rng(-.05, .05));
     }
     b.box(6.8, 0.11, 0.11, CX, 7.1, CZ - 3.6);
     for (let z = CZ - 3.3; z <= CZ + 3.3; z += 1.5) {
       b.box(0.13, 0.95, 0.13, CX - 3.4, 6.68, z, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.13, 0.95, 0.13, CX + 3.4, 6.68, z, 0, 0, UTIL.rng(-.05, .05));
+      if (Math.abs(z - CZ) > 1.3) {
+        b.box(0.13, 0.95, 0.13, CX + 3.4, 6.68, z, 0, 0, UTIL.rng(-.05, .05));
+      }
     }
     b.box(0.11, 0.11, 7.0, CX - 3.4, 7.1, CZ);
-    b.box(0.11, 0.11, 7.0, CX + 3.4, 7.1, CZ);
-    // stub rails either side of the stair head
+    b.box(0.11, 0.11, 2.3, CX + 3.4, 7.1, CZ - 2.4);
+    b.box(0.11, 0.11, 2.3, CX + 3.4, 7.1, CZ + 2.4);
+    // Stub rails either side of the ladder head.
     [-2.5, 2.5].forEach(o => {
       b.box(0.13, 0.95, 0.13, CX + o, 6.68, CZ + 3.6, 0, 0, UTIL.rng(-.05, .05));
       b.box(0.13, 0.95, 0.13, CX + o * 1.36, 6.68, CZ + 3.6, 0, 0, UTIL.rng(-.05, .05));
       b.box(2.2, 0.11, 0.11, CX + o * 1.18, 7.1, CZ + 3.6);
     });
 
-    // plank stair climbing from the yard, landing flush with the deck
-    for (let i = 0; i < 14; i++) {
-      const top = 6.2 * (i + 1) / 14;          // 0.44 m rise, under the step limit
-      const z = 8.0 - i * 0.85;
-      b.box(2.0, top, 0.85, CX, top / 2, z, 0, 0, 0, 0.012);
-      WORLD.addFloor(CX, 0, z, 2.0, top, 0.85, 'stair');
+    // Compact vertical ladder replaces the long yard staircase. Its collision
+    // volume is data-driven so future ladders can share the same controller.
+    const ladderZ = CZ + 3.93;
+    b.box(0.14, 6.2, 0.14, CX - 0.56, 3.1, ladderZ, 0, 0, -0.015, 0.01);
+    b.box(0.14, 6.2, 0.14, CX + 0.56, 3.1, ladderZ, 0, 0, 0.015, 0.01);
+    for (let y = 0.38; y <= 6.0; y += 0.47) {
+      b.box(1.25, 0.12, 0.14, CX, y, ladderZ, 0, 0, UTIL.rng(-0.018, 0.018), 0.008);
     }
     b.build(parent);
 
     WORLD.addFloor(CX, 5.86, CZ, 7.2, 0.34, 7.6, 'deck');
     WORLD.add(CX, 6.68, CZ - 3.6, 7.0, 1.05, 0.35, 'rail');
     WORLD.add(CX - 3.4, 6.68, CZ, 0.35, 1.05, 7.2, 'rail');
-    WORLD.add(CX + 3.4, 6.68, CZ, 0.35, 1.05, 7.2, 'rail');
+    WORLD.add(CX + 3.4, 6.68, CZ - 2.4, 0.35, 1.05, 2.3, 'rail');
+    WORLD.add(CX + 3.4, 6.68, CZ + 2.4, 0.35, 1.05, 2.3, 'rail');
     WORLD.add(CX - 2.95, 6.68, CZ + 3.6, 2.3, 1.05, 0.35, 'rail');
     WORLD.add(CX + 2.95, 6.68, CZ + 3.6, 2.3, 1.05, 0.35, 'rail');
+    WORLD.addLadder(CX, 0, CZ + 3.93, 1.55, 6.35, 1.2, {
+      topY: 6.2,
+      topExitX: CX, topExitZ: CZ + 3.20,
+      bottomExitX: CX, bottomExitZ: CZ + 4.90,
+      normalZ: 1,
+      tag: 'water_tower_ladder'
+    });
 
     // the tank
     const tankMat = MAT.toon(PAL.blueDeep, { map: TEX.metal() });
@@ -1963,7 +2014,7 @@ const LEVEL = (() => {
     PROPS.can(parent, CX - 2.4, 7.0, CZ + 2.2);
     PROPS.signPost(parent, CX + 1.6, CZ + 3.2, ['BEST VIEW', 'ON THE FARM'], Math.PI, { w: 1.6, h: 0.8, postH: 0.7, bg: PAL.cream, fg: PAL.olive });
 
-    WORLD.addSpawn(CX + 4, 0, CZ + 6, 'tower_base');   // beside the stair, not on it
+    WORLD.addSpawn(CX + 3.3, 0, CZ + 5.8, 'tower_base'); // clear of the ladder approach
   }
 
   /* ---------------- squeaky windmill ---------------- */
@@ -2262,9 +2313,9 @@ const LEVEL = (() => {
 
   /* ---------------- barn-to-pasture catwalk ----------------
      A multiplayer-width elevated lane joins the barn loft to the feed shelter.
-     The midpoint stair creates a second entrance so the loft is not the only
-     way onto the route. All decorative planks are merged into a few meshes;
-     collision remains a small set of predictable AABBs. */
+     Its ground stair now approaches from the east, leaving the north-pasture
+     gate and sightline open. All decorative planks are merged into a few
+     meshes; collision remains a small set of predictable AABBs. */
   function buildCatwalks(parent) {
     const DECK_Y = CONFIG.map.catwalkY;
     const CX = 18.2, Z0 = -14.8, Z1 = -41.0;
@@ -2290,19 +2341,15 @@ const LEVEL = (() => {
     }
     deck.build(parent);
     WORLD.addFloor(CX, DECK_Y - deckH, spanCenter, 2.6, deckH, span, 'catwalk_deck');
-    // Three boxes leave a real stairwell opening in the platform's west edge.
-    // A single broad box would catch the actor before the final two steps.
-    WORLD.addFloor(19.05, DECK_Y - deckH, -29.5, 3.7, deckH, 4.0, 'catwalk_platform');
-    WORLD.addFloor(16.35, DECK_Y - deckH, -31.10, 1.7, deckH, 0.8, 'catwalk_platform');
-    WORLD.addFloor(16.35, DECK_Y - deckH, -27.90, 1.7, deckH, 0.8, 'catwalk_platform');
+    WORLD.addFloor(CX, DECK_Y - deckH, -29.5, 5.4, deckH, 4.0, 'catwalk_platform');
 
-    // Ground stair rises west-to-east onto the midpoint platform. Each rise is
-    // 0.35 m, comfortably below the shared player/enemy step limits.
+    // Ground stair climbs east-to-west onto the main deck, well south and east
+    // of the pasture gate. Each 0.35 m rise remains under the shared step limit.
     const stairs = new PRIM.Batch(deckMat, 0.035);
-    const stairZ = -29.5, stairStartX = 9.4, stairCount = 10, stairW = 0.78;
+    const stairZ = -24.5, stairGroundX = 27.0, stairCount = 10, stairW = 0.78;
     for (let i = 0; i < stairCount; i++) {
       const top = DECK_Y * (i + 1) / stairCount;
-      const x = stairStartX + stairW * (i + 0.5);
+      const x = stairGroundX - stairW * (i + 0.5);
       stairs.box(stairW + 0.04, top, 2.35, x, top * 0.5, stairZ, 0, 0, 0, 0.012);
       WORLD.addFloor(x, 0, stairZ, stairW + 0.06, top, 2.35, 'catwalk_stair');
     }
@@ -2313,7 +2360,7 @@ const LEVEL = (() => {
     const support = new PRIM.Batch(MAT.toon(PAL.rustDeep, {
       map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2)
     }), 0.035);
-    [-18, -23, -35, -39.2].forEach(z => {
+    [-18, -27, -35, -39.2].forEach(z => {
       [-1.08, 1.08].forEach(o => {
         support.box(0.30, DECK_Y - 0.12, 0.30, CX + o, (DECK_Y - 0.12) * 0.5, z,
           0, 0, o * 0.02, 0.015);
@@ -2324,29 +2371,32 @@ const LEVEL = (() => {
     });
     support.build(parent);
 
-    // Railings: full east side, split west side around the midpoint stair.
+    // Railings open east for the relocated stair and west for the tower link.
     const railXWest = CX - 1.30, railXEast = CX + 1.30;
     const railBottom = DECK_Y, railH = 1.08, railTop = DECK_Y + railH;
     const rail = new PRIM.Batch(MAT.toon(PAL.rustDeep, {
       map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1)
     }), 0.025);
     for (let z = -16; z >= -40.2; z -= 2.25) {
-      rail.box(0.14, railH, 0.14, railXEast, railBottom + railH * 0.5, z,
-        0, 0, UTIL.rng(-0.04, 0.04), 0.01);
-      if (z > -27.2 || z < -31.8) {
+      if (z > -22.6 || z < -26.4) {
+        rail.box(0.14, railH, 0.14, railXEast, railBottom + railH * 0.5, z,
+          0, 0, UTIL.rng(-0.04, 0.04), 0.01);
+      }
+      if (z > -15.6 || z < -18.4) {
         rail.box(0.14, railH, 0.14, railXWest, railBottom + railH * 0.5, z,
           0, 0, UTIL.rng(-0.04, 0.04), 0.01);
       }
     }
-    rail.box(0.14, 0.14, span - 0.8, railXEast, railTop, spanCenter, 0, 0, 0.012, 0.01);
-    const westSouthLen = 12.3, westNorthLen = 9.0;
-    rail.box(0.14, 0.14, westSouthLen, railXWest, railTop, -21.0, 0, 0, -0.012, 0.01);
-    rail.box(0.14, 0.14, westNorthLen, railXWest, railTop, -36.4, 0, 0, 0.012, 0.01);
+    const eastSouthLen = 8.1, eastNorthLen = 14.9;
+    const westNorthLen = 22.6;
+    rail.box(0.14, 0.14, eastSouthLen, railXEast, railTop, -18.85, 0, 0, 0.012, 0.01);
+    rail.box(0.14, 0.14, eastNorthLen, railXEast, railTop, -33.55, 0, 0, -0.012, 0.01);
+    rail.box(0.14, 0.14, westNorthLen, railXWest, railTop, -29.7, 0, 0, 0.012, 0.01);
     rail.build(parent);
 
-    WORLD.add(railXEast, railBottom + railH * 0.5, spanCenter, 0.26, railH, span, 'catwalk_rail');
-    WORLD.add(railXWest, railBottom + railH * 0.5, -21.0, 0.26, railH, westSouthLen, 'catwalk_rail');
-    WORLD.add(railXWest, railBottom + railH * 0.5, -36.4, 0.26, railH, westNorthLen, 'catwalk_rail');
+    WORLD.add(railXEast, railBottom + railH * 0.5, -18.85, 0.26, railH, eastSouthLen, 'catwalk_rail');
+    WORLD.add(railXEast, railBottom + railH * 0.5, -33.55, 0.26, railH, eastNorthLen, 'catwalk_rail');
+    WORLD.add(railXWest, railBottom + railH * 0.5, -29.7, 0.26, railH, westNorthLen, 'catwalk_rail');
 
     // Small cover and a light make the midpoint readable from both levels.
     PROPS.crate(parent, 20.25, DECK_Y, -29.6, 0.82, -0.25);
@@ -2354,6 +2404,103 @@ const LEVEL = (() => {
 
     // Reserved until a later enemy-count or multiplayer spawn pass.
     WORLD.addSpawn(CX, DECK_Y, -24.0, 'catwalk');
+  }
+
+  /* ---------------- water-tower catwalk link ----------------
+     A second elevated route descends from the tower deck, turns north, then
+     meets the barn/pasture lane. The stepped bridge preserves the tower's
+     higher overlook without adding another long ground staircase. */
+  function buildTowerCatwalk(parent) {
+    const LOW_Y = CONFIG.map.catwalkY, TOWER_Y = 6.2;
+    const TX = -17, TZ = -6.75, LINK_X = -6.5, TURN_Z = -17, MAIN_X = 18.2;
+    const deckH = 0.22;
+    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const deck = new PRIM.Batch(deckMat, 0.036);
+
+    // Eight shallow suspended steps descend east from the tower opening.
+    const stepCount = 8, stepW = 0.85, stepX0 = TX + 4.0;
+    for (let i = 0; i < stepCount; i++) {
+      const x = stepX0 + i * stepW;
+      const top = TOWER_Y - (TOWER_Y - LOW_Y) * i / stepCount;
+      deck.box(stepW + 0.05, deckH, 2.55, x, top - deckH * 0.5, TZ,
+        0, 0, UTIL.rng(-0.012, 0.012), 0.012);
+      WORLD.addFloor(x, top - deckH, TZ, stepW + 0.07, deckH, 2.55, 'tower_link_step');
+    }
+
+    // Low L-shaped lane: south/north beside the tower, then east to the main route.
+    const northSpan = TZ - TURN_Z;
+    const northCenter = (TZ + TURN_Z) * 0.5;
+    for (let z = TZ; z >= TURN_Z; z -= 0.68) {
+      deck.box(2.62, 0.18, 0.52, LINK_X + UTIL.rng(-0.03, 0.03), LOW_Y - 0.09, z,
+        0, UTIL.rng(-0.02, 0.02), UTIL.rng(-0.014, 0.014), 0.014);
+    }
+    const eastSpan = MAIN_X - LINK_X;
+    const eastCenter = (LINK_X + MAIN_X) * 0.5;
+    for (let x = LINK_X; x <= MAIN_X; x += 0.68) {
+      deck.box(0.52, 0.18, 2.62, x, LOW_Y - 0.09, TURN_Z,
+        UTIL.rng(-0.014, 0.014), UTIL.rng(-0.02, 0.02), 0, 0.014);
+    }
+    deck.box(0.18, 0.22, northSpan, LINK_X - 0.9, LOW_Y - 0.25, northCenter);
+    deck.box(0.18, 0.22, northSpan, LINK_X + 0.9, LOW_Y - 0.25, northCenter);
+    deck.box(eastSpan, 0.22, 0.18, eastCenter, LOW_Y - 0.25, TURN_Z - 0.9);
+    deck.box(eastSpan, 0.22, 0.18, eastCenter, LOW_Y - 0.25, TURN_Z + 0.9);
+    deck.build(parent);
+
+    WORLD.addFloor(LINK_X, LOW_Y - deckH, northCenter, 2.6, deckH, northSpan, 'tower_catwalk_deck');
+    WORLD.addFloor(eastCenter, LOW_Y - deckH, TURN_Z, eastSpan, deckH, 2.6, 'tower_catwalk_deck');
+
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const support = new PRIM.Batch(timber, 0.032);
+    [[LINK_X, -10.2], [LINK_X, -14.3], [0, TURN_Z], [7, TURN_Z], [14, TURN_Z]].forEach(p => {
+      support.box(0.30, LOW_Y - 0.12, 0.30, p[0], (LOW_Y - 0.12) * 0.5, p[1], 0, 0, 0.02, 0.014);
+      WORLD.addFloor(p[0], 0, p[1], 0.48, LOW_Y - 0.12, 0.48, 'tower_catwalk_support');
+    });
+
+    // Stepped rails follow the descending bridge and remain solid at the edges.
+    for (let i = 0; i < stepCount; i++) {
+      const x = stepX0 + i * stepW;
+      const top = TOWER_Y - (TOWER_Y - LOW_Y) * i / stepCount;
+      [-1.25, 1.25].forEach(o => {
+        // Open the north rail across the last two steps so the natural turn
+        // onto the northbound deck has comfortable player-width clearance.
+        if (o < 0 && i >= stepCount - 2) return;
+        if (i % 2 === 0 || i === stepCount - 1) {
+          support.box(0.13, 1.0, 0.13, x, top + 0.5, TZ + o, 0, 0, 0.02, 0.008);
+        }
+        support.box(stepW + 0.04, 0.12, 0.13, x, top + 1.0, TZ + o,
+          0, 0, UTIL.rng(-0.018, 0.018), 0.008);
+        WORLD.add(x, top + 0.5, TZ + o, stepW + 0.07, 1.0, 0.24, 'tower_catwalk_rail');
+      });
+    }
+
+    const railH = 1.08, railY = LOW_Y + railH * 0.5, railTop = LOW_Y + railH;
+    const westX = LINK_X - 1.3, eastX = LINK_X + 1.3;
+    const eastRailLen = 8.75, eastRailCenter = (TZ - 15.5) * 0.5;
+    const sideStart = LINK_X + 1.3, sideEnd = MAIN_X - 1.8;
+    const sideLen = sideEnd - sideStart, sideCenter = (sideStart + sideEnd) * 0.5;
+
+    // Low-route rails leave both the corner and main-catwalk junction open.
+    support.box(0.14, 0.14, northSpan, westX, railTop, northCenter);
+    support.box(0.14, 0.14, eastRailLen, eastX, railTop, eastRailCenter);
+    support.box(sideLen, 0.14, 0.14, sideCenter, railTop, TURN_Z - 1.3);
+    support.box(sideLen, 0.14, 0.14, sideCenter, railTop, TURN_Z + 1.3);
+    for (let z = -7.4; z >= -16.6; z -= 2.3) {
+      support.box(0.14, railH, 0.14, westX, railY, z, 0, 0, UTIL.rng(-0.03, 0.03));
+      if (z > -15.5) support.box(0.14, railH, 0.14, eastX, railY, z, 0, 0, UTIL.rng(-0.03, 0.03));
+    }
+    for (let x = -4.5; x <= 15.8; x += 2.3) {
+      support.box(0.14, railH, 0.14, x, railY, TURN_Z - 1.3, 0, 0, UTIL.rng(-0.03, 0.03));
+      support.box(0.14, railH, 0.14, x, railY, TURN_Z + 1.3, 0, 0, UTIL.rng(-0.03, 0.03));
+    }
+    support.build(parent);
+
+    WORLD.add(westX, railY, northCenter, 0.26, railH, northSpan, 'tower_catwalk_rail');
+    WORLD.add(eastX, railY, eastRailCenter, 0.26, railH, eastRailLen, 'tower_catwalk_rail');
+    WORLD.add(sideCenter, railY, TURN_Z - 1.3, sideLen, railH, 0.26, 'tower_catwalk_rail');
+    WORLD.add(sideCenter, railY, TURN_Z + 1.3, sideLen, railH, 0.26, 'tower_catwalk_rail');
+
+    PROPS.lantern(parent, LINK_X - 0.95, LOW_Y + 1.45, -12.0, 0);
+    WORLD.addSpawn(4, LOW_Y, TURN_Z, 'tower_catwalk');
   }
 
   function buildScatter(parent) {
@@ -2419,6 +2566,7 @@ const LEVEL = (() => {
     buildScatter(root);
     buildNorthPasture(root);
     buildCatwalks(root);
+    buildTowerCatwalk(root);
     return root;
   }
 
@@ -3477,6 +3625,7 @@ const PLAYER = (() => {
   let camera = null;
   let sprinting = false;
   let speedRatio = 0;
+  let climbing = false, activeLadder = null, ladderCooldown = 0;
 
   const fwd = new THREE.Vector3();
   const right = new THREE.Vector3();
@@ -3488,6 +3637,8 @@ const PLAYER = (() => {
     pos.set(C.startPos.x, C.startPos.y, C.startPos.z);
     vel.set(0, 0, 0);
     yaw = C.startYaw; pitch = 0;
+    climbing = false; activeLadder = null; ladderCooldown = 0;
+    grounded = true; wasGrounded = true;
   }
 
   /* ---- vitality ---- */
@@ -3597,63 +3748,116 @@ const PLAYER = (() => {
     const inputStrength = moving ? Math.min(1, wish.length()) : 0;
     if (moving) wish.normalize();
 
-    sprinting = active && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    ladderCooldown = Math.max(0, ladderCooldown - dt);
+    if (dead && climbing) { climbing = false; activeLadder = null; }
+
+    // Ladders use the same forward/back axis as walking, so keyboard and the
+    // mobile stick behave identically. The short exit cooldown prevents held
+    // input from snapping the player straight back onto the ladder volume.
+    const ladderHere = ladderCooldown <= 0
+      ? WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height)
+      : null;
+    if (!climbing && active && ladderHere && Math.abs(moveInput.y) > 0.16) {
+      climbing = true;
+      activeLadder = ladderHere;
+      vel.set(0, 0, 0);
+      grounded = false;
+    }
+
+    const jumpPressed = active && INPUT.consumePress('jump');
+    if (climbing && jumpPressed) {
+      const ladder = activeLadder;
+      climbing = false;
+      activeLadder = null;
+      ladderCooldown = 0.32;
+      grounded = false;
+      vel.set(ladder.normalX * 3.0, C.jumpForce * 0.58, ladder.normalZ * 3.0);
+      AUDIO.jump();
+    }
+
+    sprinting = !climbing && active && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength;
 
     // ---- horizontal acceleration with real friction, no ice ----
-    const accel = (grounded ? C.accel : C.airAccel) * dt;
-    if (moving) {
-      vel.x = UTIL.damp(vel.x, wish.x * target, grounded ? 14 : 4.5, dt);
-      vel.z = UTIL.damp(vel.z, wish.z * target, grounded ? 14 : 4.5, dt);
-    } else if (grounded) {
-      const f = Math.max(0, 1 - C.friction * dt);
-      vel.x *= f; vel.z *= f;
-      if (Math.abs(vel.x) < 0.02) vel.x = 0;
-      if (Math.abs(vel.z) < 0.02) vel.z = 0;
+    if (!climbing) {
+      if (moving) {
+        vel.x = UTIL.damp(vel.x, wish.x * target, grounded ? 14 : 4.5, dt);
+        vel.z = UTIL.damp(vel.z, wish.z * target, grounded ? 14 : 4.5, dt);
+      } else if (grounded) {
+        const f = Math.max(0, 1 - C.friction * dt);
+        vel.x *= f; vel.z *= f;
+        if (Math.abs(vel.x) < 0.02) vel.x = 0;
+        if (Math.abs(vel.z) < 0.02) vel.z = 0;
+      }
     }
 
     // ---- jump ----
-    if (active && grounded && INPUT.consumePress('jump')) {
+    if (!climbing && jumpPressed && grounded) {
       vel.y = C.jumpForce;
       grounded = false;
       AUDIO.jump();
     }
 
     // ---- horizontal move + slide ----
-    moveAxis('x', vel.x * dt);
-    moveAxis('z', vel.z * dt);
-
-    // ---- gravity + ground ----
-    const prevY = pos.y;
-    vel.y -= C.gravity * dt;
-    if (vel.y < -45) vel.y = -45;
-    pos.y += vel.y * dt;
-
-    wasGrounded = grounded;
-    grounded = false;
-    let groundY = 0;
-    const r = C.radius, h = C.height;
-    const solids = WORLD.solids;
-    for (let i = 0; i < solids.length; i++) {
-      const s = solids[i];
-      if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
-      if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
-      if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
-      // bonk your head
-      if (vel.y > 0 && pos.y + h > s.minY && prevY + h <= s.minY + 0.02) {
-        pos.y = s.minY - h - 0.001;
-        vel.y = 0;
-      }
+    if (!climbing) {
+      moveAxis('x', vel.x * dt);
+      moveAxis('z', vel.z * dt);
     }
-    if (pos.y <= groundY) {
-      pos.y = groundY;
-      if (!wasGrounded && vel.y < -3.5) {
-        const force = UTIL.clamp(-vel.y / 12, 0.2, 1);
-        landVel -= C.landDip * force * 26;
-        AUDIO.land(force);
+
+    if (climbing) {
+      const ladder = activeLadder;
+      pos.x = UTIL.damp(pos.x, ladder.snapX, C.ladderSnap, dt);
+      pos.z = UTIL.damp(pos.z, ladder.snapZ, C.ladderSnap, dt);
+      vel.x = 0; vel.z = 0;
+      vel.y = (active ? moveInput.y : 0) * C.ladderSpeed;
+      pos.y += vel.y * dt;
+      grounded = false;
+      wasGrounded = false;
+
+      if (pos.y >= ladder.topY) {
+        pos.set(ladder.topExitX, ladder.topY, ladder.topExitZ);
+        vel.set(0, 0, 0);
+        climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        grounded = true; wasGrounded = true;
+      } else if (pos.y <= ladder.bottomY) {
+        pos.set(ladder.bottomExitX, ladder.bottomY, ladder.bottomExitZ);
+        vel.set(0, 0, 0);
+        climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        grounded = true; wasGrounded = true;
       }
-      vel.y = 0;
-      grounded = true;
+    } else {
+      // ---- gravity + ground ----
+      const prevY = pos.y;
+      vel.y -= C.gravity * dt;
+      if (vel.y < -45) vel.y = -45;
+      pos.y += vel.y * dt;
+
+      wasGrounded = grounded;
+      grounded = false;
+      let groundY = 0;
+      const r = C.radius, h = C.height;
+      const solids = WORLD.solids;
+      for (let i = 0; i < solids.length; i++) {
+        const s = solids[i];
+        if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
+        if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
+        if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
+        // bonk your head
+        if (vel.y > 0 && pos.y + h > s.minY && prevY + h <= s.minY + 0.02) {
+          pos.y = s.minY - h - 0.001;
+          vel.y = 0;
+        }
+      }
+      if (pos.y <= groundY) {
+        pos.y = groundY;
+        if (!wasGrounded && vel.y < -3.5) {
+          const force = UTIL.clamp(-vel.y / 12, 0.2, 1);
+          landVel -= C.landDip * force * 26;
+          AUDIO.land(force);
+        }
+        vel.y = 0;
+        grounded = true;
+      }
     }
     // never lose the player under the world
     if (pos.y < -6) respawn();
@@ -3721,6 +3925,7 @@ const PLAYER = (() => {
     get position() { return pos; },
     get velocity() { return vel; },
     get grounded() { return grounded; },
+    get isClimbing() { return climbing; },
     get sprinting() { return sprinting; },
     get speedRatio() { return speedRatio; },
     get pitch() { return pitch; },
