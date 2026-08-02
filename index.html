@@ -526,7 +526,7 @@ const CONFIG = {
     invulnAfterHit: 0.45, reviveDelay: 2.2
   },
   enemy: {
-    count: 6,
+    count: 8,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -1695,8 +1695,7 @@ const LEVEL = (() => {
       [[[-33, 34.5], [-8, 34]], 1.9, 0.5],            // south-west of the gate
       [[[8, 34], [33, 34.5]], 1.9, 0.5],              // south-east of the gate
       [[[23, -2.5], [28, -3], [28.5, -15]], 1.5, 0.35], // walls the hidden nook
-      [[[22.5, -16], [28.5, -16]], 1.5, 0.35],
-      [[[-13, 11], [-13.5, 18], [-16, 21]], 1.6, 0.4]   // screens off the shed
+      [[[22.5, -16], [28.5, -16]], 1.5, 0.35]
     ];
     runs.forEach(r => {
       const b = new PRIM.Batch(MAT.toon(PAL.olive), 0.06);
@@ -1706,7 +1705,6 @@ const LEVEL = (() => {
 
     WORLD.addFloor(28.6, 0, -9.5, 2.6, 2.6, 15, 'hedge');
     WORLD.addFloor(25.5, 0, -16.4, 8, 2.6, 2.6, 'hedge');
-    WORLD.addFloor(-13.6, 0, 14.6, 2.6, 2.6, 9, 'hedge');
   }
 
   /* ---------------- the barn ---------------- */
@@ -1983,6 +1981,7 @@ const LEVEL = (() => {
     animated.vane = vane;
 
     PROPS.signPost(parent, CX + 3.2, CZ + 3.4, ['MIND THE', 'BLADES'], -0.9, { w: 1.6, h: 0.85, bg: PAL.mustard, fg: PAL.rustDeep });
+    WORLD.addSpawn(CX - 4, 0, CZ + 3.5, 'windmill');
   }
 
   /* ---------------- warped storage shed ---------------- */
@@ -2023,7 +2022,9 @@ const LEVEL = (() => {
     PROPS.lantern(parent, -19, 3.1, 15.4, 0.35);
 
     PROPS.signPost(parent, -15.0, 13.4, ['SEED', 'STORE'], -1.5, { w: 1.3, h: 0.9, bg: PAL.mustard, fg: PAL.rustDeep, postH: 2.1 });
-    WORLD.addSpawn(-19, 0, 15, 'shed_interior');
+    // Keep the loot room readable: its guard waits outside instead of spawning
+    // directly on top of the carbine pickup.
+    WORLD.addSpawn(-12, 0, 15, 'shed_guard');
   }
 
   /* ---------------- the field ---------------- */
@@ -2216,6 +2217,7 @@ const LEVEL = (() => {
     PROPS.barrel(parent, -22.4, -23.2, { color: PAL.blueDeep });
     PROPS.can(parent, -22.4, 1.28, -23.2);
     PROPS.signPost(parent, -21.4, -20.4, ['CONDEMNED'], 0.6, { w: 1.9, h: 0.7, bg: PAL.rust, fg: PAL.cream, postH: 1.6 });
+    WORLD.addSpawn(-19, 0, -22, 'ruins');
 
     // a couple of stumps to sit the eye on
     [[-11, 9], [8, 20], [-16, -16]].forEach(p => {
@@ -4344,7 +4346,9 @@ const PICKUP = (() => {
 
   const spawns = [
     { id: 'tinSixerWeapon', x: -4.0, z: 23.0 },
-    { id: 'fieldhandWeapon', x: -19.0, z: 15.0 },
+    // Just inside the now-clear shed doorway, visible before the player reaches
+    // the back shelving and separate from the shed guard's home position.
+    { id: 'fieldhandWeapon', x: -17.6, z: 15.1 },
     { id: 'shellBox', x: 0.0, z: 18.0 },
     { id: 'lightAmmo', x: -13.0, z: 2.0 },
     { id: 'carbineAmmo', x: 18.8, z: -4.0 },
