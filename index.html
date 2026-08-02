@@ -1575,7 +1575,7 @@ const PROPS = (() => {
    collision boxes and the art can never drift apart. */
 const LEVEL = (() => {
   let root = null;
-  const animated = { windmillFan: null, vane: null, sails: [], hangers: [] };
+  const animated = { windmillFan: null, vane: null, sails: [], hangers: [], basementHatch: null };
 
   /* soft-edged dirt blob used to paint the footpaths */
   let pathTex = null;
@@ -2323,18 +2323,20 @@ const LEVEL = (() => {
   }
 
   function buildNook(parent) {
-    // A quiet gap between the barn's east wall and the hedge.
-    PROPS.crate(parent, 25.4, 0, -12.0, 1.0, 0.3);
-    PROPS.crate(parent, 25.2, 1.0, -12.2, 0.85, -0.5);
-    PROPS.crate(parent, 26.3, 0, -11.2, 0.9, 0.8);
-    PROPS.barrel(parent, 24.8, -7.4, { color: PAL.mustardDk });
+    // A quiet gap between the barn's east wall and the hedge. Dressing stays
+    // against the east edge now, leaving a clean north/south lane to the
+    // basement hatch added later in this nook.
+    PROPS.crate(parent, 26.0, 0, -12.3, 1.0, 0.3);
+    PROPS.crate(parent, 25.9, 1.0, -12.5, 0.85, -0.5);
+    PROPS.crate(parent, 26.4, 0, -11.0, 0.9, 0.8);
+    PROPS.barrel(parent, 26.0, -7.5, { color: PAL.mustardDk });
     PROPS.lantern(parent, 25.6, 2.4, -9.4, 0);
-    for (let i = 0; i < 4; i++) PROPS.bottle(parent, 24.2 + i * 0.5, 1.28, -7.4);
-    PROPS.can(parent, 25.2, 1.85, -12.2);
+    for (let i = 0; i < 3; i++) PROPS.bottle(parent, 25.6 + i * 0.3, 1.28, -7.5);
+    PROPS.can(parent, 25.9, 1.85, -12.5);
     PROPS.signPost(parent, 25.8, -5.2, ['YOU FOUND', 'THE GOOD SPOT'], Math.PI * 0.9,
       { w: 2.0, h: 0.8, bg: PAL.mustard, fg: PAL.rustDeep, postH: 1.5 });
     PROPS.tree(parent, 27.2, -6.0, 0.9);
-    WORLD.addSpawn(25.5, 0, -10, 'nook');
+    WORLD.addSpawn(26.0, 0, -13.5, 'nook');
   }
 
   /* ---------------- north pasture expansion ----------------
@@ -2669,18 +2671,34 @@ const LEVEL = (() => {
     ladder.box(0.14, 4.0, 0.14, HX - 0.56, -2.0, HZ);
     ladder.box(0.14, 4.0, 0.14, HX + 0.56, -2.0, HZ);
     for (let y = -3.65; y <= -0.35; y += 0.47) ladder.box(1.25, 0.12, 0.14, HX, y, HZ);
-    // Raised hatch rim and a dark inset sell the surface entry from above.
+    // Raised hatch rim surrounds a real animated lid. The dark inset stays
+    // above the terrain sheet, so opening the lid actually reveals a readable
+    // shaft instead of the unbroken ground texture beneath it.
     ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ - 0.72);
     ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ + 0.72);
     ladder.box(0.18, 0.18, 1.26, HX - 0.82, 0.12, HZ);
     ladder.box(0.18, 0.18, 1.26, HX + 0.82, 0.12, HZ);
     ladder.build(parent);
-    const hatch = PRIM.box(1.45, 0.04, 1.15, MAT.toon(PAL.charcoal), {
-      pos: [HX, 0.035, HZ], parent: parent, ray: false, outline: 0.025
+
+    PRIM.box(1.50, 0.045, 1.20, MAT.flat(PAL.charcoal), {
+      pos: [HX, 0.035, HZ], parent: parent, ray: false, outline: 0.022
     });
-    hatch.rotation.y = 0.03;
-    WORLD.addLadder(HX, FLOOR_Y, HZ, 1.4, 4.0, 1.1, {
-      topY: 0, topExitX: HX, topExitZ: HZ - 1.35,
+
+    const hatchPivot = new THREE.Group();
+    hatchPivot.position.set(HX, 0.075, HZ - 0.575);
+    parent.add(hatchPivot);
+    PRIM.box(1.45, 0.10, 1.15, MAT.toon(PAL.rustDeep, { map: TEX.metal() }), {
+      pos: [0, 0.05, 0.575], parent: hatchPivot, ray: false, outline: 0.030
+    });
+    const hatchBrace = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.018);
+    hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.35);
+    hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.80);
+    hatchBrace.box(0.10, 0.06, 0.92, 0, 0.115, 0.575);
+    hatchBrace.build(hatchPivot);
+    animated.basementHatch = { pivot: hatchPivot, x: HX, z: HZ, openness: 0, target: 0 };
+
+    WORLD.addLadder(HX, FLOOR_Y, HZ, 1.75, 4.0, 1.55, {
+      topY: 0, topExitX: HX, topExitZ: HZ - 1.08,
       bottomExitX: HX, bottomExitZ: HZ, normalZ: 1,
       topLayer: 'surface', bottomLayer: 'basement', tag: 'basement_hatch_ladder'
     });
@@ -2765,6 +2783,17 @@ const LEVEL = (() => {
       const h = animated.hangers[i];
       h.obj.rotation.z = Math.sin(t * h.speed + h.phase) * h.amp;
       h.obj.rotation.x = Math.cos(t * h.speed * 0.7 + h.phase) * h.amp * 0.5;
+    }
+    const hatch = animated.basementHatch;
+    if (hatch) {
+      const dx = PLAYER.position.x - hatch.x;
+      const dz = PLAYER.position.z - hatch.z;
+      // Hysteresis prevents flicker at the edge: open within 3.2 m and remain
+      // open until the player is more than 3.8 m away. Climbing always wins.
+      const limit = hatch.target > 0.5 ? 3.8 : 3.2;
+      hatch.target = (PLAYER.isClimbing || dx * dx + dz * dz < limit * limit) ? 1 : 0;
+      hatch.openness = UTIL.damp(hatch.openness, hatch.target, hatch.target ? 8.5 : 5.0, dt);
+      hatch.pivot.rotation.x = -hatch.openness * 1.42;
     }
   }
 
@@ -3810,6 +3839,8 @@ const PLAYER = (() => {
   let sprinting = false;
   let speedRatio = 0;
   let climbing = false, activeLadder = null, ladderCooldown = 0;
+  let climbPolarity = 1;
+  let ladderNeedsRelease = false;
   let layerId = 'surface';
 
   const fwd = new THREE.Vector3();
@@ -3823,6 +3854,8 @@ const PLAYER = (() => {
     vel.set(0, 0, 0);
     yaw = C.startYaw; pitch = 0;
     climbing = false; activeLadder = null; ladderCooldown = 0;
+    climbPolarity = 1;
+    ladderNeedsRelease = false;
     layerId = 'surface';
     grounded = true; wasGrounded = true;
   }
@@ -3949,15 +3982,19 @@ const PLAYER = (() => {
     ladderCooldown = Math.max(0, ladderCooldown - dt);
     if (dead && climbing) { climbing = false; activeLadder = null; }
 
-    // Ladders use the same forward/back axis as walking, so keyboard and the
-    // mobile stick behave identically. The short exit cooldown prevents held
-    // input from snapping the player straight back onto the ladder volume.
-    const ladderHere = ladderCooldown <= 0
-      ? WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height, layerId)
-      : null;
-    if (!climbing && active && ladderHere && Math.abs(moveInput.y) > 0.16) {
+    // Ladders accept the direction used to approach them. At the top, that
+    // held direction continues downward; at the bottom it continues upward.
+    // Reversing the stick/key reverses travel. This removes the old requirement
+    // to face away from the basement hatch and back into it.
+    const ladderCandidate = WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height, layerId);
+    if (ladderNeedsRelease && (Math.abs(moveInput.y) <= 0.10 || !ladderCandidate)) ladderNeedsRelease = false;
+    const ladderHere = ladderCooldown <= 0 && !ladderNeedsRelease ? ladderCandidate : null;
+    if (!climbing && active && ladderHere && Math.abs(moveInput.y) > 0.10) {
       climbing = true;
       activeLadder = ladderHere;
+      const enteringFromTop = pos.y > (ladderHere.bottomY + ladderHere.topY) * 0.5;
+      const heldSign = moveInput.y < 0 ? -1 : 1;
+      climbPolarity = (enteringFromTop ? -1 : 1) * heldSign;
       vel.set(0, 0, 0);
       grounded = false;
     }
@@ -3968,6 +4005,7 @@ const PLAYER = (() => {
       climbing = false;
       activeLadder = null;
       ladderCooldown = 0.32;
+      ladderNeedsRelease = true;
       grounded = false;
       vel.set(ladder.normalX * 3.0, C.jumpForce * 0.58, ladder.normalZ * 3.0);
       AUDIO.jump();
@@ -4007,7 +4045,7 @@ const PLAYER = (() => {
       pos.x = UTIL.damp(pos.x, ladder.snapX, C.ladderSnap, dt);
       pos.z = UTIL.damp(pos.z, ladder.snapZ, C.ladderSnap, dt);
       vel.x = 0; vel.z = 0;
-      vel.y = (active ? moveInput.y : 0) * C.ladderSpeed;
+      vel.y = (active ? moveInput.y * climbPolarity : 0) * C.ladderSpeed;
       pos.y += vel.y * dt;
       grounded = false;
       wasGrounded = false;
@@ -4016,12 +4054,14 @@ const PLAYER = (() => {
         pos.set(ladder.topExitX, ladder.topY, ladder.topExitZ);
         vel.set(0, 0, 0);
         climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        ladderNeedsRelease = true;
         layerId = ladder.topLayer;
         grounded = true; wasGrounded = true;
       } else if (pos.y <= ladder.bottomY) {
         pos.set(ladder.bottomExitX, ladder.bottomY, ladder.bottomExitZ);
         vel.set(0, 0, 0);
         climbing = false; activeLadder = null; ladderCooldown = 0.28;
+        ladderNeedsRelease = true;
         layerId = ladder.bottomLayer;
         grounded = true; wasGrounded = true;
       }
