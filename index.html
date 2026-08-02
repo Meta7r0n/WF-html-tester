@@ -1,0 +1,4703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>The Withered Farm — Phase 1 Prototype</title>
+<style>
+  :root{
+    --peach:#F2CDBB;
+    --peach-deep:#DCA692;
+    --cream:#F6E9D2;
+    --blue:#8FB3CC;
+    --blue-deep:#5C7E99;
+    --mustard:#E8A33D;
+    --rust:#A85A3C;
+    --rust-deep:#7E3F2A;
+    --olive:#6E7A42;
+    --ink:#16120F;
+    --ink-soft:#2A231E;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--ink);}
+  body{
+    font-family:"Rockwell","Courier New",Georgia,serif;
+    color:var(--ink);
+    -webkit-font-smoothing:antialiased;
+    -webkit-tap-highlight-color:transparent;
+    cursor:default;
+  }
+  canvas{display:block;}
+
+  #app{position:fixed;inset:0;}
+
+  /* ---------- Film / paper layers ---------- */
+  #grain{
+    position:fixed;inset:-40px;pointer-events:none;z-index:20;
+    opacity:.16;mix-blend-mode:multiply;
+    background-repeat:repeat;
+    will-change:transform;
+  }
+  #vignette{
+    position:fixed;inset:0;pointer-events:none;z-index:21;
+    background:
+      radial-gradient(120% 95% at 50% 45%, rgba(0,0,0,0) 42%, rgba(38,24,18,.30) 78%, rgba(22,14,10,.62) 100%);
+    animation:flick 1.9s steps(3,end) infinite;
+  }
+  @keyframes flick{
+    0%{opacity:.86} 33%{opacity:1} 66%{opacity:.92} 100%{opacity:.86}
+  }
+  #scratches{
+    position:fixed;inset:0;pointer-events:none;z-index:22;opacity:.10;
+    background-repeat:no-repeat;
+  }
+  @media (prefers-reduced-motion: reduce){
+    #vignette{animation:none;opacity:.9}
+  }
+
+  /* ---------- Crosshair ---------- */
+  #crosshair{
+    position:fixed;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
+    z-index:30;pointer-events:none;opacity:0;transition:opacity .18s ease;
+  }
+  #crosshair.on{opacity:1;}
+  #crosshair i{
+    position:absolute;background:var(--ink);border-radius:2px;
+    box-shadow:0 0 0 2px rgba(246,233,210,.55);
+  }
+  #crosshair .t{left:50%;top:2px;width:3px;height:11px;margin-left:-1.5px;transform:rotate(-2deg);}
+  #crosshair .b{left:50%;bottom:2px;width:3px;height:11px;margin-left:-1.5px;transform:rotate(3deg);}
+  #crosshair .l{top:50%;left:2px;height:3px;width:11px;margin-top:-1.5px;transform:rotate(2deg);}
+  #crosshair .r{top:50%;right:2px;height:3px;width:11px;margin-top:-1.5px;transform:rotate(-3deg);}
+  #crosshair .d{left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;}
+  #crosshair.kick{transform:scale(1.35);}
+  #crosshair{transition:opacity .18s ease, transform .09s ease;}
+
+  /* ---------- Ammo ---------- */
+  #ammo{
+    position:fixed;right:26px;bottom:22px;z-index:30;
+    display:flex;align-items:flex-end;gap:12px;
+    opacity:0;transition:opacity .2s ease;user-select:none;
+  }
+  #ammo.on{opacity:1;}
+  #shells{display:flex;gap:5px;align-items:flex-end;}
+  #shells span{
+    width:11px;height:26px;border:3px solid var(--ink);border-radius:3px 3px 5px 5px;
+    background:var(--rust);box-shadow:inset 0 -8px 0 var(--mustard);
+    transform:rotate(-3deg);transition:background .12s, opacity .12s, transform .12s;
+  }
+  #shells span:nth-child(even){transform:rotate(4deg);}
+  #shells span.spent{background:#B9AFA2;box-shadow:inset 0 -8px 0 #8A8073;opacity:.42;}
+  #ammoNum{
+    font-size:38px;font-weight:900;letter-spacing:-1px;line-height:.8;color:var(--cream);
+    text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink),
+                2px 2px 0 var(--ink),-2px 2px 0 var(--ink),2px -2px 0 var(--ink),-2px -2px 0 var(--ink),
+                5px 6px 0 rgba(22,18,15,.35);
+    transform:rotate(-2deg);
+  }
+  #ammoNum.low{color:var(--mustard);}
+  #reloadTag{
+    position:fixed;right:26px;bottom:74px;z-index:30;
+    font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;
+    color:var(--mustard);opacity:0;transform:rotate(-2deg);
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #reloadTag.on{opacity:1;animation:nudge .5s steps(2,end) infinite;}
+  @keyframes nudge{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(1deg) translateY(-3px)}100%{transform:rotate(-2deg) translateY(0)}}
+
+  /* ---------- Health + tally ---------- */
+  #vitals{
+    position:fixed;left:26px;bottom:22px;z-index:30;
+    opacity:0;transition:opacity .2s ease;user-select:none;
+  }
+  #vitals.on{opacity:1;}
+  #vitals .lbl{
+    font-size:13px;font-weight:900;letter-spacing:4px;text-transform:uppercase;
+    color:var(--cream);margin:0 0 6px 3px;transform:rotate(-1.5deg);
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #pepBar{
+    width:186px;height:24px;border:4px solid var(--ink);border-radius:6px 10px 7px 9px;
+    background:rgba(30,22,18,.55);transform:rotate(-1.5deg);
+    box-shadow:4px 5px 0 rgba(22,18,15,.4);overflow:hidden;
+  }
+  #pepFill{
+    height:100%;width:100%;background:var(--mustard);
+    box-shadow:inset 0 -7px 0 rgba(22,18,15,.22);
+    transition:width .16s ease, background .2s ease;
+  }
+  #pepFill.hurt{background:var(--rust);}
+  #tally{
+    position:fixed;left:26px;top:22px;z-index:30;
+    font-size:14px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+    color:var(--cream);opacity:0;transition:opacity .2s ease;transform:rotate(-1deg);
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #tally.on{opacity:1;}
+  #tally b{color:var(--mustard);font-size:19px;}
+
+  #modeChip{
+    position:fixed;right:26px;top:22px;z-index:31;max-width:300px;
+    background:var(--cream);border:3px solid var(--ink);border-radius:9px 13px 8px 12px;
+    padding:9px 13px;transform:rotate(1.2deg);box-shadow:4px 5px 0 rgba(22,18,15,.42);
+    font:700 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:1px;color:var(--ink-soft);
+    display:none;cursor:pointer;
+  }
+  #modeChip.on{display:block;}
+  #modeChip b{color:var(--rust);}
+  #modeChip span{
+    display:block;margin-top:5px;font-weight:600;letter-spacing:0;
+    font-size:11px;opacity:.62;text-transform:none;
+  }
+  #modeChip u{display:block;margin-top:6px;font-size:11px;color:var(--blue-deep);}
+
+  .alt{
+    display:block;margin:14px 0 0;padding:0;background:none;border:0;cursor:pointer;
+    font:700 12px/1.4 "Rockwell",Georgia,serif;letter-spacing:.6px;
+    color:var(--blue-deep);text-decoration:underline;text-underline-offset:3px;
+  }
+  .alt:hover{color:var(--rust);}
+  .alt:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px;}
+
+  #hurt{
+    position:fixed;inset:0;pointer-events:none;z-index:25;opacity:0;
+    background:radial-gradient(120% 95% at 50% 50%, rgba(168,90,60,0) 38%, rgba(126,63,42,.72) 100%);
+    transition:opacity .12s ease;
+  }
+
+  /* ---------- Overlays ---------- */
+  .veil{
+    position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
+    background:
+      radial-gradient(90% 70% at 50% 40%, rgba(242,205,187,.94), rgba(220,166,146,.96) 60%, rgba(126,63,42,.94));
+    padding:24px;
+  }
+  .veil.hidden{display:none;}
+
+  .card{
+    position:relative;max-width:560px;width:100%;
+    background:var(--cream);
+    border:5px solid var(--ink);
+    border-radius:26px 34px 24px 30px;
+    padding:34px 34px 28px;
+    box-shadow:12px 14px 0 rgba(22,18,15,.55);
+    transform:rotate(-.6deg);
+  }
+  .card:after{
+    content:"";position:absolute;inset:7px;border:2px dashed rgba(22,18,15,.28);
+    border-radius:20px 26px 18px 24px;pointer-events:none;
+  }
+  .eyebrow{
+    font-size:12px;letter-spacing:5px;text-transform:uppercase;color:var(--rust-deep);
+    font-weight:800;margin:0 0 6px;
+  }
+  h1{
+    margin:0 0 4px;font-size:clamp(34px,7vw,58px);line-height:.88;letter-spacing:-1.5px;
+    text-transform:uppercase;font-weight:900;color:var(--rust);
+    text-shadow:3px 3px 0 var(--ink);
+  }
+  h1 span{display:block;color:var(--blue-deep);font-size:.52em;letter-spacing:1px;text-shadow:2px 2px 0 var(--ink);}
+  .sub{margin:12px 0 20px;font-size:15px;line-height:1.5;color:var(--ink-soft);max-width:44ch;}
+
+  .keys{
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(146px,1fr));gap:8px 14px;
+    margin:0 0 22px;padding:0;list-style:none;
+  }
+  .keys li{display:flex;align-items:center;gap:9px;font-size:13.5px;color:var(--ink-soft);}
+  kbd{
+    display:inline-block;min-width:26px;padding:4px 7px;text-align:center;
+    background:var(--peach);border:3px solid var(--ink);border-radius:7px;
+    font:700 11.5px/1 "Rockwell",Georgia,serif;letter-spacing:.5px;
+    box-shadow:0 3px 0 var(--ink);
+  }
+  .go{
+    display:inline-flex;align-items:center;gap:10px;cursor:pointer;
+    background:var(--mustard);color:var(--ink);border:5px solid var(--ink);
+    border-radius:16px 22px 16px 20px;padding:15px 28px;
+    font:900 20px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;
+    box-shadow:0 8px 0 var(--ink);transform:rotate(-1deg);
+    transition:transform .08s ease, box-shadow .08s ease;
+  }
+  .go:hover{transform:rotate(-1deg) translateY(-2px);box-shadow:0 10px 0 var(--ink);}
+  .go:active{transform:rotate(-1deg) translateY(6px);box-shadow:0 2px 0 var(--ink);}
+  .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
+  .foot{margin:16px 0 0;font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(22,18,15,.45);}
+
+  #pause .card{max-width:420px;}
+  #loading{
+    position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
+    background:var(--peach);color:var(--rust-deep);
+    font:900 16px/1 "Rockwell",Georgia,serif;letter-spacing:4px;text-transform:uppercase;
+  }
+  #loading.hidden{display:none;}
+  #err{
+    position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--rust-deep);color:var(--cream);
+    font:600 12px/1.4 "Courier New",monospace;padding:10px 14px;display:none;max-height:34vh;overflow:auto;
+  }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
+
+  <div id="ammo">
+    <div id="shells"></div>
+    <div id="ammoNum">6</div>
+  </div>
+  <div id="reloadTag">Press R to reload</div>
+
+  <div id="vitals">
+    <p class="lbl">Pep</p>
+    <div id="pepBar"><div id="pepFill"></div></div>
+  </div>
+  <div id="tally">Wilted <b id="killNum">0</b></div>
+  <div id="hurt"></div>
+  <div id="modeChip">
+    Free-look &middot; <b>Esc</b> to pause
+    <span id="modeWhy"></span>
+    <u>Try mouse lock again</u>
+  </div>
+
+  <div id="grain"></div>
+  <div id="scratches"></div>
+  <div id="vignette"></div>
+
+  <div id="start" class="veil">
+    <div class="card">
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; Phase 1 Prototype</p>
+      <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
+      <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
+      <ul class="keys">
+        <li><kbd>W A S D</kbd> Move</li>
+        <li><kbd>Mouse</kbd> Look</li>
+        <li><kbd>Space</kbd> Jump</li>
+        <li><kbd>Shift</kbd> Sprint</li>
+        <li><kbd>Click</kbd> Fire</li>
+        <li><kbd>R</kbd> Reload</li>
+        <li><kbd>Esc</kbd> Free the mouse</li>
+        <li><kbd>F</kbd> Flashlight lantern</li>
+      </ul>
+      <button class="go" id="enterBtn">Click to enter →</button>
+      <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
+      <p class="foot">Sound starts when you enter</p>
+    </div>
+  </div>
+
+  <div id="pause" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Paused</p>
+      <h1>Hold<br/>Still<span>Mouse is free</span></h1>
+      <p class="sub" id="pauseHint">Click anywhere to grab the mouse again and get back to the farm.</p>
+      <button class="go" id="resumeBtn">Back to it →</button>
+      <button class="alt" id="freeBtn2">Mouse won't lock? Use free-look instead</button>
+    </div>
+  </div>
+
+  <div id="dead" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Well now</p>
+      <h1>You<br/>Wilted<span>The corn saw everything</span></h1>
+      <p class="sub">Dust yourself off. The gate's where you left it, and so are they.</p>
+      <button class="go" id="againBtn">Get back up →</button>
+    </div>
+  </div>
+
+  <div id="loading">Inking the farm…</div>
+  <div id="err"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   THE WITHERED FARM — Phase 1
+   A rubber-hose cartoon FPS prototype.
+
+   MODULE MAP (search these tags to jump around):
+     [CONFIG]    centralized tuning
+     [UTIL]      math + rng helpers
+     [TEX]       procedural canvas textures
+     [MAT]       toon material factory
+     [INK]       inverted-hull outline system
+     [PRIM]      shaped primitive builders (auto-outline + auto-collider)
+     [WORLD]     collision volumes + queries
+     [LEVEL]     The Withered Farm builder
+     [FX]        effects manager (decals, particles, tracers, boil)
+     [AUDIO]     procedural audio manager
+     [INPUT]     input manager (keyboard/mouse, pointer lock)
+     [PLAYER]    first-person controller
+     [WEAPON]    viewmodel + firing
+     [UI]        HUD + overlays
+     [GAME]      bootstrap + main loop
+     [SPAWN]     enemy spawn markers reserved for Phase 2 (data only)
+   ===================================================================== */
+
+/* ============================== [CONFIG] ============================= */
+const CONFIG = {
+  render: {
+    fov: 74, near: 0.05, far: 300,
+    maxPixelRatio: 1.75,
+    fogNear: 40, fogFar: 165
+  },
+  player: {
+    height: 1.72, radius: 0.42, eyeHeight: 1.58,
+    walkSpeed: 5.1, sprintSpeed: 8.2,
+    accel: 52, airAccel: 12, friction: 11.5,
+    gravity: 27, jumpForce: 8.6,
+    stepHeight: 0.56,
+    mouseSensitivity: 0.0021, pitchLimit: 1.44,
+    bobFreq: 9.2, bobAmp: 0.042, bobSide: 0.028, bobRoll: 0.012,
+    landDip: 0.18, landRecover: 9,
+    startPos: { x: 0, y: 0, z: 31 }, startYaw: 0,
+    maxHealth: 100, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
+    invulnAfterHit: 0.45, reviveDelay: 2.2
+  },
+  enemy: {
+    count: 6,
+    radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
+    sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
+    losInterval: 0.25,
+    alertTime: 0.5, staggerTime: 0.34, corpseTime: 1.15,
+    wanderRadius: 7, stepFPS: 12,
+    pelletDamage: 15, headMultiplier: 2.4,
+    respawnDelay: 18            // 0 to leave the farm quiet once cleared
+  },
+  weapon: {
+    magSize: 6, fireInterval: 0.44, reloadTime: 1.45,
+    pellets: 8, spread: 0.05, range: 95,
+    recoilBack: 0.19, recoilUp: 0.09, recoilPitch: 0.062, recoilRoll: 0.05,
+    swayAmount: 0.028, swayLerp: 8, bobAmount: 0.028,
+    muzzleFlashTime: 0.09
+  },
+  fx: {
+    maxDecals: 34, maxParticles: 190, maxTracers: 14,
+    boilFPS: 12, weaponStepFPS: 15,
+    boilAmount: 0.014
+  },
+  audio: { master: 0.5, wind: 0.5, sfx: 0.85 },
+  input: {
+    // free-look fallback: how close to the window edge starts a steady turn,
+    // as a fraction of the viewport, and how fast that turn goes
+    edgeMargin: 0.14, edgeTurnX: 980, edgeTurnY: 420
+  },
+  palette: {
+    peach:      0xF2CDBB,
+    peachDeep:  0xDCA692,
+    cream:      0xF6E9D2,
+    creamDim:   0xE2D2B4,
+    blue:       0x8FB3CC,
+    blueDeep:   0x5C7E99,
+    blueGray:   0x7D8B94,
+    blueGrayDk: 0x5A666E,
+    mustard:    0xE8A33D,
+    mustardDk:  0xC07E22,
+    rust:       0xA85A3C,
+    rustDeep:   0x7E3F2A,
+    olive:      0x6E7A42,
+    oliveDeep:  0x4E5730,
+    charcoal:   0x1F1B18,
+    ink:        0x120F0D,
+    white:      0xFFFBF2,
+    dirt:       0xC79E82,
+    dirtDeep:   0xA87F65
+  }
+};
+const PAL = CONFIG.palette;
+
+/* =============================== [UTIL] ============================== */
+const UTIL = (() => {
+  let seed = 1337;
+  function rand() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
+  function rng(a, b) { return a + rand() * (b - a); }
+  function rint(a, b) { return Math.floor(rng(a, b + 1)); }
+  function pick(arr) { return arr[Math.floor(rand() * arr.length)]; }
+  function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  // frame-rate independent exponential smoothing
+  function damp(a, b, lambda, dt) { return lerp(a, b, 1 - Math.exp(-lambda * dt)); }
+  function wobble(t, f, a) { return Math.sin(t * f) * a; }
+  function setSeed(s) { seed = s; }
+  return { rand, rng, rint, pick, clamp, lerp, damp, wobble, setSeed };
+})();
+
+/* ================================ [TEX] ============================== */
+/* Every texture is drawn at runtime on a <canvas>. No external assets. */
+const TEX = (() => {
+  const cache = {};
+
+  function cv(w, h) {
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    return c;
+  }
+  function hex(n) { return '#' + n.toString(16).padStart(6, '0'); }
+
+  function finish(canvas, repX, repY) {
+    const t = new THREE.CanvasTexture(canvas);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(repX || 1, repY || 1);
+    t.anisotropy = 4;
+    return t;
+  }
+
+  // speckled paper-ish noise laid over a base colour
+  function speckle(ctx, w, h, colors, count, minR, maxR, alpha) {
+    for (let i = 0; i < count; i++) {
+      ctx.globalAlpha = alpha * UTIL.rng(0.4, 1);
+      ctx.fillStyle = hex(UTIL.pick(colors));
+      const r = UTIL.rng(minR, maxR);
+      ctx.beginPath();
+      ctx.ellipse(UTIL.rng(0, w), UTIL.rng(0, h), r, r * UTIL.rng(0.5, 1.4), UTIL.rng(0, 6.3), 0, 6.3);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function ground() {
+    if (cache.ground) return cache.ground;
+    const w = 512, c = cv(w, w), x = c.getContext('2d');
+    x.fillStyle = hex(PAL.dirt); x.fillRect(0, 0, w, w);
+    speckle(x, w, w, [PAL.dirtDeep, PAL.olive, PAL.peachDeep], 260, 6, 34, 0.30);
+    speckle(x, w, w, [PAL.oliveDeep, PAL.rustDeep], 120, 2, 9, 0.22);
+    // scratchy ink hatching
+    x.strokeStyle = 'rgba(20,16,12,.16)'; x.lineWidth = 1.4;
+    for (let i = 0; i < 90; i++) {
+      const sx = UTIL.rng(0, w), sy = UTIL.rng(0, w), a = UTIL.rng(0, 6.3), l = UTIL.rng(8, 40);
+      x.beginPath(); x.moveTo(sx, sy);
+      x.quadraticCurveTo(sx + Math.cos(a) * l * .5 + UTIL.rng(-5, 5), sy + Math.sin(a) * l * .5,
+                         sx + Math.cos(a) * l, sy + Math.sin(a) * l);
+      x.stroke();
+    }
+    cache.ground = finish(c, 26, 26);
+    return cache.ground;
+  }
+
+  function wood(base, dark, rep) {
+    const key = 'wood' + base;
+    if (cache[key]) return cache[key];
+    const w = 256, h = 256, c = cv(w, h), x = c.getContext('2d');
+    x.fillStyle = hex(base); x.fillRect(0, 0, w, h);
+    const planks = 5, ph = h / planks;
+    for (let i = 0; i < planks; i++) {
+      const y = i * ph;
+      x.globalAlpha = UTIL.rng(0.05, 0.2);
+      x.fillStyle = hex(dark); x.fillRect(0, y, w, ph);
+      x.globalAlpha = 1;
+      // plank seam, slightly wavy
+      x.strokeStyle = 'rgba(18,15,13,.55)'; x.lineWidth = 3;
+      x.beginPath(); x.moveTo(0, y);
+      for (let sx = 0; sx <= w; sx += 32) x.lineTo(sx, y + Math.sin(sx * .05 + i) * 2.2);
+      x.stroke();
+      // grain
+      x.strokeStyle = 'rgba(18,15,13,.20)'; x.lineWidth = 1.2;
+      for (let g = 0; g < 5; g++) {
+        const gy = y + UTIL.rng(6, ph - 6);
+        x.beginPath(); x.moveTo(0, gy);
+        for (let sx = 0; sx <= w; sx += 24) x.lineTo(sx, gy + Math.sin(sx * .07 + g * 2) * 1.6);
+        x.stroke();
+      }
+      // knot
+      if (UTIL.rand() > .55) {
+        const kx = UTIL.rng(20, w - 20), ky = y + ph * .5;
+        x.strokeStyle = 'rgba(18,15,13,.4)';
+        for (let k = 1; k <= 3; k++) {
+          x.lineWidth = 1.6; x.beginPath();
+          x.ellipse(kx, ky, k * 3.2, k * 2.2, .4, 0, 6.3); x.stroke();
+        }
+      }
+    }
+    cache[key] = finish(c, rep || 2, rep || 2);
+    return cache[key];
+  }
+
+  function metal() {
+    if (cache.metal) return cache.metal;
+    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    x.fillStyle = hex(PAL.blueGray); x.fillRect(0, 0, w, w);
+    speckle(x, w, w, [PAL.blueGrayDk, PAL.rustDeep, PAL.cream], 90, 2, 12, 0.18);
+    x.strokeStyle = 'rgba(18,15,13,.2)'; x.lineWidth = 1;
+    for (let i = 0; i < 22; i++) {
+      const sy = UTIL.rng(0, w);
+      x.beginPath(); x.moveTo(0, sy); x.lineTo(w, sy + UTIL.rng(-3, 3)); x.stroke();
+    }
+    cache.metal = finish(c, 1, 1);
+    return cache.metal;
+  }
+
+  function sky() {
+    if (cache.sky) return cache.sky;
+    const w = 8, h = 256, c = cv(w, h), x = c.getContext('2d');
+    const g = x.createLinearGradient(0, 0, 0, h);
+    g.addColorStop(0.00, '#6E93B0');
+    g.addColorStop(0.32, hex(PAL.blue));
+    g.addColorStop(0.60, '#CFC1BE');
+    g.addColorStop(0.80, hex(PAL.peach));
+    g.addColorStop(1.00, hex(PAL.peachDeep));
+    x.fillStyle = g; x.fillRect(0, 0, w, h);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    cache.sky = t;
+    return t;
+  }
+
+  // ink splat used for bullet decals
+  function splat() {
+    if (cache.splat) return cache.splat;
+    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    x.clearRect(0, 0, w, w);
+    x.fillStyle = 'rgba(20,16,13,.92)';
+    x.beginPath();
+    const cx = w / 2, cy = w / 2, pts = 13;
+    for (let i = 0; i <= pts; i++) {
+      const a = i / pts * Math.PI * 2;
+      const r = w * (0.20 + (i % 2 ? 0.055 : 0.085) * Math.sin(i * 3.1) + UTIL.rng(0, .05));
+      const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
+      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+    }
+    x.closePath(); x.fill();
+    // satellite dots
+    for (let i = 0; i < 7; i++) {
+      x.globalAlpha = UTIL.rng(.4, .85);
+      x.beginPath();
+      x.arc(cx + UTIL.rng(-52, 52), cy + UTIL.rng(-52, 52), UTIL.rng(1.5, 5.5), 0, 6.3);
+      x.fill();
+    }
+    x.globalAlpha = 1;
+    cache.splat = new THREE.CanvasTexture(c);
+    return cache.splat;
+  }
+
+  // little four-point cartoon star (particles + muzzle sparks)
+  function star(color) {
+    const key = 'star' + color;
+    if (cache[key]) return cache[key];
+    const w = 96, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    x.fillStyle = hex(color);
+    x.strokeStyle = 'rgba(18,15,13,.95)'; x.lineWidth = 5; x.lineJoin = 'round';
+    x.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 ? w * 0.13 : w * 0.44;
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+    }
+    x.closePath(); x.fill(); x.stroke();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  // soft puff / smoke blob
+  function puff(color) {
+    const key = 'puff' + color;
+    if (cache[key]) return cache[key];
+    const w = 96, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    x.fillStyle = hex(color);
+    x.strokeStyle = 'rgba(18,15,13,.9)'; x.lineWidth = 4;
+    const lobes = 6;
+    x.beginPath();
+    for (let i = 0; i < lobes; i++) {
+      const a = i / lobes * Math.PI * 2;
+      x.moveTo(Math.cos(a) * 16, Math.sin(a) * 16);
+      x.arc(Math.cos(a) * 16, Math.sin(a) * 16, 17 + (i % 2) * 3, 0, 6.3);
+    }
+    x.fill(); x.stroke();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  // blob shadow under props
+  function shadow() {
+    if (cache.shadow) return cache.shadow;
+    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    const g = x.createRadialGradient(w / 2, w / 2, 4, w / 2, w / 2, w / 2);
+    g.addColorStop(0, 'rgba(40,26,20,.55)');
+    g.addColorStop(.62, 'rgba(40,26,20,.30)');
+    g.addColorStop(1, 'rgba(40,26,20,0)');
+    x.fillStyle = g; x.fillRect(0, 0, w, w);
+    cache.shadow = new THREE.CanvasTexture(c);
+    return cache.shadow;
+  }
+
+  // hand-lettered sign face
+  function sign(lines, bg, fg, wpx, hpx) {
+    const c = cv(wpx || 256, hpx || 128), x = c.getContext('2d');
+    x.fillStyle = hex(bg); x.fillRect(0, 0, c.width, c.height);
+    speckle(x, c.width, c.height, [PAL.rustDeep, PAL.charcoal], 40, 2, 10, .1);
+    x.strokeStyle = 'rgba(18,15,13,.85)'; x.lineWidth = 8;
+    x.strokeRect(6, 6, c.width - 12, c.height - 12);
+    x.fillStyle = hex(fg);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    const n = lines.length;
+    lines.forEach((ln, i) => {
+      const size = Math.min(c.height / (n + .7), c.width / (ln.length * .62));
+      x.font = '900 ' + size + 'px Rockwell, Georgia, serif';
+      x.save();
+      x.translate(c.width / 2, c.height * ((i + .5) / n) + 2);
+      x.rotate(UTIL.rng(-.03, .03));
+      x.fillText(ln, 0, 0);
+      x.restore();
+    });
+    return finish(c, 1, 1);
+  }
+
+  // paper grain for the CSS overlay
+  function grainDataURL(size) {
+    const c = cv(size, size), x = c.getContext('2d');
+    const img = x.createImageData(size, size);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = 190 + Math.random() * 65;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+    return c.toDataURL('image/png');
+  }
+
+  function scratchDataURL(w, h) {
+    const c = cv(w, h), x = c.getContext('2d');
+    x.clearRect(0, 0, w, h);
+    x.strokeStyle = 'rgba(30,20,16,.85)';
+    for (let i = 0; i < 4; i++) {
+      x.lineWidth = Math.random() * 1.6 + .4;
+      const sx = Math.random() * w;
+      x.beginPath(); x.moveTo(sx, 0);
+      for (let y = 0; y < h; y += 24) x.lineTo(sx + (Math.random() - .5) * 6, y);
+      x.stroke();
+    }
+    for (let i = 0; i < 14; i++) {
+      x.fillStyle = 'rgba(30,20,16,.5)';
+      x.fillRect(Math.random() * w, Math.random() * h, Math.random() * 3, Math.random() * 3);
+    }
+    return c.toDataURL('image/png');
+  }
+
+  return { ground, wood, metal, sky, splat, star, puff, shadow, sign, grainDataURL, scratchDataURL, finish };
+})();
+
+/* ================================ [MAT] ============================== */
+/* Toon materials with a 4-step gradient ramp so light banding reads as ink. */
+const MAT = (() => {
+  const cache = new Map();
+  let ramp = null;
+
+  function gradientMap() {
+    if (ramp) return ramp;
+    const c = document.createElement('canvas');
+    c.width = 4; c.height = 1;
+    const x = c.getContext('2d');
+    const steps = ['#6b6058', '#a89b8c', '#d8ccbb', '#ffffff'];
+    steps.forEach((s, i) => { x.fillStyle = s; x.fillRect(i, 0, 1, 1); });
+    ramp = new THREE.CanvasTexture(c);
+    ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
+    ramp.generateMipmaps = false;
+    return ramp;
+  }
+
+  function toon(color, opts) {
+    opts = opts || {};
+    const key = 'toon|' + color + '|' + (opts.map ? opts.map.uuid : '-') + '|' + (opts.side || 0) +
+                '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity || 1);
+    if (cache.has(key)) return cache.get(key);
+    const m = new THREE.MeshToonMaterial({
+      color: color,
+      map: opts.map || null,
+      gradientMap: gradientMap(),
+      side: opts.side || THREE.FrontSide,
+      transparent: !!opts.transparent,
+      opacity: opts.opacity === undefined ? 1 : opts.opacity
+    });
+    cache.set(key, m);
+    return m;
+  }
+
+  function flat(color, opts) {
+    opts = opts || {};
+    const key = 'flat|' + color + '|' + (opts.map ? opts.map.uuid : '-') + '|' + (opts.side || 0) +
+                '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity === undefined ? 1 : opts.opacity) +
+                '|' + (opts.depthWrite === false ? 0 : 1) + '|' + (opts.fog === false ? 0 : 1);
+    if (cache.has(key)) return cache.get(key);
+    const m = new THREE.MeshBasicMaterial({
+      color: color,
+      map: opts.map || null,
+      side: opts.side || THREE.FrontSide,
+      transparent: !!opts.transparent,
+      opacity: opts.opacity === undefined ? 1 : opts.opacity,
+      depthWrite: opts.depthWrite === false ? false : true,
+      fog: opts.fog === false ? false : true
+    });
+    cache.set(key, m);
+    return m;
+  }
+
+  let inkMat = null;
+  function ink() {
+    if (!inkMat) {
+      inkMat = new THREE.MeshBasicMaterial({
+        color: PAL.ink, side: THREE.BackSide, fog: true
+      });
+    }
+    return inkMat;
+  }
+
+  return { toon, flat, ink, gradientMap };
+})();
+
+/* ================================ [INK] ============================== */
+/* Inverted-hull outlines. One shared black BackSide material, so it is one
+   extra draw call per outlined mesh and nothing more. */
+const INK = (() => {
+  function add(mesh, thickness) {
+    const t = thickness === undefined ? 0.045 : thickness;
+    const shell = new THREE.Mesh(mesh.geometry, MAT.ink());
+    // Scale per-axis so the outline reads at a constant world thickness
+    // instead of ballooning on long thin shapes.
+    mesh.geometry.computeBoundingBox();
+    const b = mesh.geometry.boundingBox;
+    const sx = Math.max(b.max.x - b.min.x, 0.001);
+    const sy = Math.max(b.max.y - b.min.y, 0.001);
+    const sz = Math.max(b.max.z - b.min.z, 0.001);
+    shell.scale.set((sx + t * 2) / sx, (sy + t * 2) / sy, (sz + t * 2) / sz);
+    shell.userData.outline = true;
+    shell.raycast = function () {}; // never block a bullet
+    shell.matrixAutoUpdate = false;
+    shell.updateMatrix();
+    mesh.add(shell);
+    return shell;
+  }
+  return { add };
+})();
+
+/* Meshes a bullet can hit. Outline shells are excluded by construction. */
+const RAY_TARGETS = [];
+/* Props that jiggle at a stepped framerate for the "animation boil". */
+const BOIL = [];
+/* Lightweight scenery that reacts when shot (cans, bottles, boards, signs). */
+const WOBBLERS = [];
+
+/* =============================== [PRIM] ============================== */
+const PRIM = (() => {
+
+  /* Push vertices around so nothing reads as a clean factory primitive.
+     Vertices that share a position move together, so faces stay welded. */
+  function warp(geo, amt) {
+    const pos = geo.attributes.position;
+    const map = new Map();
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const key = x.toFixed(3) + '|' + y.toFixed(3) + '|' + z.toFixed(3);
+      let d = map.get(key);
+      if (!d) { d = [UTIL.rng(-amt, amt), UTIL.rng(-amt, amt), UTIL.rng(-amt, amt)]; map.set(key, d); }
+      pos.setXYZ(i, x + d[0], y + d[1], z + d[2]);
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  /* Merge pre-transformed geometries into one buffer. Written by hand because
+     BufferGeometryUtils lives in the examples bundle, not the core build. */
+  function merge(geos) {
+    let total = 0;
+    const parts = geos.map(g => {
+      const ng = g.index ? g.toNonIndexed() : g;
+      total += ng.attributes.position.count;
+      return ng;
+    });
+    const pos = new Float32Array(total * 3);
+    const nor = new Float32Array(total * 3);
+    const uv  = new Float32Array(total * 2);
+    let o = 0;
+    parts.forEach(g => {
+      pos.set(g.attributes.position.array, o * 3);
+      if (g.attributes.normal) nor.set(g.attributes.normal.array, o * 3);
+      if (g.attributes.uv) uv.set(g.attributes.uv.array, o * 2);
+      o += g.attributes.position.count;
+    });
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.computeBoundingSphere();
+    geo.computeBoundingBox();
+    return geo;
+  }
+
+  const _m = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const _p = new THREE.Vector3();
+  const _s = new THREE.Vector3();
+
+  function xform(geo, x, y, z, rx, ry, rz, sx, sy, sz) {
+    _e.set(rx || 0, ry || 0, rz || 0);
+    _q.setFromEuler(_e);
+    _p.set(x, y, z);
+    _s.set(sx === undefined ? 1 : sx, sy === undefined ? 1 : sy, sz === undefined ? 1 : sz);
+    _m.compose(_p, _q, _s);
+    geo.applyMatrix4(_m);
+    return geo;
+  }
+
+  /* Batch: accumulate many shapes into ONE mesh plus ONE matching ink shell.
+     Used for fences, hedges, crops, building shells — anything numerous. */
+  class Batch {
+    constructor(material, thickness) {
+      this.mat = material;
+      this.t = thickness === undefined ? 0.045 : thickness;
+      this.body = [];
+      this.shell = [];
+    }
+    _push(makeGeo, dims, x, y, z, rx, ry, rz, warpAmt) {
+      const g = makeGeo();
+      if (warpAmt) warp(g, warpAmt);
+      this.body.push(xform(g, x, y, z, rx, ry, rz));
+      if (this.t > 0) {
+        const o = makeGeo();
+        if (warpAmt) { UTIL.setSeed(this._lastSeed); warp(o, warpAmt); }
+        const t = this.t;
+        xform(o, 0, 0, 0, 0, 0, 0,
+          (dims[0] + t * 2) / dims[0], (dims[1] + t * 2) / dims[1], (dims[2] + t * 2) / dims[2]);
+        this.shell.push(xform(o, x, y, z, rx, ry, rz));
+      }
+      return this;
+    }
+    box(w, h, d, x, y, z, rx, ry, rz, warpAmt) {
+      this._lastSeed = Math.floor(UTIL.rand() * 4294967295);
+      const seedFor = this._lastSeed;
+      const mk = () => { UTIL.setSeed(seedFor); return new THREE.BoxGeometry(w, h, d); };
+      return this._push(mk, [w, h, d], x, y, z, rx, ry, rz, warpAmt);
+    }
+    cyl(rt, rb, h, seg, x, y, z, rx, ry, rz) {
+      const r = Math.max(rt, rb) * 2;
+      const mk = () => new THREE.CylinderGeometry(rt, rb, h, seg || 10);
+      return this._push(mk, [r, h, r], x, y, z, rx, ry, rz, 0);
+    }
+    sphere(r, x, y, z, sx, sy, sz) {
+      const mk = () => {
+        const g = new THREE.SphereGeometry(r, 10, 8);
+        if (sx !== undefined) xform(g, 0, 0, 0, 0, 0, 0, sx, sy, sz);
+        return g;
+      };
+      const d = r * 2;
+      return this._push(mk, [d * (sx || 1), d * (sy || 1), d * (sz || 1)], x, y, z, 0, 0, 0, 0);
+    }
+    /* Any geometry you like. `dims` is the shape's full extent on each axis and
+       is only used to work out a constant-thickness ink shell. */
+    custom(makeGeo, dims, x, y, z, rx, ry, rz) {
+      return this._push(makeGeo, dims, x, y, z, rx, ry, rz, 0);
+    }
+    torus(r, tube, rs, ts, arc, x, y, z, rx, ry, rz) {
+      const d = (r + tube) * 2;
+      const mk = () => new THREE.TorusGeometry(r, tube, rs || 5, ts || 12, arc === undefined ? Math.PI * 2 : arc);
+      return this._push(mk, [d, d, tube * 2], x, y, z, rx, ry, rz, 0);
+    }
+    plane(w, h, x, y, z, rx, ry, rz) {
+      const g = new THREE.PlaneGeometry(w, h);
+      this.body.push(xform(g, x, y, z, rx, ry, rz));
+      return this;
+    }
+    build(parent, opts) {
+      opts = opts || {};
+      if (!this.body.length) return null;
+      const mesh = new THREE.Mesh(merge(this.body), this.mat);
+      mesh.matrixAutoUpdate = false;
+      mesh.updateMatrix();
+      parent.add(mesh);
+      if (this.shell.length) {
+        const sh = new THREE.Mesh(merge(this.shell), MAT.ink());
+        sh.userData.outline = true;
+        sh.raycast = function () {};
+        sh.matrixAutoUpdate = false;
+        sh.updateMatrix();
+        parent.add(sh);
+      }
+      if (opts.ray !== false) RAY_TARGETS.push(mesh);
+      this.body = []; this.shell = [];
+      return mesh;
+    }
+  }
+
+  /* Single outlined mesh — for hero props and anything that animates. */
+  function mesh(geo, mat, o) {
+    o = o || {};
+    if (o.warp) warp(geo, o.warp);
+    const m = new THREE.Mesh(geo, mat);
+    if (o.pos) m.position.set(o.pos[0], o.pos[1], o.pos[2]);
+    if (o.rot) m.rotation.set(o.rot[0], o.rot[1], o.rot[2]);
+    if (o.scale) m.scale.set(o.scale[0], o.scale[1], o.scale[2]);
+    if (o.outline !== false) INK.add(m, o.outline || 0.045);
+    if (o.parent) o.parent.add(m);
+    if (o.ray !== false) RAY_TARGETS.push(m);
+    return m;
+  }
+
+  function box(w, h, d, mat, o) { return mesh(new THREE.BoxGeometry(w, h, d), mat, o); }
+  function cyl(rt, rb, h, seg, mat, o) { return mesh(new THREE.CylinderGeometry(rt, rb, h, seg || 12), mat, o); }
+  function sph(r, mat, o) { return mesh(new THREE.SphereGeometry(r, 12, 9), mat, o); }
+  function cone(r, h, seg, mat, o) { return mesh(new THREE.ConeGeometry(r, h, seg || 10), mat, o); }
+  function torus(r, tube, mat, o) { return mesh(new THREE.TorusGeometry(r, tube, 6, 14), mat, o); }
+
+  /* A curved rubber-hose limb between two points. */
+  function hose(a, b, sag, radius, mat, o) {
+    const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
+    mid.y -= sag;
+    const curve = new THREE.CatmullRomCurve3([
+      a.clone(),
+      new THREE.Vector3().lerpVectors(a, mid, 0.7),
+      mid,
+      new THREE.Vector3().lerpVectors(mid, b, 0.6),
+      b.clone()
+    ]);
+    const geo = new THREE.TubeGeometry(curve, 22, radius, 8, false);
+    return mesh(geo, mat, o);
+  }
+
+  return { warp, merge, xform, Batch, mesh, box, cyl, sph, cone, torus, hose };
+})();
+
+/* ============================== [WORLD] ============================== */
+/* Axis-aligned solids only. Cheap, predictable, and enough for a farm made
+   of boxes. Every collider is registered in world space at build time. */
+const WORLD = {
+  solids: [],
+  /* [SPAWN] Phase 2 reads these. Nothing renders or spawns from them today. */
+  spawnMarkers: [],
+
+  add(cx, cy, cz, w, h, d, tag) {
+    const s = {
+      minX: cx - w / 2, maxX: cx + w / 2,
+      minY: cy - h / 2, maxY: cy + h / 2,
+      minZ: cz - d / 2, maxZ: cz + d / 2,
+      tag: tag || ''
+    };
+    this.solids.push(s);
+    return s;
+  },
+  /* bottom-anchored convenience: y is the floor of the box */
+  addFloor(cx, y, cz, w, h, d, tag) {
+    return this.add(cx, y + h / 2, cz, w, h, d, tag);
+  },
+  addSpawn(x, y, z, kind) {
+    this.spawnMarkers.push({ position: new THREE.Vector3(x, y, z), kind: kind || 'generic' });
+  },
+  reset() { this.solids.length = 0; this.spawnMarkers.length = 0; },
+
+  /* ---- shared actor collision ----
+     A general capsule-ish solver over the same AABB list the player uses.
+     PLAYER keeps its own copy because it layers head-bob, landing springs and
+     coyote-feel on top; anything else in the world (enemies now, vehicles or
+     physics props later) should go through here rather than rolling its own. */
+  moveActor(pos, vel, dt, opt, state) {
+    const r = opt.radius, h = opt.height, step = opt.stepHeight || 0.4;
+    const solids = this.solids;
+
+    function axis(which, amount) {
+      pos[which] += amount;
+      for (let i = 0; i < solids.length; i++) {
+        const s = solids[i];
+        if (pos.y + h <= s.minY || pos.y + 0.06 >= s.maxY) continue;
+        if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
+        if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
+        const rise = s.maxY - pos.y;
+        if (state.grounded && rise > 0 && rise <= step) { pos.y = s.maxY + 0.002; continue; }
+        if (which === 'x') { pos.x = amount > 0 ? s.minX - r : s.maxX + r; vel.x = 0; state.blocked = true; }
+        else { pos.z = amount > 0 ? s.minZ - r : s.maxZ + r; vel.z = 0; state.blocked = true; }
+      }
+    }
+
+    state.blocked = false;
+    axis('x', vel.x * dt);
+    axis('z', vel.z * dt);
+
+    const prevY = pos.y;
+    vel.y -= (opt.gravity || 27) * dt;
+    if (vel.y < -45) vel.y = -45;
+    pos.y += vel.y * dt;
+
+    const wasGrounded = state.grounded;
+    state.grounded = false;
+    state.landed = false;
+    let groundY = 0;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
+      if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
+      if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
+      if (vel.y > 0 && pos.y + h > s.minY && prevY + h <= s.minY + 0.02) {
+        pos.y = s.minY - h - 0.001; vel.y = 0;
+      }
+    }
+    if (pos.y <= groundY) {
+      pos.y = groundY;
+      state.landed = !wasGrounded && vel.y < -3;
+      state.fallSpeed = -vel.y;
+      vel.y = 0;
+      state.grounded = true;
+    }
+    return state;
+  },
+
+  /* Highest walkable surface under a point, ignoring anything above `ceil`. */
+  groundAt(x, z, ceil) {
+    let g = 0;
+    const solids = this.solids;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (x <= s.minX || x >= s.maxX || z <= s.minZ || z >= s.maxZ) continue;
+      if (s.maxY > g && s.maxY <= (ceil === undefined ? 8 : ceil)) g = s.maxY;
+    }
+    return g;
+  }
+};
+
+/* ============================== [PROPS] ============================== */
+/* Reusable farm junk. Each returns a THREE.Group placed in world space. */
+const PROPS = (() => {
+
+  function registerBoil(obj, amp) {
+    BOIL.push({
+      obj: obj,
+      bp: obj.position.clone(),
+      br: obj.rotation.clone(),
+      amp: amp === undefined ? CONFIG.fx.boilAmount : amp
+    });
+  }
+
+  function registerWobble(obj, strength) {
+    const w = {
+      obj: obj,
+      baseRot: obj.rotation.clone(),
+      basePos: obj.position.clone(),
+      vx: 0, vz: 0, ax: 0, az: 0,
+      k: 60 + UTIL.rng(-12, 12),
+      damp: 6.5,
+      strength: strength === undefined ? 1 : strength
+    };
+    WOBBLERS.push(w);
+    obj.userData.wobble = w;
+    obj.traverse(c => { if (c.isMesh) c.userData.wobbleRef = w; });
+    return w;
+  }
+
+  function blobShadow(parent, x, z, rx, rz) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(rx * 2, rz * 2),
+      MAT.flat(0xffffff, { map: TEX.shadow(), transparent: true, depthWrite: false, opacity: 0.75 })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, 0.02, z);
+    m.renderOrder = -1;
+    m.raycast = function () {};
+    parent.add(m);
+    return m;
+  }
+
+  function barrel(parent, x, z, opts) {
+    opts = opts || {};
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = UTIL.rng(0, 6.28);
+    const h = opts.h || 1.25, r = opts.r || 0.52;
+    const col = opts.color || UTIL.pick([PAL.rust, PAL.olive, PAL.blueDeep, PAL.mustardDk]);
+    const body = PRIM.cyl(r, r * 0.9, h, 12, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1) }),
+      { pos: [0, h / 2, 0], parent: g, warp: 0.02 });
+    body.scale.set(1, 1, 1);
+    // belly
+    PRIM.cyl(r * 1.08, r * 1.08, h * 0.34, 12, MAT.toon(col), { pos: [0, h * 0.5, 0], parent: g, outline: 0.03 });
+    // hoops
+    [h * 0.22, h * 0.78].forEach(y => {
+      PRIM.cyl(r * 1.12, r * 1.12, 0.09, 12, MAT.toon(PAL.blueGrayDk), { pos: [0, y, 0], parent: g, outline: 0.028, ray: false });
+    });
+    PRIM.cyl(r * 0.92, r * 0.92, 0.08, 12, MAT.toon(PAL.creamDim), { pos: [0, h + 0.02, 0], parent: g, outline: 0.03, ray: false });
+    g.rotation.z = UTIL.rng(-0.03, 0.03);
+    blobShadow(g, 0, 0, r * 1.5, r * 1.5);
+    parent.add(g);
+    WORLD.addFloor(x, 0, z, r * 2.1, h, r * 2.1, 'barrel');
+    return g;
+  }
+
+  function crate(parent, x, y, z, s, rotY) {
+    s = s || 0.9;
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.y = rotY === undefined ? UTIL.rng(-0.5, 0.5) : rotY;
+    const col = UTIL.pick([PAL.rust, PAL.mustardDk, PAL.rustDeep]);
+    PRIM.box(s, s, s, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1) }),
+      { pos: [0, s / 2, 0], parent: g, warp: 0.018 });
+    // corner battens
+    const b = MAT.toon(PAL.rustDeep);
+    [[-s / 2, 0], [s / 2, 0], [0, -s / 2], [0, s / 2]].forEach(p => {
+      PRIM.box(p[0] ? 0.07 : s * 1.01, 0.09, p[1] ? 0.07 : s * 1.01, b,
+        { pos: [p[0], s * 0.78, p[1]], parent: g, outline: 0.025, ray: false });
+    });
+    if (y < 0.05) blobShadow(g, 0, 0, s * 0.85, s * 0.85);
+    parent.add(g);
+    WORLD.addFloor(x, y, z, s * 1.15, s, s * 1.15, 'crate');
+    return g;
+  }
+
+  function plank(parent, x, y, z, len, rx, ry, rz) {
+    const col = PAL.rustDeep;
+    const m = PRIM.box(len, 0.09, 0.34, MAT.toon(col, { map: TEX.wood(col, PAL.charcoal, 1) }),
+      { pos: [x, y, z], rot: [rx || 0, ry || 0, rz || 0], parent: parent, warp: 0.02 });
+    return m;
+  }
+
+  /* Shootable tin can — wobbles when hit. */
+  function can(parent, x, y, z) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.y = UTIL.rng(0, 6.28);
+    PRIM.cyl(0.11, 0.11, 0.28, 10, MAT.toon(PAL.creamDim, { map: TEX.metal() }), { pos: [0, 0.14, 0], parent: g, outline: 0.028 });
+    PRIM.cyl(0.115, 0.115, 0.07, 10, MAT.toon(PAL.rust), { pos: [0, 0.16, 0], parent: g, outline: 0.025, ray: false });
+    parent.add(g);
+    registerWobble(g, 1.35);
+    return g;
+  }
+
+  function bottle(parent, x, y, z) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    const col = UTIL.pick([PAL.olive, PAL.blueDeep, PAL.oliveDeep]);
+    PRIM.cyl(0.1, 0.12, 0.3, 10, MAT.toon(col), { pos: [0, 0.15, 0], parent: g, outline: 0.028 });
+    PRIM.cyl(0.045, 0.09, 0.16, 8, MAT.toon(col), { pos: [0, 0.36, 0], parent: g, outline: 0.025, ray: false });
+    PRIM.cyl(0.055, 0.055, 0.05, 8, MAT.toon(PAL.mustard), { pos: [0, 0.46, 0], parent: g, outline: 0.022, ray: false });
+    parent.add(g);
+    registerWobble(g, 1.5);
+    return g;
+  }
+
+  function hayBale(parent, x, y, z, rotY) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.y = rotY || UTIL.rng(-0.4, 0.4);
+    PRIM.box(1.3, 0.85, 0.85, MAT.toon(PAL.mustard), { pos: [0, 0.43, 0], parent: g, warp: 0.05 });
+    [-0.32, 0.32].forEach(o => {
+      PRIM.box(1.34, 0.06, 0.9, MAT.toon(PAL.rustDeep), { pos: [o * 0, 0.43, o], parent: g, outline: 0.022, ray: false });
+    });
+    // straw pokes
+    const b = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0);
+    for (let i = 0; i < 10; i++) {
+      b.box(0.03, 0.03, 0.22, UTIL.rng(-0.6, 0.6), UTIL.rng(0.1, 0.8), UTIL.rng(-0.42, 0.42),
+        UTIL.rng(-0.6, 0.6), UTIL.rng(0, 3), 0);
+    }
+    b.build(g, { ray: false });
+    if (y < 0.05) blobShadow(g, 0, 0, 0.95, 0.75);
+    parent.add(g);
+    WORLD.addFloor(x, y, z, 1.5, 0.85, 1.1, 'hay');
+    return g;
+  }
+
+  /* Leaning sign on a post. Boils gently. */
+  function signPost(parent, x, z, lines, rotY, opts) {
+    opts = opts || {};
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = rotY || 0;
+    const ph = opts.postH || 1.9;
+    PRIM.box(0.16, ph, 0.16, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }),
+      { pos: [0, ph / 2, 0], parent: g, rot: [0, 0, UTIL.rng(-0.04, 0.04)], warp: 0.02 });
+    const bw = opts.w || 1.7, bh = opts.h || 0.85;
+    const face = TEX.sign(lines, opts.bg || PAL.cream, opts.fg || PAL.rustDeep, 256, Math.round(256 * bh / bw));
+    const board = PRIM.box(bw, bh, 0.1, MAT.toon(0xffffff, { map: face }),
+      { pos: [0, ph + bh * 0.32, 0.06], rot: [0, 0, UTIL.rng(-0.11, 0.11)], parent: g, warp: 0.015 });
+    registerBoil(board, 0.02);
+    parent.add(g);
+    WORLD.addFloor(x, 0, z, 0.4, ph, 0.4, 'sign');
+    registerWobble(board, 0.5);
+    return g;
+  }
+
+  function lantern(parent, x, y, z, hang) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    if (hang) {
+      PRIM.cyl(0.02, 0.02, hang, 6, MAT.toon(PAL.charcoal), { pos: [0, hang / 2, 0], parent: g, outline: 0.018, ray: false });
+    }
+    PRIM.box(0.24, 0.3, 0.24, MAT.flat(PAL.mustard), { pos: [0, -0.16, 0], parent: g, outline: 0.03, ray: false });
+    PRIM.box(0.3, 0.08, 0.3, MAT.toon(PAL.blueGrayDk), { pos: [0, 0.02, 0], parent: g, outline: 0.028, ray: false });
+    PRIM.box(0.3, 0.08, 0.3, MAT.toon(PAL.blueGrayDk), { pos: [0, -0.34, 0], parent: g, outline: 0.028, ray: false });
+    const light = new THREE.PointLight(0xFFD27F, 0.9, 7, 2);
+    light.position.set(0, -0.16, 0);
+    g.add(light);
+    g.userData.lanternLight = light;
+    parent.add(g);
+    registerBoil(g, 0.012);
+    return g;
+  }
+
+  function rock(parent, x, z, s) {
+    s = s || 1;
+    const geo = new THREE.IcosahedronGeometry(s, 0);
+    PRIM.warp(geo, s * 0.22);
+    const m = PRIM.mesh(geo, MAT.toon(PAL.blueGray), {
+      pos: [x, s * 0.45, z],
+      rot: [UTIL.rng(0, 1), UTIL.rng(0, 6.28), UTIL.rng(0, 1)],
+      scale: [1, 0.75, 1.05],
+      parent: parent, outline: 0.05
+    });
+    blobShadow(parent, x, z, s * 1.3, s * 1.1);
+    WORLD.addFloor(x, 0, z, s * 1.7, s * 1.0, s * 1.7, 'rock');
+    return m;
+  }
+
+  function tree(parent, x, z, scale) {
+    scale = scale || 1;
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = UTIL.rng(0, 6.28);
+    const h = UTIL.rng(3.6, 5.4) * scale;
+    // trunk: a bent rubber-hose tube
+    const a = new THREE.Vector3(0, 0, 0);
+    const b = new THREE.Vector3(UTIL.rng(-0.7, 0.7), h, UTIL.rng(-0.5, 0.5));
+    PRIM.hose(a, b, UTIL.rng(-0.9, -0.3), 0.24 * scale, MAT.toon(PAL.rustDeep), { parent: g, outline: 0.05 });
+    const canopy = new THREE.Group();
+    canopy.position.set(b.x, b.y + 0.5 * scale, b.z);
+    const col = UTIL.pick([PAL.olive, PAL.oliveDeep]);
+    const lobes = 5;
+    for (let i = 0; i < lobes; i++) {
+      const ang = i / lobes * 6.28;
+      PRIM.sph(UTIL.rng(0.85, 1.35) * scale, MAT.toon(col), {
+        pos: [Math.cos(ang) * 1.15 * scale, UTIL.rng(-0.25, 0.5) * scale, Math.sin(ang) * 1.15 * scale],
+        parent: canopy, outline: 0.055, ray: false
+      });
+    }
+    PRIM.sph(1.5 * scale, MAT.toon(col), { pos: [0, 0.25 * scale, 0], parent: canopy, outline: 0.055, ray: false });
+    g.add(canopy);
+    registerBoil(canopy, 0.03);
+    blobShadow(g, 0, 0, 2.1 * scale, 1.8 * scale);
+    parent.add(g);
+    WORLD.addFloor(x, 0, z, 0.9 * scale, h, 0.9 * scale, 'tree');
+    return g;
+  }
+
+  return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, blobShadow, registerBoil, registerWobble };
+})();
+
+/* ============================== [LEVEL] ============================== */
+/* One compact outdoor farm. Everything is authored in world space so the
+   collision boxes and the art can never drift apart. */
+const LEVEL = (() => {
+  let root = null;
+  const animated = { windmillFan: null, vane: null, sails: [], hangers: [] };
+
+  /* soft-edged dirt blob used to paint the footpaths */
+  let pathTex = null;
+  function pathTexture() {
+    if (pathTex) return pathTex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 128;
+    const x = c.getContext('2d');
+    const g = x.createRadialGradient(64, 64, 8, 64, 64, 62);
+    g.addColorStop(0, 'rgba(168,127,101,.85)');
+    g.addColorStop(.55, 'rgba(168,127,101,.55)');
+    g.addColorStop(1, 'rgba(168,127,101,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 40; i++) {
+      x.fillStyle = 'rgba(94,66,50,' + (Math.random() * .22) + ')';
+      x.beginPath(); x.arc(Math.random() * 128, Math.random() * 128, Math.random() * 8 + 2, 0, 6.3); x.fill();
+    }
+    pathTex = new THREE.CanvasTexture(c);
+    return pathTex;
+  }
+
+  function buildSky(scene) {
+    const sky = new THREE.Mesh(
+      new THREE.SphereGeometry(240, 24, 16),
+      MAT.flat(0xffffff, { map: TEX.sky(), side: THREE.BackSide, fog: false })
+    );
+    sky.raycast = function () {};
+    scene.add(sky);
+
+    // a handful of outlined cartoon clouds
+    for (let i = 0; i < 9; i++) {
+      const g = new THREE.Group();
+      const a = UTIL.rng(0, 6.28), d = UTIL.rng(55, 105);
+      g.position.set(Math.cos(a) * d, UTIL.rng(26, 44), Math.sin(a) * d);
+      const s = UTIL.rng(3.5, 7);
+      for (let j = 0; j < 4; j++) {
+        PRIM.sph(s * UTIL.rng(.55, 1), MAT.flat(PAL.cream, { fog: false }), {
+          pos: [(j - 1.5) * s * .75, UTIL.rng(-.2, .4) * s, UTIL.rng(-.3, .3) * s],
+          parent: g, outline: 0.22, ray: false
+        });
+      }
+      g.scale.y = 0.62;
+      scene.add(g);
+      PROPS.registerBoil(g, 0.06);
+    }
+  }
+
+  function buildGround(scene) {
+    const g = new THREE.Mesh(
+      new THREE.PlaneGeometry(400, 400),
+      MAT.toon(0xffffff, { map: TEX.ground() })
+    );
+    g.rotation.x = -Math.PI / 2;
+    g.position.y = 0;
+    scene.add(g);
+    RAY_TARGETS.push(g);
+  }
+
+  /* Footpaths: one merged, unoutlined sheet of overlapping blobs. */
+  function buildPaths(parent) {
+    const b = new PRIM.Batch(MAT.flat(0xffffff, {
+      map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.9
+    }), 0);
+    const route = [
+      [0, 31], [0, 24], [1, 18], [1.5, 12], [2, 7],          // gate to yard
+      [4, 4], [6, 1], [6, -3], [5.6, -7.4],                   // yard to barn door
+      [2, -4], [-3, -1], [-8, 1], [-13, 3], [-16, 6],         // yard to tower stair
+      [-17, 8], [-18, 11], [-18.5, 13.5],                     // tower to shed
+      [-15, 15], [-10, 16], [-4, 17], [2, 18],                // shed to field
+      [8, 17], [13, 15], [16, 14],                            // into the field
+      [10, 20], [4, 22], [-1, 26], [0, 29]                    // field back to gate
+    ];
+    for (let i = 0; i < route.length - 1; i++) {
+      const a = route[i], c = route[i + 1];
+      const steps = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / 0.9);
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = UTIL.lerp(a[0], c[0], t) + UTIL.rng(-.35, .35);
+        const z = UTIL.lerp(a[1], c[1], t) + UTIL.rng(-.35, .35);
+        b.plane(UTIL.rng(2.4, 3.6), UTIL.rng(2.4, 3.6), x, 0.015, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      }
+    }
+    b.build(parent, { ray: false });
+  }
+
+  /* ---------------- crooked entrance gate ---------------- */
+  function buildGate(parent) {
+    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const b = new PRIM.Batch(woodMat, 0.05);
+    // two fat leaning posts
+    b.box(0.6, 5.4, 0.6, -3.4, 2.7, 30, 0, 0, 0.05, 0.04);
+    b.box(0.6, 5.2, 0.6, 3.4, 2.6, 30, 0, 0, -0.06, 0.04);
+    // sagging crossbeam, built from three tilted planks so it droops
+    b.box(2.7, 0.42, 0.42, -2.0, 5.05, 30, 0, 0, -0.09, 0.03);
+    b.box(2.4, 0.42, 0.42, 0, 4.83, 30, 0, 0, 0, 0.03);
+    b.box(2.7, 0.42, 0.42, 2.0, 5.02, 30, 0, 0, 0.08, 0.03);
+    // brackets
+    b.box(1.2, 0.2, 0.2, -2.8, 4.5, 30, 0, 0, 0.5);
+    b.box(1.2, 0.2, 0.2, 2.8, 4.45, 30, 0, 0, -0.5);
+    b.build(parent);
+
+    WORLD.addFloor(-3.4, 0, 30, 0.9, 5.4, 0.9, 'gatepost');
+    WORLD.addFloor(3.4, 0, 30, 0.9, 5.4, 0.9, 'gatepost');
+
+    // hanging farm sign under the beam
+    const hang = new THREE.Group();
+    hang.position.set(0, 4.55, 30);
+    const face = TEX.sign(['THE WITHERED', 'FARM'], PAL.cream, PAL.rustDeep, 320, 150);
+    PRIM.box(0.06, 0.5, 0.06, MAT.toon(PAL.charcoal), { pos: [-1.1, -0.28, 0], parent: hang, outline: 0.02, ray: false });
+    PRIM.box(0.06, 0.5, 0.06, MAT.toon(PAL.charcoal), { pos: [1.1, -0.28, 0], parent: hang, outline: 0.02, ray: false });
+    const board = PRIM.box(3.1, 1.45, 0.12, MAT.toon(0xffffff, { map: face }),
+      { pos: [0, -1.28, 0], parent: hang, warp: 0.02 });
+    PROPS.registerWobble(board, 0.7);
+    parent.add(hang);
+    animated.hangers.push({ obj: hang, phase: UTIL.rng(0, 6.28), amp: 0.045, speed: 0.9 });
+
+    // little leaning notice beside the gate
+    PROPS.signPost(parent, 5.2, 28.6, ['NO', 'TRESPASSIN'], -0.4, { w: 1.4, h: 0.9, bg: PAL.mustard, fg: PAL.rustDeep });
+    PROPS.signPost(parent, -5.4, 27.4, ['THIS WAY', '↑'], 0.3, { w: 1.5, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.5 });
+  }
+
+  /* ---------------- perimeter + interior fencing ---------------- */
+  function fenceRun(batch, ax, az, bx, bz, opts) {
+    opts = opts || {};
+    const len = Math.hypot(bx - ax, bz - az);
+    const n = Math.max(1, Math.round(len / 2.6));
+    const dx = (bx - ax) / n, dz = (bz - az) / n;
+    const ang = Math.atan2(bx - ax, bz - az);
+    for (let i = 0; i <= n; i++) {
+      const px = ax + dx * i, pz = az + dz * i;
+      const bend = opts.bow ? Math.sin(i / n * Math.PI) * opts.bow : 0;
+      const ox = Math.cos(ang) * bend, oz = -Math.sin(ang) * bend;
+      const h = UTIL.rng(1.3, 1.7);
+      if (!(opts.broken && UTIL.rand() < 0.18)) {
+        batch.box(0.17, h, 0.17, px + ox, h / 2, pz + oz, UTIL.rng(-.05, .05), ang, UTIL.rng(-.07, .07), 0.015);
+      }
+      if (i < n) {
+        const mx = px + dx / 2 + ox, mz = pz + dz / 2 + oz;
+        const rl = Math.hypot(dx, dz) + 0.1;
+        if (!(opts.broken && UTIL.rand() < 0.22)) {
+          batch.box(0.1, 0.13, rl, mx, UTIL.rng(0.95, 1.12), mz, 0, ang, UTIL.rng(-.04, .04), 0.012);
+        }
+        if (!(opts.broken && UTIL.rand() < 0.22)) {
+          batch.box(0.1, 0.13, rl, mx, UTIL.rng(0.45, 0.6), mz, 0, ang, UTIL.rng(-.04, .04), 0.012);
+        }
+      }
+    }
+  }
+
+  function buildFences(parent) {
+    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
+    const b = new PRIM.Batch(woodMat, 0.04);
+
+    // perimeter, bowed so nothing reads as a square arena
+    fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8 });
+    fenceRun(b, 3.6, 31.2, 30, 32, { bow: -0.8 });
+    fenceRun(b, 30, 32, 30.5, -32, { bow: 1.4, broken: true });
+    fenceRun(b, 30.5, -32, -30, -32, { bow: 1.2, broken: true });
+    fenceRun(b, -30, -32, -30.5, 32, { bow: -1.4, broken: true });
+
+    // interior guide fencing: curves the walk from the gate toward the yard
+    fenceRun(b, -8, 24, -12, 14, { bow: 2.2 });
+    fenceRun(b, 9, 25, 13, 20, { bow: -1.4, broken: true });
+    // paddock rail west of the barn
+    fenceRun(b, 4, 4, 4, -1, { bow: 0.6 });
+    // field edge
+    fenceRun(b, 11, 9, 24, 9.5, { bow: -1.1 });
+    fenceRun(b, 24, 9.5, 24, 21, { bow: 1.0, broken: true });
+    b.build(parent);
+
+    // Solid boundary. Tall enough that a jump cannot clear it, hidden behind
+    // the fence line by hedges, trees and rock piles.
+    WORLD.addFloor(0, 0, 32.6, 70, 5, 1.6, 'bounds');   // just behind the gate
+    WORLD.addFloor(0, 0, -32.6, 70, 5, 1.6, 'bounds');
+    WORLD.addFloor(-31.2, 0, 0, 1.6, 5, 70, 'bounds');
+    WORLD.addFloor(31.2, 0, 0, 1.6, 5, 70, 'bounds');
+    // gate line itself: two stubs either side of the opening
+    WORLD.addFloor(-17, 0, 31.4, 27, 2.4, 0.8, 'fence');
+    WORLD.addFloor(17, 0, 31.4, 27, 2.4, 0.8, 'fence');
+    // interior rails
+    WORLD.addFloor(-10.4, 0, 19, 0.8, 1.6, 11, 'fence');
+    WORLD.addFloor(4, 0, 1.5, 0.6, 1.6, 5.6, 'fence');
+    WORLD.addFloor(17.5, 0, 9.2, 13.4, 1.6, 0.7, 'fence');
+    WORLD.addFloor(24, 0, 15.2, 0.7, 1.6, 12, 'fence');
+  }
+
+  /* Blobby hedges: one merged sphere soup, no per-lobe outline cost. */
+  function hedgeRun(batch, pts, r, jitter) {
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], c = pts[i + 1];
+      const steps = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / (r * 0.8));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = UTIL.lerp(a[0], c[0], t) + UTIL.rng(-jitter, jitter);
+        const z = UTIL.lerp(a[1], c[1], t) + UTIL.rng(-jitter, jitter);
+        const rr = r * UTIL.rng(0.75, 1.15);
+        batch.sphere(rr, x, rr * 0.72, z, 1, 0.9, 1);
+        if (UTIL.rand() > .45) batch.sphere(rr * .7, x + UTIL.rng(-.6, .6), rr * 1.15, z + UTIL.rng(-.6, .6), 1, .9, 1);
+      }
+    }
+  }
+
+  function buildHedges(parent) {
+    // One batch PER RUN rather than one for the whole farm: each mesh then has
+    // a tight bounding sphere, so frustum culling and bullet raycasts can
+    // reject the hedges you are nowhere near.
+    const runs = [
+      [[[-33, 34], [-33, -34]], 1.9, 0.5],            // outside the west fence
+      [[[33, 34], [33.5, -34]], 1.9, 0.5],            // outside the east fence
+      [[[-33, -34.5], [33, -34.5]], 2.0, 0.5],        // outside the north fence
+      [[[-33, 34.5], [-8, 34]], 1.9, 0.5],            // south-west of the gate
+      [[[8, 34], [33, 34.5]], 1.9, 0.5],              // south-east of the gate
+      [[[23, -2.5], [28, -3], [28.5, -15]], 1.5, 0.35], // walls the hidden nook
+      [[[22.5, -16], [28.5, -16]], 1.5, 0.35],
+      [[[-13, 11], [-13.5, 18], [-16, 21]], 1.6, 0.4]   // screens off the shed
+    ];
+    runs.forEach(r => {
+      const b = new PRIM.Batch(MAT.toon(PAL.olive), 0.06);
+      hedgeRun(b, r[0], r[1], r[2]);
+      b.build(parent);
+    });
+
+    WORLD.addFloor(28.6, 0, -9.5, 2.6, 2.6, 15, 'hedge');
+    WORLD.addFloor(25.5, 0, -16.4, 8, 2.6, 2.6, 'hedge');
+    WORLD.addFloor(-13.6, 0, 14.6, 2.6, 2.6, 9, 'hedge');
+  }
+
+  /* ---------------- the barn ---------------- */
+  function buildBarn(parent) {
+    const X0 = 6, X1 = 22, Z0 = -15, Z1 = -1;
+    const WALL = 0.42, TOP = 6, RIDGE = 9.4;
+    const red = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 3) });
+    const b = new PRIM.Batch(red, 0.05);
+
+    // --- west wall (main door faces the yard) ---
+    b.box(WALL, TOP, 5.6, X0, TOP / 2, -12.2, 0, 0, 0, 0.03);
+    b.box(WALL, TOP, 4.4, X0, TOP / 2, -3.2, 0, 0, 0, 0.03);
+    b.box(WALL, 1.4, 4.0, X0, 5.3, -7.4, 0, 0, 0, 0.03);
+    WORLD.add(X0, TOP / 2, -12.2, WALL + .2, TOP, 5.6, 'barn');
+    WORLD.add(X0, TOP / 2, -3.2, WALL + .2, TOP, 4.4, 'barn');
+
+    // --- east wall ---
+    b.box(WALL, TOP, 14, X1, TOP / 2, -8, 0, 0, 0, 0.03);
+    WORLD.add(X1, TOP / 2, -8, WALL + .2, TOP, 14, 'barn');
+
+    // --- north gable wall: ground door + hay door ---
+    b.box(5.0, TOP, WALL, 8.5, TOP / 2, Z0, 0, 0, 0, 0.03);
+    b.box(3.0, 3.0, WALL, 12.5, 4.5, Z0, 0, 0, 0, 0.03);
+    b.box(2.0, TOP, WALL, 15.0, TOP / 2, Z0, 0, 0, 0, 0.03);
+    b.box(3.0, 3.5, WALL, 17.5, 1.75, Z0, 0, 0, 0, 0.03);
+    b.box(3.0, 0.3, WALL, 17.5, 5.85, Z0, 0, 0, 0, 0.03);
+    b.box(3.0, TOP, WALL, 20.5, TOP / 2, Z0, 0, 0, 0, 0.03);
+    WORLD.add(8.5, TOP / 2, Z0, 5.0, TOP, WALL + .2, 'barn');
+    WORLD.add(15.0, TOP / 2, Z0, 2.0, TOP, WALL + .2, 'barn');
+    WORLD.add(17.5, 1.75, Z0, 3.0, 3.5, WALL + .2, 'barn');
+    WORLD.add(20.5, TOP / 2, Z0, 3.0, TOP, WALL + .2, 'barn');
+    // wall above the ground door and above the hay door, so the loft is enclosed
+    // everywhere except the hay opening itself
+    WORLD.add(12.5, 4.5, Z0, 3.0, 3.0, WALL + .2, 'barn');
+    WORLD.add(17.5, 5.85, Z0, 3.0, 0.3, WALL + .2, 'barn');
+
+    // --- south gable wall with a window ---
+    b.box(5.5, TOP, WALL, 8.75, TOP / 2, Z1, 0, 0, 0, 0.03);
+    b.box(3.5, 2.2, WALL, 13.25, 1.1, Z1, 0, 0, 0, 0.03);
+    b.box(3.5, 2.2, WALL, 13.25, 4.9, Z1, 0, 0, 0, 0.03);
+    b.box(7.0, TOP, WALL, 18.5, TOP / 2, Z1, 0, 0, 0, 0.03);
+    WORLD.add(8.75, TOP / 2, Z1, 5.5, TOP, WALL + .2, 'barn');
+    WORLD.add(13.25, 1.1, Z1, 3.5, 2.2, WALL + .2, 'barn');
+    WORLD.add(18.5, TOP / 2, Z1, 7.0, TOP, WALL + .2, 'barn');
+
+    // --- gable triangles, stacked into a stepped cartoon peak ---
+    const rise = RIDGE - TOP, steps = 6;
+    for (let i = 0; i < steps; i++) {
+      const w = 16 * (1 - (i + 0.4) / steps);
+      const y = TOP + (i + 0.5) * (rise / steps);
+      b.box(w, rise / steps + 0.02, WALL, 14, y, Z0, 0, 0, 0, 0.02);
+      b.box(w, rise / steps + 0.02, WALL, 14, y, Z1, 0, 0, 0, 0.02);
+    }
+    b.build(parent);
+
+    // --- roof ---
+    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 4) });
+    const rb = new PRIM.Batch(roofMat, 0.055);
+    const ang = Math.atan2(rise, 8);
+    rb.box(9.4, 0.36, 15.4, 10, 7.72, -8, 0, 0, ang, 0.03);
+    rb.box(9.4, 0.36, 15.4, 18, 7.72, -8, 0, 0, -ang, 0.03);
+    rb.box(0.7, 0.5, 15.8, 14, 9.5, -8, 0, 0, 0, 0.03);
+    rb.build(parent);
+
+    // --- big sliding doors, cracked open ---
+    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2) });
+    const db = new PRIM.Batch(doorMat, 0.045);
+    db.box(0.16, 4.4, 1.5, X0 - 0.16, 2.25, -9.9, 0, 0, 0.02, 0.03);
+    db.box(0.16, 4.4, 1.1, X0 - 0.16, 2.2, -5.2, 0, 0, -0.03, 0.03);
+    // X bracing
+    db.box(0.1, 0.22, 1.9, X0 - 0.3, 2.25, -9.9, 0.62, 0, 0);
+    db.box(0.1, 0.22, 1.9, X0 - 0.3, 2.25, -9.9, -0.62, 0, 0);
+    db.box(0.16, 0.2, 4.6, X0 - 0.2, 4.62, -7.6, 0, 0, 0);
+    db.build(parent);
+    WORLD.add(X0 - 0.16, 2.25, -9.9, 0.5, 4.4, 1.5, 'door');
+    WORLD.add(X0 - 0.16, 2.2, -5.2, 0.5, 4.4, 1.1, 'door');
+
+    // --- interior floor boards + loft ---
+    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 5) });
+    const fb = new PRIM.Batch(floorMat, 0);
+    fb.plane(15.6, 13.6, 14, 0.03, -8, -Math.PI / 2, 0, 0);
+    fb.build(parent, { ray: false });
+
+    const loftMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 4) });
+    const lb = new PRIM.Batch(loftMat, 0.045);
+    lb.box(15.6, 0.32, 5.9, 14, 3.24, -11.9, 0, 0, 0, 0.02);
+    // support posts + beam
+    lb.box(0.3, 3.1, 0.3, 9.5, 1.55, -9.2);
+    lb.box(0.3, 3.1, 0.3, 18.5, 1.55, -9.2);
+    lb.box(15.6, 0.3, 0.34, 14, 3.0, -9.15);
+    // loft railing with a gap at the stair head
+    for (let x = 6.6; x < 20.0; x += 1.6) lb.box(0.14, 0.9, 0.14, x, 3.85, -9.2, 0, 0, UTIL.rng(-.05, .05));
+    lb.box(13.6, 0.12, 0.12, 13.2, 4.28, -9.2);
+    // stairs up the east wall
+    for (let i = 0; i < 9; i++) {
+      const top = (i + 1) * 0.34;
+      lb.box(1.6, top, 0.72, 21.0, top / 2, -3.0 - i * 0.72, 0, 0, 0, 0.012);
+      WORLD.addFloor(21.0, 0, -3.0 - i * 0.72, 1.6, top, 0.72, 'stair');
+    }
+    lb.build(parent);
+    WORLD.addFloor(14, 3.08, -11.9, 15.6, 0.32, 5.9, 'loft');
+    WORLD.add(9.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
+    WORLD.add(18.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
+    WORLD.add(13.2, 3.85, -9.2, 13.6, 1.0, 0.35, 'railing');
+
+    // --- interior dressing ---
+    PROPS.hayBale(parent, 9.4, 0, -4.2, 0.2);
+    PROPS.hayBale(parent, 9.6, 0.85, -4.4, -0.15);
+    PROPS.hayBale(parent, 11.0, 0, -3.6, -0.5);
+    PROPS.hayBale(parent, 16.5, 3.4, -12.6, 0.1);
+    PROPS.hayBale(parent, 12.2, 3.4, -13.0, -0.3);
+    PROPS.barrel(parent, 19.6, -2.6);
+    PROPS.crate(parent, 8.2, 0, -13.4, 1.0);
+    PROPS.crate(parent, 8.4, 1.0, -13.2, 0.85, 0.4);
+    PROPS.crate(parent, 9.4, 0, -12.6, 0.9, -0.3);
+    PROPS.can(parent, 8.4, 1.85, -13.2);
+    PROPS.can(parent, 9.4, 0.9, -12.6);
+    PROPS.bottle(parent, 19.6, 1.25, -2.6);
+    PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
+    PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
+
+    // workbench along the south wall
+    const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.04);
+    wb.box(3.4, 0.14, 0.9, 18.6, 0.92, -1.9, 0, 0, 0.01, 0.02);
+    [[17.1, -1.55], [20.1, -1.55], [17.1, -2.25], [20.1, -2.25]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
+    wb.build(parent);
+    WORLD.addFloor(18.6, 0, -1.9, 3.4, 1.0, 0.9, 'bench');
+    PROPS.can(parent, 17.6, 1.0, -1.9);
+    PROPS.bottle(parent, 19.4, 1.0, -2.0);
+
+    // pitchfork leaning on the wall
+    const pf = new THREE.Group();
+    pf.position.set(21.4, 0, -6.4);
+    pf.rotation.z = 0.22; pf.rotation.y = 0.5;
+    PRIM.cyl(0.05, 0.05, 2.2, 8, MAT.toon(PAL.rustDeep), { pos: [0, 1.1, 0], parent: pf, outline: 0.028 });
+    const tb = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.028);
+    tb.box(0.5, 0.08, 0.08, 0, 2.2, 0);
+    [-0.2, 0, 0.2].forEach(o => tb.box(0.06, 0.5, 0.06, o, 2.45, 0));
+    tb.build(pf);
+    parent.add(pf);
+
+    // [SPAWN] Phase 2 hooks. Data only — nothing is created from these.
+    WORLD.addSpawn(14, 0, -6, 'barn_floor');
+    WORLD.addSpawn(14, 3.4, -12, 'barn_loft');
+  }
+
+  /* ---------------- water tower with a climbable overlook ---------------- */
+  function buildTower(parent) {
+    const CX = -17, CZ = -6.75;
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const b = new PRIM.Batch(wood, 0.05);
+
+    // four splayed legs
+    const legs = [[-2.6, -3.4], [2.6, -3.4], [-2.6, 3.4], [2.6, 3.4]];
+    legs.forEach(l => {
+      b.box(0.34, 7.1, 0.34, CX + l[0] * 1.06, 3.55, CZ + l[1] * 1.06,
+        -l[1] * 0.028, 0, l[0] * 0.028, 0.02);
+      WORLD.addFloor(CX + l[0] * 1.06, 0, CZ + l[1] * 1.06, 0.55, 6.2, 0.55, 'leg');
+    });
+    // cross bracing
+    b.box(5.6, 0.16, 0.16, CX, 2.4, CZ - 3.5, 0, 0, 0.04);
+    b.box(5.6, 0.16, 0.16, CX, 2.4, CZ + 3.5, 0, 0, -0.04);
+    b.box(0.16, 0.16, 7.2, CX - 2.7, 2.4, CZ, 0.03, 0, 0);
+    b.box(0.16, 0.16, 7.2, CX + 2.7, 2.4, CZ, -0.03, 0, 0);
+
+    // platform deck
+    b.box(7.2, 0.34, 7.6, CX, 6.03, CZ, 0, 0, 0, 0.02);
+    // railings on three sides; the south edge is left open where the stair lands
+    for (let x = CX - 3.3; x <= CX + 3.3; x += 1.5) {
+      b.box(0.13, 0.95, 0.13, x, 6.68, CZ - 3.6, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(6.8, 0.11, 0.11, CX, 7.1, CZ - 3.6);
+    for (let z = CZ - 3.3; z <= CZ + 3.3; z += 1.5) {
+      b.box(0.13, 0.95, 0.13, CX - 3.4, 6.68, z, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, CX + 3.4, 6.68, z, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(0.11, 0.11, 7.0, CX - 3.4, 7.1, CZ);
+    b.box(0.11, 0.11, 7.0, CX + 3.4, 7.1, CZ);
+    // stub rails either side of the stair head
+    [-2.5, 2.5].forEach(o => {
+      b.box(0.13, 0.95, 0.13, CX + o, 6.68, CZ + 3.6, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, CX + o * 1.36, 6.68, CZ + 3.6, 0, 0, UTIL.rng(-.05, .05));
+      b.box(2.2, 0.11, 0.11, CX + o * 1.18, 7.1, CZ + 3.6);
+    });
+
+    // plank stair climbing from the yard, landing flush with the deck
+    for (let i = 0; i < 14; i++) {
+      const top = 6.2 * (i + 1) / 14;          // 0.44 m rise, under the step limit
+      const z = 8.0 - i * 0.85;
+      b.box(2.0, top, 0.85, CX, top / 2, z, 0, 0, 0, 0.012);
+      WORLD.addFloor(CX, 0, z, 2.0, top, 0.85, 'stair');
+    }
+    b.build(parent);
+
+    WORLD.addFloor(CX, 5.86, CZ, 7.2, 0.34, 7.6, 'deck');
+    WORLD.add(CX, 6.68, CZ - 3.6, 7.0, 1.05, 0.35, 'rail');
+    WORLD.add(CX - 3.4, 6.68, CZ, 0.35, 1.05, 7.2, 'rail');
+    WORLD.add(CX + 3.4, 6.68, CZ, 0.35, 1.05, 7.2, 'rail');
+    WORLD.add(CX - 2.95, 6.68, CZ + 3.6, 2.3, 1.05, 0.35, 'rail');
+    WORLD.add(CX + 2.95, 6.68, CZ + 3.6, 2.3, 1.05, 0.35, 'rail');
+
+    // the tank
+    const tankMat = MAT.toon(PAL.blueDeep, { map: TEX.metal() });
+    PRIM.cyl(2.15, 2.25, 3.4, 14, tankMat, { pos: [CX, 7.9, CZ], parent: parent, outline: 0.055 });
+    PRIM.cone(2.5, 1.1, 14, MAT.toon(PAL.charcoal), { pos: [CX, 10.1, CZ], parent: parent, outline: 0.055, ray: false });
+    [6.9, 8.9].forEach(y =>
+      PRIM.cyl(2.32, 2.32, 0.14, 14, MAT.toon(PAL.blueGrayDk), { pos: [CX, y, CZ], parent: parent, outline: 0.03, ray: false })
+    );
+    WORLD.add(CX, 7.9, CZ, 4.6, 3.4, 4.6, 'tank');
+
+    // painted lettering panel on the tank
+    const panel = PRIM.box(3.0, 1.3, 0.12, MAT.toon(0xffffff, {
+      map: TEX.sign(['WATER'], PAL.cream, PAL.rust, 256, 110)
+    }), { pos: [CX, 8.1, CZ + 2.22], parent: parent, ray: false, outline: 0.03 });
+
+    // spigot pipe running down a leg
+    PRIM.cyl(0.14, 0.14, 6.0, 8, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+      { pos: [CX + 2.55, 3.2, CZ + 3.6], parent: parent, outline: 0.03, ray: false });
+
+    // the overlook nook up top
+    PROPS.crate(parent, CX - 2.4, 6.2, CZ + 2.2, 0.8, 0.3);
+    PROPS.lantern(parent, CX + 2.3, 6.9, CZ + 2.6, 0);
+    PROPS.can(parent, CX - 2.4, 7.0, CZ + 2.2);
+    PROPS.signPost(parent, CX + 1.6, CZ + 3.2, ['BEST VIEW', 'ON THE FARM'], Math.PI, { w: 1.6, h: 0.8, postH: 0.7, bg: PAL.cream, fg: PAL.olive });
+
+    WORLD.addSpawn(CX + 4, 0, CZ + 6, 'tower_base');   // beside the stair, not on it
+  }
+
+  /* ---------------- squeaky windmill ---------------- */
+  function buildWindmill(parent) {
+    const CX = -6, CZ = -26;
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const b = new PRIM.Batch(wood, 0.05);
+    const legs = [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]];
+    legs.forEach(l => {
+      b.box(0.26, 8.6, 0.26, CX + l[0] * 0.62, 4.3, CZ + l[1] * 0.62, -l[1] * 0.075, 0, l[0] * 0.075, 0.02);
+    });
+    for (let y = 1.6; y < 8; y += 2.0) {
+      const s = 2.2 * (1 - y / 12);
+      b.box(s * 2, 0.13, 0.13, CX, y, CZ - s, 0, 0, 0.03);
+      b.box(s * 2, 0.13, 0.13, CX, y, CZ + s, 0, 0, -0.03);
+      b.box(0.13, 0.13, s * 2, CX - s, y, CZ, 0.03, 0, 0);
+      b.box(0.13, 0.13, s * 2, CX + s, y, CZ, -0.03, 0, 0);
+    }
+    b.box(1.9, 0.3, 1.9, CX, 8.65, CZ, 0, 0, 0, 0.02);
+    b.build(parent);
+    WORLD.addFloor(CX, 0, CZ, 2.9, 8.6, 2.9, 'windmill');
+
+    // hub + fan
+    const hub = new THREE.Group();
+    hub.position.set(CX, 8.9, CZ + 0.9);
+    PRIM.cyl(0.38, 0.38, 0.5, 12, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+      { rot: [Math.PI / 2, 0, 0], parent: hub, outline: 0.035, ray: false });
+    const fan = new THREE.Group();
+    const bladeMat = MAT.toon(PAL.creamDim);
+    const fb = new PRIM.Batch(bladeMat, 0.035);
+    const blades = 14;
+    for (let i = 0; i < blades; i++) {
+      const a = i / blades * 6.28;
+      fb.box(0.9, 0.28, 0.06, Math.cos(a) * 1.9, Math.sin(a) * 1.9, 0, 0, 0, a + 0.5, 0.01);
+    }
+    fb.box(0.16, 0.16, 0.1, 0, 0, 0);
+    fb.build(fan, { ray: false });
+    const ring = PRIM.torus(2.45, 0.07, MAT.toon(PAL.rust), { parent: fan, outline: 0.03, ray: false });
+    fan.position.z = 0.35;
+    hub.add(fan);
+    // tail vane
+    const vane = new THREE.Group();
+    PRIM.box(1.9, 0.1, 0.1, MAT.toon(PAL.rustDeep), { pos: [0, 0, -0.95], parent: vane, outline: 0.025, ray: false });
+    PRIM.box(0.08, 1.0, 1.2, MAT.toon(PAL.mustard), { pos: [0, 0.1, -1.8], parent: vane, outline: 0.03, ray: false });
+    hub.add(vane);
+    parent.add(hub);
+    animated.windmillFan = fan;
+    animated.vane = vane;
+
+    PROPS.signPost(parent, CX + 3.2, CZ + 3.4, ['MIND THE', 'BLADES'], -0.9, { w: 1.6, h: 0.85, bg: PAL.mustard, fg: PAL.rustDeep });
+  }
+
+  /* ---------------- warped storage shed ---------------- */
+  function buildShed(parent) {
+    const X0 = -22.5, X1 = -15.5, Z0 = 12, Z1 = 18, H = 3.4;
+    const wood = MAT.toon(PAL.blueGray, { map: TEX.wood(PAL.blueGray, PAL.blueGrayDk, 3) });
+    const b = new PRIM.Batch(wood, 0.05);
+    const lean = 0.055;
+    // walls, each leaning a different way so the whole thing looks tired
+    b.box(0.34, H, 6.2, X0, H / 2, 15, 0, 0, lean, 0.05);
+    b.box(7.2, H, 0.34, -19, H / 2, Z0, lean * 0.6, 0, 0, 0.05);
+    b.box(7.2, H, 0.34, -19, H / 2, Z1, -lean * 0.4, 0, 0, 0.05);
+    // east wall with a doorway at z 14 .. 16.4
+    b.box(0.34, H, 2.1, X1, H / 2, 12.9, 0, 0, -lean, 0.05);
+    b.box(0.34, H, 1.7, X1, H / 2, 17.1, 0, 0, -lean, 0.05);
+    b.box(0.34, 0.9, 2.5, X1, 2.95, 15.2, 0, 0, -lean, 0.05);
+    // sagging shed roof
+    b.box(8.2, 0.28, 7.2, -19, 3.6, 15, 0.07, 0, 0.05, 0.06);
+    b.build(parent);
+
+    WORLD.add(X0, H / 2, 15, 0.7, H, 6.4, 'shed');
+    WORLD.add(-19, H / 2, Z0, 7.4, H, 0.7, 'shed');
+    WORLD.add(-19, H / 2, Z1, 7.4, H, 0.7, 'shed');
+    WORLD.add(X1, H / 2, 12.9, 0.7, H, 2.1, 'shed');
+    WORLD.add(X1, H / 2, 17.1, 0.7, H, 1.7, 'shed');
+
+    // shelving inside, stocked with things worth shooting
+    const sb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.035);
+    [0.85, 1.75].forEach(y => sb.box(5.4, 0.1, 0.55, -19.6, y, 12.6, 0, 0, 0.015));
+    [-22.0, -19.6, -17.2].forEach(x => sb.box(0.12, 1.9, 0.5, x, 0.95, 12.6));
+    sb.build(parent);
+    WORLD.addFloor(-19.6, 0, 12.6, 5.4, 1.85, 0.6, 'shelf');
+    for (let i = 0; i < 5; i++) PROPS.can(parent, -21.4 + i * 0.9, 0.9, 12.6);
+    for (let i = 0; i < 4; i++) PROPS.bottle(parent, -21.0 + i * 1.1, 1.8, 12.6);
+    PROPS.barrel(parent, -21.2, 16.6, { color: PAL.olive });
+    PROPS.crate(parent, -17.4, 0, 16.8, 0.95, 0.2);
+    PROPS.crate(parent, -17.5, 0.95, 16.9, 0.8, -0.4);
+    PROPS.lantern(parent, -19, 3.1, 15.4, 0.35);
+
+    PROPS.signPost(parent, -15.0, 13.4, ['SEED', 'STORE'], -1.5, { w: 1.3, h: 0.9, bg: PAL.mustard, fg: PAL.rustDeep, postH: 2.1 });
+    WORLD.addSpawn(-19, 0, 15, 'shed_interior');
+  }
+
+  /* ---------------- the field ---------------- */
+  function buildField(parent) {
+    const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
+    const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
+    const heads = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.04);
+    const cabbage = new PRIM.Batch(MAT.toon(PAL.olive), 0.05);
+    const dirt = new PRIM.Batch(MAT.toon(PAL.dirtDeep), 0);
+
+    for (let row = 0; row < 5; row++) {
+      const z = 11.2 + row * 2.1;
+      dirt.plane(11, 1.1, 17.5, 0.03, z, -Math.PI / 2, 0, UTIL.rng(-.02, .02));
+      for (let i = 0; i < 7; i++) {
+        const x = 12.6 + i * 1.6 + UTIL.rng(-.25, .25);
+        const zz = z + UTIL.rng(-.25, .25);
+        if ((row + i) % 3 === 0) {
+          // cabbage-ish head, nothing more
+          cabbage.sphere(UTIL.rng(0.3, 0.42), x, 0.26, zz, 1, 0.8, 1);
+        } else {
+          const h = UTIL.rng(1.5, 2.3);
+          const tilt = UTIL.rng(-.13, .13);
+          stalks.cyl(0.05, 0.08, h, 6, x, h / 2, zz, 0, 0, tilt);
+          for (let l = 0; l < 3; l++) {
+            const a = UTIL.rng(0, 6.28);
+            leaves.box(0.9, 0.05, 0.22, x + Math.cos(a) * 0.4, h * UTIL.rng(0.45, 0.85), zz + Math.sin(a) * 0.4,
+              0, a, UTIL.rng(-.5, -.15), 0.02);
+          }
+          heads.cyl(0.09, 0.13, 0.42, 6, x + tilt * h * -0.5, h - 0.1, zz, 0, 0, tilt);
+        }
+      }
+    }
+    dirt.build(parent, { ray: false });
+    stalks.build(parent);
+    leaves.build(parent, { ray: false });
+    heads.build(parent, { ray: false });
+    cabbage.build(parent);
+
+    // scarecrow-free: just a bare cross post, nothing wearing a face
+    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.045);
+    cb.box(0.18, 2.6, 0.18, 17.5, 1.3, 15.5, 0, 0, 0.06, 0.02);
+    cb.box(2.0, 0.16, 0.16, 17.5, 2.15, 15.5, 0, 0, 0.09, 0.02);
+    cb.build(parent);
+    WORLD.addFloor(17.5, 0, 15.5, 0.4, 2.6, 0.4, 'post');
+
+    PROPS.signPost(parent, 12.4, 10.2, ['CORN', '(ORDINARY)'], 0.2, { w: 1.7, h: 0.8, bg: PAL.cream, fg: PAL.olive, postH: 1.4 });
+    WORLD.addSpawn(19.8, 0, 13.0, 'field');            // clear of the cross post
+  }
+
+  /* ---------------- irrigation pipes on stands ---------------- */
+  function buildPipes(parent) {
+    const pipe = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const b = new PRIM.Batch(pipe, 0.045);
+    // long run behind the yard, high enough to walk under
+    for (let x = -14; x <= 10; x += 6) {
+      b.cyl(0.17, 0.17, 6.2, 8, x + 3, 2.65 + Math.sin(x * 0.3) * 0.06, -20, 0, 0, Math.PI / 2);
+      b.cyl(0.22, 0.22, 0.35, 8, x + 6, 2.65, -20, 0, 0, Math.PI / 2);
+    }
+    // branch running south past the yard
+    for (let z = -20; z <= 4; z += 6) {
+      b.cyl(0.15, 0.15, 6.2, 8, 2, 2.6, z + 3, Math.PI / 2, 0, 0);
+    }
+    // stands
+    [[-11, -20], [1, -20], [9, -20], [2, -14], [2, -6], [2, 2]].forEach(p => {
+      b.box(0.22, 2.6, 0.22, p[0], 1.3, p[1], 0, 0, UTIL.rng(-.03, .03));
+      b.box(0.7, 0.16, 0.7, p[0], 0.1, p[1]);
+      WORLD.addFloor(p[0], 0, p[1], 0.5, 2.5, 0.5, 'stand');
+    });
+    // a burst joint dribbling nothing at all
+    b.cyl(0.17, 0.3, 0.5, 8, 5, 2.6, -20, 0, 0, Math.PI / 2);
+    b.build(parent);
+  }
+
+  /* ---------------- yard dressing + hidden nook + scatter ---------------- */
+  function buildYard(parent) {
+    // stone well
+    const stone = MAT.toon(PAL.blueGray);
+    const wb = new PRIM.Batch(stone, 0.045);
+    const R = 1.15;
+    for (let i = 0; i < 14; i++) {
+      const a = i / 14 * 6.28;
+      wb.box(0.55, 0.95, 0.34, 3 + Math.cos(a) * R, 0.48, 10 + Math.sin(a) * R, 0, -a, UTIL.rng(-.07, .07), 0.03);
+    }
+    wb.build(parent);
+    WORLD.addFloor(3, 0, 10, 2.9, 1.0, 2.9, 'well');
+    const wr = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.04);
+    wr.box(0.16, 2.0, 0.16, 1.95, 1.0, 10);
+    wr.box(0.16, 2.0, 0.16, 4.05, 1.0, 10);
+    wr.box(2.6, 0.16, 1.9, 3, 2.15, 10, 0.06, 0, 0.03, 0.03);
+    wr.cyl(0.16, 0.16, 1.9, 8, 3, 1.55, 10, 0, 0, Math.PI / 2);
+    wr.build(parent);
+    WORLD.addFloor(1.95, 0, 10, 0.4, 2.1, 0.4, 'well');
+    WORLD.addFloor(4.05, 0, 10, 0.4, 2.1, 0.4, 'well');
+    const bucket = PRIM.cyl(0.24, 0.2, 0.34, 10, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+      { pos: [3, 1.05, 10], parent: parent, outline: 0.03 });
+    animated.hangers.push({ obj: bucket, phase: 1.1, amp: 0.09, speed: 1.4 });
+    PROPS.registerWobble(bucket, 1.2);
+
+    // water trough
+    const tb = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2) }), 0.045);
+    tb.box(3.0, 0.7, 1.1, -5, 0.35, 13, 0, 0.2, 0.02, 0.03);
+    tb.build(parent);
+    WORLD.addFloor(-5, 0, 13, 3.1, 0.75, 1.3, 'trough');
+
+    // handcart, tipped over
+    const cart = new THREE.Group();
+    cart.position.set(-9.5, 0, 4.5);
+    cart.rotation.y = 0.7;
+    const cbb = new PRIM.Batch(MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 2) }), 0.045);
+    cbb.box(2.4, 0.16, 1.3, 0, 0.75, 0, 0, 0, 0.08, 0.03);
+    cbb.box(2.4, 0.5, 0.12, 0, 1.0, 0.62, 0, 0, 0.08, 0.03);
+    cbb.box(2.4, 0.5, 0.12, 0, 1.0, -0.62, 0, 0, 0.08, 0.03);
+    cbb.box(0.12, 0.5, 1.3, 1.16, 1.0, 0, 0, 0, 0.08, 0.03);
+    cbb.box(0.14, 0.14, 2.2, -1.5, 0.55, 0, 0, 0, -0.12);
+    cbb.build(cart);
+    [-0.72, 0.72].forEach(z => {
+      PRIM.cyl(0.6, 0.6, 0.14, 12, MAT.toon(PAL.rustDeep), { pos: [0.5, 0.6, z], rot: [Math.PI / 2, 0, 0], parent: cart, outline: 0.04, ray: false });
+      PRIM.torus(0.6, 0.07, MAT.toon(PAL.charcoal), { pos: [0.5, 0.6, z], parent: cart, outline: 0.03, ray: false });
+    });
+    PROPS.blobShadow(cart, 0, 0, 1.8, 1.2);
+    parent.add(cart);
+    WORLD.addFloor(-9.5, 0, 4.5, 2.6, 1.2, 2.4, 'cart');
+
+    // scattered yard junk
+    PROPS.barrel(parent, 7.6, 5.4, { color: PAL.olive });
+    PROPS.barrel(parent, 8.6, 6.6, { color: PAL.rust });
+    PROPS.barrel(parent, -2.6, 16.5);
+    PROPS.crate(parent, -3.4, 0, 8.4, 1.0);
+    PROPS.crate(parent, -3.2, 1.0, 8.5, 0.85, 0.5);
+    PROPS.crate(parent, -4.5, 0, 9.0, 0.8, -0.2);
+    PROPS.can(parent, -3.2, 1.85, 8.5);
+    PROPS.can(parent, 7.6, 1.28, 5.4);
+    PROPS.can(parent, 8.6, 1.28, 6.6);
+    PROPS.bottle(parent, -4.5, 0.8, 9.0);
+    PROPS.can(parent, -2.6, 1.28, 16.5);
+
+    // loose boards leaning about
+    PROPS.plank(parent, -6.6, 0.9, 6.4, 2.6, 0, 0.4, -0.9);
+    PROPS.plank(parent, -6.9, 0.9, 6.8, 2.6, 0, 0.5, -1.0);
+    PROPS.plank(parent, 10.4, 0.12, 12.2, 3.0, 0, 0.9, 0);
+    PROPS.plank(parent, 10.6, 0.24, 12.6, 2.6, 0, 1.1, 0.03);
+
+    PROPS.signPost(parent, -1.6, 20.4, ['YARD →', '← SHED'], 0.1, { w: 1.8, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.7 });
+    WORLD.addSpawn(0, 0, 8, 'yard');
+  }
+
+  function buildNook(parent) {
+    // A quiet gap between the barn's east wall and the hedge.
+    PROPS.crate(parent, 25.4, 0, -12.0, 1.0, 0.3);
+    PROPS.crate(parent, 25.2, 1.0, -12.2, 0.85, -0.5);
+    PROPS.crate(parent, 26.3, 0, -11.2, 0.9, 0.8);
+    PROPS.barrel(parent, 24.8, -7.4, { color: PAL.mustardDk });
+    PROPS.lantern(parent, 25.6, 2.4, -9.4, 0);
+    for (let i = 0; i < 4; i++) PROPS.bottle(parent, 24.2 + i * 0.5, 1.28, -7.4);
+    PROPS.can(parent, 25.2, 1.85, -12.2);
+    PROPS.signPost(parent, 25.8, -5.2, ['YOU FOUND', 'THE GOOD SPOT'], Math.PI * 0.9,
+      { w: 2.0, h: 0.8, bg: PAL.mustard, fg: PAL.rustDeep, postH: 1.5 });
+    PROPS.tree(parent, 27.2, -6.0, 0.9);
+    WORLD.addSpawn(25.5, 0, -10, 'nook');
+  }
+
+  function buildScatter(parent) {
+    // trees + rocks masking the boundary and framing views
+    const treeSpots = [
+      [-27, 26, 1.1], [-24, 30, 0.9], [26, 27, 1.0], [29, 20, 0.85],
+      [-28, -20, 1.15], [-24, -29, 1.0], [22, -28, 1.05], [28, -12, 0.9],
+      [-12, 28, 0.95], [13, 27, 0.9], [-29, 2, 1.1], [30, 1, 1.0],
+      [-2, -30, 0.95], [10, -30, 0.9]
+    ];
+    treeSpots.forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
+
+    const rockSpots = [
+      [-20, 24, 1.0], [-16, 27, 0.7], [20, 23, 0.9], [24, 12, 0.8],
+      [-25, -8, 1.1], [-21, -14, 0.8], [16, -22, 0.9], [6, -25, 0.7],
+      [-9, 20, 0.6], [12, 4, 0.55], [-13, -18, 0.85], [27, -20, 1.0]
+    ];
+    rockSpots.forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
+
+    // a collapsed outbuilding — hides the north-west corner
+    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.045);
+    for (let i = 0; i < 14; i++) {
+      cb.box(UTIL.rng(2.2, 4.2), 0.16, UTIL.rng(0.4, 0.7),
+        -25 + UTIL.rng(-2.2, 2.2), UTIL.rng(0.1, 1.3), -25 + UTIL.rng(-2.2, 2.2),
+        UTIL.rng(-.5, .5), UTIL.rng(0, 3.14), UTIL.rng(-.6, .6), 0.03);
+    }
+    cb.box(3.4, 1.9, 0.3, -26.4, 0.95, -23.6, 0, 0.4, 0.18, 0.05);
+    cb.build(parent);
+    WORLD.addFloor(-25, 0, -25, 6.5, 1.5, 6.5, 'ruin');
+
+    PROPS.barrel(parent, -22.4, -23.2, { color: PAL.blueDeep });
+    PROPS.can(parent, -22.4, 1.28, -23.2);
+    PROPS.signPost(parent, -21.4, -20.4, ['CONDEMNED'], 0.6, { w: 1.9, h: 0.7, bg: PAL.rust, fg: PAL.cream, postH: 1.6 });
+
+    // a couple of stumps to sit the eye on
+    [[-11, 9], [8, 20], [-16, -16]].forEach(p => {
+      PRIM.cyl(0.55, 0.62, 0.7, 10, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }),
+        { pos: [p[0], 0.35, p[1]], parent: parent, outline: 0.045 });
+      PROPS.blobShadow(parent, p[0], p[1], 0.9, 0.9);
+      WORLD.addFloor(p[0], 0, p[1], 1.3, 0.7, 1.3, 'stump');
+    });
+  }
+
+  function build(scene) {
+    UTIL.setSeed(90210);
+    root = new THREE.Group();
+    scene.add(root);
+    buildSky(scene);
+    buildGround(root);
+    buildPaths(root);
+    buildGate(root);
+    buildFences(root);
+    buildHedges(root);
+    buildYard(root);
+    buildBarn(root);
+    buildTower(root);
+    buildWindmill(root);
+    buildShed(root);
+    buildField(root);
+    buildPipes(root);
+    buildNook(root);
+    buildScatter(root);
+    return root;
+  }
+
+  function update(dt, t) {
+    if (animated.windmillFan) {
+      animated.windmillFan.rotation.z += dt * (0.9 + Math.sin(t * 0.23) * 0.35);
+    }
+    if (animated.vane) {
+      animated.vane.rotation.y = Math.sin(t * 0.31) * 0.08;
+    }
+    for (let i = 0; i < animated.hangers.length; i++) {
+      const h = animated.hangers[i];
+      h.obj.rotation.z = Math.sin(t * h.speed + h.phase) * h.amp;
+      h.obj.rotation.x = Math.cos(t * h.speed * 0.7 + h.phase) * h.amp * 0.5;
+    }
+  }
+
+  return { build, update, animated };
+})();
+
+/* =============================== [FX] ================================ */
+const FX = (() => {
+  let scene = null, viewScene = null;
+  const decals = [];
+  const particles = [];
+  const tracers = [];
+  const rings = [];
+  let decalIdx = 0, ringIdx = 0, tracerIdx = 0;
+  let muzzleLight = null;
+  let boilAcc = 0, boilFrame = 0;
+
+  const _v = new THREE.Vector3();
+  const _v2 = new THREE.Vector3();
+  const _q = new THREE.Quaternion();
+  const UP = new THREE.Vector3(0, 1, 0);
+
+  function init(mainScene, vScene) {
+    scene = mainScene; viewScene = vScene;
+
+    // --- decal pool ---
+    const decalMat = MAT.flat(PAL.ink, {
+      map: TEX.splat(), transparent: true, depthWrite: false, opacity: 1
+    }).clone();
+    decalMat.transparent = true;
+    decalMat.depthWrite = false;
+    for (let i = 0; i < CONFIG.fx.maxDecals; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), decalMat.clone());
+      m.visible = false;
+      m.renderOrder = 2;
+      m.raycast = function () {};
+      scene.add(m);
+      decals.push({ mesh: m, life: 0 });
+    }
+
+    // --- particle pool (billboard sprites) ---
+    const maps = [TEX.star(PAL.cream), TEX.star(PAL.mustard), TEX.puff(PAL.cream), TEX.puff(PAL.blueGray)];
+    for (let i = 0; i < CONFIG.fx.maxParticles; i++) {
+      const mat = new THREE.SpriteMaterial({
+        map: maps[i % maps.length], transparent: true, depthWrite: false, fog: true
+      });
+      const s = new THREE.Sprite(mat);
+      s.visible = false;
+      s.renderOrder = 3;
+      scene.add(s);
+      particles.push({ sprite: s, life: 0, max: 1, vel: new THREE.Vector3(), grav: 0, s0: 1, s1: 1, spin: 0, kind: i % maps.length });
+    }
+
+    // --- tracer pool ---
+    for (let i = 0; i < CONFIG.fx.maxTracers; i++) {
+      const geo = new THREE.CylinderGeometry(0.018, 0.05, 1, 5, 1, true);
+      geo.translate(0, -0.5, 0); // origin at the top so scaling grows away from the muzzle
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: PAL.cream, transparent: true, opacity: 1, depthWrite: false, fog: false
+      }));
+      m.visible = false;
+      m.renderOrder = 4;
+      m.raycast = function () {};
+      scene.add(m);
+      tracers.push({ mesh: m, life: 0 });
+    }
+
+    // --- expanding ink rings ---
+    for (let i = 0; i < 8; i++) {
+      const m = new THREE.Mesh(
+        new THREE.TorusGeometry(0.5, 0.07, 5, 14),
+        new THREE.MeshBasicMaterial({ color: PAL.cream, transparent: true, opacity: 1, depthWrite: false })
+      );
+      m.visible = false;
+      m.renderOrder = 3;
+      m.raycast = function () {};
+      scene.add(m);
+      rings.push({ mesh: m, life: 0 });
+    }
+
+    muzzleLight = new THREE.PointLight(0xFFE9A8, 0, 12, 2);
+    muzzleLight.visible = false;
+    scene.add(muzzleLight);
+  }
+
+  function spawnParticle(pos, vel, opts) {
+    opts = opts || {};
+    // find a free slot, else steal the oldest
+    let p = null;
+    for (let i = 0; i < particles.length; i++) {
+      const c = particles[(i + (decalIdx * 7)) % particles.length];
+      if (c.life <= 0) { p = c; break; }
+    }
+    if (!p) p = particles[0];
+    p.life = p.max = opts.life || UTIL.rng(0.28, 0.55);
+    p.vel.copy(vel);
+    p.grav = opts.grav === undefined ? 5 : opts.grav;
+    p.s0 = opts.s0 || 0.22;
+    p.s1 = opts.s1 === undefined ? 0.04 : opts.s1;
+    p.spin = opts.spin === undefined ? UTIL.rng(-6, 6) : opts.spin;
+    p.sprite.position.copy(pos);
+    p.sprite.material.map = opts.map || p.sprite.material.map;
+    p.sprite.material.opacity = 1;
+    p.sprite.material.rotation = UTIL.rng(0, 6.28);
+    p.sprite.scale.setScalar(p.s0);
+    p.sprite.visible = true;
+  }
+
+  /* Cartoon hit: ink splat decal, a burst of dust stars, a smoke ring. */
+  function impact(point, normal, opts) {
+    opts = opts || {};
+    // decal
+    const d = decals[decalIdx = (decalIdx + 1) % decals.length];
+    d.mesh.position.copy(point).addScaledVector(normal, 0.022);
+    _v.copy(point).add(normal);
+    d.mesh.lookAt(_v);
+    d.mesh.rotation.z = UTIL.rng(0, 6.28);
+    const sc = UTIL.rng(0.28, 0.46) * (opts.scale || 1);
+    d.mesh.scale.set(sc, sc, sc);
+    d.mesh.material.opacity = 0.92;
+    d.mesh.visible = true;
+    d.life = 14;
+
+    // dust stars kicking off the surface
+    const n = opts.big ? 9 : 5;
+    for (let i = 0; i < n; i++) {
+      _v.copy(normal).multiplyScalar(UTIL.rng(1.4, 3.2));
+      _v.x += UTIL.rng(-1.7, 1.7); _v.y += UTIL.rng(0.4, 2.4); _v.z += UTIL.rng(-1.7, 1.7);
+      spawnParticle(point, _v, {
+        map: TEX.star(i % 2 ? PAL.cream : PAL.mustard),
+        s0: UTIL.rng(0.13, 0.26), s1: 0.02,
+        life: UTIL.rng(0.26, 0.5), grav: 6
+      });
+    }
+    // ink puffs hanging in the air
+    for (let i = 0; i < 3; i++) {
+      _v.copy(normal).multiplyScalar(UTIL.rng(0.4, 1.1));
+      _v.x += UTIL.rng(-.5, .5); _v.y += UTIL.rng(.2, .9); _v.z += UTIL.rng(-.5, .5);
+      spawnParticle(point, _v, {
+        map: TEX.puff(PAL.cream), s0: UTIL.rng(0.16, 0.3), s1: 0.5,
+        life: UTIL.rng(0.4, 0.7), grav: -0.6, spin: UTIL.rng(-1.5, 1.5)
+      });
+    }
+    // smoke ring
+    const r = rings[ringIdx = (ringIdx + 1) % rings.length];
+    r.mesh.position.copy(point).addScaledVector(normal, 0.06);
+    _v.copy(point).add(normal);
+    r.mesh.lookAt(_v);
+    r.mesh.scale.setScalar(0.18);
+    r.mesh.material.opacity = 0.85;
+    r.mesh.visible = true;
+    r.life = 0.42;
+  }
+
+  function tracer(from, to) {
+    const t = tracers[tracerIdx = (tracerIdx + 1) % tracers.length];
+    const len = _v.subVectors(to, from).length();
+    t.mesh.position.copy(from);
+    _v2.copy(_v).normalize();
+    _q.setFromUnitVectors(UP, _v2);
+    t.mesh.quaternion.copy(_q);
+    t.mesh.rotateX(Math.PI); // geometry grows along -Y from its origin
+    t.mesh.scale.set(1, Math.max(len, 0.01), 1);
+    t.mesh.material.opacity = 1;
+    t.mesh.visible = true;
+    t.life = 0.075;
+  }
+
+  function muzzleFlashLight(pos) {
+    muzzleLight.position.copy(pos);
+    muzzleLight.intensity = 3.2;
+    muzzleLight.visible = true;
+  }
+
+  function update(dt, t) {
+    // --- stepped "boil": props twitch on a 12fps clock, camera stays smooth ---
+    boilAcc += dt;
+    const step = 1 / CONFIG.fx.boilFPS;
+    if (boilAcc >= step) {
+      boilAcc %= step;
+      boilFrame++;
+      for (let i = 0; i < BOIL.length; i++) {
+        const b = BOIL[i];
+        b.obj.position.set(
+          b.bp.x + UTIL.rng(-b.amp, b.amp),
+          b.bp.y + UTIL.rng(-b.amp, b.amp),
+          b.bp.z + UTIL.rng(-b.amp, b.amp)
+        );
+        b.obj.rotation.set(
+          b.br.x + UTIL.rng(-b.amp, b.amp) * 0.6,
+          b.br.y + UTIL.rng(-b.amp, b.amp) * 0.6,
+          b.br.z + UTIL.rng(-b.amp, b.amp) * 0.6
+        );
+      }
+    }
+
+    // --- shot scenery springing back into place ---
+    for (let i = 0; i < WOBBLERS.length; i++) {
+      const w = WOBBLERS[i];
+      if (Math.abs(w.ax) < 0.0005 && Math.abs(w.vx) < 0.0005 &&
+          Math.abs(w.az) < 0.0005 && Math.abs(w.vz) < 0.0005) continue;
+      w.vx += (-w.k * w.ax) * dt; w.vx -= w.vx * w.damp * dt; w.ax += w.vx * dt;
+      w.vz += (-w.k * w.az) * dt; w.vz -= w.vz * w.damp * dt; w.az += w.vz * dt;
+      w.obj.rotation.set(w.baseRot.x + w.az, w.baseRot.y, w.baseRot.z + w.ax);
+      const sq = 1 + Math.abs(w.ax) * 0.35;
+      w.obj.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    }
+
+    // --- particles (stepped scale/spin, smooth motion) ---
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      if (p.life <= 0) continue;
+      p.life -= dt;
+      if (p.life <= 0) { p.sprite.visible = false; continue; }
+      p.vel.y -= p.grav * dt;
+      p.sprite.position.addScaledVector(p.vel, dt);
+      const k = 1 - p.life / p.max;
+      const qk = Math.floor(k * CONFIG.fx.weaponStepFPS) / CONFIG.fx.weaponStepFPS;
+      p.sprite.scale.setScalar(UTIL.lerp(p.s0, p.s1, qk));
+      p.sprite.material.rotation += p.spin * dt;
+      p.sprite.material.opacity = UTIL.clamp(1 - qk * qk, 0, 1);
+    }
+
+    // --- tracers ---
+    for (let i = 0; i < tracers.length; i++) {
+      const tr = tracers[i];
+      if (tr.life <= 0) continue;
+      tr.life -= dt;
+      if (tr.life <= 0) { tr.mesh.visible = false; continue; }
+      tr.mesh.material.opacity = tr.life / 0.075;
+    }
+
+    // --- rings ---
+    for (let i = 0; i < rings.length; i++) {
+      const r = rings[i];
+      if (r.life <= 0) continue;
+      r.life -= dt;
+      if (r.life <= 0) { r.mesh.visible = false; continue; }
+      const k = 1 - r.life / 0.42;
+      r.mesh.scale.setScalar(0.18 + k * 1.3);
+      r.mesh.material.opacity = 0.85 * (1 - k);
+    }
+
+    // --- decals fade only when they are about to be recycled ---
+    for (let i = 0; i < decals.length; i++) {
+      const d = decals[i];
+      if (d.life <= 0) continue;
+      d.life -= dt;
+      if (d.life <= 0) { d.mesh.visible = false; continue; }
+      if (d.life < 1.2) d.mesh.material.opacity = 0.92 * (d.life / 1.2);
+    }
+
+    if (muzzleLight.visible) {
+      muzzleLight.intensity -= dt * 42;
+      if (muzzleLight.intensity <= 0) { muzzleLight.intensity = 0; muzzleLight.visible = false; }
+    }
+  }
+
+  /* Bullet resolution. Returns the hit point or null. */
+  const raycaster = new THREE.Raycaster();
+  raycaster.far = CONFIG.weapon.range;
+  function trace(origin, dir) {
+    raycaster.set(origin, dir);
+    const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+    for (let i = 0; i < hits.length; i++) {
+      const h = hits[i];
+      if (h.object.userData.outline) continue;
+      return h;
+    }
+    return null;
+  }
+
+  function hitWobbler(object, dir, strength) {
+    let o = object;
+    while (o) {
+      if (o.userData && o.userData.wobble) {
+        const w = o.userData.wobble;
+        w.vx += dir.x * 9 * w.strength * strength;
+        w.vz += dir.z * 9 * w.strength * strength;
+        return true;
+      }
+      o = o.parent;
+    }
+    return false;
+  }
+
+  return { init, update, impact, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler };
+})();
+
+/* ============================== [AUDIO] ============================== */
+/* Everything is synthesised. No files, no external assets, no licences. */
+const AUDIO = (() => {
+  let ctx = null, master = null, sfxBus = null, windBus = null;
+  let noiseBuf = null;
+  let started = false;
+  let ambientTimer = 0, ambientNext = 3;
+  let windLfo = null;
+
+  function makeNoise() {
+    const len = ctx.sampleRate * 2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for (let i = 0; i < len; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;  // brown-ish, softer than white
+      d[i] = last * 3.2;
+    }
+    return buf;
+  }
+
+  function start() {
+    if (started) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ctx = new AC();
+    master = ctx.createGain();
+    master.gain.value = CONFIG.audio.master;
+    master.connect(ctx.destination);
+    sfxBus = ctx.createGain(); sfxBus.gain.value = CONFIG.audio.sfx; sfxBus.connect(master);
+    windBus = ctx.createGain(); windBus.gain.value = 0; windBus.connect(master);
+    noiseBuf = makeNoise();
+
+    // --- looping outdoor wind ---
+    const src = ctx.createBufferSource();
+    src.buffer = noiseBuf; src.loop = true;
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass'; bp.frequency.value = 480; bp.Q.value = 0.7;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = 1100;
+    src.connect(bp); bp.connect(lp); lp.connect(windBus);
+    src.start();
+    // slow gust swell
+    windLfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    windLfo.frequency.value = 0.07; lfoGain.gain.value = 0.16;
+    windLfo.connect(lfoGain); lfoGain.connect(windBus.gain);
+    windLfo.start();
+    windBus.gain.setValueAtTime(0, ctx.currentTime);
+    windBus.gain.linearRampToValueAtTime(CONFIG.audio.wind * 0.5, ctx.currentTime + 2.5);
+
+    started = true;
+  }
+
+  function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
+  function suspend() { /* keep ambience running while paused; it reads better */ }
+
+  function env(node, t0, a, d, peak) {
+    node.gain.setValueAtTime(0.0001, t0);
+    node.gain.exponentialRampToValueAtTime(peak, t0 + a);
+    node.gain.exponentialRampToValueAtTime(0.0001, t0 + a + d);
+  }
+
+  function noiseBurst(t0, dur, freq, q, peak, type) {
+    const s = ctx.createBufferSource();
+    s.buffer = noiseBuf;
+    s.playbackRate.value = 1 + Math.random() * 0.3;
+    const f = ctx.createBiquadFilter();
+    f.type = type || 'bandpass';
+    f.frequency.setValueAtTime(freq, t0);
+    f.Q.value = q;
+    const g = ctx.createGain();
+    s.connect(f); f.connect(g); g.connect(sfxBus);
+    env(g, t0, 0.006, dur, peak);
+    s.start(t0); s.stop(t0 + dur + 0.05);
+    return f;
+  }
+
+  function tone(t0, f0, f1, dur, peak, type) {
+    const o = ctx.createOscillator();
+    o.type = type || 'sine';
+    o.frequency.setValueAtTime(f0, t0);
+    o.frequency.exponentialRampToValueAtTime(Math.max(f1, 1), t0 + dur);
+    const g = ctx.createGain();
+    o.connect(g); g.connect(sfxBus);
+    env(g, t0, 0.005, dur, peak);
+    o.start(t0); o.stop(t0 + dur + 0.05);
+    return o;
+  }
+
+  /* A scattergun that sounds drawn rather than recorded: a fat noise thump,
+     a descending "pop", and a little rubbery boing on the tail. */
+  function gunshot() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const f = noiseBurst(t0, 0.26, 1500, 0.8, 0.55);
+    f.frequency.exponentialRampToValueAtTime(180, t0 + 0.22);
+    noiseBurst(t0, 0.06, 320, 1.2, 0.5, 'lowpass');
+    tone(t0, 720, 90, 0.16, 0.28, 'square');
+    tone(t0 + 0.03, 240, 60, 0.22, 0.16, 'triangle');
+    // cartoon boing tail
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    const g = ctx.createGain();
+    o.frequency.setValueAtTime(420, t0 + 0.05);
+    for (let i = 0; i < 7; i++) {
+      o.frequency.exponentialRampToValueAtTime(200 + (i % 2 ? 150 : 0), t0 + 0.06 + i * 0.035);
+    }
+    o.connect(g); g.connect(sfxBus);
+    env(g, t0 + 0.05, 0.01, 0.3, 0.075);
+    o.start(t0 + 0.05); o.stop(t0 + 0.42);
+  }
+
+  function dryFire() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    noiseBurst(t0, 0.05, 2600, 4, 0.28);
+    tone(t0, 900, 400, 0.05, 0.1, 'square');
+  }
+
+  function reloadClick(kind) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    if (kind === 'open') { noiseBurst(t0, 0.10, 1700, 3, 0.34); tone(t0, 500, 240, 0.09, 0.1, 'square'); }
+    else if (kind === 'shell') { noiseBurst(t0, 0.07, 3200, 6, 0.24); tone(t0, 1300, 700, 0.06, 0.07, 'triangle'); }
+    else { noiseBurst(t0, 0.13, 900, 2.2, 0.4); tone(t0, 320, 130, 0.12, 0.13, 'square'); }
+  }
+
+  function footstep(sprinting) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const f = noiseBurst(t0, sprinting ? 0.11 : 0.13, 300 + Math.random() * 180, 1.1, sprinting ? 0.16 : 0.11, 'lowpass');
+    f.frequency.exponentialRampToValueAtTime(120, t0 + 0.1);
+    tone(t0, 110 + Math.random() * 30, 55, 0.07, 0.05, 'sine');
+  }
+
+  function land(force) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    noiseBurst(t0, 0.2, 240, 0.9, 0.22 * force, 'lowpass');
+    tone(t0, 150, 48, 0.16, 0.14 * force, 'triangle');
+  }
+
+  function jump() {
+    if (!started) return;
+    tone(ctx.currentTime, 220, 480, 0.12, 0.07, 'sine');
+  }
+
+  /* Windmill / sign creak: a detuned saw scraped through a narrow filter. */
+  function creak() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    const base = 110 + Math.random() * 90;
+    o.frequency.setValueAtTime(base, t0);
+    const vib = ctx.createOscillator();
+    const vibG = ctx.createGain();
+    vib.frequency.value = 7 + Math.random() * 6;
+    vibG.gain.value = 22;
+    vib.connect(vibG); vibG.connect(o.frequency);
+    const f = ctx.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 900 + Math.random() * 900; f.Q.value = 9;
+    const g = ctx.createGain();
+    o.connect(f); f.connect(g); g.connect(sfxBus);
+    const dur = 0.5 + Math.random() * 0.7;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.06, t0 + 0.12);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.start(t0); vib.start(t0);
+    o.stop(t0 + dur + 0.05); vib.stop(t0 + dur + 0.05);
+  }
+
+  function bird() {
+    if (!started) return;
+    const t0 = ctx.currentTime + Math.random() * 0.2;
+    const n = 2 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const s = t0 + i * (0.09 + Math.random() * 0.05);
+      const f0 = 1500 + Math.random() * 1400;
+      tone(s, f0, f0 * (0.55 + Math.random() * 0.7), 0.07, 0.035, 'sine');
+    }
+  }
+
+  function update(dt) {
+    if (!started) return;
+    ambientTimer += dt;
+    if (ambientTimer >= ambientNext) {
+      ambientTimer = 0;
+      ambientNext = 3.5 + Math.random() * 6;
+      const r = Math.random();
+      if (r < 0.45) creak();
+      else if (r < 0.9) bird();
+      else { creak(); setTimeout(bird, 700); }
+    }
+  }
+
+  /* ---------------- character voices ----------------
+     All of these take a pitch multiplier so each roster entry can sound
+     different without any new synthesis code. */
+  function enemyAlert(pitch) {
+    if (!started) return;
+    const p = pitch || 1;
+    const t0 = ctx.currentTime;
+    tone(t0, 280 * p, 900 * p, 0.16, 0.11, 'square');
+    tone(t0 + 0.12, 900 * p, 620 * p, 0.1, 0.06, 'triangle');
+    noiseBurst(t0, 0.07, 2200, 3, 0.1);
+  }
+
+  function enemyStep(pitch) {
+    if (!started) return;
+    const p = pitch || 1;
+    const t0 = ctx.currentTime;
+    tone(t0, 180 * p, 70 * p, 0.09, 0.045, 'sine');
+    noiseBurst(t0, 0.07, 420, 1.4, 0.05, 'lowpass');
+  }
+
+  function enemySwing(pitch) {
+    if (!started) return;
+    const p = pitch || 1;
+    const t0 = ctx.currentTime;
+    const f = noiseBurst(t0, 0.2, 900 * p, 1.6, 0.16);
+    f.frequency.exponentialRampToValueAtTime(2600 * p, t0 + 0.16);
+    tone(t0, 160 * p, 520 * p, 0.16, 0.05, 'triangle');
+  }
+
+  function enemyHurt(pitch) {
+    if (!started) return;
+    const p = pitch || 1;
+    const t0 = ctx.currentTime;
+    tone(t0, 880 * p, 260 * p, 0.16, 0.13, 'square');
+    noiseBurst(t0, 0.09, 1400, 2, 0.14);
+  }
+
+  /* Deflating balloon, then a puff. */
+  function enemyDie(pitch) {
+    if (!started) return;
+    const p = pitch || 1;
+    const t0 = ctx.currentTime;
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(700 * p, t0);
+    for (let i = 0; i < 9; i++) {
+      o.frequency.exponentialRampToValueAtTime((520 - i * 45) * p + 60, t0 + 0.05 + i * 0.045);
+    }
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = 1500;
+    const g = ctx.createGain();
+    o.connect(f); f.connect(g); g.connect(sfxBus);
+    env(g, t0, 0.01, 0.5, 0.13);
+    o.start(t0); o.stop(t0 + 0.58);
+    noiseBurst(t0 + 0.42, 0.26, 700, 0.8, 0.2, 'lowpass');
+  }
+
+  function playerHurt() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    noiseBurst(t0, 0.22, 260, 0.9, 0.34, 'lowpass');
+    tone(t0, 190, 70, 0.2, 0.2, 'triangle');
+    tone(t0 + 0.02, 95, 48, 0.3, 0.12, 'sine');
+  }
+
+  function playerDie() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    // the classic wilting slide
+    const o = ctx.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(330, t0);
+    o.frequency.exponentialRampToValueAtTime(55, t0 + 1.5);
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.setValueAtTime(2200, t0);
+    f.frequency.exponentialRampToValueAtTime(300, t0 + 1.5);
+    const g = ctx.createGain();
+    o.connect(f); f.connect(g); g.connect(sfxBus);
+    env(g, t0, 0.03, 1.5, 0.22);
+    o.start(t0); o.stop(t0 + 1.7);
+  }
+
+  return {
+    start, resume, suspend, update,
+    gunshot, dryFire, reloadClick, footstep, land, jump, creak, bird,
+    enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
+    get running() { return started; }
+  };
+})();
+
+/* ============================== [INPUT] ==============================
+   Two mouse modes:
+
+     'lock'  Pointer Lock. Infinite look, cursor hidden by the browser.
+     'free'  Fallback for anywhere Pointer Lock is refused (sandboxed
+             iframes, some embedded previews, locked-down policies).
+             Look still comes from movementX/movementY, plus an edge-steer
+             so you can keep turning once the cursor reaches the window edge.
+
+   The game NEVER gets stuck because a lock request failed. If the browser
+   says no, we fall through to 'free' and carry on, and we say why on screen.
+
+   Actions are named, so a touch or gamepad layer can write into the same
+   table later without the player or weapon knowing anything changed. */
+const INPUT = (() => {
+  const actions = {
+    forward: false, back: false, left: false, right: false,
+    jump: false, sprint: false, fire: false, reload: false, lantern: false
+  };
+  const pressed = {};
+  let mouseDX = 0, mouseDY = 0;
+  let pointerX = 0, pointerY = 0;
+  let locked = false, engaged = false;
+  let mode = 'lock';
+  let element = null;
+  let lockTimer = null, lastRequest = 0, lockedAt = 0, quickDrops = 0;
+  let diagnosis = '';
+  const listeners = { lock: [], unlock: [], press: [], fallback: [] };
+  const edge = { x: 0, y: 0 };
+
+  const KEYMAP = {
+    'KeyW': 'forward', 'ArrowUp': 'forward',
+    'KeyS': 'back', 'ArrowDown': 'back',
+    'KeyA': 'left', 'ArrowLeft': 'left',
+    'KeyD': 'right', 'ArrowRight': 'right',
+    'Space': 'jump',
+    'ShiftLeft': 'sprint', 'ShiftRight': 'sprint',
+    'KeyR': 'reload',
+    'KeyF': 'lantern'
+  };
+
+  function on(evt, fn) { (listeners[evt] || (listeners[evt] = [])).push(fn); }
+  function emit(evt, a) { (listeners[evt] || []).forEach(f => f(a)); }
+  function clearActions() { Object.keys(actions).forEach(k => actions[k] = false); }
+  function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
+
+  /* The single source of truth for "is the game receiving input". In lock mode
+     it follows the browser; in free mode we drive it ourselves. */
+  function setEngaged(v) {
+    if (engaged === v) return;
+    engaged = v;
+    mouseDX = mouseDY = 0;
+    if (element) element.style.cursor = v ? 'none' : '';
+    if (v) emit('lock');
+    else { clearActions(); emit('unlock'); }
+  }
+
+  /* Best guess at WHY the browser refused, shown to the player rather than
+     swallowed, because the cause is almost always environmental. */
+  function diagnose() {
+    const bits = [];
+    try {
+      if (!document.body || !document.body.requestPointerLock) bits.push('no Pointer Lock API');
+    } catch (e) {}
+    try {
+      if (window.self !== window.top) bits.push('page is running inside an iframe');
+    } catch (e) { bits.push('page is inside a cross-origin iframe'); }
+    try {
+      const pp = document.permissionsPolicy || document.featurePolicy;
+      if (pp && pp.allowsFeature && !pp.allowsFeature('pointer-lock')) {
+        bits.push('pointer-lock blocked by permissions policy');
+      }
+    } catch (e) {}
+    try {
+      if (location && location.protocol === 'file:') bits.push('file:// origin');
+    } catch (e) {}
+    return bits.length ? bits.join('; ') : 'the browser refused the request';
+  }
+
+  function goFree(why) {
+    if (mode === 'free') { setEngaged(true); return; }
+    mode = 'free';
+    if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
+    diagnosis = why || diagnose();
+    emit('fallback', diagnosis);
+    setEngaged(true);
+  }
+
+  function tryLockAgain() {
+    if (mode !== 'free') return;
+    mode = 'lock';
+    quickDrops = 0;
+    lastRequest = 0;
+    setEngaged(false);
+    requestLock();
+  }
+
+  function onKey(e, down) {
+    // In free mode the browser will not hand Escape back to us via pointer
+    // lock, so we own it. This is the guaranteed way out.
+    if (down && e.code === 'Escape' && mode === 'free' && engaged) {
+      if (e.preventDefault) e.preventDefault();
+      setEngaged(false);
+      return;
+    }
+    const a = KEYMAP[e.code];
+    if (!a) return;
+    if ((a === 'jump' || a === 'reload' || a === 'lantern') && e.preventDefault) e.preventDefault();
+    if (down && !actions[a]) { pressed[a] = true; emit('press', a); }
+    actions[a] = down;
+  }
+
+  function init(el) {
+    element = el;
+    window.addEventListener('keydown', e => onKey(e, true));
+    window.addEventListener('keyup', e => onKey(e, false));
+    window.addEventListener('blur', () => clearActions());
+
+    document.addEventListener('mousemove', e => {
+      pointerX = e.clientX || 0;
+      pointerY = e.clientY || 0;
+      if (!engaged) return;
+      mouseDX += e.movementX || 0;
+      mouseDY += e.movementY || 0;
+    });
+    document.addEventListener('mousedown', e => {
+      if (!engaged) return;
+      if (e.button === 0) { actions.fire = true; pressed.fire = true; emit('press', 'fire'); }
+    });
+    document.addEventListener('mouseup', e => {
+      if (e.button === 0) actions.fire = false;
+    });
+    document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
+
+    document.addEventListener('pointerlockchange', () => {
+      locked = document.pointerLockElement === element;
+      if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
+      if (locked) {
+        lockedAt = now();
+      } else if (lockedAt && now() - lockedAt < 400) {
+        // Something keeps yanking the lock straight back off us.
+        lockedAt = 0;
+        if (++quickDrops >= 3) { goFree('pointer lock kept being released immediately'); return; }
+      } else {
+        lockedAt = 0;
+      }
+      if (mode === 'lock') setEngaged(locked);
+    });
+    document.addEventListener('pointerlockerror', () => goFree());
+  }
+
+  function requestLock() {
+    if (!element) return;
+    if (mode === 'free') { setEngaged(true); return; }
+    // Browsers rate-limit re-locking right after an exit; spamming it is what
+    // turned a failed lock into an inescapable pause loop.
+    const t = now();
+    if (t - lastRequest < 320) return;
+    lastRequest = t;
+    let p = null;
+    try { p = element.requestPointerLock(); }
+    catch (e) { goFree('requestPointerLock threw: ' + (e && e.message ? e.message : e)); return; }
+    if (p && p.catch) p.catch(err => goFree('request rejected: ' + (err && err.message ? err.message : err)));
+    if (lockTimer) clearTimeout(lockTimer);
+    lockTimer = setTimeout(() => { lockTimer = null; if (!locked) goFree('lock request never resolved'); }, 900);
+  }
+
+  function releaseLock() {
+    if (mode === 'free') { setEngaged(false); return; }
+    if (document.pointerLockElement) document.exitPointerLock();
+    else setEngaged(false);
+  }
+
+  function consumeMouse() {
+    const d = { x: mouseDX, y: mouseDY };
+    mouseDX = mouseDY = 0;
+    return d;
+  }
+
+  /* Free mode only: how hard the cursor is pushing into a window edge, in
+     [-1, 1] per axis. GAME scales this by dt and folds it into the look. */
+  function edgeTurn() {
+    edge.x = edge.y = 0;
+    if (mode !== 'free' || !engaged) return edge;
+    const w = window.innerWidth || 1, h = window.innerHeight || 1;
+    const mx = Math.max(w * CONFIG.input.edgeMargin, 40);
+    const my = Math.max(h * CONFIG.input.edgeMargin, 40);
+    if (pointerX < mx) edge.x = -(1 - pointerX / mx);
+    else if (pointerX > w - mx) edge.x = (pointerX - (w - mx)) / mx;
+    if (pointerY < my) edge.y = -(1 - pointerY / my);
+    else if (pointerY > h - my) edge.y = (pointerY - (h - my)) / my;
+    edge.x = UTIL.clamp(edge.x, -1, 1);
+    edge.y = UTIL.clamp(edge.y, -1, 1);
+    return edge;
+  }
+
+  function consumePress(a) {
+    if (pressed[a]) { pressed[a] = false; return true; }
+    return false;
+  }
+
+  return {
+    init, on, actions, requestLock, releaseLock, consumeMouse, consumePress,
+    edgeTurn, forceFree: goFree, tryLockAgain,
+    get locked() { return locked; },
+    get engaged() { return engaged; },
+    get mode() { return mode; },
+    get diagnosis() { return diagnosis; }
+  };
+})();
+
+/* ============================== [PLAYER] ============================= */
+const PLAYER = (() => {
+  const C = CONFIG.player;
+  const pos = new THREE.Vector3(C.startPos.x, C.startPos.y, C.startPos.z);
+  const vel = new THREE.Vector3();
+  let yaw = C.startYaw, pitch = 0;
+  let grounded = true, wasGrounded = true;
+  let bobPhase = 0, bobY = 0, bobX = 0, bobRoll = 0;
+  let landOffset = 0, landVel = 0;
+  let stepDist = 0;
+  let health = C.maxHealth, dead = false, deadTime = 0, deadTilt = 0;
+  let invuln = 0, regenTimer = 0, shake = 0;
+  let camera = null;
+  let sprinting = false;
+  let speedRatio = 0;
+
+  const fwd = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  const wish = new THREE.Vector3();
+
+  function init(cam) { camera = cam; }
+
+  function respawn() {
+    pos.set(C.startPos.x, C.startPos.y, C.startPos.z);
+    vel.set(0, 0, 0);
+    yaw = C.startYaw; pitch = 0;
+  }
+
+  /* ---- vitality ---- */
+  function damage(amount, fromPos) {
+    if (dead || invuln > 0) return;
+    health -= amount;
+    invuln = C.invulnAfterHit;
+    regenTimer = 0;
+    shake = C.hurtShake;
+    UI.hurtFlash(UTIL.clamp(amount / 20, 0.35, 1));
+    UI.setHealth(health, C.maxHealth);
+    if (fromPos) {
+      const dx = pos.x - fromPos.x, dz = pos.z - fromPos.z;
+      const d = Math.hypot(dx, dz) || 1;
+      vel.x += dx / d * 4.2;
+      vel.z += dz / d * 4.2;
+    }
+    if (health <= 0) {
+      health = 0;
+      dead = true;
+      deadTime = 0;
+      AUDIO.playerDie();
+    } else {
+      AUDIO.playerHurt();
+    }
+  }
+
+  function revive() {
+    health = C.maxHealth;
+    dead = false;
+    deadTime = 0; deadTilt = 0; shake = 0; invuln = 1.2; regenTimer = 0;
+    respawn();
+    UI.setHealth(health, C.maxHealth);
+  }
+
+  function moveAxis(axis, amount) {
+    pos[axis] += amount;
+    const r = C.radius, h = C.height;
+    const solids = WORLD.solids;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (pos.y + h <= s.minY || pos.y + 0.06 >= s.maxY) continue;
+      if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
+      if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
+      // gentle step-up so stairs, kerbs and loose boards do not stop the player
+      const rise = s.maxY - pos.y;
+      if (grounded && rise > 0 && rise <= C.stepHeight) { pos.y = s.maxY + 0.002; continue; }
+      if (axis === 'x') { pos.x = amount > 0 ? s.minX - r : s.maxX + r; vel.x = 0; }
+      else { pos.z = amount > 0 ? s.minZ - r : s.maxZ + r; vel.z = 0; }
+    }
+  }
+
+  function update(dt, active, look) {
+    if (dead) { active = false; deadTime += dt; }
+    if (invuln > 0) invuln -= dt;
+
+    // ---- slow self-repair once nothing has hit you for a while ----
+    if (!dead) {
+      regenTimer += dt;
+      if (regenTimer > C.regenDelay && health < C.maxHealth) {
+        health = Math.min(C.maxHealth, health + C.regenRate * dt);
+        UI.setHealth(health, C.maxHealth);
+      }
+    }
+
+    // ---- look (delta is read once per frame by GAME and shared with WEAPON) ----
+    if (active && look) {
+      yaw -= look.x * C.mouseSensitivity;
+      pitch -= look.y * C.mouseSensitivity;
+      pitch = UTIL.clamp(pitch, -C.pitchLimit, C.pitchLimit);
+    }
+
+    // ---- wish direction ----
+    fwd.set(-Math.sin(yaw), 0, -Math.cos(yaw));
+    right.set(Math.cos(yaw), 0, -Math.sin(yaw));
+    wish.set(0, 0, 0);
+    if (active) {
+      if (INPUT.actions.forward) wish.add(fwd);
+      if (INPUT.actions.back) wish.sub(fwd);
+      if (INPUT.actions.right) wish.add(right);
+      if (INPUT.actions.left) wish.sub(right);
+    }
+    const moving = wish.lengthSq() > 0.0001;
+    if (moving) wish.normalize();
+
+    sprinting = active && INPUT.actions.sprint && INPUT.actions.forward && grounded;
+    const target = sprinting ? C.sprintSpeed : C.walkSpeed;
+
+    // ---- horizontal acceleration with real friction, no ice ----
+    const accel = (grounded ? C.accel : C.airAccel) * dt;
+    if (moving) {
+      vel.x = UTIL.damp(vel.x, wish.x * target, grounded ? 14 : 4.5, dt);
+      vel.z = UTIL.damp(vel.z, wish.z * target, grounded ? 14 : 4.5, dt);
+    } else if (grounded) {
+      const f = Math.max(0, 1 - C.friction * dt);
+      vel.x *= f; vel.z *= f;
+      if (Math.abs(vel.x) < 0.02) vel.x = 0;
+      if (Math.abs(vel.z) < 0.02) vel.z = 0;
+    }
+
+    // ---- jump ----
+    if (active && grounded && INPUT.consumePress('jump')) {
+      vel.y = C.jumpForce;
+      grounded = false;
+      AUDIO.jump();
+    }
+
+    // ---- horizontal move + slide ----
+    moveAxis('x', vel.x * dt);
+    moveAxis('z', vel.z * dt);
+
+    // ---- gravity + ground ----
+    const prevY = pos.y;
+    vel.y -= C.gravity * dt;
+    if (vel.y < -45) vel.y = -45;
+    pos.y += vel.y * dt;
+
+    wasGrounded = grounded;
+    grounded = false;
+    let groundY = 0;
+    const r = C.radius, h = C.height;
+    const solids = WORLD.solids;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
+      if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
+      if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
+      // bonk your head
+      if (vel.y > 0 && pos.y + h > s.minY && prevY + h <= s.minY + 0.02) {
+        pos.y = s.minY - h - 0.001;
+        vel.y = 0;
+      }
+    }
+    if (pos.y <= groundY) {
+      pos.y = groundY;
+      if (!wasGrounded && vel.y < -3.5) {
+        const force = UTIL.clamp(-vel.y / 12, 0.2, 1);
+        landVel -= C.landDip * force * 26;
+        AUDIO.land(force);
+      }
+      vel.y = 0;
+      grounded = true;
+    }
+    // never lose the player under the world
+    if (pos.y < -6) respawn();
+
+    // ---- head bob + landing spring ----
+    const hspeed = Math.hypot(vel.x, vel.z);
+    speedRatio = UTIL.clamp(hspeed / C.sprintSpeed, 0, 1);
+    if (grounded && hspeed > 0.5) {
+      bobPhase += dt * C.bobFreq * (0.65 + speedRatio * 0.85);
+      const amp = C.bobAmp * (0.6 + speedRatio * 0.9);
+      bobY = UTIL.damp(bobY, Math.sin(bobPhase * 2) * amp, 16, dt);
+      bobX = UTIL.damp(bobX, Math.sin(bobPhase) * C.bobSide * (0.6 + speedRatio), 16, dt);
+      bobRoll = UTIL.damp(bobRoll, Math.sin(bobPhase) * C.bobRoll * (0.6 + speedRatio), 14, dt);
+      // footsteps on the bob's low points
+      stepDist += hspeed * dt;
+      const stride = sprinting ? 2.0 : 1.55;
+      if (stepDist > stride) { stepDist = 0; AUDIO.footstep(sprinting); }
+    } else {
+      bobY = UTIL.damp(bobY, 0, 10, dt);
+      bobX = UTIL.damp(bobX, 0, 10, dt);
+      bobRoll = UTIL.damp(bobRoll, 0, 10, dt);
+    }
+
+    // spring the landing dip back out
+    landVel += (-landOffset * 190 - landVel * 19) * dt;
+    landOffset += landVel * dt;
+    landOffset = UTIL.clamp(landOffset, -0.45, 0.12);
+
+    // ---- camera ----
+    // ---- hurt shake and the slow wilt when you go down ----
+    if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
+    deadTilt = UTIL.damp(deadTilt, dead ? 1 : 0, 2.6, dt);
+    const sk = shake * shake;
+    const sx = UTIL.rng(-sk, sk) * 0.16;
+    const sy = UTIL.rng(-sk, sk) * 0.16;
+
+    camera.position.set(
+      pos.x + bobX + sx,
+      pos.y + C.eyeHeight + bobY + landOffset + sy - deadTilt * 0.95,
+      pos.z
+    );
+    camera.rotation.set(
+      pitch - deadTilt * 0.5 + sy * 0.5,
+      yaw + sx * 0.3,
+      bobRoll + deadTilt * 1.05 + sk * 0.12,
+      'YXZ'
+    );
+    camera.updateMatrixWorld(true);
+  }
+
+  function forwardVector(out) {
+    return out.set(
+      -Math.sin(yaw) * Math.cos(pitch),
+      Math.sin(pitch),
+      -Math.cos(yaw) * Math.cos(pitch)
+    ).normalize();
+  }
+
+  return {
+    init, update, respawn, forwardVector, damage, revive,
+    get health() { return health; },
+    get isDead() { return dead; },
+    get deadTime() { return deadTime; },
+    get position() { return pos; },
+    get velocity() { return vel; },
+    get grounded() { return grounded; },
+    get sprinting() { return sprinting; },
+    get speedRatio() { return speedRatio; },
+    get pitch() { return pitch; },
+    get yaw() { return yaw; }
+  };
+})();
+
+/* ============================== [WEAPON] ============================= */
+/* The Pipe Popper: a scattergun somebody welded together out of plumbing.
+   Rendered in its own scene so it can never clip through a barn wall. */
+const WEAPON = (() => {
+  const C = CONFIG.weapon;
+  let rig = null, gun = null, forend = null, flash = null, flash2 = null;
+  let boots = null, leftArm = null, rightArm = null;
+  let ammo = C.magSize;
+  let fireTimer = 0, reloadTimer = 0, reloading = false;
+  let recoil = 0, recoilVel = 0;
+  let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0;
+  let bobPhase = 0;
+  let flashTimer = 0;
+  let squash = 0, squashVel = 0;
+  const shells = [];
+  const reloadMarks = [0.16, 0.34, 0.52, 0.70, 0.88];
+  let reloadStage = 0;
+
+  const _o = new THREE.Vector3();
+  const _d = new THREE.Vector3();
+  const _t = new THREE.Vector3();
+  const _muzzleWorld = new THREE.Vector3();
+
+  function starGeometry(points, inner, outer) {
+    const s = new THREE.Shape();
+    for (let i = 0; i < points * 2; i++) {
+      const a = i / (points * 2) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 ? inner : outer;
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+    }
+    s.closePath();
+    return new THREE.ShapeGeometry(s);
+  }
+
+  function glove(parent, x, y, z, rotY) {
+    const g = new THREE.Group();
+    g.position.set(x, y, z);
+    g.rotation.y = rotY || 0;
+    const white = MAT.toon(PAL.white);
+    PRIM.sph(0.062, white, { parent: g, scale: [1, 0.92, 1.15], outline: 0.011 });
+    for (let i = 0; i < 4; i++) {
+      PRIM.sph(0.03, white, {
+        pos: [-0.028 + i * 0.019, 0.028, -0.062 - (i === 3 ? 0.01 : 0)],
+        parent: g, outline: 0.009, ray: false
+      });
+    }
+    PRIM.sph(0.028, white, { pos: [0.05, -0.005, -0.02], parent: g, outline: 0.009, ray: false });
+    // cuff
+    PRIM.cyl(0.058, 0.05, 0.045, 10, white, { pos: [0, -0.02, 0.062], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
+    return g;
+  }
+
+  function build(viewScene) {
+    const rayCount = RAY_TARGETS.length;
+    rig = new THREE.Group();
+    viewScene.add(rig);
+
+    gun = new THREE.Group();
+    gun.position.set(0.27, -0.27, -0.52);
+    gun.rotation.set(0.03, -0.09, 0.02);
+    rig.add(gun);
+
+    const steel = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
+    const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+
+    // receiver — a fat crooked junction box
+    PRIM.box(0.15, 0.17, 0.42, steel, { pos: [0, 0, -0.06], rot: [0, 0, 0.03], parent: gun, warp: 0.008, outline: 0.012 });
+    PRIM.box(0.17, 0.06, 0.2, steelDark, { pos: [0, 0.09, -0.02], parent: gun, outline: 0.011, ray: false });
+
+    // twin pipe barrels, one deliberately out of true
+    PRIM.cyl(0.045, 0.048, 0.86, 10, steel, { pos: [-0.042, 0.028, -0.66], rot: [Math.PI / 2, 0, 0.012], parent: gun, outline: 0.012, ray: false });
+    PRIM.cyl(0.045, 0.048, 0.82, 10, steel, { pos: [0.044, 0.02, -0.63], rot: [Math.PI / 2 - 0.018, 0, -0.02], parent: gun, outline: 0.012, ray: false });
+    // pipe collars
+    [-0.35, -0.66, -0.95].forEach(z => {
+      PRIM.cyl(0.075, 0.075, 0.05, 10, steelDark, { pos: [0, 0.024, z], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.011, ray: false });
+    });
+    // flared muzzle
+    PRIM.cyl(0.115, 0.06, 0.17, 12, steelDark, { pos: [0, 0.024, -1.06], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.014, ray: false });
+    PRIM.torus(0.105, 0.018, MAT.toon(PAL.mustard), { pos: [0, 0.024, -1.135], parent: gun, outline: 0.01, ray: false });
+
+    // wooden stock, tilted like it was carved with a hatchet
+    PRIM.box(0.11, 0.16, 0.4, timberDark, { pos: [0, -0.055, 0.3], rot: [-0.13, 0, 0.02], parent: gun, warp: 0.012, outline: 0.012 });
+    PRIM.box(0.1, 0.19, 0.14, timberDark, { pos: [0.002, -0.145, 0.52], rot: [-0.2, 0, 0], parent: gun, outline: 0.012, ray: false });
+    // grip
+    PRIM.box(0.09, 0.2, 0.11, timber, { pos: [0, -0.13, 0.09], rot: [0.32, 0, 0], parent: gun, outline: 0.012, ray: false });
+    // trigger guard + trigger
+    PRIM.torus(0.055, 0.012, MAT.toon(PAL.charcoal), { pos: [0, -0.1, -0.02], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.009, ray: false });
+    PRIM.box(0.016, 0.05, 0.02, MAT.toon(PAL.charcoal), { pos: [0, -0.085, -0.02], parent: gun, outline: 0.008, ray: false });
+
+    // sliding forend
+    forend = new THREE.Group();
+    forend.position.set(0, -0.015, -0.44);
+    gun.add(forend);
+    PRIM.box(0.13, 0.11, 0.27, timber, { rot: [0, 0, -0.02], parent: forend, warp: 0.01, outline: 0.012 });
+    [-0.08, 0, 0.08].forEach(z =>
+      PRIM.box(0.14, 0.015, 0.02, timberDark, { pos: [0, 0.045, z], parent: forend, outline: 0.007, ray: false })
+    );
+
+    // pressure gauge, because it is plumbing
+    PRIM.cyl(0.045, 0.045, 0.03, 12, MAT.toon(PAL.cream), { pos: [0.095, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: gun, outline: 0.011, ray: false });
+    PRIM.cyl(0.05, 0.05, 0.02, 12, steelDark, { pos: [0.085, 0.02, 0.02], rot: [0, 0, Math.PI / 2], parent: gun, outline: 0.01, ray: false });
+    PRIM.box(0.02, 0.006, 0.03, MAT.toon(PAL.rust), { pos: [0.112, 0.026, 0.028], rot: [0, 0, 0], parent: gun, outline: 0.005, ray: false });
+
+    // a bit of tape holding it all together
+    PRIM.cyl(0.052, 0.052, 0.06, 10, MAT.toon(PAL.mustardDk), { pos: [0, 0.024, -0.16], rot: [Math.PI / 2, 0, 0], parent: gun, outline: 0.01, ray: false });
+
+    // --- muzzle flash stars ---
+    flash = new THREE.Mesh(starGeometry(5, 0.07, 0.26),
+      new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    flash.position.set(0, 0.024, -1.2);
+    flash.visible = false;
+    gun.add(flash);
+    flash2 = new THREE.Mesh(starGeometry(6, 0.05, 0.16),
+      new THREE.MeshBasicMaterial({ color: PAL.mustard, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    flash2.position.set(0, 0.024, -1.22);
+    flash2.visible = false;
+    gun.add(flash2);
+
+    // --- rubber-hose arms and white gloves ---
+    const black = MAT.toon(PAL.charcoal);
+    rightArm = PRIM.hose(
+      new THREE.Vector3(0.42, -0.72, 0.42), new THREE.Vector3(0.28, -0.40, -0.44),
+      0.10, 0.048, black, { parent: rig, outline: 0.013, ray: false });
+    leftArm = PRIM.hose(
+      new THREE.Vector3(-0.46, -0.72, 0.20), new THREE.Vector3(0.24, -0.30, -0.95),
+      0.16, 0.048, black, { parent: rig, outline: 0.013, ray: false });
+    rig.add(glove(0.278, -0.40, -0.40, -0.1));    // trigger hand
+    rig.add(glove(0.262, -0.295, -0.96, 0.12));   // forend hand
+
+    // --- boots, visible when you look at your feet ---
+    boots = new THREE.Group();
+    const bootMat = MAT.toon(PAL.mustard);
+    [-1, 1].forEach(s => {
+      const b = new THREE.Group();
+      b.position.set(s * 0.16, 0, s * 0.02);
+      b.rotation.y = s * 0.18;
+      PRIM.box(0.15, 0.11, 0.3, bootMat, { pos: [0, 0, -0.04], parent: b, warp: 0.012, outline: 0.014, ray: false });
+      PRIM.box(0.16, 0.045, 0.32, MAT.toon(PAL.mustardDk), { pos: [0, -0.07, -0.04], parent: b, outline: 0.013, ray: false });
+      PRIM.box(0.13, 0.13, 0.12, bootMat, { pos: [0, 0.09, 0.06], parent: b, outline: 0.013, ray: false });
+      PRIM.cyl(0.055, 0.055, 0.22, 8, MAT.toon(PAL.charcoal), { pos: [0, 0.24, 0.07], parent: b, outline: 0.013, ray: false });
+      boots.add(b);
+    });
+    boots.position.set(0, -1.35, -0.62);
+    rig.add(boots);
+
+    // --- ejected shells ---
+    for (let i = 0; i < 4; i++) {
+      const m = PRIM.cyl(0.028, 0.028, 0.075, 8, MAT.toon(PAL.rust), { parent: rig, outline: 0.008, ray: false });
+      m.visible = false;
+      shells.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+    }
+
+    // Nothing in the viewmodel scene may ever stop one of the player's own
+    // pellets, so roll the raycast list back to where it was.
+    RAY_TARGETS.length = rayCount;
+
+    UI.setAmmo(ammo, C.magSize);
+  }
+
+  function ejectShell() {
+    for (let i = 0; i < shells.length; i++) {
+      const s = shells[i];
+      if (s.life > 0) continue;
+      s.life = 0.75;
+      s.mesh.visible = true;
+      s.mesh.position.set(0.3, -0.24, -0.42);
+      s.vel.set(UTIL.rng(0.5, 1.0), UTIL.rng(0.9, 1.5), UTIL.rng(-0.2, 0.4));
+      s.spin.set(UTIL.rng(-12, 12), UTIL.rng(-12, 12), UTIL.rng(-12, 12));
+      return;
+    }
+  }
+
+  function startReload() {
+    if (reloading || ammo >= C.magSize) return;
+    reloading = true;
+    reloadTimer = 0;
+    reloadStage = 0;
+    AUDIO.reloadClick('open');
+    UI.showReloadHint(false);
+  }
+
+  function fire(camera) {
+    if (reloading || fireTimer > 0) return;
+    if (ammo <= 0) {
+      AUDIO.dryFire();
+      UI.showReloadHint(true);
+      startReload();
+      return;
+    }
+    ammo--;
+    fireTimer = C.fireInterval;
+    UI.setAmmo(ammo, C.magSize);
+    UI.crosshairKick();
+    AUDIO.gunshot();
+
+    // recoil + squash
+    recoilVel += C.recoilBack * 46;
+    squashVel += 9.5;
+    flashTimer = C.muzzleFlashTime;
+    flash.rotation.z = UTIL.rng(0, 6.28);
+    flash2.rotation.z = UTIL.rng(0, 6.28);
+    const fs = UTIL.rng(0.85, 1.25);
+    flash.scale.setScalar(fs);
+    flash2.scale.setScalar(fs * UTIL.rng(1.0, 1.4));
+    flash.visible = flash2.visible = true;
+    ejectShell();
+
+    // muzzle position in world space, for the tracer origin and the flash light
+    gun.updateMatrixWorld(true);
+    flash.getWorldPosition(_muzzleWorld);
+    _muzzleWorld.applyMatrix4(camera.matrixWorld); // view-space rig -> world
+    FX.muzzleFlashLight(_muzzleWorld);
+
+    // pellets
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    for (let i = 0; i < C.pellets; i++) {
+      _t.copy(_d);
+      _t.x += UTIL.rng(-C.spread, C.spread);
+      _t.y += UTIL.rng(-C.spread, C.spread);
+      _t.z += UTIL.rng(-C.spread, C.spread);
+      _t.normalize();
+      const hit = FX.trace(_o, _t);
+      if (hit) {
+        if (i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
+        // enemies own their own hit feedback, so only decal the world
+        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance)) {
+          const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
+                             : _t.clone().negate();
+          if (i < 4) FX.impact(hit.point, n, { big: i === 0 });
+          FX.hitWobbler(hit.object, _t, 1 / C.pellets * 2.4);
+        }
+      } else if (i === 0) {
+        _t.multiplyScalar(C.range).add(_o);
+        FX.tracer(_muzzleWorld, _t);
+      }
+    }
+    if (ammo === 0) UI.showReloadHint(true);
+  }
+
+  function update(dt, time, camera, active) {
+    if (!rig) return;
+
+    if (fireTimer > 0) fireTimer -= dt;
+
+    if (active) {
+      if (INPUT.actions.fire && fireTimer <= 0 && !reloading) fire(camera);
+      if (INPUT.consumePress('reload')) startReload();
+    }
+
+    // ---- reload choreography ----
+    let reloadPitch = 0, reloadRoll = 0, reloadDrop = 0, forendZ = 0;
+    if (reloading) {
+      reloadTimer += dt;
+      const k = UTIL.clamp(reloadTimer / C.reloadTime, 0, 1);
+      // tip the gun down and to the left, thumb shells in, snap it shut
+      const openK = UTIL.clamp(k / 0.22, 0, 1);
+      const closeK = UTIL.clamp((k - 0.78) / 0.22, 0, 1);
+      const hold = openK - closeK;
+      reloadPitch = hold * 0.62;
+      reloadRoll = hold * 0.45;
+      reloadDrop = hold * 0.17;
+      forendZ = Math.sin(UTIL.clamp((k - 0.2) / 0.6, 0, 1) * Math.PI * 2) * 0.09;
+      while (reloadStage < reloadMarks.length && k >= reloadMarks[reloadStage]) {
+        AUDIO.reloadClick(reloadStage === reloadMarks.length - 1 ? 'close' : 'shell');
+        if (reloadStage < 2) ejectShell();
+        reloadStage++;
+      }
+      if (k >= 1) {
+        reloading = false;
+        ammo = C.magSize;
+        UI.setAmmo(ammo, C.magSize);
+        UI.showReloadHint(false);
+        squashVel += 6; // little snap-shut overshoot
+      }
+    }
+
+    // ---- recoil spring with overshoot ----
+    recoilVel += (-recoil * 260 - recoilVel * 22) * dt;
+    recoil += recoilVel * dt;
+    recoil = UTIL.clamp(recoil, -0.05, 0.4);
+    squashVel += (-squash * 300 - squashVel * 17) * dt;
+    squash += squashVel * dt;
+    squash = UTIL.clamp(squash, -0.35, 0.45);
+
+    // ---- sway from looking ----
+    tSwayX = UTIL.damp(tSwayX, 0, 3.2, dt);
+    tSwayY = UTIL.damp(tSwayY, 0, 3.2, dt);
+    swayX = UTIL.damp(swayX, tSwayX, C.swayLerp, dt);
+    swayY = UTIL.damp(swayY, tSwayY, C.swayLerp, dt);
+
+    // ---- bob from moving ----
+    const sr = PLAYER.speedRatio;
+    if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9.0 * (0.7 + sr * 0.8);
+    const bobAmt = C.bobAmount * sr;
+    const bx = Math.sin(bobPhase) * bobAmt;
+    const by = Math.abs(Math.cos(bobPhase)) * bobAmt * 0.8;
+
+    // ---- idle breathing ----
+    const idle = 1 - sr;
+    const ix = Math.sin(time * 1.15) * 0.008 * idle;
+    const iy = Math.sin(time * 1.6 + 1.1) * 0.009 * idle;
+
+    // ---- assemble ----
+    gun.position.set(
+      0.27 + swayX + bx + ix,
+      -0.27 + swayY + by + iy - reloadDrop + recoil * 0.28,
+      -0.52 + recoil
+    );
+    gun.rotation.set(
+      0.03 + reloadPitch - recoil * 0.85 + iy * 0.6,
+      -0.09 - swayX * 1.6 + ix * 0.5,
+      0.02 + reloadRoll + swayY * 0.9 - recoil * 0.4
+    );
+    // squash and stretch: the whole gun stretches along its barrel then rebounds
+    gun.scale.set(1 - squash * 0.35, 1 - squash * 0.35, 1 + squash * 0.55);
+    forend.position.z = -0.44 + forendZ + recoil * 0.5;
+
+    // arms and gloves ride the gun a little softer than the gun itself
+    rig.position.set(swayX * 0.35, swayY * 0.35 + by * 0.4, 0);
+    rig.rotation.z = swayY * 0.25;
+
+    // boots slide into frame as you look down
+    boots.position.y = -1.34 - PLAYER.pitch * 1.75;
+    boots.position.z = -0.62 + PLAYER.pitch * 0.25;
+    boots.children[0].position.z = Math.sin(bobPhase) * 0.07;
+    boots.children[1].position.z = -Math.sin(bobPhase) * 0.07;
+
+    // ---- muzzle flash, stepped so it pops rather than fades ----
+    if (flashTimer > 0) {
+      flashTimer -= dt;
+      const on = Math.floor(flashTimer * CONFIG.fx.weaponStepFPS * 3) % 2 === 0;
+      flash.visible = flash2.visible = on;
+      if (flashTimer <= 0) flash.visible = flash2.visible = false;
+    }
+
+    // ---- flying shells ----
+    for (let i = 0; i < shells.length; i++) {
+      const s = shells[i];
+      if (s.life <= 0) continue;
+      s.life -= dt;
+      if (s.life <= 0) { s.mesh.visible = false; continue; }
+      s.vel.y -= 4.2 * dt;
+      s.mesh.position.addScaledVector(s.vel, dt);
+      s.mesh.rotation.x += s.spin.x * dt;
+      s.mesh.rotation.z += s.spin.z * dt;
+    }
+  }
+
+  function addLook(dx, dy) {
+    tSwayX = UTIL.clamp(tSwayX - dx * 0.00016, -C.swayAmount, C.swayAmount);
+    tSwayY = UTIL.clamp(tSwayY + dy * 0.00016, -C.swayAmount, C.swayAmount);
+  }
+
+  function reset() {
+    ammo = C.magSize; reloading = false; reloadTimer = 0;
+    UI.setAmmo(ammo, C.magSize); UI.showReloadHint(false);
+  }
+
+  return { build, update, addLook, reset, get ammo() { return ammo; }, get reloading() { return reloading; } };
+})();
+
+/* ================================ [UI] =============================== */
+const UI = (() => {
+  const el = {};
+  let kickTimer = 0;
+
+  function init() {
+    el.start = document.getElementById('start');
+    el.pause = document.getElementById('pause');
+    el.loading = document.getElementById('loading');
+    el.crosshair = document.getElementById('crosshair');
+    el.ammo = document.getElementById('ammo');
+    el.shells = document.getElementById('shells');
+    el.ammoNum = document.getElementById('ammoNum');
+    el.reloadTag = document.getElementById('reloadTag');
+    el.grain = document.getElementById('grain');
+    el.scratches = document.getElementById('scratches');
+    el.vitals = document.getElementById('vitals');
+    el.pepFill = document.getElementById('pepFill');
+    el.tally = document.getElementById('tally');
+    el.killNum = document.getElementById('killNum');
+    el.hurt = document.getElementById('hurt');
+    el.dead = document.getElementById('dead');
+    el.modeChip = document.getElementById('modeChip');
+    el.modeWhy = document.getElementById('modeWhy');
+    el.pauseHint = document.getElementById('pauseHint');
+
+    el.grain.style.backgroundImage = 'url(' + TEX.grainDataURL(128) + ')';
+    el.scratches.style.backgroundImage = 'url(' + TEX.scratchDataURL(512, 512) + ')';
+  }
+
+  function setAmmo(n, max) {
+    if (el.shells.children.length !== max) {
+      el.shells.innerHTML = '';
+      for (let i = 0; i < max; i++) el.shells.appendChild(document.createElement('span'));
+    }
+    for (let i = 0; i < max; i++) {
+      el.shells.children[i].className = i < n ? '' : 'spent';
+    }
+    el.ammoNum.textContent = n;
+    el.ammoNum.className = n <= 2 ? 'low' : '';
+  }
+
+  function showReloadHint(on) { el.reloadTag.className = on ? 'on' : ''; }
+
+  function setHealth(n, max) {
+    const pct = UTIL.clamp(n / max, 0, 1);
+    el.pepFill.style.width = (pct * 100).toFixed(1) + '%';
+    el.pepFill.className = pct <= 0.34 ? 'hurt' : '';
+  }
+  function setKills(n) { el.killNum.textContent = n; }
+
+  let hurtTimer = 0;
+  function hurtFlash(strength) {
+    hurtTimer = 0.42;
+    el.hurt.style.opacity = UTIL.clamp(strength, 0, 1);
+  }
+
+  /* Pointer Lock was refused. Say so plainly and retitle the pause card, so
+     nobody is left clicking a button that can never work. */
+  function showFallback(why) {
+    el.modeChip.classList.add('on');
+    el.modeWhy.textContent = why || '';
+    el.pauseHint.textContent =
+      'Free-look is on because the browser would not lock the mouse. ' +
+      'Click anywhere to carry on. Push the cursor to a screen edge to keep turning.';
+  }
+  function hideFallback() {
+    el.modeChip.classList.remove('on');
+    el.pauseHint.textContent = 'Click anywhere to grab the mouse again and get back to the farm.';
+  }
+
+  let deadShown = false;
+  function showDead() {
+    deadShown = true;
+    el.dead.classList.remove('hidden');
+    el.pause.classList.add('hidden');
+    el.crosshair.classList.remove('on');
+  }
+  function hideDead() {
+    deadShown = false;
+    el.dead.classList.add('hidden');
+    el.crosshair.classList.add('on');
+  }
+  function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
+
+  function enterGame() {
+    el.start.classList.add('hidden');
+    el.pause.classList.add('hidden');
+    el.dead.classList.add('hidden');
+    el.crosshair.classList.add('on');
+    el.ammo.classList.add('on');
+    el.vitals.classList.add('on');
+    el.tally.classList.add('on');
+  }
+  function showPause() {
+    el.pause.classList.remove('hidden');
+    el.crosshair.classList.remove('on');
+  }
+  function hidePause() {
+    el.pause.classList.add('hidden');
+    el.crosshair.classList.add('on');
+  }
+  function hideLoading() { el.loading.classList.add('hidden'); }
+
+  let grainStep = 0, grainAcc = 0;
+  function update(dt) {
+    if (kickTimer > 0) {
+      kickTimer -= dt;
+      if (kickTimer <= 0) el.crosshair.classList.remove('kick');
+    }
+    if (hurtTimer > 0) {
+      hurtTimer -= dt;
+      el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
+      if (hurtTimer <= 0) el.hurt.style.opacity = 0;
+    }
+    // shuffle the paper grain on a 12fps clock so the world looks hand-inked
+    grainAcc += dt;
+    if (grainAcc > 1 / 12) {
+      grainAcc = 0;
+      grainStep = (grainStep + 1) % 4;
+      const ox = [0, 37, 71, 19][grainStep], oy = [0, 53, 11, 83][grainStep];
+      el.grain.style.backgroundPosition = ox + 'px ' + oy + 'px';
+      if (Math.random() > 0.86) {
+        el.scratches.style.backgroundPosition = (Math.random() * 400 | 0) + 'px ' + (Math.random() * 400 | 0) + 'px';
+        el.scratches.style.opacity = 0.06 + Math.random() * 0.09;
+      } else {
+        el.scratches.style.opacity = 0;
+      }
+    }
+  }
+
+  return {
+    init, setAmmo, showReloadHint, crosshairKick, enterGame,
+    showPause, hidePause, hideLoading, update,
+    setHealth, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
+    get deadShown() { return deadShown; },
+    el
+  };
+})();
+
+/* ============================== [GAME] =============================== */
+const GAME = (() => {
+  let renderer, scene, camera, viewScene, viewCamera;
+  let last = 0, time = 0, running = false, entered = false;
+  let deathPending = false, lastKills = 0;
+
+  function fail(msg) {
+    const e = document.getElementById('err');
+    e.style.display = 'block';
+    e.textContent = String(msg);
+  }
+
+  function init() {
+    if (!window.THREE) { fail('three.js failed to load. Check the network or vendor three.min.js locally.'); return; }
+
+    UI.init();
+
+    renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(PAL.peach, 1);
+    renderer.autoClear = false;
+    if ('outputEncoding' in renderer && THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
+    document.getElementById('app').appendChild(renderer.domElement);
+
+    // ---- world scene ----
+    scene = new THREE.Scene();
+    scene.fog = new THREE.Fog(PAL.peach, CONFIG.render.fogNear, CONFIG.render.fogFar);
+    camera = new THREE.PerspectiveCamera(CONFIG.render.fov, window.innerWidth / window.innerHeight,
+      CONFIG.render.near, CONFIG.render.far);
+    camera.rotation.order = 'YXZ';
+
+    scene.add(new THREE.HemisphereLight(0xDCE9F2, PAL.dirtDeep, 0.85));
+    const sun = new THREE.DirectionalLight(0xFFF4DC, 0.95);
+    sun.position.set(-38, 46, 26);
+    scene.add(sun);
+    scene.add(new THREE.AmbientLight(0xB9A99A, 0.28));
+
+    // ---- viewmodel scene, drawn on top with a cleared depth buffer ----
+    viewScene = new THREE.Scene();
+    viewCamera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.01, 12);
+    viewScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.9));
+    const vsun = new THREE.DirectionalLight(0xFFF4DC, 0.95);
+    vsun.position.set(-1.2, 2.0, 1.6);
+    viewScene.add(vsun);
+    viewScene.add(new THREE.AmbientLight(0xC9BAA9, 0.4));
+
+    // ---- content ----
+    LEVEL.build(scene);
+    FX.init(scene, viewScene);
+    PLAYER.init(camera);
+    WEAPON.build(viewScene);
+    // ENEMY.init runs last so its line-of-sight snapshot contains level
+    // geometry only, with no viewmodel or enemy proxies mixed in.
+    const spawned = ENEMY.init(scene);
+    UI.setHealth(CONFIG.player.maxHealth, CONFIG.player.maxHealth);
+    UI.setKills(0);
+    INPUT.init(renderer.domElement);
+
+    // pointer lock wiring
+    INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); });
+    INPUT.on('unlock', () => {
+      running = false;
+      if (!entered) return;
+      if (PLAYER.isDead) UI.showDead(); else UI.showPause();
+    });
+
+    INPUT.on('fallback', why => UI.showFallback(why));
+
+    document.getElementById('enterBtn').addEventListener('click', enter);
+    document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
+    document.getElementById('againBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
+    // manual escape hatches, in case the automatic detection ever misses
+    const goFree = e => { e.stopPropagation(); INPUT.forceFree('switched on by hand'); enter(); };
+    document.getElementById('freeBtn').addEventListener('click', goFree);
+    document.getElementById('freeBtn2').addEventListener('click', goFree);
+    UI.el.modeChip.addEventListener('click', () => { UI.hideFallback(); INPUT.tryLockAgain(); });
+    UI.el.pause.addEventListener('click', enter);
+
+    // lantern toggle for the dim corners of the barn
+    const lampKey = new THREE.PointLight(0xFFE0A8, 0, 9, 2);
+    camera.add(lampKey);
+    scene.add(camera);
+    INPUT.on('press', a => {
+      if (a === 'lantern') lampKey.intensity = lampKey.intensity > 0 ? 0 : 1.35;
+    });
+
+    window.addEventListener('resize', onResize);
+    onResize();
+    UI.hideLoading();
+
+    last = performance.now();
+    requestAnimationFrame(loop);
+  }
+
+  function enter() {
+    entered = true;
+    AUDIO.start();
+    AUDIO.resume();
+    UI.enterGame();
+    INPUT.requestLock();
+  }
+
+  /* Back on your feet: heal up, put the farm back the way it was. */
+  function restart() {
+    PLAYER.revive();
+    WEAPON.reset();
+    ENEMY.reset();
+    UI.setKills(0);
+    UI.hideDead();
+    deathPending = false;
+    enter();
+  }
+
+  function onResize() {
+    const w = window.innerWidth, h = window.innerHeight;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
+    renderer.setSize(w, h);
+    camera.aspect = w / h; camera.updateProjectionMatrix();
+    viewCamera.aspect = w / h; viewCamera.updateProjectionMatrix();
+  }
+
+  function loop(now) {
+    requestAnimationFrame(loop);
+    let dt = (now - last) / 1000;
+    last = now;
+    if (dt > 0.06) dt = 0.06;   // never let a stall throw the player through a wall
+    time += dt;
+
+    // one read of the mouse delta per frame, shared by the look and the sway
+    const look = INPUT.consumeMouse();
+    // in free-look mode, pushing the cursor into a screen edge keeps you turning
+    const edge = INPUT.edgeTurn();
+    if (edge.x) look.x += edge.x * CONFIG.input.edgeTurnX * dt;
+    if (edge.y) look.y += edge.y * CONFIG.input.edgeTurnY * dt;
+    if (running) WEAPON.addLook(look.x, look.y);
+
+    PLAYER.update(dt, running, look);
+    WEAPON.update(dt, time, camera, running && !PLAYER.isDead);
+    if (running) ENEMY.update(dt, time);
+    LEVEL.update(dt, time);
+    FX.update(dt, time);
+    AUDIO.update(dt);
+    UI.update(dt);
+
+    if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
+
+    // let the wilt play out before handing the mouse back
+    if (PLAYER.isDead && !deathPending) deathPending = true;
+    if (deathPending && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
+      INPUT.releaseLock();
+      UI.showDead();
+    }
+
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.clearDepth();
+    renderer.render(viewScene, viewCamera);
+  }
+
+  return { init, get scene() { return scene; }, get camera() { return camera; } };
+})();
+
+/* ============================== [CAST] ===============================
+   The character system.
+
+   Every character shares ONE body rig. What differs is data:
+
+       head     which face to build          -> HEADS registry
+       skin     colour overrides             -> plain object, merged over DEFAULT_SKIN
+       hand     optional right-hand prop     -> HANDS registry
+       collar   optional neck piece          -> COLLARS registry
+       stats    hp / speed / damage / reach
+       voice    audio pitch multiplier
+
+   TO ADD A CHARACTER: add one entry to ROSTER. That is the whole job.
+   If it needs a new face, add a builder to HEADS (about twenty lines) and
+   point the roster entry at it. Nothing else in the codebase needs to know.
+
+   TO RESKIN AN EXISTING ONE: change its `skin` block. Geometry is untouched,
+   so swapping glove/short/shoe colours costs nothing at build or run time.
+
+   Later expansion slots already wired through build(): `collar`, `hand`, and
+   per-part colour. Add `shirt` or `hat` the same way HANDS works.
+   =================================================================== */
+const CAST = (() => {
+
+  const DEFAULT_SKIN = {
+    petal:     PAL.mustard,
+    petalBack: PAL.mustardDk,
+    face:      PAL.cream,
+    ink:       PAL.ink,
+    limb:      PAL.charcoal,
+    glove:     PAL.white,
+    shorts:    PAL.olive,
+    shoe:      PAL.rust,
+    sole:      PAL.cream,
+    accent:    PAL.rust,
+    metal:     PAL.mustard
+  };
+
+  /* Feature plane on the flat face plate. Everything on the face is authored
+     in head-local space: +x right, +y up, -z forward. */
+  const FZ = -0.252;
+  const HEAD_R = 0.30;
+
+  /* ---------------- small face-drawing helpers ---------------- */
+  function disc(b, x, y, r, depth) {
+    b.cyl(r, r, depth || 0.05, 12, x, y, FZ, Math.PI / 2, 0, 0);
+  }
+  function oval(b, x, y, rx, ry, rot, depth) {
+    const d = depth || 0.05;
+    b.custom(() => {
+      const g = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
+      PRIM.xform(g, 0, 0, 0, Math.PI / 2, 0, 0, rx * 2, d, ry * 2);
+      return g;
+    }, [rx * 2, ry * 2, d], x, y, FZ, 0, 0, rot || 0);
+  }
+  function bar(b, x, y, w, h, rot, depth) {
+    b.box(w, h, depth || 0.05, x, y, FZ, 0, 0, rot || 0);
+  }
+  /* arc = sweep in radians; rot = 0 gives an upper arc (a frown), rot = PI a smile */
+  function arc(b, x, y, r, tube, sweep, rot) {
+    b.torus(r, tube, 5, 14, sweep, x, y, FZ, 0, 0, rot || 0);
+  }
+
+  /* ---------------- HEADS ----------------
+     Each builder receives (group, skin) and hangs geometry off `group`.
+     The petal ring and face plate are shared; builders only draw the face. */
+
+  function headBase(group, skin) {
+    // squashed cream skull
+    PRIM.sph(HEAD_R, MAT.toon(skin.face), {
+      parent: group, scale: [1, 1, 0.72], outline: 0.028, ray: false
+    });
+    // flat mask plate so every face feature has something solid to sit on
+    PRIM.cyl(HEAD_R * 0.91, HEAD_R * 0.91, 0.1, 20, MAT.toon(skin.face), {
+      pos: [0, 0, -0.2], rot: [Math.PI / 2, 0, 0], parent: group, outline: 0.026, ray: false
+    });
+    // two offset petal rings — the back one is darker and reads as depth
+    const back = new PRIM.Batch(MAT.toon(skin.petalBack), 0.03);
+    const front = new PRIM.Batch(MAT.toon(skin.petal), 0.03);
+    const N = 13;
+    for (let i = 0; i < N; i++) {
+      const a = i / N * Math.PI * 2;
+      const ab = a + Math.PI / N;
+      const mk = (lx, ly, lz) => () => {
+        const g = new THREE.SphereGeometry(0.5, 8, 6);
+        PRIM.xform(g, 0, 0, 0, 0, 0, 0, lx, ly, lz);
+        return g;
+      };
+      back.custom(mk(0.105, 0.25, 0.05), [0.105, 0.25, 0.05],
+        Math.cos(ab) * 0.35, Math.sin(ab) * 0.35, 0.03, 0, 0, ab - Math.PI / 2);
+      front.custom(mk(0.10, 0.23, 0.055), [0.10, 0.23, 0.055],
+        Math.cos(a) * 0.335, Math.sin(a) * 0.335, -0.06, 0, 0, a - Math.PI / 2);
+    }
+    back.build(group, { ray: false });
+    front.build(group, { ray: false });
+  }
+
+  const HEADS = {
+
+    /* Hollow, tired eyes and a little pair of fangs. */
+    reaper(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      const red = new PRIM.Batch(MAT.toon(0xC4574B), 0.011);
+      // sunken sockets
+      oval(light, -0.105, 0.055, 0.072, 0.085, 0.12);
+      oval(light, 0.105, 0.055, 0.072, 0.085, -0.12);
+      oval(red, -0.105, 0.045, 0.045, 0.055, 0.12, 0.055);
+      oval(red, 0.105, 0.045, 0.045, 0.055, -0.12, 0.055);
+      disc(dark, -0.105, 0.04, 0.022, 0.06);
+      disc(dark, 0.105, 0.04, 0.022, 0.06);
+      // heavy lids
+      bar(dark, -0.105, 0.125, 0.16, 0.03, 0.22);
+      bar(dark, 0.105, 0.125, 0.16, 0.03, -0.22);
+      // muzzle + nose
+      oval(light, 0, -0.085, 0.115, 0.075, 0, 0.055);
+      oval(dark, 0, -0.032, 0.038, 0.028, 0, 0.06);
+      bar(dark, 0, -0.075, 0.014, 0.05);
+      arc(dark, 0, -0.09, 0.055, 0.011, Math.PI, Math.PI);
+      // fangs
+      bar(light, -0.028, -0.135, 0.024, 0.045, 0.1, 0.055);
+      bar(light, 0.028, -0.135, 0.024, 0.045, -0.1, 0.055);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+      red.build(group, { ray: false });
+    },
+
+    /* Squinting, laughing, tongue out, whiskers. */
+    howler(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      const pink = new PRIM.Batch(MAT.toon(0xC4574B), 0.011);
+      // scrunched-up laughing eyes
+      arc(dark, -0.105, 0.055, 0.062, 0.013, 2.2, Math.PI + 0.4);
+      arc(dark, 0.105, 0.055, 0.062, 0.013, 2.2, Math.PI - 0.4 - 2.2);
+      bar(dark, -0.115, 0.145, 0.11, 0.022, 0.34);
+      bar(dark, 0.115, 0.145, 0.11, 0.022, -0.34);
+      // big open cackle
+      oval(dark, 0.012, -0.105, 0.11, 0.085, -0.1, 0.07);
+      oval(pink, 0.03, -0.145, 0.06, 0.04, -0.1, 0.075);
+      bar(light, 0.012, -0.045, 0.19, 0.028, -0.1, 0.075);
+      // muzzle and nose
+      oval(light, 0, -0.035, 0.10, 0.055, 0, 0.055);
+      oval(dark, 0, 0.005, 0.036, 0.026, 0, 0.06);
+      // whiskers
+      [-1, 1].forEach(s => {
+        bar(dark, s * 0.175, -0.005, 0.17, 0.012, s * 0.28);
+        bar(dark, s * 0.18, -0.055, 0.17, 0.012, -s * 0.18);
+      });
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+      pink.build(group, { ray: false });
+    },
+
+    /* Two black holes and an enormous grin. The simplest and the worst. */
+    gaper(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      const pink = new PRIM.Batch(MAT.toon(0xC4574B), 0.011);
+      oval(dark, -0.105, 0.085, 0.055, 0.078, 0, 0.06);
+      oval(dark, 0.105, 0.085, 0.055, 0.078, 0, 0.06);
+      // gaping mouth
+      oval(dark, 0, -0.095, 0.145, 0.105, 0, 0.07);
+      oval(pink, 0, -0.155, 0.085, 0.045, 0, 0.075);
+      // teeth: an upper bar plus separators
+      bar(light, 0, -0.028, 0.26, 0.045, 0, 0.075);
+      for (let i = -2; i <= 2; i++) bar(dark, i * 0.048, -0.028, 0.012, 0.045, 0, 0.08);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+      pink.build(group, { ray: false });
+    },
+
+    /* Half-lidded, pleased with itself. */
+    grinner(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      oval(light, -0.1, 0.06, 0.07, 0.06, 0.16);
+      oval(light, 0.1, 0.06, 0.07, 0.06, -0.16);
+      oval(dark, -0.108, 0.05, 0.032, 0.042, 0.16, 0.058);
+      oval(dark, 0.108, 0.05, 0.032, 0.042, -0.16, 0.058);
+      // lids drooping over the top half
+      bar(dark, -0.1, 0.105, 0.15, 0.032, 0.2);
+      bar(dark, 0.1, 0.105, 0.15, 0.032, -0.2);
+      // thin arched brows
+      arc(dark, -0.105, 0.135, 0.075, 0.01, 1.1, Math.PI * 0.75);
+      arc(dark, 0.105, 0.135, 0.075, 0.01, 1.1, Math.PI * 1.15);
+      // muzzle, nose, smirk
+      oval(light, 0, -0.075, 0.105, 0.062, 0, 0.055);
+      oval(dark, 0, -0.028, 0.034, 0.025, 0, 0.06);
+      arc(dark, 0.012, -0.075, 0.075, 0.011, 1.5, Math.PI + 0.25);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+    }
+  };
+
+  /* ---------------- COLLARS ---------------- */
+  const COLLARS = {
+    chain(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(skin.metal), 0.014);
+      const N = 16;
+      for (let i = 0; i < N; i++) {
+        const a = Math.PI * 0.15 + (i / (N - 1)) * Math.PI * 0.7;
+        b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
+      }
+      b.sphere(0.045, 0, -0.115, -0.135, 1, 1.25, 0.6);
+      b.build(group, { ray: false });
+    },
+    ruff(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(PAL.white), 0.016);
+      const N = 15;
+      for (let i = 0; i < N; i++) {
+        const a = i / N * Math.PI * 2;
+        b.custom(() => {
+          const g = new THREE.ConeGeometry(0.045, 0.14, 5);
+          return g;
+        }, [0.09, 0.14, 0.09],
+          Math.cos(a) * 0.16, -0.04 + Math.sin(a) * 0.16, -0.06, 0, 0, a + Math.PI);
+      }
+      b.build(group, { ray: false });
+    }
+  };
+
+  /* ---------------- HANDS (right-hand props) ---------------- */
+  const HANDS = {
+    scythe(group, skin) {
+      const shaft = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.016);
+      shaft.cyl(0.026, 0.03, 1.5, 8, 0, 0.28, 0, 0.12, 0, 0.06);
+      shaft.build(group, { ray: false });
+      const blade = new PRIM.Batch(MAT.toon(PAL.blueGray), 0.018);
+      // curved blade from tapering segments
+      for (let i = 0; i < 9; i++) {
+        const t = i / 8;
+        const a = t * 1.5;
+        blade.box(0.055 - t * 0.04, 0.13 - t * 0.075, 0.02,
+          -Math.sin(a) * 0.52, 0.98 + Math.cos(a) * 0.16 - 0.16, 0.02,
+          0, 0, -a * 0.9);
+      }
+      blade.build(group, { ray: false });
+    },
+    flashlight(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(PAL.charcoal), 0.014);
+      b.cyl(0.05, 0.045, 0.22, 10, 0, 0.02, -0.12, Math.PI / 2, 0, 0);
+      b.cyl(0.085, 0.05, 0.12, 10, 0, 0.02, -0.28, -Math.PI / 2, 0, 0);
+      b.build(group, { ray: false });
+      // the beam: a soft unlit cone, no extra light in the scene
+      const beam = PRIM.cone(0.62, 3.4, 12, MAT.flat(0xFFE9A0, {
+        transparent: true, opacity: 0.26, depthWrite: false, fog: false
+      }), { pos: [0, 0.02, -2.05], rot: [-Math.PI / 2, 0, 0], parent: group, outline: false, ray: false });
+      beam.renderOrder = 2;
+    },
+    claws(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(PAL.blueGray), 0.013);
+      for (let i = 0; i < 3; i++) {
+        b.custom(() => new THREE.ConeGeometry(0.018, 0.34, 4), [0.036, 0.34, 0.036],
+          -0.045 + i * 0.045, 0.02, -0.2, -1.45, 0, (i - 1) * 0.13);
+      }
+      b.build(group, { ray: false });
+    }
+  };
+
+  /* ---------------- ROSTER ----------------
+     Four characters. Same body, different heads — plus the accessory and
+     colour slots so they can diverge further without new code. */
+  const ROSTER = {
+    reaper: {
+      label: 'The Reaper',
+      head: 'reaper',
+      collar: 'chain',
+      hand: 'scythe',
+      skin: { shorts: PAL.olive, shoe: PAL.rust, metal: PAL.mustard },
+      stats: { hp: 130, speed: 2.5, damage: 15, reach: 2.4, windup: 0.55, recover: 0.85, weight: 1.35 },
+      voice: { pitch: 0.78 }
+    },
+    howler: {
+      label: 'The Howler',
+      head: 'howler',
+      collar: 'ruff',
+      hand: 'flashlight',
+      skin: { shorts: PAL.olive, shoe: PAL.rustDeep, sole: PAL.cream },
+      stats: { hp: 85, speed: 4.4, damage: 8, reach: 1.7, windup: 0.28, recover: 0.5, weight: 0.75 },
+      voice: { pitch: 1.35 }
+    },
+    gaper: {
+      label: 'The Gaper',
+      head: 'gaper',
+      collar: null,
+      hand: null,
+      skin: { glove: PAL.mustard, shorts: PAL.rust, shoe: PAL.rustDeep, sole: PAL.creamDim },
+      stats: { hp: 110, speed: 3.2, damage: 12, reach: 1.9, windup: 0.4, recover: 0.7, weight: 1.0 },
+      voice: { pitch: 0.95 }
+    },
+    grinner: {
+      label: 'The Grinner',
+      head: 'grinner',
+      collar: 'chain',
+      hand: 'claws',
+      skin: { limb: PAL.blueGrayDk, shorts: PAL.olive, shoe: PAL.creamDim, sole: PAL.charcoal, metal: PAL.mustard },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 1.12 }
+    }
+  };
+
+  /* ---------------- the shared body ---------------- */
+  function glove(parent, mirror, skin) {
+    const g = new THREE.Group();
+    const m = MAT.toon(skin.glove);
+    PRIM.sph(0.085, m, { parent: g, scale: [1, 0.95, 1.05], outline: 0.02, ray: false });
+    for (let i = 0; i < 4; i++) {
+      PRIM.sph(0.042, m, {
+        pos: [mirror * (0.02 + i * 0.026), -0.055 + i * 0.012, -0.06],
+        parent: g, outline: 0.016, ray: false
+      });
+    }
+    PRIM.sph(0.04, m, { pos: [mirror * -0.06, 0.012, -0.03], parent: g, outline: 0.016, ray: false });
+    PRIM.cyl(0.072, 0.065, 0.05, 10, m, { pos: [0, 0.07, 0.01], parent: g, outline: 0.018, ray: false });
+    parent.add(g);
+    return g;
+  }
+
+  function shoe(parent, mirror, skin) {
+    const g = new THREE.Group();
+    const b = new PRIM.Batch(MAT.toon(skin.shoe), 0.02);
+    b.box(0.165, 0.115, 0.31, 0, 0.075, -0.05, 0, 0, 0, 0.012);
+    b.box(0.15, 0.14, 0.13, 0, 0.145, 0.055, 0.16, 0, 0, 0.012);
+    b.build(g, { ray: false });
+    const s = new PRIM.Batch(MAT.toon(skin.sole), 0.02);
+    s.box(0.175, 0.055, 0.325, 0, 0.028, -0.05, 0, 0, 0, 0.01);
+    s.build(g, { ray: false });
+    // toe cap so it reads as a sneaker rather than a brick
+    PRIM.sph(0.083, MAT.toon(skin.shoe), {
+      pos: [0, 0.085, -0.185], scale: [1, 0.85, 0.75], parent: g, outline: 0.02, ray: false
+    });
+    parent.add(g);
+    return g;
+  }
+
+  function buildBody(def, skin) {
+    const root = new THREE.Group();
+
+    const bob = new THREE.Group();          // vertical bounce + squash/stretch
+    root.add(bob);
+
+    // hips / shorts
+    const hips = new PRIM.Batch(MAT.toon(skin.shorts), 0.026);
+    hips.box(0.40, 0.34, 0.32, 0, 0.63, 0, 0, 0, 0, 0.018);
+    hips.build(bob, { ray: false });
+    const btn = new PRIM.Batch(MAT.toon(skin.sole), 0.012);
+    btn.sphere(0.028, 0.11, 0.60, -0.165, 1, 1, 0.6);
+    btn.sphere(0.028, -0.11, 0.60, -0.165, 1, 1, 0.6);
+    btn.build(bob, { ray: false });
+
+    // torso
+    const torso = new THREE.Group();
+    torso.position.set(0, 0.78, 0);
+    bob.add(torso);
+    PRIM.sph(0.155, MAT.toon(skin.limb), {
+      pos: [0, 0.08, 0], scale: [1, 1.15, 0.85], parent: torso, outline: 0.026, ray: false
+    });
+    PRIM.cyl(0.06, 0.07, 0.16, 10, MAT.toon(skin.limb), {
+      pos: [0, 0.25, 0], parent: torso, outline: 0.022, ray: false
+    });
+
+    // head
+    const head = new THREE.Group();
+    head.position.set(0, 0.50, 0);
+    torso.add(head);
+    headBase(head, skin);
+    (HEADS[def.head] || HEADS.gaper)(head, skin);
+    if (def.collar && COLLARS[def.collar]) COLLARS[def.collar](head, skin);
+
+    // arms
+    const limbMat = MAT.toon(skin.limb);
+    const arms = [];
+    [-1, 1].forEach(s => {
+      const j = new THREE.Group();
+      j.position.set(s * 0.145, 0.2, 0);
+      torso.add(j);
+      PRIM.hose(new THREE.Vector3(0, 0, 0), new THREE.Vector3(s * 0.2, -0.36, -0.04),
+        0.11, 0.052, limbMat, { parent: j, outline: 0.02, ray: false });
+      const hand = new THREE.Group();
+      hand.position.set(s * 0.2, -0.36, -0.04);
+      j.add(hand);
+      glove(hand, s, skin);
+      arms.push({ joint: j, hand: hand, side: s });
+    });
+
+    // right hand prop
+    if (def.hand && HANDS[def.hand]) HANDS[def.hand](arms[1].hand, skin);
+
+    // legs
+    const legs = [];
+    [-1, 1].forEach(s => {
+      const j = new THREE.Group();
+      j.position.set(s * 0.115, 0.55, 0);
+      bob.add(j);
+      PRIM.hose(new THREE.Vector3(0, 0, 0), new THREE.Vector3(s * 0.02, -0.46, 0),
+        0.05, 0.058, limbMat, { parent: j, outline: 0.021, ray: false });
+      const foot = new THREE.Group();
+      foot.position.set(s * 0.02, -0.48, 0);
+      j.add(foot);
+      shoe(foot, s, skin);
+      legs.push({ joint: j, foot: foot, side: s });
+    });
+
+    return {
+      root: root, bob: bob, torso: torso, head: head,
+      armL: arms[0].joint, armR: arms[1].joint,
+      handL: arms[0].hand, handR: arms[1].hand,
+      legL: legs[0].joint, legR: legs[1].joint
+    };
+  }
+
+  /* Build a character. Returns { rig, def, skin }. */
+  function build(id) {
+    const def = ROSTER[id];
+    if (!def) throw new Error('CAST: unknown character "' + id + '"');
+    const skin = Object.assign({}, DEFAULT_SKIN, def.skin || {});
+    const rig = buildBody(def, skin);
+    rig.root.userData.character = id;
+    return { rig: rig, def: def, skin: skin };
+  }
+
+  function list() { return Object.keys(ROSTER); }
+
+  return { ROSTER, HEADS, HANDS, COLLARS, DEFAULT_SKIN, build, list };
+})();
+
+/* ============================== [ENEMY] ==============================
+   Pooled entities driven off WORLD.spawnMarkers. Visual meshes are kept out
+   of the bullet raycast entirely; each enemy carries two invisible hit
+   proxies (head and body) so headshots are exact and shooting is cheap. */
+const ENEMY = (() => {
+  const C = CONFIG.enemy;
+  const list = [];
+  let scene = null;
+  let LOS_TARGETS = [];
+  let kills = 0;
+  let markTex = null;
+
+  const _v = new THREE.Vector3();
+  const _v2 = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
+  const raycaster = new THREE.Raycaster();
+  const NO_RAY = function () {};
+
+  function markTexture() {
+    if (markTex) return markTex;
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const x = c.getContext('2d');
+    x.fillStyle = '#F6E9D2';
+    x.strokeStyle = '#120F0D';
+    x.lineWidth = 6;
+    x.beginPath(); x.moveTo(24, 6); x.lineTo(40, 6); x.lineTo(36, 40); x.lineTo(28, 40); x.closePath();
+    x.fill(); x.stroke();
+    x.beginPath(); x.arc(32, 52, 7, 0, 6.3); x.fill(); x.stroke();
+    markTex = new THREE.CanvasTexture(c);
+    return markTex;
+  }
+
+  function makeProxy(parent, geo, y, tag, enemy, zone) {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
+    m.position.y = y;
+    m.userData.enemyHit = { enemy: enemy, zone: zone };
+    parent.add(m);
+    RAY_TARGETS.push(m);
+    return m;
+  }
+
+  function create(id, marker) {
+    const built = CAST.build(id);
+    // Snap to whatever surface is actually under the marker, so markers can be
+    // authored roughly and still land people on floors, lofts and decks.
+    const home = marker.position.clone();
+    home.y = WORLD.groundAt(home.x, home.z, home.y + 0.8);
+    const e = {
+      id: id,
+      def: built.def,
+      skin: built.skin,
+      rig: built.rig,
+      group: built.rig.root,
+      home: home.clone(),
+      pos: home.clone(),
+      vel: new THREE.Vector3(),
+      body: { grounded: true, blocked: false, landed: false, fallSpeed: 0 },
+      state: 'idle',
+      timer: 0,
+      hp: built.def.stats.hp,
+      maxHp: built.def.stats.hp,
+      alive: true,
+      yaw: UTIL.rng(0, 6.28),
+      targetYaw: 0,
+      animClock: 0,
+      stepPhase: UTIL.rng(0, 6.28),
+      squash: 0, squashVel: 0,
+      lean: 0,
+      lastSeen: -99,
+      losTimer: UTIL.rng(0, C.losInterval),
+      sawPlayer: false,
+      wander: home.clone(),
+      wanderTimer: UTIL.rng(1, 4),
+      stepFlip: false,
+      respawnAt: 0,
+      hitFlash: 0
+    };
+
+    scene.add(e.group);
+    e.group.position.copy(e.pos);
+
+    // hit proxies
+    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(0.34, 8, 6), 1.28, 'head', e, 'head');
+    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(0.62, 0.98, 0.5), 0.68, 'body', e, 'body');
+
+    // alert "!" billboard
+    const mk = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: markTexture(), transparent: true, depthWrite: false, fog: false
+    }));
+    mk.scale.setScalar(0.34);
+    mk.position.set(0, 2.06, 0);
+    mk.visible = false;
+    e.group.add(mk);
+    e.mark = mk;
+
+    PROPS.blobShadow(e.group, 0, 0, 0.62, 0.5);
+    list.push(e);
+    return e;
+  }
+
+  function init(mainScene) {
+    scene = mainScene;
+    // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
+    // line-of-sight tests only ever consider world geometry.
+    LOS_TARGETS = RAY_TARGETS.slice();
+
+    const roster = CAST.list();
+    // Spread the cast across the spawn markers the level already publishes.
+    const markers = WORLD.spawnMarkers.filter(m => m.kind !== 'yard');
+    markers.forEach((m, i) => {
+      if (list.length >= C.count) return;
+      create(roster[i % roster.length], m);
+    });
+    return list.length;
+  }
+
+  /* ---------------- perception ---------------- */
+  function canSee(e) {
+    const p = PLAYER.position;
+    _v.set(p.x - e.pos.x, 0, p.z - e.pos.z);
+    const dist = _v.length();
+    if (dist > C.sightRange) return false;
+    if (dist > C.hearRange) {
+      // outside earshot it has to actually be looking your way
+      _v.normalize();
+      const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
+      if (fx * _v.x + fz * _v.z < Math.cos(C.sightFov)) return false;
+    }
+    _v.set(e.pos.x, e.pos.y + C.eyeHeight, e.pos.z);
+    _v2.set(p.x - _v.x, (p.y + CONFIG.player.eyeHeight) - _v.y, p.z - _v.z);
+    const straight = _v2.length();
+    _v2.normalize();
+    raycaster.far = straight;
+    raycaster.set(_v, _v2);
+    const hits = raycaster.intersectObjects(LOS_TARGETS, true);
+    for (let i = 0; i < hits.length; i++) {
+      if (hits[i].object.userData.outline) continue;
+      if (hits[i].distance < straight - 0.4) return false;
+      break;
+    }
+    return true;
+  }
+
+  /* ---------------- damage ---------------- */
+  function applyDamage(e, amount, point, dir, zone) {
+    if (!e.alive) return;
+    e.hp -= amount;
+    e.hitFlash = 0.12;
+    e.squashVel -= 7;
+    e.vel.x += dir.x * 1.6 * (1 / e.def.stats.weight);
+    e.vel.z += dir.z * 1.6 * (1 / e.def.stats.weight);
+    e.lastSeen = 0;
+    e.sawPlayer = true;
+
+    if (e.hp <= 0) {
+      die(e, dir);
+      return;
+    }
+    if (e.state === 'idle') setState(e, 'alert');
+    else if (zone === 'head' || amount > 22) setState(e, 'stagger');
+    AUDIO.enemyHurt(e.def.voice.pitch);
+  }
+
+  function die(e, dir) {
+    e.alive = false;
+    e.state = 'dead';
+    e.timer = 0;
+    e.hp = 0;
+    e.mark.visible = false;
+    e.headProxy.raycast = NO_RAY;
+    e.bodyProxy.raycast = NO_RAY;
+    kills++;
+    AUDIO.enemyDie(e.def.voice.pitch);
+    // scatter petals
+    _v.set(e.pos.x, e.pos.y + 1.28, e.pos.z);
+    for (let i = 0; i < 12; i++) {
+      _v2.set(UTIL.rng(-2.4, 2.4), UTIL.rng(1.6, 4.6), UTIL.rng(-2.4, 2.4));
+      FX.spawnParticle(_v, _v2, {
+        map: TEX.star(i % 2 ? PAL.mustard : PAL.mustardDk),
+        s0: UTIL.rng(0.16, 0.3), s1: 0.02, life: UTIL.rng(0.6, 1.1), grav: 7,
+        spin: UTIL.rng(-9, 9)
+      });
+    }
+    for (let i = 0; i < 5; i++) {
+      _v2.set(UTIL.rng(-1, 1), UTIL.rng(0.5, 2), UTIL.rng(-1, 1));
+      FX.spawnParticle(_v, _v2, {
+        map: TEX.puff(PAL.cream), s0: 0.3, s1: 0.9, life: 0.7, grav: -1
+      });
+    }
+    if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay;
+  }
+
+  /* Called by WEAPON for every pellet that connects. */
+  function hit(object, point, dir, distance) {
+    const info = object.userData && object.userData.enemyHit;
+    if (!info) return false;
+    const e = info.enemy;
+    if (!e.alive) return false;
+    const falloff = UTIL.clamp(1 - distance / CONFIG.weapon.range, 0.22, 1);
+    const dmg = C.pelletDamage * falloff * (info.zone === 'head' ? C.headMultiplier : 1);
+    applyDamage(e, dmg, point, dir, info.zone);
+    FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' });
+    return true;
+  }
+
+  function revive(e) {
+    e.alive = true;
+    e.hp = e.maxHp;
+    e.pos.copy(e.home);
+    e.vel.set(0, 0, 0);
+    e.group.position.copy(e.pos);
+    e.group.scale.set(1, 1, 1);
+    e.group.rotation.set(0, e.yaw, 0);
+    e.squash = e.squashVel = 0;
+    e.headProxy.raycast = THREE.Mesh.prototype.raycast;
+    e.bodyProxy.raycast = THREE.Mesh.prototype.raycast;
+    setState(e, 'idle');
+    e.sawPlayer = false;
+    e.group.visible = true;
+  }
+
+  function reset() {
+    kills = 0;
+    list.forEach(e => { e.respawnAt = 0; revive(e); });
+  }
+
+  /* ---------------- state machine ---------------- */
+  function setState(e, s) {
+    e.state = s;
+    e.timer = 0;
+    if (s === 'alert') {
+      e.mark.visible = true;
+      AUDIO.enemyAlert(e.def.voice.pitch);
+      e.squashVel += 8;
+    } else {
+      e.mark.visible = false;
+    }
+    if (s === 'attack') {
+      e.didStrike = false;
+      AUDIO.enemySwing(e.def.voice.pitch);
+    }
+  }
+
+  function faceTowards(e, tx, tz, dt, rate) {
+    const want = Math.atan2(-(tx - e.pos.x), -(tz - e.pos.z));
+    let d = want - e.yaw;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    e.yaw += d * UTIL.clamp((rate || 7) * dt, 0, 1);
+  }
+
+  function steer(e, tx, tz, speed, dt) {
+    _v.set(tx - e.pos.x, 0, tz - e.pos.z);
+    const d = _v.length();
+    if (d < 0.05) return d;
+    _v.multiplyScalar(1 / d);
+    e.vel.x = UTIL.damp(e.vel.x, _v.x * speed, 9, dt);
+    e.vel.z = UTIL.damp(e.vel.z, _v.z * speed, 9, dt);
+    return d;
+  }
+
+  function idleBrake(e, dt) {
+    e.vel.x = UTIL.damp(e.vel.x, 0, 9, dt);
+    e.vel.z = UTIL.damp(e.vel.z, 0, 9, dt);
+  }
+
+  /* ---------------- posing ----------------
+     Position integrates smoothly; the pose is evaluated on a 12 fps clock so
+     the characters read as animated on twos, like the reference art. */
+  function pose(e, t) {
+    const r = e.rig;
+    const speed = Math.hypot(e.vel.x, e.vel.z);
+    const walk = UTIL.clamp(speed / 4, 0, 1.3);
+
+    if (e.state === 'dead') {
+      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const s = 1 + Math.sin(k * Math.PI) * 0.45;
+      e.group.scale.set((1 - k) * (2 - s), (1 - k) * s, (1 - k) * (2 - s));
+      r.torso.rotation.x = -k * 1.2;
+      r.head.rotation.z = k * 1.6;
+      r.armL.rotation.x = -k * 2.2;
+      r.armR.rotation.x = -k * 2.2;
+      return;
+    }
+
+    const sw = Math.sin(e.stepPhase);
+    const cw = Math.cos(e.stepPhase);
+
+    // walk cycle
+    r.legL.rotation.x = -sw * 0.85 * walk;
+    r.legR.rotation.x = sw * 0.85 * walk;
+    r.armL.rotation.x = sw * 0.95 * walk;
+    r.armR.rotation.x = -sw * 0.95 * walk;
+    r.armL.rotation.z = -0.12 - walk * 0.1;
+    r.armR.rotation.z = 0.12 + walk * 0.1;
+
+    // bounce, breathing and lean
+    const breath = Math.sin(t * 1.7 + e.stepPhase) * 0.012;
+    const bounce = Math.abs(cw) * 0.07 * walk;
+    r.bob.position.y = bounce + breath;
+    r.torso.rotation.z = sw * 0.06 * walk;
+    r.torso.rotation.x = e.lean;
+    r.head.rotation.z = -sw * 0.09 * walk;
+    r.head.rotation.x = -e.lean * 0.6;
+
+    // squash and stretch on top of everything
+    const sq = 1 + e.squash;
+    e.group.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+
+    if (e.state === 'alert') {
+      const k = e.timer / C.alertTime;
+      r.torso.rotation.x = -0.35 * Math.sin(k * Math.PI);
+      r.armL.rotation.x = -1.1 * Math.sin(k * Math.PI);
+      r.armR.rotation.x = -1.1 * Math.sin(k * Math.PI);
+      e.mark.scale.setScalar(0.28 + Math.sin(k * Math.PI) * 0.16);
+    }
+
+    if (e.state === 'attack') {
+      const st = e.def.stats;
+      const total = st.windup + st.recover;
+      const k = e.timer / total;
+      const wk = st.windup / total;
+      if (k < wk) {
+        const a = k / wk;
+        r.armR.rotation.x = -2.3 * a;
+        r.torso.rotation.x = -0.3 * a;
+        r.torso.rotation.y = 0.45 * a;
+      } else {
+        const a = (k - wk) / (1 - wk);
+        const swing = Math.sin(Math.min(a * 3.2, Math.PI * 0.9));
+        r.armR.rotation.x = -2.3 + swing * 3.4;
+        r.torso.rotation.x = -0.3 + swing * 0.75;
+        r.torso.rotation.y = 0.45 - swing * 0.9;
+      }
+    } else {
+      r.torso.rotation.y = 0;
+    }
+
+    if (e.state === 'stagger') {
+      const k = e.timer / C.staggerTime;
+      r.torso.rotation.x = -0.5 * (1 - k);
+      r.head.rotation.x = 0.6 * (1 - k);
+    }
+  }
+
+  /* ---------------- per-enemy update ---------------- */
+  function updateOne(e, dt, t) {
+    e.timer += dt;
+
+    if (!e.alive) {
+      if (e.timer > C.corpseTime) {
+        e.group.visible = false;
+        if (e.respawnAt > 0) {
+          e.respawnAt -= dt;
+          if (e.respawnAt <= 0) revive(e);
+        }
+      }
+      pose(e, t);
+      return;
+    }
+
+    // perception, staggered across frames so we never spike
+    e.losTimer -= dt;
+    if (e.losTimer <= 0) {
+      e.losTimer = C.losInterval;
+      e.sawPlayer = !PLAYER.isDead && canSee(e);
+      if (e.sawPlayer) e.lastSeen = 0;
+    }
+    if (!e.sawPlayer) e.lastSeen += dt;
+
+    const p = PLAYER.position;
+    const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
+    const st = e.def.stats;
+
+    switch (e.state) {
+      case 'idle': {
+        idleBrake(e, dt);
+        e.wanderTimer -= dt;
+        if (e.wanderTimer <= 0) {
+          e.wanderTimer = UTIL.rng(2.5, 6);
+          const a = UTIL.rng(0, 6.28), r = UTIL.rng(1.5, C.wanderRadius);
+          e.wander.set(e.home.x + Math.cos(a) * r, e.home.y, e.home.z + Math.sin(a) * r);
+        }
+        const d = steer(e, e.wander.x, e.wander.z, st.speed * 0.34, dt);
+        if (d > 0.6) faceTowards(e, e.wander.x, e.wander.z, dt, 3);
+        if (e.sawPlayer) setState(e, 'alert');
+        break;
+      }
+      case 'alert': {
+        idleBrake(e, dt);
+        faceTowards(e, p.x, p.z, dt, 9);
+        if (e.timer >= C.alertTime) setState(e, 'chase');
+        break;
+      }
+      case 'chase': {
+        faceTowards(e, p.x, p.z, dt, 7);
+        steer(e, p.x, p.z, st.speed, dt);
+        if (distToPlayer < st.reach && Math.abs(p.y - e.pos.y) < 1.6) setState(e, 'attack');
+        else if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+        // shove past a wall corner rather than grinding into it
+        if (e.body.blocked) {
+          const s = e.stepFlip ? 1 : -1;
+          e.vel.x += -Math.cos(e.yaw) * s * st.speed * 0.8 * dt * 6;
+          e.vel.z += Math.sin(e.yaw) * s * st.speed * 0.8 * dt * 6;
+          if (Math.random() < 0.01) e.stepFlip = !e.stepFlip;
+        }
+        break;
+      }
+      case 'attack': {
+        idleBrake(e, dt);
+        faceTowards(e, p.x, p.z, dt, 4);
+        if (!e.didStrike && e.timer >= st.windup) {
+          e.didStrike = true;
+          e.squashVel += 5;
+          if (distToPlayer < st.reach + 0.55 && Math.abs(p.y - e.pos.y) < 1.8 && !PLAYER.isDead) {
+            PLAYER.damage(st.damage, e.pos);
+          } else {
+            AUDIO.enemySwing(e.def.voice.pitch * 0.9);
+          }
+        }
+        if (e.timer >= st.windup + st.recover) {
+          setState(e, distToPlayer < C.sightRange ? 'chase' : 'idle');
+        }
+        break;
+      }
+      case 'stagger': {
+        idleBrake(e, dt);
+        if (e.timer >= C.staggerTime) setState(e, 'chase');
+        break;
+      }
+    }
+
+    // keep them out of each other
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o === e || !o.alive) continue;
+      const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
+      const d2 = dx * dx + dz * dz;
+      const min = C.radius * 2;
+      if (d2 > 0.0001 && d2 < min * min) {
+        const d = Math.sqrt(d2);
+        const push = (min - d) / min * 5;
+        e.vel.x += dx / d * push * dt * 6;
+        e.vel.z += dz / d * push * dt * 6;
+      }
+    }
+
+    // integrate through the shared solver
+    WORLD.moveActor(e.pos, e.vel, dt, {
+      radius: C.radius, height: C.height, stepHeight: C.stepHeight, gravity: C.gravity
+    }, e.body);
+    if (e.pos.y < -6) { e.pos.copy(e.home); e.vel.set(0, 0, 0); }
+
+    // stepped animation clock
+    const speed = Math.hypot(e.vel.x, e.vel.z);
+    e.animClock += dt;
+    const stepDur = 1 / C.stepFPS;
+    while (e.animClock >= stepDur) {
+      e.animClock -= stepDur;
+      const prev = Math.sin(e.stepPhase);
+      e.stepPhase += stepDur * (3.4 + speed * 1.5);
+      // a footfall thud each time the cycle crosses zero, if you are near
+      if (prev * Math.sin(e.stepPhase) < 0 && speed > 0.8 &&
+          Math.abs(PLAYER.position.x - e.pos.x) < 14 && Math.abs(PLAYER.position.z - e.pos.z) < 14) {
+        AUDIO.enemyStep(e.def.voice.pitch);
+      }
+    }
+
+    // springs
+    e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
+    e.squash += e.squashVel * dt;
+    e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.05, 0, 0.22), 6, dt);
+    if (e.hitFlash > 0) e.hitFlash -= dt;
+
+    e.group.position.copy(e.pos);
+    e.group.rotation.y = e.yaw;
+    pose(e, t);
+  }
+
+  function update(dt, t) {
+    for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
+  }
+
+  function aliveCount() {
+    let n = 0;
+    for (let i = 0; i < list.length; i++) if (list[i].alive) n++;
+    return n;
+  }
+
+  return {
+    init, update, hit, reset, applyDamage,
+    get list() { return list; },
+    get kills() { return kills; },
+    aliveCount
+  };
+})();
+
+/* ============================== [BOOT] ===============================
+   Runs after every module above is defined. */
+window.addEventListener('error', e => {
+  const el = document.getElementById('err');
+  if (!el) return;
+  el.style.display = 'block';
+  el.textContent = 'Error: ' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || '');
+});
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', GAME.init);
+} else {
+  GAME.init();
+}
+</script>
+</body>
+</html>
