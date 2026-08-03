@@ -560,7 +560,7 @@
     <div class="card">
       <p class="eyebrow">Online co-op &nbsp;·&nbsp; 2 players</p>
       <h1>Farmhands<span>One farm, two screens</span></h1>
-      <p class="sub" id="coopInstructions">Host a room or join a teammate. Create a short six-character room code, then share it with the other screen.</p>
+      <p class="sub" id="coopInstructions">Host a room or join a teammate. Create a short six-character room code, then share it with the other screen. Host plays Bluecap Scout; the joining farmhand plays Masked Runner.</p>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
         <button class="go mode-coop" id="joinBtn">Join room →</button>
@@ -6074,8 +6074,8 @@ const UI = (() => {
     const host = role === 'host';
     if (el.coopInstructions) {
       el.coopInstructions.textContent = host
-        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'Share the six-character room code below. Your teammate only needs to enter it once.')
-        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'Enter the host’s six-character room code, then tap Join room.');
+        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'You are the Bluecap Scout. Share the six-character room code below; your teammate only needs to enter it once.')
+        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'You are the Masked Runner. Enter the host’s six-character room code, then tap Join room.');
     }
     if (el.signalInputLabel) el.signalInputLabel.textContent = 'Host room code';
     if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Share this room code';
@@ -6792,8 +6792,9 @@ const GAME = (() => {
    TO RESKIN AN EXISTING ONE: change its `skin` block. Geometry is untouched,
    so swapping glove/short/shoe colours costs nothing at build or run time.
 
-   Later expansion slots already wired through build(): `collar`, `hand`, and
-   per-part colour. Add `shirt` or `hat` the same way HANDS works.
+   Later expansion slots already wired through build(): `collar`, `hand`,
+   `back`, `noPetals`, and per-part colour. Add `shirt` or `hat` the same way
+   HANDS/BACKS works.
    =================================================================== */
 const CAST = (() => {
 
@@ -6840,7 +6841,7 @@ const CAST = (() => {
      Each builder receives (group, skin) and hangs geometry off `group`.
      The petal ring and face plate are shared; builders only draw the face. */
 
-  function headBase(group, skin) {
+  function headBase(group, skin, options) {
     // squashed cream skull
     PRIM.sph(HEAD_R, MAT.toon(skin.face), {
       parent: group, scale: [1, 1, 0.72], outline: 0.028, ray: false
@@ -6849,6 +6850,7 @@ const CAST = (() => {
     PRIM.cyl(HEAD_R * 0.91, HEAD_R * 0.91, 0.1, 20, MAT.toon(skin.face), {
       pos: [0, 0, -0.2], rot: [Math.PI / 2, 0, 0], parent: group, outline: 0.026, ray: false
     });
+    if (options && options.noPetals) return;
     // two offset petal rings — the back one is darker and reads as depth
     const back = new PRIM.Batch(MAT.toon(skin.petalBack), 0.03);
     const front = new PRIM.Batch(MAT.toon(skin.petal), 0.03);
@@ -6870,7 +6872,73 @@ const CAST = (() => {
     front.build(group, { ray: false });
   }
 
+  /* The two player faces share the same cream rubber-hose skull, but use a
+     cap rather than the enemy petal ring. Keeping the cap in CAST means it
+     remains a normal Three.js character part instead of a multiplayer-only
+     billboard. */
+  function playerCap(group, skin, variant) {
+    const blue = MAT.toon(variant === 'muted' ? PAL.blueGray : PAL.blue);
+    const darkBlue = MAT.toon(variant === 'muted' ? PAL.blueGrayDk : PAL.blueDeep);
+    PRIM.sph(0.225, blue, {
+      pos: [0, 0.245, 0.015], scale: [1.16, 0.62, 0.92],
+      parent: group, outline: 0.028, ray: false
+    });
+    PRIM.box(0.40, 0.075, 0.14, darkBlue, {
+      pos: [0, 0.177, -0.19], rot: [0.08, 0, 0],
+      parent: group, outline: 0.022, ray: false
+    });
+    [-1, 1].forEach(s => {
+      PRIM.box(0.13, 0.22, 0.12, blue, {
+        pos: [s * 0.22, 0.285, 0.015], rot: [0, 0, s * 0.24],
+        parent: group, outline: 0.022, ray: false
+      });
+      PRIM.sph(0.085, blue, {
+        pos: [s * 0.285, 0.015, 0.01], scale: [0.62, 1.18, 0.72],
+        parent: group, outline: 0.02, ray: false
+      });
+    });
+  }
+
   const HEADS = {
+
+    /* Friendly blue-cap scout: one open eye, one wink, and a broad smile. */
+    playerBluecap(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      playerCap(group, skin, 'bright');
+      oval(light, 0.105, 0.065, 0.066, 0.085, -0.08, 0.055);
+      oval(dark, 0.108, 0.058, 0.027, 0.046, -0.08, 0.062);
+      oval(light, 0.116, 0.078, 0.009, 0.016, 0, 0.066);
+      arc(dark, -0.105, 0.058, 0.062, 0.013, 2.15, Math.PI + 0.42);
+      bar(dark, -0.105, 0.14, 0.12, 0.022, 0.3);
+      arc(dark, 0.01, -0.085, 0.105, 0.014, 1.65, Math.PI + 0.18);
+      oval(dark, -0.015, -0.02, 0.025, 0.018, 0, 0.06);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+    },
+
+    /* Masked runner: tired orange-lidded eyes over a soft gray face covering. */
+    playerMasked(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      const lid = new PRIM.Batch(MAT.toon(PAL.rust), 0.011);
+      const mask = new PRIM.Batch(MAT.toon(PAL.blueGray), 0.012);
+      playerCap(group, skin, 'muted');
+      oval(light, -0.105, 0.075, 0.074, 0.092, 0.12);
+      oval(light, 0.105, 0.075, 0.074, 0.092, -0.12);
+      oval(dark, -0.105, 0.058, 0.043, 0.053, 0.12, 0.06);
+      oval(dark, 0.105, 0.058, 0.043, 0.053, -0.12, 0.06);
+      oval(lid, -0.105, 0.035, 0.066, 0.036, 0.12, 0.062);
+      oval(lid, 0.105, 0.035, 0.066, 0.036, -0.12, 0.062);
+      bar(dark, -0.105, 0.145, 0.14, 0.024, 0.2);
+      bar(dark, 0.105, 0.145, 0.14, 0.024, -0.2);
+      oval(mask, 0, -0.105, 0.165, 0.085, 0, 0.07);
+      bar(dark, 0, -0.105, 0.21, 0.012, 0, 0.078);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+      lid.build(group, { ray: false });
+      mask.build(group, { ray: false });
+    },
 
     /* Hollow, tired eyes and a little pair of fangs. */
     reaper(group, skin) {
@@ -6988,6 +7056,24 @@ const CAST = (() => {
 
   /* ---------------- COLLARS ---------------- */
   const COLLARS = {
+    scarf(group, skin) {
+      const red = new PRIM.Batch(MAT.toon(skin.accent), 0.014);
+      const cream = new PRIM.Batch(MAT.toon(PAL.cream), 0.014);
+      for (let i = 0; i < 5; i++) {
+        const y = -0.19 - i * 0.043;
+        (i % 2 ? cream : red).box(0.31, 0.045, 0.045, 0, y, -0.17, 0, 0, 0, 0.006);
+      }
+      red.build(group, { ray: false });
+      cream.build(group, { ray: false });
+      PRIM.box(0.08, 0.18, 0.05, MAT.toon(skin.accent), {
+        pos: [-0.105, -0.285, -0.17], rot: [0.08, 0, -0.1],
+        parent: group, outline: 0.016, ray: false
+      });
+      PRIM.box(0.08, 0.16, 0.05, MAT.toon(skin.accent), {
+        pos: [0.105, -0.27, -0.17], rot: [-0.12, 0, 0.1],
+        parent: group, outline: 0.016, ray: false
+      });
+    },
     chain(group, skin) {
       const b = new PRIM.Batch(MAT.toon(skin.metal), 0.014);
       const N = 16;
@@ -7063,12 +7149,47 @@ const CAST = (() => {
         pos: [s * 0.055, 0.68 + Math.abs(s) * 0.02, -0.34],
         rot: [s * 0.34, 0, s * 0.18], parent: group, outline: 0.012, ray: false
       }));
+    },
+    fieldRifle(group, skin) {
+      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      const body = MAT.toon(skin.accent);
+      PRIM.box(0.16, 0.16, 0.38, body, {
+        pos: [0, 0.02, -0.24], parent: group, outline: 0.022, ray: false
+      });
+      PRIM.cyl(0.045, 0.045, 0.5, 9, metal, {
+        pos: [0, 0.05, -0.66], rot: [Math.PI / 2, 0, 0],
+        parent: group, outline: 0.016, ray: false
+      });
+      PRIM.box(0.13, 0.30, 0.14, MAT.toon(PAL.mustardDk), {
+        pos: [0, -0.18, -0.12], rot: [-0.12, 0, 0],
+        parent: group, outline: 0.018, ray: false
+      });
+    }
+  };
+
+  /* Back-mounted props are kept in their own registry so a player silhouette
+     can gain a backpack, lantern, radio, or future equipment without touching
+     the weapon or enemy systems. */
+  const BACKS = {
+    pack(group, skin) {
+      const pack = MAT.toon(skin.accent);
+      PRIM.box(0.30, 0.38, 0.16, pack, {
+        pos: [0, 0.04, 0.19], rot: [0.06, 0, 0],
+        parent: group, outline: 0.026, ray: false
+      });
+      PRIM.box(0.22, 0.06, 0.035, MAT.toon(PAL.blueGray), {
+        pos: [0, 0.18, 0.285], parent: group, outline: 0.016, ray: false
+      });
+      [-1, 1].forEach(s => PRIM.box(0.045, 0.33, 0.035, MAT.toon(PAL.rustDeep), {
+        pos: [s * 0.095, 0.05, 0.285], rot: [0.08, 0, s * 0.12],
+        parent: group, outline: 0.014, ray: false
+      }));
     }
   };
 
   /* ---------------- ROSTER ----------------
-     Four characters. Same body, different heads — plus the accessory and
-     colour slots so they can diverge further without new code. */
+   Enemy characters plus two player farmhands. Same body, different heads —
+   plus accessory and colour slots so they can diverge without new code. */
   const ROSTER = {
     reaper: {
       label: 'The Reaper',
@@ -7105,6 +7226,35 @@ const CAST = (() => {
       skin: { limb: PAL.blueGrayDk, shorts: PAL.olive, shoe: PAL.creamDim, sole: PAL.charcoal, metal: PAL.mustard },
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 1.12 }
+    },
+    playerBluecap: {
+      label: 'Bluecap Scout',
+      head: 'playerBluecap',
+      noPetals: true,
+      collar: 'scarf',
+      hand: 'fieldRifle',
+      skin: {
+        face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rust,
+        shoe: PAL.mustard, sole: PAL.white, accent: PAL.rust,
+        metal: PAL.blueGray
+      },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 1.05 }
+    },
+    playerMasked: {
+      label: 'Masked Runner',
+      head: 'playerMasked',
+      noPetals: true,
+      collar: 'chain',
+      back: 'pack',
+      hand: null,
+      skin: {
+        face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rust,
+        shoe: PAL.rustDeep, sole: PAL.rust, accent: PAL.rustDeep,
+        metal: PAL.mustard
+      },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 0.92 }
     },
     carrotWarden: {
       label: 'Carrot Warden',
@@ -7180,12 +7330,13 @@ const CAST = (() => {
     PRIM.cyl(0.06, 0.07, 0.16, 10, MAT.toon(skin.limb), {
       pos: [0, 0.25, 0], parent: torso, outline: 0.022, ray: false
     });
+    if (def.back && BACKS[def.back]) BACKS[def.back](torso, skin);
 
     // head
     const head = new THREE.Group();
     head.position.set(0, 0.50, 0);
     torso.add(head);
-    headBase(head, skin);
+    headBase(head, skin, { noPetals: !!def.noPetals });
     (HEADS[def.head] || HEADS.gaper)(head, skin);
     if (def.collar && COLLARS[def.collar]) COLLARS[def.collar](head, skin);
 
@@ -7243,7 +7394,7 @@ const CAST = (() => {
 
   function list() { return Object.keys(ROSTER); }
 
-  return { ROSTER, HEADS, HANDS, COLLARS, DEFAULT_SKIN, build, list };
+  return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list };
 })();
 
 /* ============================== [ENEMY] ==============================
@@ -8426,10 +8577,13 @@ const COOP = (() => {
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
+  const PLAYER_CHARACTERS = { host: 'playerBluecap', join: 'playerMasked' };
   let scene = null, peer = null, channel = null;
   let role = null, phase = 'idle', connected = false, closing = false, peerReady = false;
   let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
   let roomCode = '', sendAcc = 0, connectTimer = null;
+
+  function localCharacterId() { return PLAYER_CHARACTERS[role] || 'playerBluecap'; }
 
   function on(event, fn) {
     if (callbacks[event] && typeof fn === 'function') callbacks[event].push(fn);
@@ -8674,7 +8828,7 @@ const COOP = (() => {
     armConnectTimeout();
     let next;
     try {
-      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.02' } });
+      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.03' } });
     } catch (err) {
       failJoin(peerErrorText(err));
       return;
@@ -8707,7 +8861,7 @@ const COOP = (() => {
       connected = true;
       phase = 'connected';
       UI.setCoopLobbyStep(role, phase);
-      send({ type: 'hello', id: localId, maxPlayers: C.maxPlayers });
+      send({ type: 'hello', id: localId, characterId: localCharacterId(), maxPlayers: C.maxPlayers });
       emit('connected');
       status('Two farmhands connected.', 'good');
     };
@@ -8747,19 +8901,28 @@ const COOP = (() => {
 
   function sendState() {
     send({
-      type: 'state', id: localId,
+      type: 'state', id: localId, characterId: localCharacterId(),
       player: {
         x: PLAYER.position.x, y: PLAYER.position.y, z: PLAYER.position.z,
         yaw: PLAYER.yaw, pitch: PLAYER.pitch, layerId: PLAYER.layerId,
-        dead: PLAYER.isDead
+        dead: PLAYER.isDead,
+        moving: PLAYER.isClimbing || Math.hypot(PLAYER.velocity.x, PLAYER.velocity.z) > 0.18,
+        climbing: PLAYER.isClimbing,
+        sprinting: PLAYER.sprinting
       }
     });
   }
 
-  function makeRemote(id) {
+  function makeRemote(id, characterId) {
+    const desired = characterId === 'playerMasked' ? 'playerMasked' : 'playerBluecap';
     let remote = remotes.get(id);
+    if (remote && remote.characterId !== desired) {
+      if (scene && remote.group) scene.remove(remote.group);
+      remotes.delete(id);
+      remote = null;
+    }
     if (remote) return remote;
-    const built = CAST.build('grinner');
+    const built = CAST.build(desired);
     const group = built.rig.root;
     group.scale.setScalar(1.08);
     group.visible = false;
@@ -8767,9 +8930,12 @@ const COOP = (() => {
     if (scene) scene.add(group);
     PROPS.blobShadow(group, 0, 0, 0.62, 0.5);
     remote = {
-      id: id, group: group,
-      target: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false },
-      active: true, lastSeen: 0
+      id: id, characterId: desired, rig: built.rig, group: group,
+      target: {
+        x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
+        moving: false, climbing: false, sprinting: false
+      },
+      active: true, lastSeen: 0, animPhase: Math.random() * Math.PI * 2
     };
     remotes.set(id, remote);
     return remote;
@@ -8782,10 +8948,10 @@ const COOP = (() => {
         emit('error', 'That room supports more players than this build allows.');
         return;
       }
-      makeRemote(message.id);
+      makeRemote(message.id, message.characterId);
       sendState();
     } else if (message.type === 'state' && message.id && message.player) {
-      const remote = makeRemote(message.id);
+      const remote = makeRemote(message.id, message.characterId);
       remote.target = Object.assign(remote.target, message.player);
       remote.lastSeen = 0;
     } else if (message.type === 'shot' && role === 'host' && message.shot) {
@@ -8817,6 +8983,36 @@ const COOP = (() => {
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
 
+  function poseRemote(remote, dt) {
+    const r = remote.rig;
+    const target = remote.target;
+    if (!r) return;
+    const moving = !!target.moving;
+    remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
+    const sw = Math.sin(remote.animPhase);
+    const cw = Math.cos(remote.animPhase);
+    const walk = moving ? (target.sprinting ? 1.18 : 0.9) : 0;
+
+    if (target.climbing) {
+      r.armL.rotation.set(-0.9 + sw * 0.7, 0, 0);
+      r.armR.rotation.set(-0.9 - sw * 0.7, 0, 0);
+      r.legL.rotation.set(sw * 0.38, 0, 0);
+      r.legR.rotation.set(-sw * 0.38, 0, 0);
+      r.torso.rotation.set(-0.10, 0, 0);
+      r.head.rotation.set(0, 0, 0);
+      r.bob.position.y = 0;
+      return;
+    }
+
+    r.legL.rotation.set(-sw * 0.85 * walk, 0, 0);
+    r.legR.rotation.set(sw * 0.85 * walk, 0, 0);
+    r.armL.rotation.set(sw * 0.92 * walk, 0, -0.12 - walk * 0.08);
+    r.armR.rotation.set(-sw * 0.92 * walk, 0, 0.12 + walk * 0.08);
+    r.bob.position.y = Math.abs(cw) * 0.065 * walk + Math.sin(remote.animPhase * 0.34) * 0.012;
+    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.045 * walk, 0, sw * 0.055 * walk);
+    r.head.rotation.set(0, 0, -sw * 0.08 * walk);
+  }
+
   function update(dt, running) {
     if (!connected) return;
     if (running) {
@@ -8832,6 +9028,7 @@ const COOP = (() => {
       remote.group.position.y = UTIL.damp(remote.group.position.y, target.y, 14, dt);
       remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
       remote.group.rotation.y = UTIL.damp(remote.group.rotation.y, target.yaw || 0, 14, dt);
+      poseRemote(remote, dt);
       contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
     });
     UI.setRadarContacts(contacts);

@@ -43,3 +43,14 @@ normal path. Rooms now use a six-character `WF••••` code, with clear sta
 opening the lobby, waiting for a teammate, connecting, missing rooms, and
 timeouts. The prior direct game-message seam is preserved so future server
 authority can be added without changing the farm gameplay modules.
+
+## v0.07.03 Player Cast
+
+Co-op farmhands now use two distinct original Three.js rigs instead of the
+generic enemy silhouette. The host appears as the **Bluecap Scout** with a
+blue cap, striped scarf, patched rust shorts, bright boots, and a compact
+field rifle. The joining farmhand appears as the **Masked Runner** with a
+muted cap, tired orange-lidded eyes, gray face covering, gold chain, patched
+shorts, large rust boots, and a red backpack. Character identity, movement,
+climbing, sprinting, and dead state are sent with the existing co-op messages;
+enemy and combat logic remain separate.
