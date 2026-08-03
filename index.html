@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.06.07 Basement Test</title>
+<title>The Withered Farm — v0.06.08 Mini-Boss Test</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -185,6 +185,20 @@
   #tally.on{opacity:1;}
   #tally b{color:var(--mustard);font-size:19px;}
 
+  /* ---------- Mini-boss status ---------- */
+  #bossHud{
+    position:fixed;left:50%;top:22px;z-index:31;width:min(390px,48vw);
+    transform:translateX(-50%) rotate(.7deg);opacity:0;pointer-events:none;
+    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
+    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #bossHud.on{opacity:.96;}
+  #bossHudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
+  #bossHudName b{color:var(--mustard);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
+  #bossHudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
+  #bossHudFill{display:block;width:100%;height:100%;background:var(--rust);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
+  #bossHudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--mustard);}
+
   /* ---------- Proximity radar ---------- */
   #radar{
     position:fixed;left:26px;top:52px;width:116px;height:142px;z-index:30;
@@ -325,6 +339,7 @@
     transform:scale(.8) rotate(1deg);transform-origin:right top;
   }
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
+  body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -419,6 +434,7 @@
   .foot{margin:16px 0 0;font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(22,18,15,.45);}
 
   #pause .card{max-width:420px;}
+  #endGame .alt{display:block;}
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -456,6 +472,11 @@
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
+  <div id="bossHud" aria-live="polite">
+    <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
+    <div id="bossHudBar"><i id="bossHudFill"></i></div>
+    <small id="bossHudHint">The barn has a new problem</small>
+  </div>
   <div id="radar" aria-label="Proximity radar">
     <div id="radarTitle">Radar <b id="radarLayer">Surface</b></div>
     <canvas id="radarCanvas" width="132" height="132"></canvas>
@@ -490,7 +511,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.07 Basement Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.08 Mini-Boss Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -530,6 +551,16 @@
       <h1>You<br/>Wilted<span>The corn saw everything</span></h1>
       <p class="sub">Dust yourself off. The gate's where you left it, and so are they.</p>
       <button class="go" id="againBtn">Get back up →</button>
+    </div>
+  </div>
+
+  <div id="endGame" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Single-player goal complete</p>
+      <h1>Warden<br/>Wilted<span>The barn is yours</span></h1>
+      <p class="sub" id="endGameSummary">The Carrot Warden is down. The farm has gone quiet.</p>
+      <button class="go" id="continueBtn">Keep exploring →</button>
+      <button class="alt" id="startOverBtn">Return to start screen</button>
     </div>
   </div>
 
@@ -604,6 +635,22 @@ const CONFIG = {
     ladderSpeed: 2.5, ladderApproach: 1.15,
     pelletDamage: 15, headMultiplier: 2.4,
     respawnDelay: 18            // 0 to leave the farm quiet once cleared
+  },
+  progress: {
+    bossWiltThreshold: 33,
+    endOnBossDefeat: true
+  },
+  boss: {
+    id: 'carrotWarden', name: 'Carrot Warden',
+    spawn: { x: 14.0, y: 0, z: -6.0 },
+    hp: 650, radius: 0.56, height: 2.02, eyeHeight: 1.52,
+    stepHeight: 0.5, gravity: 27, speed: 3.35, reach: 2.72,
+    damage: 24, windup: 0.64, recover: 0.78, weight: 4.5,
+    headMultiplier: 1.5, visualScale: 1.24,
+    seedRange: 24, seedPellets: 7, seedDamage: 7,
+    seedSpread: 0.22, seedHitCone: 0.115,
+    seedWindup: 0.72, seedRecover: 0.78, seedCooldown: 4.8,
+    seedInterval: 6.5
   },
   radar: {
     range: 32,
@@ -5695,6 +5742,13 @@ const UI = (() => {
     el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
     el.killNum = document.getElementById('killNum');
+    el.bossHud = document.getElementById('bossHud');
+    el.bossHudName = document.getElementById('bossHudName');
+    el.bossHudState = document.getElementById('bossHudState');
+    el.bossHudFill = document.getElementById('bossHudFill');
+    el.bossHudHint = document.getElementById('bossHudHint');
+    el.endGame = document.getElementById('endGame');
+    el.endGameSummary = document.getElementById('endGameSummary');
     el.radar = document.getElementById('radar');
     el.radarCanvas = document.getElementById('radarCanvas');
     el.radarLayer = document.getElementById('radarLayer');
@@ -5762,6 +5816,17 @@ const UI = (() => {
   }
   function setKills(n) { el.killNum.textContent = n; }
 
+  function setBoss(active, hp, maxHp, state) {
+    if (!el.bossHud) return;
+    el.bossHud.classList.toggle('on', !!active);
+    if (!active) return;
+    const max = Math.max(1, maxHp || 1);
+    const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
+    el.bossHudFill.style.width = (pct * 100).toFixed(1) + '%';
+    el.bossHudState.textContent = state === 'defeated' ? 'Wilted' : (state === 'active' ? 'Awake' : 'Incoming');
+    el.bossHudHint.textContent = state === 'active' ? 'Head shots hit for 1.5×' : 'The barn has a new problem';
+  }
+
   // Multiplayer can feed additional contacts later without changing the
   // radar renderer. Enemies are supplied by ENEMY.radarContacts() below.
   function setRadarContacts(contacts) {
@@ -5808,10 +5873,10 @@ const UI = (() => {
       const scale = Math.min(1, distance / CONFIG.radar.range);
       const x = right / distance * radius * scale;
       const y = down / distance * radius * scale;
-      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : '#A85A3C';
+      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#A85A3C');
       ctx.strokeStyle = '#120F0D';
       ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 4.2 : 4.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 4.2 : (c.boss ? 6.2 : 4.8), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
     // Player marker and forward tick.
@@ -5869,6 +5934,7 @@ const UI = (() => {
     el.pause.classList.add('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    if (el.bossHud) el.bossHud.classList.remove('on');
     showMobileControls(false);
   }
   function hideDead() {
@@ -5882,6 +5948,7 @@ const UI = (() => {
 
   function enterGame() {
     el.start.classList.add('hidden');
+    el.endGame.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     el.crosshair.classList.add('on');
@@ -5891,6 +5958,39 @@ const UI = (() => {
     el.tally.classList.add('on');
     el.radar.classList.add('on');
     showMobileControls(true);
+  }
+  function showEndGame(wilted) {
+    el.endGameSummary.textContent = 'The Carrot Warden is down after ' + (wilted || 0) +
+      ' wilted activations. Continue exploring, or start this run over.';
+    el.endGame.classList.remove('hidden');
+    el.start.classList.add('hidden');
+    el.pause.classList.add('hidden');
+    el.dead.classList.add('hidden');
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+    if (el.bossHud) el.bossHud.classList.remove('on');
+    el.weaponName.classList.remove('on');
+    el.ammo.classList.remove('on');
+    el.vitals.classList.remove('on');
+    el.tally.classList.remove('on');
+    showMobileControls(false);
+  }
+  function hideEndGame() {
+    if (el.endGame) el.endGame.classList.add('hidden');
+  }
+  function showStart() {
+    hideEndGame();
+    el.start.classList.remove('hidden');
+    el.pause.classList.add('hidden');
+    el.dead.classList.add('hidden');
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+    if (el.bossHud) el.bossHud.classList.remove('on');
+    el.weaponName.classList.remove('on');
+    el.ammo.classList.remove('on');
+    el.vitals.classList.remove('on');
+    el.tally.classList.remove('on');
+    showMobileControls(false);
   }
   function showPause() {
     el.pause.classList.remove('hidden');
@@ -5945,7 +6045,8 @@ const UI = (() => {
   return {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
+    setHealth, setShield, setKills, setBoss, hurtFlash, showDead, hideDead, showEndGame, hideEndGame,
+    showStart, showFallback, hideFallback,
     setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
     el
@@ -6233,7 +6334,7 @@ const PICKUP = (() => {
 const GAME = (() => {
   let renderer, scene, camera, viewScene, viewCamera;
   let last = 0, time = 0, running = false, entered = false;
-  let deathPending = false, lastKills = 0;
+  let deathPending = false, lastKills = 0, endShown = false;
 
   function fail(msg) {
     const e = document.getElementById('err');
@@ -6304,6 +6405,8 @@ const GAME = (() => {
     document.getElementById('enterBtn').addEventListener('click', enter);
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
     document.getElementById('againBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
+    document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
+    document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
     // manual escape hatches, in case the automatic detection ever misses
     const goFree = e => { e.stopPropagation(); INPUT.forceFree('switched on by hand'); enter(); };
     document.getElementById('freeBtn').addEventListener('click', goFree);
@@ -6330,6 +6433,7 @@ const GAME = (() => {
 
   function enter() {
     entered = true;
+    endShown = false;
     AUDIO.start();
     AUDIO.resume();
     UI.enterGame();
@@ -6345,8 +6449,40 @@ const GAME = (() => {
     PICKUP.reset();
     UI.setKills(0);
     UI.hideDead();
+    UI.hideEndGame();
     deathPending = false;
+    endShown = false;
     enter();
+  }
+
+  function complete() {
+    if (endShown || !CONFIG.progress.endOnBossDefeat) return;
+    endShown = true;
+    running = false;
+    INPUT.releaseLock();
+    UI.showEndGame(ENEMY.kills);
+  }
+
+  function continueAfterEnd() {
+    if (!endShown) return;
+    endShown = false;
+    enter();
+  }
+
+  function returnToStart() {
+    PLAYER.revive();
+    WEAPON.reset();
+    THROWABLE.reset();
+    ENEMY.reset();
+    PICKUP.reset();
+    UI.setKills(0);
+    lastKills = 0;
+    deathPending = false;
+    endShown = false;
+    entered = false;
+    running = false;
+    INPUT.releaseLock();
+    UI.showStart();
   }
 
   function onResize() {
@@ -6397,7 +6533,7 @@ const GAME = (() => {
     renderer.render(viewScene, viewCamera);
   }
 
-  return { init, get scene() { return scene; }, get camera() { return camera; } };
+  return { init, complete, get scene() { return scene; }, get camera() { return camera; } };
 })();
 
 /* ============================== [CAST] ===============================
@@ -6572,6 +6708,24 @@ const CAST = (() => {
       pink.build(group, { ray: false });
     },
 
+    /* A beanie, orange ears and a sharp little carrot-warrior grin. The
+       silhouette is original code-native geometry, only borrowing the
+       reference's playful carrot-wielding energy. */
+    carrotWarden(group, skin) {
+      HEADS.gaper(group, skin);
+      PRIM.sph(0.22, MAT.toon(PAL.olive), {
+        pos: [0, 0.245, 0.01], scale: [1.12, 0.58, 0.9],
+        parent: group, outline: 0.028, ray: false
+      });
+      PRIM.torus(0.22, 0.028, MAT.toon(PAL.oliveDeep), {
+        pos: [0, 0.18, -0.005], parent: group, outline: 0.016, ray: false
+      });
+      [-1, 1].forEach(s => PRIM.sph(0.095, MAT.toon(PAL.rust), {
+        pos: [s * 0.285, 0.02, 0.005], scale: [0.6, 1.22, 0.72],
+        parent: group, outline: 0.02, ray: false
+      }));
+    },
+
     /* Half-lidded, pleased with itself. */
     grinner(group, skin) {
       const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
@@ -6657,6 +6811,21 @@ const CAST = (() => {
           -0.045 + i * 0.045, 0.02, -0.2, -1.45, 0, (i - 1) * 0.13);
       }
       b.build(group, { ray: false });
+    },
+    carrot(group) {
+      // The warden's oversized carrot doubles as a melee prop and the source
+      // of its seed-shotgun burst.
+      PRIM.cone(0.145, 0.78, 9, MAT.toon(PAL.mustard), {
+        pos: [0.015, 0.16, -0.34], rot: [-Math.PI / 2, 0, 0],
+        parent: group, outline: 0.026, ray: false
+      });
+      PRIM.cyl(0.105, 0.08, 0.09, 8, MAT.toon(PAL.mustardDk), {
+        pos: [0.015, 0.56, -0.34], parent: group, outline: 0.018, ray: false
+      });
+      [-1, 0, 1].forEach(s => PRIM.cone(0.035, 0.28, 5, MAT.toon(PAL.olive), {
+        pos: [s * 0.055, 0.68 + Math.abs(s) * 0.02, -0.34],
+        rot: [s * 0.34, 0, s * 0.18], parent: group, outline: 0.012, ray: false
+      }));
     }
   };
 
@@ -6699,6 +6868,19 @@ const CAST = (() => {
       skin: { limb: PAL.blueGrayDk, shorts: PAL.olive, shoe: PAL.creamDim, sole: PAL.charcoal, metal: PAL.mustard },
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 1.12 }
+    },
+    carrotWarden: {
+      label: 'Carrot Warden',
+      head: 'carrotWarden',
+      collar: 'chain',
+      hand: 'carrot',
+      skin: {
+        petal: PAL.cream, petalBack: PAL.creamDim, face: PAL.cream,
+        limb: PAL.charcoal, shorts: PAL.olive, shoe: PAL.cream,
+        sole: PAL.white, accent: PAL.rust, metal: PAL.mustard
+      },
+      stats: { hp: 130, speed: 3.35, damage: 24, reach: 2.72, windup: 0.64, recover: 0.78, weight: 4.5 },
+      voice: { pitch: 0.62 }
     }
   };
 
@@ -6833,10 +7015,13 @@ const CAST = (() => {
    proxies (head and body) so headshots are exact and shooting is cheap. */
 const ENEMY = (() => {
   const C = CONFIG.enemy;
+  const B = CONFIG.boss;
   const list = [];
   let scene = null;
   let LOS_TARGETS = [];
   let kills = 0;
+  let boss = null;
+  let bossState = 'inactive';
   let markTex = null;
 
   const _v = new THREE.Vector3();
@@ -6869,8 +7054,16 @@ const ENEMY = (() => {
     return m;
   }
 
-  function create(id, marker) {
+  function create(id, marker, options) {
+    options = options || {};
     const built = CAST.build(id);
+    const isBoss = !!options.isBoss;
+    const def = isBoss ? Object.assign({}, built.def, {
+      stats: Object.assign({}, built.def.stats, {
+        hp: B.hp, speed: B.speed, damage: B.damage, reach: B.reach,
+        windup: B.windup, recover: B.recover, weight: B.weight
+      })
+    }) : built.def;
     // Snap to whatever surface is actually under the marker, so markers can be
     // authored roughly and still land people on floors, lofts and decks.
     const layerId = marker.layerId || 'surface';
@@ -6881,18 +7074,20 @@ const ENEMY = (() => {
       layerId: layerId,
       homeLayerId: layerId,
       spawnKind: marker.kind || 'generic',
-      def: built.def,
+      def: def,
       skin: built.skin,
       rig: built.rig,
       group: built.rig.root,
+      isBoss: isBoss,
+      visualScale: isBoss ? B.visualScale : 1,
       home: home.clone(),
       pos: home.clone(),
       vel: new THREE.Vector3(),
       body: { grounded: true, blocked: false, landed: false, fallSpeed: 0 },
       state: 'idle',
       timer: 0,
-      hp: built.def.stats.hp,
-      maxHp: built.def.stats.hp,
+      hp: isBoss ? B.hp : def.stats.hp,
+      maxHp: isBoss ? B.hp : def.stats.hp,
       alive: true,
       yaw: UTIL.rng(0, 6.28),
       targetYaw: 0,
@@ -6912,38 +7107,70 @@ const ENEMY = (() => {
       climbDirection: 0,
       ladderCooldown: 0,
       respawnAt: 0,
-      hitFlash: 0
+      hitFlash: 0,
+      bossSeedCooldown: 0,
+      bossSeedTimer: B.seedInterval
     };
 
     scene.add(e.group);
     e.group.position.copy(e.pos);
 
     // hit proxies
-    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(0.34, 8, 6), 1.28, 'head', e, 'head');
-    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(0.62, 0.98, 0.5), 0.68, 'body', e, 'body');
+    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(isBoss ? 0.43 : 0.34, 8, 6),
+      isBoss ? 1.32 : 1.28, 'head', e, 'head');
+    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(isBoss ? 0.82 : 0.62,
+      isBoss ? 1.2 : 0.98, isBoss ? 0.66 : 0.5), isBoss ? 0.82 : 0.68, 'body', e, 'body');
 
     // alert "!" billboard
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
       map: markTexture(), transparent: true, depthWrite: false, fog: false
     }));
-    mk.scale.setScalar(0.34);
-    mk.position.set(0, 2.06, 0);
+    mk.scale.setScalar(isBoss ? 0.42 : 0.34);
+    mk.position.set(0, isBoss ? 2.42 : 2.06, 0);
     mk.visible = false;
     e.group.add(mk);
     e.mark = mk;
 
     PROPS.blobShadow(e.group, 0, 0, 0.62, 0.5);
     list.push(e);
+    if (isBoss) boss = e;
     return e;
+  }
+
+  function spawnBoss() {
+    if (bossState !== 'inactive') return boss;
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss',
+      position: new THREE.Vector3(B.spawn.x, B.spawn.y, B.spawn.z)
+    };
+    if (!boss) create(B.id, marker, { isBoss: true });
+    boss.home.copy(marker.position);
+    boss.home.y = WORLD.groundAt(boss.home.x, boss.home.z, boss.home.y + 0.8, boss.homeLayerId);
+    revive(boss);
+    boss.visualScale = B.visualScale;
+    boss.state = 'boss_chase';
+    boss.timer = 0;
+    boss.sawPlayer = true;
+    boss.lastSeen = 0;
+    boss.bossSeedCooldown = 1.8;
+    boss.bossSeedTimer = B.seedInterval;
+    boss.group.visible = true;
+    bossState = 'active';
+    UI.setBoss(true, boss.hp, boss.maxHp, bossState);
+    UI.toast('33 WILTED — CARROT WARDEN AWAKES', 3.2);
+    AUDIO.enemyAlert(boss.def.voice.pitch);
+    return boss;
   }
 
   function init(mainScene) {
     scene = mainScene;
+    boss = null;
+    bossState = 'inactive';
     // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
 
-    const roster = CAST.list();
+    const roster = CAST.list().filter(id => id !== B.id);
     // Spread the cast across the spawn markers the level already publishes,
     // reserving one slot for each underground marker so a new layer cannot be
     // silently starved by the surface roster. This scales to future rooms
@@ -6958,6 +7185,7 @@ const ENEMY = (() => {
       if (list.length >= C.count) return;
       create(roster[i % roster.length], m);
     });
+    UI.setBoss(false, 0, B.hp, bossState);
     return list.length;
   }
 
@@ -6974,7 +7202,7 @@ const ENEMY = (() => {
       const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
       if (fx * _v.x + fz * _v.z < Math.cos(C.sightFov)) return false;
     }
-    _v.set(e.pos.x, e.pos.y + C.eyeHeight, e.pos.z);
+    _v.set(e.pos.x, e.pos.y + (e.isBoss ? B.eyeHeight : C.eyeHeight), e.pos.z);
     _v2.set(p.x - _v.x, (p.y + CONFIG.player.eyeHeight) - _v.y, p.z - _v.z);
     const straight = _v2.length();
     _v2.normalize();
@@ -7018,7 +7246,6 @@ const ENEMY = (() => {
     e.mark.visible = false;
     e.headProxy.raycast = NO_RAY;
     e.bodyProxy.raycast = NO_RAY;
-    kills++;
     AUDIO.enemyDie(e.def.voice.pitch);
     // scatter petals
     _v.set(e.pos.x, e.pos.y + 1.28, e.pos.z);
@@ -7036,7 +7263,16 @@ const ENEMY = (() => {
         map: TEX.puff(PAL.cream), s0: 0.3, s1: 0.9, life: 0.7, grav: -1
       });
     }
-    if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay;
+    if (e.isBoss) {
+      bossState = 'defeated';
+      e.respawnAt = 0;
+      UI.setBoss(false, 0, e.maxHp, bossState);
+      UI.toast('CARROT WARDEN WILTED', 2.4);
+      if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
+    } else {
+      kills++;
+      if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay;
+    }
   }
 
   /* Called by WEAPON for every pellet that connects. */
@@ -7049,7 +7285,8 @@ const ENEMY = (() => {
     const range = shot.range || 95;
     const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
     const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
-    const head = shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier;
+    const head = e.isBoss ? B.headMultiplier :
+      (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier);
     const dmg = base * falloff * (info.zone === 'head' ? head : 1);
     applyDamage(e, dmg, point, dir, info.zone);
     FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' });
@@ -7152,7 +7389,22 @@ const ENEMY = (() => {
 
   function reset() {
     kills = 0;
-    list.forEach(e => { e.respawnAt = 0; revive(e); });
+    bossState = 'inactive';
+    list.forEach(e => {
+      e.respawnAt = 0;
+      if (e.isBoss) {
+        e.alive = false;
+        e.timer = 0;
+        e.hp = e.maxHp;
+        e.headProxy.raycast = NO_RAY;
+        e.bodyProxy.raycast = NO_RAY;
+        e.group.visible = false;
+        e.climbing = false;
+      } else {
+        revive(e);
+      }
+    });
+    UI.setBoss(false, 0, B.hp, bossState);
   }
 
   /* ---------------- state machine ---------------- */
@@ -7166,7 +7418,7 @@ const ENEMY = (() => {
     } else {
       e.mark.visible = false;
     }
-    if (s === 'attack') {
+    if (s === 'attack' || s === 'boss_melee' || s === 'boss_seed') {
       e.didStrike = false;
       AUDIO.enemySwing(e.def.voice.pitch);
     }
@@ -7280,6 +7532,171 @@ const ENEMY = (() => {
     pose(e, t);
   }
 
+  function bossSeedBlast(e) {
+    const origin = new THREE.Vector3(e.pos.x, e.pos.y + 1.12, e.pos.z);
+    const dx = PLAYER.position.x - origin.x, dz = PLAYER.position.z - origin.z;
+    const distance = Math.hypot(dx, dz);
+    const baseYaw = Math.atan2(dx, dz);
+    let hits = 0;
+    for (let i = 0; i < B.seedPellets; i++) {
+      const center = B.seedPellets <= 1 ? 0 : (i / (B.seedPellets - 1) - 0.5) * 2;
+      const spread = center * B.seedSpread + UTIL.rng(-0.025, 0.025);
+      const yaw = baseYaw + spread;
+      const dir = new THREE.Vector3(Math.sin(yaw), UTIL.rng(-0.018, 0.018), Math.cos(yaw));
+      dir.normalize();
+      const end = origin.clone().addScaledVector(dir, B.seedRange);
+      FX.tracer(origin, end);
+      if (!PLAYER.isDead && e.layerId === PLAYER.layerId && distance <= B.seedRange && canSee(e)) {
+        let angle = Math.atan2(dz, dx) - Math.atan2(dir.z, dir.x);
+        while (angle > Math.PI) angle -= Math.PI * 2;
+        while (angle < -Math.PI) angle += Math.PI * 2;
+        if (Math.abs(angle) <= B.seedHitCone) hits++;
+      }
+    }
+    if (hits > 0) PLAYER.damage(B.seedDamage * hits, e.pos);
+    FX.impact(origin, new THREE.Vector3(0, 1, 0), { big: true, scale: 0.5 });
+    AUDIO.enemySwing(e.def.voice.pitch * 0.78);
+  }
+
+  function integrateBoss(e, dt, t) {
+    for (let i = 0; i < list.length; i++) {
+      const o = list[i];
+      if (o === e || !o.alive || o.layerId !== e.layerId) continue;
+      const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
+      const d2 = dx * dx + dz * dz;
+      const min = (e.isBoss ? B.radius : C.radius) + (o.isBoss ? B.radius : C.radius);
+      if (d2 > 0.0001 && d2 < min * min) {
+        const d = Math.sqrt(d2);
+        const push = (min - d) / min * 5;
+        e.vel.x += dx / d * push * dt * 6;
+        e.vel.z += dz / d * push * dt * 6;
+      }
+    }
+
+    WORLD.moveActor(e.pos, e.vel, dt, {
+      radius: B.radius, height: B.height, stepHeight: B.stepHeight, gravity: B.gravity,
+      layerId: e.layerId
+    }, e.body);
+    if (e.pos.y < -6) { e.pos.copy(e.home); e.vel.set(0, 0, 0); }
+
+    const speed = Math.hypot(e.vel.x, e.vel.z);
+    e.animClock += dt;
+    const stepDur = 1 / C.stepFPS;
+    while (e.animClock >= stepDur) {
+      e.animClock -= stepDur;
+      const prev = Math.sin(e.stepPhase);
+      e.stepPhase += stepDur * (3.4 + speed * 1.5);
+      if (prev * Math.sin(e.stepPhase) < 0 && speed > 0.8 &&
+          Math.abs(PLAYER.position.x - e.pos.x) < 16 && Math.abs(PLAYER.position.z - e.pos.z) < 16) {
+        AUDIO.enemyStep(e.def.voice.pitch);
+      }
+    }
+
+    e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
+    e.squash += e.squashVel * dt;
+    e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.045, 0, 0.18), 6, dt);
+    if (e.hitFlash > 0) e.hitFlash -= dt;
+    e.group.position.copy(e.pos);
+    e.group.rotation.y = e.yaw;
+    pose(e, t);
+    UI.setBoss(true, e.hp, e.maxHp, bossState);
+  }
+
+  function updateBoss(e, dt, t) {
+    e.timer += dt;
+    if (!e.alive) {
+      if (e.timer > C.corpseTime) e.group.visible = false;
+      pose(e, t);
+      return;
+    }
+
+    e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
+    e.bossSeedCooldown = Math.max(0, e.bossSeedCooldown - dt);
+    e.bossSeedTimer += dt;
+    if (e.climbing) {
+      updateLadderClimb(e, dt, t);
+      UI.setBoss(true, e.hp, e.maxHp, bossState);
+      return;
+    }
+
+    const p = PLAYER.position;
+    const sameLayer = e.layerId === PLAYER.layerId;
+    const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
+    const route = !sameLayer && !PLAYER.isDead ? findLadderRoute(e) : null;
+    if (route) {
+      e.ladderGoal = route;
+      if (e.state !== 'travel') setState(e, 'travel');
+    } else if (e.state === 'travel') {
+      e.ladderGoal = null;
+      setState(e, sameLayer ? 'boss_chase' : 'idle');
+    }
+
+    if (e.state === 'boss_melee') {
+      idleBrake(e, dt);
+      faceTowards(e, p.x, p.z, dt, 5);
+      if (!e.didStrike && e.timer >= B.windup) {
+        e.didStrike = true;
+        e.squashVel += 8;
+        if (sameLayer && distToPlayer < B.reach + 0.55 && !PLAYER.isDead) PLAYER.damage(B.damage, e.pos);
+      }
+      if (e.timer >= B.windup + B.recover) setState(e, 'boss_chase');
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'boss_seed') {
+      idleBrake(e, dt);
+      faceTowards(e, p.x, p.z, dt, 4);
+      if (!e.didStrike && e.timer >= B.seedWindup) {
+        e.didStrike = true;
+        e.bossSeedCooldown = B.seedCooldown;
+        e.bossSeedTimer = 0;
+        bossSeedBlast(e);
+      }
+      if (e.timer >= B.seedWindup + B.seedRecover) setState(e, 'boss_chase');
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'travel') {
+      const ladder = e.ladderGoal && e.ladderGoal.ladder;
+      if (!ladder || sameLayer) {
+        e.ladderGoal = null;
+        setState(e, sameLayer ? 'boss_chase' : 'idle');
+      } else {
+        const d = steer(e, ladder.snapX, ladder.snapZ, B.speed * 0.84, dt);
+        faceTowards(e, ladder.snapX, ladder.snapZ, dt, 7);
+        const endpointY = e.ladderGoal.direction > 0 ? ladder.bottomY : ladder.topY;
+        if (d <= C.ladderApproach && Math.abs(e.pos.y - endpointY) < 0.9) startLadderClimb(e, e.ladderGoal);
+      }
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (!PLAYER.isDead && sameLayer) {
+      faceTowards(e, p.x, p.z, dt, 7);
+      if (distToPlayer <= B.reach + 0.18) {
+        setState(e, 'boss_melee');
+      } else if (e.bossSeedCooldown <= 0 && e.bossSeedTimer >= B.seedInterval &&
+                 distToPlayer <= B.seedRange && canSee(e)) {
+        setState(e, 'boss_seed');
+      } else {
+        if (e.state !== 'boss_chase') setState(e, 'boss_chase');
+        steer(e, p.x, p.z, B.speed, dt);
+        if (e.body.blocked) {
+          const s = e.stepFlip ? 1 : -1;
+          e.vel.x += -Math.cos(e.yaw) * s * B.speed * 0.82 * dt * 6;
+          e.vel.z += Math.sin(e.yaw) * s * B.speed * 0.82 * dt * 6;
+          if (Math.random() < 0.02) e.stepFlip = !e.stepFlip;
+        }
+      }
+    } else {
+      idleBrake(e, dt);
+    }
+    integrateBoss(e, dt, t);
+  }
+
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
@@ -7308,6 +7725,38 @@ const ENEMY = (() => {
       r.torso.rotation.x = -0.10;
       r.torso.rotation.z = 0;
       r.head.rotation.x = 0;
+      return;
+    }
+
+    if (e.isBoss) {
+      const sw = Math.sin(e.stepPhase), cw = Math.cos(e.stepPhase);
+      r.legL.rotation.x = -sw * 0.72 * walk;
+      r.legR.rotation.x = sw * 0.72 * walk;
+      r.armL.rotation.x = sw * 0.75 * walk;
+      r.armR.rotation.x = -sw * 0.45 * walk;
+      r.armL.rotation.z = -0.1 - walk * 0.08;
+      r.armR.rotation.z = 0.18 + walk * 0.06;
+      r.bob.position.y = Math.abs(cw) * 0.06 * walk + Math.sin(t * 1.35 + e.stepPhase) * 0.014;
+      r.torso.rotation.z = sw * 0.045 * walk;
+      r.torso.rotation.x = e.lean;
+      r.head.rotation.z = -sw * 0.07 * walk;
+      r.head.rotation.x = -e.lean * 0.5;
+      if (e.state === 'boss_melee') {
+        const k = UTIL.clamp(e.timer / (B.windup + B.recover), 0, 1);
+        r.armR.rotation.x = k < 0.5 ? -2.4 * (k * 2) : -2.4 + Math.sin((k - 0.5) * Math.PI) * 3.8;
+        r.torso.rotation.x -= Math.sin(k * Math.PI) * 0.24;
+        r.torso.rotation.y = Math.sin(k * Math.PI) * 0.42;
+      } else if (e.state === 'boss_seed') {
+        const k = UTIL.clamp(e.timer / (B.seedWindup + B.seedRecover), 0, 1);
+        r.armR.rotation.x = -1.35 - Math.sin(Math.min(k, 0.6) / 0.6 * Math.PI) * 0.7;
+        r.torso.rotation.x -= 0.14 * Math.sin(k * Math.PI);
+        r.torso.rotation.y = -0.18 * Math.sin(k * Math.PI);
+      } else {
+        r.torso.rotation.y = 0;
+      }
+      const sq = 1 + e.squash;
+      const scale = e.visualScale || 1;
+      e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
       return;
     }
 
@@ -7373,6 +7822,10 @@ const ENEMY = (() => {
 
   /* ---------------- per-enemy update ---------------- */
   function updateOne(e, dt, t) {
+    if (e.isBoss) {
+      updateBoss(e, dt, t);
+      return;
+    }
     e.timer += dt;
 
     if (!e.alive) {
@@ -7552,6 +8005,7 @@ const ENEMY = (() => {
   }
 
   function update(dt, t) {
+    if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
   }
 
@@ -7572,16 +8026,18 @@ const ENEMY = (() => {
       if (!e.alive) continue;
       contacts.push({
         type: 'enemy', x: e.pos.x, z: e.pos.z,
-        layerId: e.layerId, spawnKind: e.spawnKind
+        layerId: e.layerId, spawnKind: e.spawnKind, boss: !!e.isBoss
       });
     }
     return contacts;
   }
 
   return {
-    init, update, hit, melee, blast, reset, applyDamage,
+    init, update, hit, melee, blast, reset, applyDamage, spawnBoss,
     get list() { return list; },
     get kills() { return kills; },
+    get bossState() { return bossState; },
+    get boss() { return boss; },
     aliveCount, radarContacts
   };
 })();
