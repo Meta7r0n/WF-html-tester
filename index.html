@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.06.05 Basement Test</title>
+<title>The Withered Farm — v0.06.06 Basement Test</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -461,7 +461,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.05 Basement Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.06 Basement Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -572,6 +572,7 @@ const CONFIG = {
     losInterval: 0.25,
     alertTime: 0.5, staggerTime: 0.34, corpseTime: 1.15,
     wanderRadius: 7, stepFPS: 12,
+    ladderSpeed: 2.5, ladderApproach: 1.15,
     pelletDamage: 15, headMultiplier: 2.4,
     respawnDelay: 18            // 0 to leave the farm quiet once cleared
   },
@@ -1246,9 +1247,38 @@ const WORLD = {
       id: id,
       floorY: options.floorY === undefined ? 0 : options.floorY,
       ceilingY: options.ceilingY === undefined ? 999 : options.ceilingY,
-      tag: options.tag || id
+      tag: options.tag || id,
+      // A non-surface layer is not an infinite plane. Authored room/tunnel
+      // rectangles are registered here as the only walkable ground, which
+      // keeps a missed wall corner from opening into an endless basement void.
+      areas: (options.areas || []).slice()
     };
     return this.layers[id];
+  },
+  addArea(layerId, minX, maxX, minZ, maxZ, tag) {
+    const layer = this.layers[layerId];
+    if (!layer) return null;
+    const area = {
+      minX: Math.min(minX, maxX), maxX: Math.max(minX, maxX),
+      minZ: Math.min(minZ, maxZ), maxZ: Math.max(minZ, maxZ),
+      tag: tag || layerId + '_area'
+    };
+    layer.areas.push(area);
+    return area;
+  },
+  canOccupy(layerId, x, z, radius) {
+    const layer = this.layers[layerId || 'surface'];
+    if (!layer || !layer.areas || !layer.areas.length) return true;
+    const r = radius || 0;
+    // Expanded rectangles make adjacent rooms/tunnels behave as one smooth
+    // navigation surface at a doorway instead of requiring pixel-perfect
+    // center placement at the shared edge.
+    for (let i = 0; i < layer.areas.length; i++) {
+      const a = layer.areas[i];
+      if (x >= a.minX - r && x <= a.maxX + r &&
+          z >= a.minZ - r && z <= a.maxZ + r) return true;
+    }
+    return false;
   },
   addPortal(id, cx, cz, w, d, options) {
     options = options || {};
@@ -1277,7 +1307,9 @@ const WORLD = {
   },
   defaultGroundAt(x, z, layerId) {
     const layer = this.layers[layerId || 'surface'];
-    return layer ? layer.floorY : 0;
+    if (!layer) return 0;
+    if (layer.areas && layer.areas.length && !this.canOccupy(layer.id, x, z, 0)) return -999;
+    return layer.floorY;
   },
   addLadder(cx, bottomY, cz, w, h, d, options) {
     options = options || {};
@@ -1330,6 +1362,13 @@ const WORLD = {
     const solids = this.solids;
 
     function axis(which, amount) {
+      const nextX = which === 'x' ? pos.x + amount : pos.x;
+      const nextZ = which === 'z' ? pos.z + amount : pos.z;
+      if (opt.layerId && !WORLD.canOccupy(opt.layerId, nextX, nextZ, r)) {
+        state.blocked = true;
+        vel[which] = 0;
+        return;
+      }
       pos[which] += amount;
       for (let i = 0; i < solids.length; i++) {
         const s = solids[i];
@@ -2684,6 +2723,7 @@ const LEVEL = (() => {
     room.build(parent);
     WORLD.addFloor((MIN_X + MAX_X) * 0.5, FLOOR_Y - 0.22, (MIN_Z + MAX_Z) * 0.5,
       MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, 'basement_floor');
+    WORLD.addArea('basement', MIN_X, MAX_X, MIN_Z, MAX_Z, 'initial_basement_room');
     WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2,
       MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
     WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2,
@@ -2810,11 +2850,13 @@ const LEVEL = (() => {
     // readable, continuous route instead of ending inside the slab.
     addBasementHatch('northwest', -18.5, -44.8, 1);
 
-    // Keep the first underground enemy deliberately close to the original
-    // basement room. The layer id prevents this marker from being mistaken for
-    // a surface spawn at the same farm coordinates and gives future spawns a
-    // data-only path to more rooms.
+    // v0.06.06: three explicit underground markers make the first basement
+    // roster easy to verify and distribute encounters across separate rooms.
+    // The layer id prevents these from being mistaken for surface spawns at
+    // shared farm coordinates and gives later rooms a data-only spawn path.
     WORLD.addSpawn(14.0, FLOOR_Y, -6.0, 'basement_barn', 'basement');
+    WORLD.addSpawn(-4.0, FLOOR_Y, -28.5, 'basement_root_cellar', 'basement');
+    WORLD.addSpawn(-24.2, FLOOR_Y, -41.2, 'basement_grenade_room', 'basement');
 
     /* ---- v0.06.02 underground expansion ----
        One westbound service spine joins the first basement to a utility room,
@@ -2828,6 +2870,8 @@ const LEVEL = (() => {
     function addSlab(cx, cz, w, d, tag, ceilingOpening) {
       shell.box(w, 0.22, d, cx, FLOOR_Y - 0.11, cz);
       WORLD.addFloor(cx, FLOOR_Y - 0.22, cz, w, 0.22, d, tag + '_floor');
+      WORLD.addArea('basement', cx - w * 0.5, cx + w * 0.5,
+        cz - d * 0.5, cz + d * 0.5, tag + '_area');
       if (!ceilingOpening) {
         shell.box(w, 0.30, d, cx, CEIL_Y - 0.15, cz);
         WORLD.add(cx, CEIL_Y - 0.15, cz, w, 0.30, d, tag + '_ceiling');
@@ -2855,6 +2899,67 @@ const LEVEL = (() => {
     function addWall(cx, cz, w, d, tag) {
       shell.box(w, wallH, d, cx, wallY, cz);
       WORLD.add(cx, wallY, cz, w, wallH, d, tag + '_wall');
+    }
+
+    // Close every exposed floor edge after the authored room/tunnel slabs are
+    // registered. Intervals that another slab crosses are left open as
+    // doorways; all remaining segments receive a continuous bulkhead. This
+    // catches small corner omissions without hand-maintaining dozens of wall
+    // endpoints as the underground footprint grows.
+    function sealFloorEdges() {
+      const areas = WORLD.layers.basement.areas;
+      const tolerance = 0.65, edgeEpsilon = 0.05;
+
+      function coveredIntervals(area, horizontal, edge, start, end, isMin) {
+        const out = [];
+        for (let i = 0; i < areas.length; i++) {
+          const other = areas[i];
+          if (other === area) continue;
+          const crosses = horizontal
+            ? (isMin
+              ? other.minZ < edge - edgeEpsilon && other.maxZ > edge - tolerance
+              : other.maxZ > edge + edgeEpsilon && other.minZ < edge + tolerance)
+            : (isMin
+              ? other.minX < edge - edgeEpsilon && other.maxX > edge - tolerance
+              : other.maxX > edge + edgeEpsilon && other.minX < edge + tolerance);
+          if (!crosses) continue;
+          const lo = Math.max(start, horizontal ? other.minX : other.minZ);
+          const hi = Math.min(end, horizontal ? other.maxX : other.maxZ);
+          if (hi - lo > 0.08) out.push([lo, hi]);
+        }
+        out.sort((a, b) => a[0] - b[0]);
+        const merged = [];
+        out.forEach(interval => {
+          const last = merged[merged.length - 1];
+          if (last && interval[0] <= last[1] + 0.08) last[1] = Math.max(last[1], interval[1]);
+          else merged.push(interval.slice());
+        });
+        return merged;
+      }
+
+      function addUncovered(area, horizontal, edge, start, end, isMin) {
+        const covered = coveredIntervals(area, horizontal, edge, start, end, isMin);
+        let cursor = start;
+        const addSegment = (lo, hi) => {
+          if (hi - lo <= 0.10) return;
+          const length = hi - lo + 0.24;
+          const center = (lo + hi) * 0.5;
+          if (horizontal) addWall(center, edge, length, 0.30, 'basement_seal');
+          else addWall(edge, center, 0.30, length, 'basement_seal');
+        };
+        covered.forEach(interval => {
+          if (interval[0] > cursor) addSegment(cursor, interval[0]);
+          cursor = Math.max(cursor, interval[1]);
+        });
+        if (cursor < end) addSegment(cursor, end);
+      }
+
+      areas.forEach(area => {
+        addUncovered(area, true, area.minZ, area.minX, area.maxX, true);
+        addUncovered(area, true, area.maxZ, area.minX, area.maxX, false);
+        addUncovered(area, false, area.minX, area.minZ, area.maxZ, true);
+        addUncovered(area, false, area.maxX, area.minZ, area.maxZ, false);
+      });
     }
 
     // Main 3.2 m-wide west service tunnel. Its north wall is split at x=-4
@@ -2953,6 +3058,7 @@ const LEVEL = (() => {
     addWall(30.15, -44.0, 0.30, 6.3, 'secret_cache');
     addWall(27.5, -47.15, 5.3, 0.30, 'secret_cache');
     addWall(27.5, -40.85, 5.3, 0.30, 'secret_cache');
+    sealFloorEdges();
     shell.build(parent);
 
     // Repeated timber portals make junctions obvious at sprint speed. They are
@@ -4362,6 +4468,12 @@ const PLAYER = (() => {
   }
 
   function moveAxis(axis, amount) {
+    const nextX = axis === 'x' ? pos.x + amount : pos.x;
+    const nextZ = axis === 'z' ? pos.z + amount : pos.z;
+    if (layerId !== 'surface' && !WORLD.canOccupy(layerId, nextX, nextZ, C.radius)) {
+      vel[axis] = 0;
+      return;
+    }
     pos[axis] += amount;
     const r = C.radius, h = C.height;
     const solids = WORLD.solids;
@@ -6610,6 +6722,8 @@ const ENEMY = (() => {
     const e = {
       id: id,
       layerId: layerId,
+      homeLayerId: layerId,
+      spawnKind: marker.kind || 'generic',
       def: built.def,
       skin: built.skin,
       rig: built.rig,
@@ -6635,6 +6749,11 @@ const ENEMY = (() => {
       wander: home.clone(),
       wanderTimer: UTIL.rng(1, 4),
       stepFlip: false,
+      climbing: false,
+      activeLadder: null,
+      ladderGoal: null,
+      climbDirection: 0,
+      ladderCooldown: 0,
       respawnAt: 0,
       hitFlash: 0
     };
@@ -6855,6 +6974,12 @@ const ENEMY = (() => {
   function revive(e) {
     e.alive = true;
     e.hp = e.maxHp;
+    e.layerId = e.homeLayerId;
+    e.climbing = false;
+    e.activeLadder = null;
+    e.ladderGoal = null;
+    e.climbDirection = 0;
+    e.ladderCooldown = 0;
     e.pos.copy(e.home);
     e.vel.set(0, 0, 0);
     e.group.position.copy(e.pos);
@@ -6913,6 +7038,91 @@ const ENEMY = (() => {
     e.vel.z = UTIL.damp(e.vel.z, 0, 9, dt);
   }
 
+  /* ---------------- layer traversal ----------------
+     Enemies only pursue a ladder after they have actually acquired the
+     player. This keeps the three basement guards in their rooms at game start,
+     while allowing a guard that loses the player through a hatch to follow
+     across layers during the existing lose-sight window. */
+  function findLadderRoute(e) {
+    if (e.layerId === PLAYER.layerId || PLAYER.isDead) return null;
+    let best = null;
+    for (let i = 0; i < WORLD.ladders.length; i++) {
+      const ladder = WORLD.ladders[i];
+      let direction = 0, targetX = ladder.snapX, targetZ = ladder.snapZ;
+      if (ladder.topLayer === e.layerId && ladder.bottomLayer === PLAYER.layerId) {
+        direction = -1;
+        targetX = ladder.bottomExitX; targetZ = ladder.bottomExitZ;
+      } else if (ladder.bottomLayer === e.layerId && ladder.topLayer === PLAYER.layerId) {
+        direction = 1;
+        targetX = ladder.topExitX; targetZ = ladder.topExitZ;
+      } else {
+        continue;
+      }
+      const approach = Math.hypot(e.pos.x - ladder.snapX, e.pos.z - ladder.snapZ);
+      const targetDistance = Math.hypot(PLAYER.position.x - targetX, PLAYER.position.z - targetZ);
+      const score = approach + targetDistance * 0.16;
+      if (!best || score < best.score) {
+        best = { ladder: ladder, direction: direction, score: score };
+      }
+    }
+    return best;
+  }
+
+  function startLadderClimb(e, route) {
+    const ladder = route && route.ladder;
+    if (!ladder || e.climbing || e.ladderCooldown > 0) return false;
+    e.climbing = true;
+    e.activeLadder = ladder;
+    e.ladderGoal = route;
+    e.climbDirection = route.direction;
+    e.vel.set(0, 0, 0);
+    e.pos.x = ladder.snapX;
+    e.pos.z = ladder.snapZ;
+    e.body.grounded = false;
+    setState(e, 'climb');
+    return true;
+  }
+
+  function updateLadderClimb(e, dt, t) {
+    const ladder = e.activeLadder;
+    if (!ladder) {
+      e.climbing = false;
+      e.ladderGoal = null;
+      setState(e, 'idle');
+      return;
+    }
+    e.pos.x = UTIL.damp(e.pos.x, ladder.snapX, 13, dt);
+    e.pos.z = UTIL.damp(e.pos.z, ladder.snapZ, 13, dt);
+    e.vel.set(0, e.climbDirection * C.ladderSpeed, 0);
+    e.pos.y += e.vel.y * dt;
+
+    let arrived = false;
+    if (e.climbDirection > 0 && e.pos.y >= ladder.topY) {
+      e.pos.set(ladder.topExitX, ladder.topY, ladder.topExitZ);
+      e.layerId = ladder.topLayer;
+      arrived = true;
+    } else if (e.climbDirection < 0 && e.pos.y <= ladder.bottomY) {
+      e.pos.set(ladder.bottomExitX, ladder.bottomY, ladder.bottomExitZ);
+      e.layerId = ladder.bottomLayer;
+      arrived = true;
+    }
+
+    if (arrived) {
+      e.vel.set(0, 0, 0);
+      e.body.grounded = true;
+      e.climbing = false;
+      e.activeLadder = null;
+      e.ladderGoal = null;
+      e.climbDirection = 0;
+      e.ladderCooldown = 0.45;
+      setState(e, e.layerId === PLAYER.layerId ? 'chase' : 'idle');
+    }
+
+    e.group.position.copy(e.pos);
+    e.group.rotation.y = e.yaw;
+    pose(e, t);
+  }
+
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
@@ -6929,6 +7139,18 @@ const ENEMY = (() => {
       r.head.rotation.z = k * 1.6;
       r.armL.rotation.x = -k * 2.2;
       r.armR.rotation.x = -k * 2.2;
+      return;
+    }
+
+    if (e.state === 'climb') {
+      const swing = Math.sin(t * 7.2 + e.stepPhase);
+      r.armL.rotation.x = -0.9 + swing * 0.72;
+      r.armR.rotation.x = -0.9 - swing * 0.72;
+      r.legL.rotation.x = swing * 0.38;
+      r.legR.rotation.x = -swing * 0.38;
+      r.torso.rotation.x = -0.10;
+      r.torso.rotation.z = 0;
+      r.head.rotation.x = 0;
       return;
     }
 
@@ -7008,6 +7230,12 @@ const ENEMY = (() => {
       return;
     }
 
+    e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
+    if (e.climbing) {
+      updateLadderClimb(e, dt, t);
+      return;
+    }
+
     // perception, staggered across frames so we never spike
     e.losTimer -= dt;
     if (e.losTimer <= 0) {
@@ -7021,6 +7249,17 @@ const ENEMY = (() => {
     const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
     const st = e.def.stats;
     const sameLayer = e.layerId === PLAYER.layerId;
+    const pursuingAcrossLayer = !PLAYER.isDead &&
+      (e.sawPlayer || (e.lastSeen >= 0 && e.lastSeen <= C.loseSightTime));
+    const ladderRoute = !sameLayer && pursuingAcrossLayer ? findLadderRoute(e) : null;
+
+    if (ladderRoute) {
+      e.ladderGoal = ladderRoute;
+      if (e.state !== 'travel') setState(e, 'travel');
+    } else if (e.state === 'travel') {
+      e.ladderGoal = null;
+      setState(e, sameLayer ? 'chase' : 'idle');
+    }
 
     switch (e.state) {
       case 'idle': {
@@ -7080,6 +7319,22 @@ const ENEMY = (() => {
         }
         if (e.timer >= st.windup + st.recover) {
           setState(e, distToPlayer < C.sightRange ? 'chase' : 'idle');
+        }
+        break;
+      }
+      case 'travel': {
+        const route = e.ladderGoal;
+        if (!route || sameLayer) {
+          e.ladderGoal = null;
+          setState(e, sameLayer ? 'chase' : 'idle');
+          break;
+        }
+        const ladder = route.ladder;
+        const d = steer(e, ladder.snapX, ladder.snapZ, st.speed * 0.82, dt);
+        faceTowards(e, ladder.snapX, ladder.snapZ, dt, 7);
+        const endpointY = route.direction > 0 ? ladder.bottomY : ladder.topY;
+        if (d <= C.ladderApproach && Math.abs(e.pos.y - endpointY) < 0.9) {
+          startLadderClimb(e, route);
         }
         break;
       }
