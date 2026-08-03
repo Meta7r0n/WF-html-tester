@@ -15,6 +15,7 @@
     --rust:#A85A3C;
     --rust-deep:#7E3F2A;
     --olive:#6E7A42;
+    --jays:#8EAD4B;
     --ink:#16120F;
     --ink-soft:#2A231E;
   }
@@ -141,10 +142,10 @@
     opacity:0;transition:opacity .18s ease;transform:rotate(1deg);
   }
   #jaysHud.on{opacity:1;}
-  #jaysHud.active{color:var(--mustard);}
+  #jaysHud.active{color:var(--jays, #8EAD4B);}
   #jaysCount{
     display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
-    border:3px solid var(--ink);border-radius:50%;background:var(--rust);
+    border:3px solid var(--ink);border-radius:50%;background:var(--olive);
     color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
     box-shadow:3px 4px 0 rgba(22,18,15,.4);
   }
@@ -854,6 +855,9 @@ const CONFIG = {
     rustDeep:   0x7E3F2A,
     olive:      0x6E7A42,
     oliveDeep:  0x4E5730,
+    jays:       0x8EAD4B,
+    jaysLight:  0xB7CC68,
+    jaysDeep:   0x526B2D,
     charcoal:   0x1F1B18,
     ink:        0x120F0D,
     white:      0xFFFBF2,
@@ -5105,18 +5109,35 @@ const WEAPON = (() => {
   function buildDoubleBarrel() {
     const g = new THREE.Group();
     rig.add(g);
+    // The recovery weapon is intentionally unmistakable: two separated
+    // barrels, two muzzle rings and a break-action hinge. It is not the
+    // normal Pipe Popper with a different ammo count.
     const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
     const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-    PRIM.box(0.18, 0.18, 0.34, steel, { pos: [0, 0, -0.08], parent: g, outline: 0.014, ray: false });
-    [-0.055, 0.055].forEach(x => PRIM.cyl(0.045, 0.05, 0.9, 10, steel, {
-      pos: [x, 0.025, -0.64], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false
-    }));
-    PRIM.box(0.16, 0.31, 0.42, wood, { pos: [0, -0.08, 0.27], rot: [-0.15, 0, 0.02], parent: g, outline: 0.013, ray: false });
-    PRIM.torus(0.08, 0.016, MAT.toon(PAL.mustard), { pos: [0, 0.025, -1.08], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.009, ray: false });
-    const fx = flashes(g, 0.025, -1.13, 1.12);
+    const woodLight = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
+    PRIM.box(0.3, 0.2, 0.34, steel, { pos: [0, 0, -0.08], parent: g, outline: 0.014, ray: false });
+    [-0.092, 0.092].forEach(x => {
+      PRIM.cyl(0.057, 0.064, 1.08, 10, steelLight, {
+        pos: [x, 0.035, -0.69], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false
+      });
+      PRIM.torus(0.078, 0.018, steel, {
+        pos: [x, 0.035, -1.24], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.009, ray: false
+      });
+      PRIM.cyl(0.047, 0.047, 0.025, 10, MAT.toon(PAL.charcoal), {
+        pos: [x, 0.035, -1.25], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.006, ray: false
+      });
+    });
+    PRIM.box(0.19, 0.34, 0.42, wood, { pos: [0, -0.09, 0.29], rot: [-0.15, 0, 0.02], parent: g, outline: 0.013, ray: false });
+    PRIM.box(0.24, 0.055, 0.2, steel, { pos: [0, 0.03, -0.22], rot: [0, 0, 0.02], parent: g, outline: 0.009, ray: false });
+    PRIM.cyl(0.073, 0.073, 0.045, 10, MAT.toon(PAL.mustard), {
+      pos: [0, -0.02, -0.18], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.009, ray: false
+    });
+    PRIM.box(0.13, 0.2, 0.14, woodLight, { pos: [0, -0.23, 0.05], rot: [0.18, 0, 0], parent: g, outline: 0.011, ray: false });
+    const fx = flashes(g, 0.035, -1.29, 1.24);
     models.doubleBarrel = {
       root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
-      base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
+      base: [0.29, -0.25, -0.5], rot: [0.02, -0.08, 0.02]
     };
   }
 
@@ -5180,20 +5201,31 @@ const WEAPON = (() => {
   function buildChainsaw() {
     const g = new THREE.Group();
     rig.add(g);
-    const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    // A readable first-person chainsaw: bright housing, raised handle and a
+    // broad guide bar with individual teeth. The guide bar sits in the view
+    // plane rather than at the player's feet, so it cannot read as a floor
+    // block when the emergency swap engages.
+    const body = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
+    const bodyDeep = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
     const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    PRIM.box(0.2, 0.22, 0.32, body, { pos: [0, -0.08, -0.08], parent: g, outline: 0.014, ray: false });
-    PRIM.box(0.075, 0.10, 0.74, metal, { pos: [0, 0.02, -0.62], parent: g, outline: 0.012, ray: false });
-    for (let i = 0; i < 9; i++) {
-      PRIM.box(0.09, 0.035, 0.055, MAT.toon(PAL.mustard), {
-        pos: [0, 0.07, -0.30 - i * 0.075], rot: [0, 0, i % 2 ? 0.16 : -0.16], parent: g,
+    const chain = MAT.toon(PAL.mustard);
+    PRIM.box(0.3, 0.28, 0.38, body, { pos: [0, -0.02, -0.02], parent: g, warp: 0.01, outline: 0.014, ray: false });
+    PRIM.box(0.2, 0.13, 0.3, bodyDeep, { pos: [0, -0.18, 0.18], rot: [0.2, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.box(0.28, 0.055, 0.36, bodyDeep, { pos: [0, 0.18, 0.02], rot: [0.06, 0, 0], parent: g, outline: 0.01, ray: false });
+    PRIM.torus(0.12, 0.022, chain, { pos: [0, 0.18, -0.12], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.009, ray: false });
+    PRIM.box(0.09, 0.11, 0.9, metal, { pos: [0, 0.015, -0.66], parent: g, outline: 0.012, ray: false });
+    PRIM.box(0.13, 0.045, 0.92, chain, { pos: [0, 0.09, -0.66], parent: g, outline: 0.009, ray: false });
+    for (let i = 0; i < 10; i++) {
+      const z = -0.25 - i * 0.09;
+      PRIM.cone(0.055, 0.13, 4, chain, {
+        pos: [0, 0.13, z], rot: [Math.PI / 2, 0, i % 2 ? 0.18 : -0.18], parent: g,
         outline: 0.008, ray: false
       });
     }
-    PRIM.torus(0.08, 0.016, MAT.toon(PAL.mustardDk), { pos: [0, 0.025, -1.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+    PRIM.torus(0.1, 0.018, MAT.toon(PAL.mustardDk), { pos: [0, 0.02, -1.13], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
     models.chainsaw = {
       root: g, forend: null, flash: null, flash2: null,
-      base: [0.27, -0.33, -0.5], rot: [0.08, -0.12, 0.08]
+      base: [0.3, -0.18, -0.5], rot: [0.06, -0.12, 0.08]
     };
   }
 
@@ -5533,7 +5565,10 @@ const WEAPON = (() => {
       const pressedFire = INPUT.consumePress('fire');
       const d = defFor();
       if (INPUT.consumePress('melee')) beginMelee(camera);
-      else if (d.kind === 'melee' && pressedFire) beginMelee(camera);
+      // The emergency chainsaw is a real temporary weapon: its fire surface
+      // can be tapped or held just like a normal weapon. Keeping the held
+      // state here also makes it usable with the mobile fire/aim drag.
+      else if (d.kind === 'melee' && (INPUT.actions.fire || pressedFire)) beginMelee(camera);
       else if (d.kind === 'gun' && (d.automatic ? (INPUT.actions.fire || pressedFire) : pressedFire)) fireGun(camera);
       if (INPUT.consumePress('reload')) startReload();
     }
@@ -6463,38 +6498,40 @@ const PICKUP = (() => {
   let scene = null;
 
   const spawns = [
-    { id: 'tinSixerWeapon', x: -4.0, z: 23.0 },
+    { id: 'tinSixerWeapon', x: -5.5, z: 24.8 },
     // Just inside the now-clear shed doorway, visible before the player reaches
     // the back shelving and separate from the shed guard's home position.
-    { id: 'fieldhandWeapon', x: -17.6, z: 15.1 },
-    { id: 'shellBox', x: 0.0, z: 18.0 },
-    { id: 'lightAmmo', x: -13.0, z: 2.0 },
-    { id: 'carbineAmmo', x: 18.8, z: -4.0 },
-    { id: 'healthTonic', x: 6.2, z: 13.0 },
-    { id: 'jaysPack', x: -8.5, z: 25.0 },
-    { id: 'shieldCell', x: 25.0, z: -10.0 },
-    { id: 'carbineAmmo', x: 19.0, z: -39.8 },
-    { id: 'shieldCell', x: 17.9, z: -29.5 },
+    { id: 'fieldhandWeapon', x: -17.0, z: 15.5 },
+    { id: 'shellBox', x: 1.2, z: 20.0 },
+    { id: 'lightAmmo', x: -14.8, z: 0.5 },
+    { id: 'carbineAmmo', x: 21.0, z: -3.2 },
+    { id: 'healthTonic', x: 6.5, z: 15.8 },
+    { id: 'jaysPack', x: -10.5, z: 26.5 },
+    { id: 'shieldCell', x: 27.0, z: -9.0 },
+    { id: 'carbineAmmo', x: 20.8, z: -40.0 },
+    { id: 'shieldCell', x: 15.5, z: -31.2 },
 
     // One visible resource per major underground zone. Explicit y values keep
     // surface and basement pickups independent at shared map coordinates.
-    { id: 'healthTonic', x: 20.5, y: -4.0, z: -6.0 },       // barn room
-    { id: 'jaysPack', x: 4.0, y: -4.0, z: -18.0 },           // lower cross tunnel
-    { id: 'lightAmmo', x: 0.0, y: -4.0, z: -11.5 },         // service tunnel
-    { id: 'shieldCell', x: -15.0, y: -4.0, z: -7.0 },       // utility room
-    { id: 'shellBox', x: -7.0, y: -4.0, z: -26.5 },         // root cellar
-    { id: 'healthTonic', x: -15.0, y: -4.0, z: 23.0 },      // generator hall
-    { id: 'shieldCell', x: 9.0, y: -4.0, z: -30.0 },        // east tunnel
-    { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },      // relay platform
-    { id: 'grenadeBundle', x: -22.2, y: -4.0, z: -43.2 },   // northwest room
-    { id: 'grenadeBundle', x: 14.0, z: -3.8 },              // barn interior
+    { id: 'healthTonic', x: 23.5, y: -4.0, z: -7.2 },       // barn room
+    { id: 'jaysPack', x: -4.0, y: -4.0, z: -20.0 },          // lower cross tunnel
+    { id: 'lightAmmo', x: 4.2, y: -4.0, z: -11.5 },         // service tunnel
+    { id: 'shieldCell', x: -21.0, y: -4.0, z: -6.4 },       // utility room
+    { id: 'shellBox', x: -3.7, y: -4.0, z: -29.2 },         // root cellar
+    { id: 'healthTonic', x: -18.0, y: -4.0, z: 21.8 },      // generator hall
+    { id: 'shieldCell', x: 12.8, y: -4.0, z: -30.0 },       // east tunnel
+    { id: 'carbineAmmo', x: 17.5, y: -3.0, z: -48.8 },      // relay platform
+    { id: 'grenadeBundle', x: -23.8, y: -4.0, z: -41.0 },   // northwest room
+    { id: 'grenadeBundle', x: 11.2, z: -7.6 },              // barn interior
 
     // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
     { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
     { id: 'lightAmmo', x: 27.5, y: -4.0, z: -42.0 },
     { id: 'carbineAmmo', x: 28.9, y: -4.0, z: -42.0 },
     { id: 'healthTonic', x: 26.7, y: -4.0, z: -45.5 },
-    { id: 'shieldCell', x: 28.3, y: -4.0, z: -45.5 }
+    { id: 'shieldCell', x: 28.3, y: -4.0, z: -45.5 },
+    { id: 'jaysPack', x: 26.2, y: -4.0, z: -43.8 },
+    { id: 'grenadeBundle', x: 29.0, y: -4.0, z: -46.0 }
   ];
 
   function define(id, def) {
@@ -6532,7 +6569,7 @@ const PICKUP = (() => {
   });
   define('jaysPack', {
     type: 'consumable', label: 'Jays', consumableId: 'jays', quantity: 1,
-    color: PAL.rust, respawn: 22
+    color: PAL.jays, respawn: 22
   });
   define('shieldCell', {
     type: 'shield', label: 'Guard Cell', quantity: 25,
@@ -6637,6 +6674,31 @@ const PICKUP = (() => {
     PRIM.box(0.1, 0.3, 0.07, MAT.toon(PAL.mustardDk), { pos: [0, 0, 0.21], parent: parent, outline: 0.014, ray: false });
   }
 
+  function buildJaysVisual(parent) {
+    // Jays read as a little cluster of green hop flowers rather than another
+    // bottle: overlapping lobes make the pickup fluffy from every angle, with
+    // lighter bracts and a short leafy stem to keep the silhouette legible.
+    const root = new THREE.Group();
+    root.rotation.z = -0.14;
+    parent.add(root);
+    const deep = MAT.toon(PAL.jaysDeep);
+    const green = MAT.toon(PAL.jays);
+    const light = MAT.toon(PAL.jaysLight);
+    PRIM.sph(0.27, green, { parent: root, scale: [0.94, 1.08, 0.9], outline: 0.032, ray: false });
+    for (let i = 0; i < 7; i++) {
+      const a = i / 7 * Math.PI * 2 + 0.2;
+      const r = i % 2 ? 0.19 : 0.15;
+      PRIM.sph(0.115, i % 2 ? light : green, {
+        pos: [Math.cos(a) * r, 0.015 + Math.sin(a * 1.7) * 0.045, Math.sin(a) * r * 0.76],
+        scale: [0.85, 1.04, 0.72], parent: root, outline: 0.014, ray: false
+      });
+    }
+    PRIM.cone(0.045, 0.26, 6, deep, { pos: [0, 0.34, 0], parent: root, outline: 0.012, ray: false });
+    [-1, 1].forEach(s => PRIM.cone(0.035, 0.18, 5, green, {
+      pos: [s * 0.075, 0.34, 0.015], rot: [0, 0, s * 0.55], parent: root, outline: 0.009, ray: false
+    }));
+  }
+
   function buildShieldVisual(parent) {
     PRIM.sph(0.34, MAT.toon(PAL.blue), { parent: parent, scale: [1, 1.18, 0.36], outline: 0.04, ray: false });
     PRIM.torus(0.36, 0.055, MAT.toon(PAL.cream), { rot: [0, 0, 0], parent: parent, outline: 0.022, ray: false });
@@ -6659,7 +6721,8 @@ const PICKUP = (() => {
     root.add(visual);
     if (def.type === 'weapon') buildWeaponVisual(visual, def);
     else if (def.type === 'ammo') buildAmmoVisual(visual, def);
-    else if (def.type === 'health' || def.type === 'consumable') buildHealthVisual(visual);
+    else if (def.type === 'health') buildHealthVisual(visual);
+    else if (def.type === 'consumable') buildJaysVisual(visual);
     else if (def.type === 'shield') buildShieldVisual(visual);
     else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
     else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
@@ -7751,10 +7814,11 @@ const HERO = (() => {
 
   function beginDowned() {
     if (!inSinglePlayer() || selected !== 'scarf' || downedActive) return false;
+    const restore = WEAPON.currentId;
+    if (!WEAPON.beginHeroSpecial('doubleBarrel')) return false;
     downedActive = true;
     downedShots = 0;
-    downedRestoreWeapon = WEAPON.currentId;
-    WEAPON.beginHeroSpecial('doubleBarrel');
+    downedRestoreWeapon = restore;
     UI.showDowned();
     UI.toast('DOWNED — fire the Double Barrel twice to revive', 2.8);
     return true;
@@ -7779,10 +7843,12 @@ const HERO = (() => {
     if (!inSinglePlayer() || selected !== 'chainsaw' || downedActive || PLAYER.isDead) return;
     const pct = PLAYER.health / CONFIG.player.maxHealth;
     if (!chainsawActive && pct <= 0.25) {
-      chainsawActive = true;
-      restoreWeapon = WEAPON.currentId;
-      WEAPON.beginHeroSpecial('chainsaw');
-      UI.toast('CHAINSAW HAND — emergency melee active', 1.8);
+      const restore = WEAPON.currentId;
+      if (WEAPON.beginHeroSpecial('chainsaw')) {
+        chainsawActive = true;
+        restoreWeapon = restore;
+        UI.toast('CHAINSAW HAND — emergency melee active', 1.8);
+      }
     } else if (chainsawActive && pct >= 0.55) {
       chainsawActive = false;
       WEAPON.endHeroSpecial('chainsaw', restoreWeapon);

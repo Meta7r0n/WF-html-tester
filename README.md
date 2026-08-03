@@ -67,3 +67,15 @@ Enemy spawning now uses an explicit sunflower-only roster, so playable heroes
 cannot appear as enemies. Jays pickups add a five-item consumable stack; press
 `J` (or tap **Jays** on mobile) to regenerate 5 Pep per second for five
 seconds, switching to slower Guard regeneration when Pep is full.
+
+### Hero/pickup polish
+
+The Jays world pickup now uses a green, hop-like fluffy cluster visual. Public
+surface and basement supplies are spaced across their rooms and routes without
+changing their quantities; the hidden cache also contains a Jays pack and a
+grenade bundle.
+
+The Scarf Scout's downed special now uses a clearly separated two-barrel,
+break-action view model. The Masked Runner's low-health special is a temporary,
+aimable chainsaw weapon swap with a visible guide bar and high-damage melee;
+holding the fire surface repeats the melee swing, including on mobile.
