@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.06.06 Basement Test</title>
+<title>The Withered Farm — v0.06.07 Basement Test</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -185,6 +185,26 @@
   #tally.on{opacity:1;}
   #tally b{color:var(--mustard);font-size:19px;}
 
+  /* ---------- Proximity radar ---------- */
+  #radar{
+    position:fixed;left:26px;top:52px;width:116px;height:142px;z-index:30;
+    opacity:0;pointer-events:none;user-select:none;transition:opacity .2s ease;
+    transform:rotate(-1deg);filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
+  }
+  #radar.on{opacity:.94;}
+  #radarCanvas{
+    display:block;width:112px;height:112px;border:3px solid var(--ink);
+    border-radius:50%;background:rgba(18,15,13,.68);
+  }
+  #radarTitle,#radarSignal{
+    position:absolute;left:0;right:0;text-align:center;color:var(--cream);
+    font:900 10px/1 "Rockwell",Georgia,serif;letter-spacing:2px;text-transform:uppercase;
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #radarTitle{top:-14px;}
+  #radarTitle b{color:var(--mustard);font-size:9px;letter-spacing:1px;}
+  #radarSignal{bottom:1px;color:var(--mustard);font-size:9px;letter-spacing:1px;}
+
   #modeChip{
     position:fixed;right:26px;top:22px;z-index:31;max-width:300px;
     background:var(--cream);border:3px solid var(--ink);border-radius:9px 13px 8px 12px;
@@ -305,6 +325,10 @@
     transform:scale(.8) rotate(1deg);transform-origin:right top;
   }
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
+  body.touch-device #radar{
+    left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
+    transform:scale(.78) rotate(-1deg);transform-origin:top left;
+  }
   body.touch-device #vitals{
     left:max(14px,env(safe-area-inset-left));top:max(48px,calc(env(safe-area-inset-top) + 38px));bottom:auto;
     transform:scale(.72);transform-origin:left top;
@@ -432,6 +456,11 @@
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
+  <div id="radar" aria-label="Proximity radar">
+    <div id="radarTitle">Radar <b id="radarLayer">Surface</b></div>
+    <canvas id="radarCanvas" width="132" height="132"></canvas>
+    <div id="radarSignal">Clear</div>
+  </div>
   <div id="hurt"></div>
   <div id="modeChip">
     Free-look &middot; <b>Esc</b> to pause
@@ -461,7 +490,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.06 Basement Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.07 Basement Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -575,6 +604,10 @@ const CONFIG = {
     ladderSpeed: 2.5, ladderApproach: 1.15,
     pelletDamage: 15, headMultiplier: 2.4,
     respawnDelay: 18            // 0 to leave the farm quiet once cleared
+  },
+  radar: {
+    range: 32,
+    refresh: 1 / 12
   },
   weapons: {
     unarmed: {
@@ -2738,6 +2771,23 @@ const LEVEL = (() => {
       p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, 'basement_ceiling'
     ));
 
+    // The ceiling slot is intentional, but its two long edges need proper
+    // shaft bulkheads. Without them, the stair opening reads as a wall gap
+    // from the lower landing and exposes the barn's upper framing at an angle.
+    // These side walls keep the stair route open while closing the sightline
+    // into the rest of the underground room.
+    const stairShaft = new PRIM.Batch(concrete, 0.032);
+    const shaftWallH = CEIL_Y - FLOOR_Y, shaftWallY = (FLOOR_Y + CEIL_Y) * 0.5;
+    const shaftWallZ = [stairOpening.minZ - 0.17, stairOpening.maxZ + 0.17];
+    shaftWallZ.forEach(z => {
+      stairShaft.box(stairOpening.maxX - stairOpening.minX + 0.34, shaftWallH, 0.30,
+        (stairOpening.minX + stairOpening.maxX) * 0.5, shaftWallY, z);
+      WORLD.add((stairOpening.minX + stairOpening.maxX) * 0.5, shaftWallY, z,
+        stairOpening.maxX - stairOpening.minX + 0.34, shaftWallH, 0.30,
+        'basement_stair_shaft_wall');
+    });
+    stairShaft.build(parent);
+
     // Square timber columns make the underground scale readable without
     // creating a maze or introducing extra navigation blockers.
     const columns = new PRIM.Batch(trim, 0.028);
@@ -2909,6 +2959,10 @@ const LEVEL = (() => {
     function sealFloorEdges() {
       const areas = WORLD.layers.basement.areas;
       const tolerance = 0.65, edgeEpsilon = 0.05;
+      // Seal pieces intentionally overlap at their ends. The earlier 0.24 m
+      // overlap still left hairline cracks at a few skewed room junctions,
+      // especially when the ink outline exaggerates the seam on mobile.
+      const sealOverlap = 0.40, cornerSize = 0.48;
 
       function coveredIntervals(area, horizontal, edge, start, end, isMin) {
         const out = [];
@@ -2941,8 +2995,8 @@ const LEVEL = (() => {
         const covered = coveredIntervals(area, horizontal, edge, start, end, isMin);
         let cursor = start;
         const addSegment = (lo, hi) => {
-          if (hi - lo <= 0.10) return;
-          const length = hi - lo + 0.24;
+          if (hi - lo <= 0.04) return;
+          const length = hi - lo + sealOverlap;
           const center = (lo + hi) * 0.5;
           if (horizontal) addWall(center, edge, length, 0.30, 'basement_seal');
           else addWall(edge, center, 0.30, length, 'basement_seal');
@@ -2959,6 +3013,24 @@ const LEVEL = (() => {
         addUncovered(area, true, area.maxZ, area.minX, area.maxX, false);
         addUncovered(area, false, area.minX, area.minZ, area.maxZ, true);
         addUncovered(area, false, area.maxX, area.minZ, area.maxZ, false);
+
+        // A wall run can be perfectly covered along both axes while a tiny
+        // diagonal sightline remains at its exposed corner. Add a compact
+        // bulkhead only when no other authored area reaches that corner; a
+        // genuine room/tunnel junction is left open for circulation.
+        [[area.minX, area.minZ], [area.minX, area.maxZ],
+         [area.maxX, area.minZ], [area.maxX, area.maxZ]].forEach(corner => {
+          const x = corner[0], z = corner[1];
+          let junction = false;
+          for (let i = 0; i < areas.length; i++) {
+            const other = areas[i];
+            if (other === area) continue;
+            const nearX = x >= other.minX - tolerance && x <= other.maxX + tolerance;
+            const nearZ = z >= other.minZ - tolerance && z <= other.maxZ + tolerance;
+            if (nearX && nearZ) { junction = true; break; }
+          }
+          if (!junction) addWall(x, z, cornerSize, cornerSize, 'basement_seal_corner');
+        });
       });
     }
 
@@ -5599,7 +5671,8 @@ const THROWABLE = (() => {
 /* ================================ [UI] =============================== */
 const UI = (() => {
   const el = {};
-  let kickTimer = 0, toastTimer = 0;
+  let kickTimer = 0, toastTimer = 0, radarAcc = 0;
+  let externalRadarContacts = [];
 
   function init() {
     el.start = document.getElementById('start');
@@ -5622,6 +5695,12 @@ const UI = (() => {
     el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
     el.killNum = document.getElementById('killNum');
+    el.radar = document.getElementById('radar');
+    el.radarCanvas = document.getElementById('radarCanvas');
+    el.radarLayer = document.getElementById('radarLayer');
+    el.radarSignal = document.getElementById('radarSignal');
+    el.radarCtx = el.radarCanvas && typeof el.radarCanvas.getContext === 'function'
+      ? el.radarCanvas.getContext('2d') : null;
     el.hurt = document.getElementById('hurt');
     el.dead = document.getElementById('dead');
     el.modeChip = document.getElementById('modeChip');
@@ -5683,6 +5762,73 @@ const UI = (() => {
   }
   function setKills(n) { el.killNum.textContent = n; }
 
+  // Multiplayer can feed additional contacts later without changing the
+  // radar renderer. Enemies are supplied by ENEMY.radarContacts() below.
+  function setRadarContacts(contacts) {
+    externalRadarContacts = Array.isArray(contacts) ? contacts.slice() : [];
+  }
+
+  function drawRadar() {
+    if (!el.radarCtx || !el.radarCanvas) return;
+    const ctx = el.radarCtx;
+    const size = el.radarCanvas.width;
+    const center = size * 0.5;
+    const radius = center - 12;
+    const layer = PLAYER.layerId;
+    const enemies = ENEMY.radarContacts ? ENEMY.radarContacts() : [];
+    const contacts = enemies.concat(externalRadarContacts);
+    let sameLayer = 0, otherLayer = 0, sameEnemies = 0;
+
+    ctx.clearRect(0, 0, size, size);
+    ctx.fillStyle = 'rgba(18,15,13,.78)';
+    ctx.fillRect(0, 0, size, size);
+    ctx.save();
+    ctx.translate(center, center);
+    ctx.strokeStyle = 'rgba(143,179,204,.42)';
+    ctx.lineWidth = 1.5;
+    [radius * 0.5, radius].forEach(r => {
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+    });
+    ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(0, radius); ctx.stroke();
+
+    // Blips are rotated into the player's frame: forward is always north on
+    // the sensor, which makes the ring useful on both desktop and mobile.
+    for (let i = 0; i < contacts.length; i++) {
+      const c = contacts[i];
+      if (!c || c.x === undefined || c.z === undefined) continue;
+      if (c.layerId !== layer) { otherLayer++; continue; }
+      sameLayer++;
+      if (c.type === 'enemy') sameEnemies++;
+      const dx = c.x - PLAYER.position.x, dz = c.z - PLAYER.position.z;
+      const distance = Math.hypot(dx, dz);
+      if (distance < 0.001) continue;
+      const right = dx * Math.cos(PLAYER.yaw) - dz * Math.sin(PLAYER.yaw);
+      const down = dx * Math.sin(PLAYER.yaw) + dz * Math.cos(PLAYER.yaw);
+      const scale = Math.min(1, distance / CONFIG.radar.range);
+      const x = right / distance * radius * scale;
+      const y = down / distance * radius * scale;
+      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : '#A85A3C';
+      ctx.strokeStyle = '#120F0D';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 4.2 : 4.8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+
+    // Player marker and forward tick.
+    ctx.fillStyle = '#E8A33D';
+    ctx.strokeStyle = '#120F0D';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.restore();
+
+    const label = layer === 'basement' ? 'Basement' : 'Surface';
+    el.radarLayer.textContent = label;
+    if (sameEnemies > 0) el.radarSignal.textContent = sameEnemies + ' hostile';
+    else if (sameLayer > 0) el.radarSignal.textContent = sameLayer + ' contact';
+    else if (otherLayer > 0) el.radarSignal.textContent = otherLayer + (layer === 'basement' ? ' above' : ' below');
+    else el.radarSignal.textContent = 'Clear';
+  }
+
   function toast(message, seconds) {
     if (!message) return;
     el.pickupToast.textContent = message;
@@ -5722,12 +5868,14 @@ const UI = (() => {
     el.dead.classList.remove('hidden');
     el.pause.classList.add('hidden');
     el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
     showMobileControls(false);
   }
   function hideDead() {
     deadShown = false;
     el.dead.classList.add('hidden');
     el.crosshair.classList.add('on');
+    el.radar.classList.add('on');
     showMobileControls(false);
   }
   function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
@@ -5741,16 +5889,19 @@ const UI = (() => {
     el.ammo.classList.add('on');
     el.vitals.classList.add('on');
     el.tally.classList.add('on');
+    el.radar.classList.add('on');
     showMobileControls(true);
   }
   function showPause() {
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
     showMobileControls(false);
   }
   function hidePause() {
     el.pause.classList.add('hidden');
     el.crosshair.classList.add('on');
+    el.radar.classList.add('on');
     showMobileControls(true);
   }
   function hideLoading() { el.loading.classList.add('hidden'); }
@@ -5769,6 +5920,11 @@ const UI = (() => {
     if (toastTimer > 0) {
       toastTimer -= dt;
       if (toastTimer <= 0) el.pickupToast.classList.remove('on');
+    }
+    radarAcc += dt;
+    if (radarAcc >= CONFIG.radar.refresh) {
+      radarAcc = 0;
+      if (el.radar.classList.contains('on')) drawRadar();
     }
     // shuffle the paper grain on a 12fps clock so the world looks hand-inked
     grainAcc += dt;
@@ -5790,6 +5946,7 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
+    setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
     el
   };
@@ -7404,11 +7561,28 @@ const ENEMY = (() => {
     return n;
   }
 
+  // Lightweight read-only feed for the HUD radar and future multiplayer
+  // telemetry. Layer ids are preserved so the sensor never reveals an enemy
+  // through a floor or ceiling; the HUD can still report how many contacts are
+  // above or below the player while the exact blips stay layer-local.
+  function radarContacts() {
+    const contacts = [];
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive) continue;
+      contacts.push({
+        type: 'enemy', x: e.pos.x, z: e.pos.z,
+        layerId: e.layerId, spawnKind: e.spawnKind
+      });
+    }
+    return contacts;
+  }
+
   return {
     init, update, hit, melee, blast, reset, applyDamage,
     get list() { return list; },
     get kills() { return kills; },
-    aliveCount
+    aliveCount, radarContacts
   };
 })();
 
