@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.07.04 Hero Specials</title>
+<title>The Withered Farm — v0.07.05 Pause Menu</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -574,7 +574,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.04 Hero Specials</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.05 Pause Menu</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
       <ul class="keys">
@@ -648,6 +648,7 @@
       <h1>Hold<br/>Still<span>Mouse is free</span></h1>
       <p class="sub" id="pauseHint">Click anywhere to grab the mouse again and get back to the farm.</p>
       <button class="go" id="resumeBtn">Back to it →</button>
+      <button class="go compact" id="pauseMenuBtn">Main menu</button>
       <button class="alt" id="freeBtn2">Mouse won't lock? Use free-look instead</button>
     </div>
   </div>
@@ -6912,6 +6913,7 @@ const GAME = (() => {
       UI.showStart();
     });
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
+    document.getElementById('pauseMenuBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
     document.getElementById('againBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
     document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
     document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });

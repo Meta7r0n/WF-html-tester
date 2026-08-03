@@ -79,3 +79,11 @@ The Scarf Scout's downed special now uses a clearly separated two-barrel,
 break-action view model. The Masked Runner's low-health special is a temporary,
 aimable chainsaw weapon swap with a visible guide bar and high-damage melee;
 holding the fire surface repeats the melee swing, including on mobile.
+
+## v0.07.05 Pause Menu
+
+The in-game pause card now includes a mobile-friendly **Main menu** action. It
+resets the active run through the same safe path as the end-game start-screen
+button, stops any co-op transport, releases input capture, and returns to the
+single-player / online co-op mode selector without changing the current run on
+the branch until the player chooses a new one.
