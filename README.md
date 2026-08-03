@@ -26,3 +26,11 @@ Both screens should enter the farm, show the other farmhand on the radar, and
 relay gunfire through the host. Enemy movement, pickups, revival, and shared
 completion remain single-client systems until the authoritative match layer is
 added.
+
+## v0.07.01 Carrot Rogue Boss Visual
+
+The Carrot Warden now loads the supplied `assets/carrot_rogue_character.glb`
+with its embedded materials and `IdleBob` / `RunCycle` animations. Boss
+collision, headshots, melee, seed blasts, radar, and the endgame trigger remain
+separate from the visual asset. If the optional loader or asset is unavailable,
+the procedural boss visual remains as a fallback.
