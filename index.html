@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.06.04 Basement Test</title>
+<title>The Withered Farm — v0.06.05 Basement Test</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -461,7 +461,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.04 Basement Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.05 Basement Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -1233,8 +1233,12 @@ const WORLD = {
   addFloor(cx, y, cz, w, h, d, tag) {
     return this.add(cx, y + h / 2, cz, w, h, d, tag);
   },
-  addSpawn(x, y, z, kind) {
-    this.spawnMarkers.push({ position: new THREE.Vector3(x, y, z), kind: kind || 'generic' });
+  addSpawn(x, y, z, kind, layerId) {
+    this.spawnMarkers.push({
+      position: new THREE.Vector3(x, y, z),
+      kind: kind || 'generic',
+      layerId: layerId || (y < -0.2 ? 'basement' : 'surface')
+    });
   },
   addLayer(id, options) {
     options = options || {};
@@ -2801,6 +2805,16 @@ const LEVEL = (() => {
     addBasementHatch('basement', 24.0, -9.5, 1);
     addBasementHatch('seed_store', -24.0, 16.0, 1);
     addBasementHatch('windmill', -7.6, -30.0, 1);
+    // v0.06.05: the northwest grenade room gets its own surface access. The
+    // room ceiling is split around this opening below so the ladder remains a
+    // readable, continuous route instead of ending inside the slab.
+    addBasementHatch('northwest', -18.5, -44.8, 1);
+
+    // Keep the first underground enemy deliberately close to the original
+    // basement room. The layer id prevents this marker from being mistaken for
+    // a surface spawn at the same farm coordinates and gives future spawns a
+    // data-only path to more rooms.
+    WORLD.addSpawn(14.0, FLOOR_Y, -6.0, 'basement_barn', 'basement');
 
     /* ---- v0.06.02 underground expansion ----
        One westbound service spine joins the first basement to a utility room,
@@ -2811,11 +2825,31 @@ const LEVEL = (() => {
     const wallY = (FLOOR_Y + CEIL_Y) * 0.5;
     const shell = new PRIM.Batch(concrete, 0.028);
 
-    function addSlab(cx, cz, w, d, tag) {
+    function addSlab(cx, cz, w, d, tag, ceilingOpening) {
       shell.box(w, 0.22, d, cx, FLOOR_Y - 0.11, cz);
-      shell.box(w, 0.30, d, cx, CEIL_Y - 0.15, cz);
       WORLD.addFloor(cx, FLOOR_Y - 0.22, cz, w, 0.22, d, tag + '_floor');
-      WORLD.add(cx, CEIL_Y - 0.15, cz, w, 0.30, d, tag + '_ceiling');
+      if (!ceilingOpening) {
+        shell.box(w, 0.30, d, cx, CEIL_Y - 0.15, cz);
+        WORLD.add(cx, CEIL_Y - 0.15, cz, w, 0.30, d, tag + '_ceiling');
+        return;
+      }
+      // Hatch rooms keep a small ceiling opening so the ladder is visibly
+      // continuous from the basement floor to the surface hatch.
+      const minX = cx - w * 0.5, maxX = cx + w * 0.5;
+      const minZ = cz - d * 0.5, maxZ = cz + d * 0.5;
+      const pieces = [
+        { cx: (minX + ceilingOpening.minX) * 0.5, cz: (minZ + maxZ) * 0.5, w: ceilingOpening.minX - minX, d: d },
+        { cx: (ceilingOpening.maxX + maxX) * 0.5, cz: (minZ + maxZ) * 0.5, w: maxX - ceilingOpening.maxX, d: d },
+        { cx: (ceilingOpening.minX + ceilingOpening.maxX) * 0.5, cz: (minZ + ceilingOpening.minZ) * 0.5,
+          w: ceilingOpening.maxX - ceilingOpening.minX, d: ceilingOpening.minZ - minZ },
+        { cx: (ceilingOpening.minX + ceilingOpening.maxX) * 0.5, cz: (ceilingOpening.maxZ + maxZ) * 0.5,
+          w: ceilingOpening.maxX - ceilingOpening.minX, d: maxZ - ceilingOpening.maxZ }
+      ];
+      pieces.forEach(p => {
+        if (p.w <= 0.02 || p.d <= 0.02) return;
+        shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
+        WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, tag + '_ceiling');
+      });
     }
 
     function addWall(cx, cz, w, d, tag) {
@@ -2870,7 +2904,9 @@ const LEVEL = (() => {
     addWall(-20.25, -36.55, 0.30, 3.60, 'northwest_bend');
     addWall(-16.75, -36.55, 0.30, 3.60, 'northwest_bend');
 
-    addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room');
+    addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room', {
+      minX: -19.60, maxX: -17.40, minZ: -45.90, maxZ: -43.70
+    });
     addWall(-27.15, -43.0, 0.30, 9.30, 'grenade_room');
     addWall(-15.85, -43.0, 0.30, 9.30, 'grenade_room');
     addWall(-21.50, -47.65, 11.30, 0.30, 'grenade_room');
@@ -5681,6 +5717,7 @@ const PICKUP = (() => {
     { id: 'shieldCell', x: 9.0, y: -4.0, z: -30.0 },        // east tunnel
     { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },      // relay platform
     { id: 'grenadeBundle', x: -22.2, y: -4.0, z: -43.2 },   // northwest room
+    { id: 'grenadeBundle', x: 14.0, z: -3.8 },              // barn interior
 
     // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
     { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
@@ -6567,10 +6604,12 @@ const ENEMY = (() => {
     const built = CAST.build(id);
     // Snap to whatever surface is actually under the marker, so markers can be
     // authored roughly and still land people on floors, lofts and decks.
+    const layerId = marker.layerId || 'surface';
     const home = marker.position.clone();
-    home.y = WORLD.groundAt(home.x, home.z, home.y + 0.8);
+    home.y = WORLD.groundAt(home.x, home.z, home.y + 0.8, layerId);
     const e = {
       id: id,
+      layerId: layerId,
       def: built.def,
       skin: built.skin,
       rig: built.rig,
@@ -6629,8 +6668,16 @@ const ENEMY = (() => {
     LOS_TARGETS = RAY_TARGETS.slice();
 
     const roster = CAST.list();
-    // Spread the cast across the spawn markers the level already publishes.
-    const markers = WORLD.spawnMarkers.filter(m => m.kind !== 'yard');
+    // Spread the cast across the spawn markers the level already publishes,
+    // reserving one slot for each underground marker so a new layer cannot be
+    // silently starved by the surface roster. This scales to future rooms
+    // without changing the total enemy count.
+    const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard');
+    const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
+    const surfaceMarkers = eligible.filter(m => (m.layerId || 'surface') !== 'basement');
+    const reserve = Math.min(basementMarkers.length, C.count);
+    const markers = surfaceMarkers.slice(0, C.count - reserve)
+      .concat(basementMarkers.slice(0, reserve));
     markers.forEach((m, i) => {
       if (list.length >= C.count) return;
       create(roster[i % roster.length], m);
@@ -6640,6 +6687,7 @@ const ENEMY = (() => {
 
   /* ---------------- perception ---------------- */
   function canSee(e) {
+    if (e.layerId !== PLAYER.layerId) return false;
     const p = PLAYER.position;
     _v.set(p.x - e.pos.x, 0, p.z - e.pos.z);
     const dist = _v.length();
@@ -6740,7 +6788,7 @@ const ENEMY = (() => {
     let best = null, bestScore = Infinity;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (!e.alive) continue;
+      if (!e.alive || e.layerId !== PLAYER.layerId) continue;
       _v.set(e.pos.x, e.pos.y + 0.92, e.pos.z).sub(origin);
       const distance = _v.length();
       if (distance > range || distance < 0.001) continue;
@@ -6778,7 +6826,7 @@ const ENEMY = (() => {
     let hitCount = 0;
     for (let i = 0; i < list.length; i++) {
       const e = list[i];
-      if (!e.alive) continue;
+      if (!e.alive || e.layerId !== PLAYER.layerId) continue;
       _v.set(e.pos.x, e.pos.y + 0.88, e.pos.z);
       _v2.subVectors(_v, center);
       const distance = _v2.length();
@@ -6972,6 +7020,7 @@ const ENEMY = (() => {
     const p = PLAYER.position;
     const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
     const st = e.def.stats;
+    const sameLayer = e.layerId === PLAYER.layerId;
 
     switch (e.state) {
       case 'idle': {
@@ -6994,6 +7043,11 @@ const ENEMY = (() => {
         break;
       }
       case 'chase': {
+        if (!sameLayer) {
+          idleBrake(e, dt);
+          if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+          break;
+        }
         faceTowards(e, p.x, p.z, dt, 7);
         steer(e, p.x, p.z, st.speed, dt);
         if (distToPlayer < st.reach && Math.abs(p.y - e.pos.y) < 1.6) setState(e, 'attack');
@@ -7008,6 +7062,11 @@ const ENEMY = (() => {
         break;
       }
       case 'attack': {
+        if (!sameLayer) {
+          idleBrake(e, dt);
+          if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+          break;
+        }
         idleBrake(e, dt);
         faceTowards(e, p.x, p.z, dt, 4);
         if (!e.didStrike && e.timer >= st.windup) {
@@ -7048,7 +7107,8 @@ const ENEMY = (() => {
 
     // integrate through the shared solver
     WORLD.moveActor(e.pos, e.vel, dt, {
-      radius: C.radius, height: C.height, stepHeight: C.stepHeight, gravity: C.gravity
+      radius: C.radius, height: C.height, stepHeight: C.stepHeight, gravity: C.gravity,
+      layerId: e.layerId
     }, e.body);
     if (e.pos.y < -6) { e.pos.copy(e.home); e.vel.set(0, 0, 0); }
 
