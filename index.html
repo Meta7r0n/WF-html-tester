@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — Phase 1 Prototype</title>
+<title>The Withered Farm — v0.06.04 Basement Test</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -117,6 +117,22 @@
   }
   #reloadTag.on{opacity:1;animation:nudge .5s steps(2,end) infinite;}
   @keyframes nudge{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(1deg) translateY(-3px)}100%{transform:rotate(-2deg) translateY(0)}}
+  #throwableHud{
+    position:fixed;right:26px;bottom:132px;z-index:30;
+    display:flex;align-items:center;gap:8px;opacity:0;pointer-events:none;
+    color:var(--cream);font:900 11px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;transform:rotate(1deg);
+    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    transition:opacity .18s ease;
+  }
+  #throwableHud.on{opacity:1;}
+  #throwableHud.empty{opacity:.48;}
+  #throwableCount{
+    display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
+    border:3px solid var(--ink);border-radius:50%;background:var(--olive);
+    color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
+    box-shadow:3px 4px 0 rgba(22,18,15,.4);
+  }
 
   /* ---------- Health + tally ---------- */
   #vitals{
@@ -258,6 +274,10 @@
   #mobileMelee{right:2px;bottom:clamp(94px,15vw,122px);}
   #mobileReload{right:clamp(88px,14vw,118px);bottom:0;}
   #mobileSwap{right:clamp(151px,23vw,194px);bottom:clamp(18px,3vw,28px);}
+  #mobileThrowable{
+    right:clamp(151px,23vw,194px);bottom:clamp(93px,15vw,118px);
+    background:rgba(110,122,66,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+  }
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
@@ -279,6 +299,10 @@
   body.touch-device #ammo{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(39px,calc(env(safe-area-inset-top) + 25px));bottom:auto;
     transform:scale(.72);transform-origin:right top;
+  }
+  body.touch-device #throwableHud{
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(82px,calc(env(safe-area-inset-top) + 68px));bottom:auto;
+    transform:scale(.8) rotate(1deg);transform-origin:right top;
   }
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
   body.touch-device #vitals{
@@ -394,6 +418,9 @@
     <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
   </div>
   <div id="reloadTag">Press R to reload</div>
+  <div id="throwableHud" aria-live="polite">
+    <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
+  </div>
 
   <div id="vitals">
     <p class="lbl">Pep</p>
@@ -423,6 +450,7 @@
       <button type="button" class="mobile-btn" id="mobileMelee" aria-label="Melee attack">Bash</button>
       <button type="button" class="mobile-btn" id="mobileReload" aria-label="Reload weapon">Load</button>
       <button type="button" class="mobile-btn" id="mobileSwap" aria-label="Switch weapon">Swap</button>
+      <button type="button" class="mobile-btn" id="mobileThrowable" aria-label="Throw selected throwable">Throw</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
   </div>
@@ -433,7 +461,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06 Catwalk Test</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.04 Basement Test</p>
       <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
       <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
       <ul class="keys">
@@ -446,10 +474,11 @@
         <li><kbd>V / RMB</kbd> Quick melee</li>
         <li><kbd>1–4</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
+        <li><kbd>G</kbd> Throw grenade</li>
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
-      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting.</div>
+      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
       <button class="go" id="enterBtn">Click to enter →</button>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Sound starts when you enter</p>
@@ -500,6 +529,7 @@
      [INPUT]     input manager (keyboard/mouse, pointer lock)
      [PLAYER]    first-person controller
      [WEAPON]    inventory, viewmodels, gunfire + melee
+     [THROWABLE] extensible throwable inventory + projectile physics
      [PICKUP]    extensible world pickup registry
      [UI]        HUD + overlays
      [GAME]      bootstrap + main loop
@@ -570,6 +600,15 @@ const CONFIG = {
       fireInterval: 0.11, reloadTime: 1.65, automatic: true,
       pellets: 1, damage: 18, spread: 0.021, range: 105,
       recoilBack: 0.065, meleeDamage: 40, meleeRange: 2.3, meleeArc: 0.58
+    }
+  },
+  throwables: {
+    grenade: {
+      id: 'grenade', name: 'Grenade', plural: 'Grenades',
+      maxCarry: 6, fuse: 1.65, throwSpeed: 11.8, throwLift: 4.1,
+      radius: 0.18, gravity: 18, bounce: 0.46, friction: 0.78,
+      blastRadius: 5.4, damage: 105, minDamage: 24,
+      playerDamage: 68, playerMinDamage: 14, force: 3.8
     }
   },
   weaponView: {
@@ -2808,12 +2847,35 @@ const LEVEL = (() => {
     addWall(-5.75, -18.55, 0.30, 11.1, 'root_spur');
     addWall(-2.25, -18.55, 0.30, 11.1, 'root_spur');
     addSlab(-4.0, -30.0, 12.0, 12.0, 'root_cellar');
-    addWall(-10.15, -30.0, 0.30, 12.3, 'root_cellar');
+    // Split the west wall around the v0.06.04 northwest branch. The opening
+    // is a full 3.5 m wide, so it remains smooth at sprint speed and later
+    // leaves enough circulation room for multiple players.
+    addWall(-10.15, -35.45, 0.30, 1.40, 'root_cellar');
+    addWall(-10.15, -27.55, 0.30, 7.40, 'root_cellar');
     addWall(2.15, -33.925, 0.30, 4.45, 'root_cellar');
     addWall(2.15, -26.075, 0.30, 4.45, 'root_cellar');
     addWall(-4.0, -36.15, 12.3, 0.30, 'root_cellar');
     addWall(-7.925, -23.85, 4.45, 0.30, 'root_cellar');
     addWall(-0.075, -23.85, 4.45, 0.30, 'root_cellar');
+
+    /* ---- v0.06.04 northwest grenade room ----
+       A compact L-shaped branch reaches beneath the northwest corner of the
+       north pasture. The bend blocks a root-cellar-to-room firing lane and
+       keeps the underground network room-and-tunnel based rather than open. */
+    addSlab(-14.40, -33.0, 8.5, 3.6, 'northwest_link');
+    addWall(-14.40, -31.25, 8.5, 0.30, 'northwest_link');
+    addWall(-13.425, -34.75, 6.55, 0.30, 'northwest_link');
+
+    addSlab(-18.50, -36.55, 3.6, 7.6, 'northwest_bend');
+    addWall(-20.25, -36.55, 0.30, 3.60, 'northwest_bend');
+    addWall(-16.75, -36.55, 0.30, 3.60, 'northwest_bend');
+
+    addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room');
+    addWall(-27.15, -43.0, 0.30, 9.30, 'grenade_room');
+    addWall(-15.85, -43.0, 0.30, 9.30, 'grenade_room');
+    addWall(-21.50, -47.65, 11.30, 0.30, 'grenade_room');
+    addWall(-23.70, -38.35, 6.90, 0.30, 'grenade_room');
+    addWall(-16.30, -38.35, 0.90, 0.30, 'grenade_room');
 
     /* ---- v0.06.03 full-farm circulation ----
        The southern run reaches toward the gate side of the farm. The eastern
@@ -2880,11 +2942,15 @@ const LEVEL = (() => {
     doorwayFrame(2.12, -30.0, false);
     doorwayFrame(17.0, -31.72, true);
     doorwayFrame(17.0, -37.32, true);
+    doorwayFrame(-10.12, -33.0, false);
+    doorwayFrame(-18.50, -34.72, true);
+    doorwayFrame(-18.50, -38.32, true);
     // Wall-side braces add rhythm without narrowing any walkable lane.
     [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
     [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
     [-1, 4, 9].forEach(z => frames.box(3.25, 0.16, 0.16, -18.5, CEIL_Y - 0.25, z));
     [5, 10].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -30));
+    [-25, -21, -17].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -43));
     frames.build(parent);
 
     // Opaque, wall-matched, and deliberately non-colliding: the only way to
@@ -2953,8 +3019,10 @@ const LEVEL = (() => {
     });
     platforms.build(parent);
 
-    PROPS.crate(parent, -8.3, FLOOR_Y, -33.8, 0.95, 0.15);
-    PROPS.crate(parent, -7.3, FLOOR_Y, -33.4, 0.78, -0.25);
+    // Keep the new west doorway clear; this old cover now hugs the north wall
+    // instead of forcing players to squeeze around it on the tunnel approach.
+    PROPS.crate(parent, -8.2, FLOOR_Y, -35.25, 0.95, 0.15);
+    PROPS.crate(parent, -7.1, FLOOR_Y, -35.15, 0.78, -0.25);
     PROPS.crate(parent, 0.2, FLOOR_Y, -27.0, 0.9, 0.4);
     PROPS.hayBale(parent, 0.0, FLOOR_Y, -33.5, -0.2);
     PROPS.hayBale(parent, -1.3, FLOOR_Y, -34.0, 0.16);
@@ -2962,6 +3030,9 @@ const LEVEL = (() => {
     PROPS.crate(parent, -10.9, FLOOR_Y, 23.6, 0.92, -0.2);
     PROPS.crate(parent, 23.3, FLOOR_Y, -49.2, 0.86, 0.35);
     PROPS.crate(parent, 10.5, FLOOR_Y, -38.7, 0.78, -0.25);
+    PROPS.crate(parent, -25.2, FLOOR_Y, -45.4, 0.90, 0.22);
+    PROPS.crate(parent, -24.1, FLOOR_Y, -45.0, 0.72, -0.28);
+    PROPS.hayBale(parent, -18.2, FLOOR_Y, -45.2, 0.18);
 
     PROPS.lantern(parent, -2.0, -0.78, -11.5, 0);
     PROPS.lantern(parent, -18.5, -0.78, -11.5, 0);
@@ -2969,6 +3040,7 @@ const LEVEL = (() => {
     PROPS.lantern(parent, -17.5, -0.78, 17.5, 0);
     PROPS.lantern(parent, 9.0, -0.78, -30.0, 0);
     PROPS.lantern(parent, 17.0, -0.78, -44.0, 0);
+    PROPS.lantern(parent, -21.5, -0.78, -43.0, 0);
 
     // The cache has no bright exterior tell. A warm strip only becomes visible
     // after the player has crossed the false panel.
@@ -3145,7 +3217,7 @@ const FX = (() => {
       m.renderOrder = 3;
       m.raycast = function () {};
       scene.add(m);
-      rings.push({ mesh: m, life: 0 });
+      rings.push({ mesh: m, life: 0, maxLife: 0.42, s0: 0.18, s1: 1.48 });
     }
 
     muzzleLight = new THREE.PointLight(0xFFE9A8, 0, 12, 2);
@@ -3212,14 +3284,52 @@ const FX = (() => {
       });
     }
     // smoke ring
+    burstRing(point, normal, 0.18, 1.48, 0.42, PAL.cream);
+  }
+
+  function burstRing(point, normal, startScale, endScale, life, color) {
     const r = rings[ringIdx = (ringIdx + 1) % rings.length];
     r.mesh.position.copy(point).addScaledVector(normal, 0.06);
     _v.copy(point).add(normal);
     r.mesh.lookAt(_v);
-    r.mesh.scale.setScalar(0.18);
-    r.mesh.material.opacity = 0.85;
+    r.mesh.scale.setScalar(startScale);
+    r.mesh.material.color.setHex(color === undefined ? PAL.cream : color);
+    r.mesh.material.opacity = 0.9;
     r.mesh.visible = true;
-    r.life = 0.42;
+    r.life = r.maxLife = life;
+    r.s0 = startScale;
+    r.s1 = endScale;
+  }
+
+  /* A layered paper-and-ink blast shared by grenades and future explosives. */
+  function explosion(point, radius) {
+    radius = radius || 5;
+    burstRing(point, UP, 0.22, radius * 0.72, 0.58, PAL.mustard);
+    burstRing(point, new THREE.Vector3(1, 0, 0), 0.18, radius * 0.54, 0.48, PAL.cream);
+    burstRing(point, new THREE.Vector3(0, 0, 1), 0.18, radius * 0.54, 0.48, PAL.rust);
+
+    for (let i = 0; i < 28; i++) {
+      const a = UTIL.rng(0, Math.PI * 2);
+      const speed = UTIL.rng(3.2, 8.8);
+      _v.set(Math.cos(a) * speed, UTIL.rng(1.6, 7.2), Math.sin(a) * speed);
+      spawnParticle(point, _v, {
+        map: TEX.star(i % 3 === 0 ? PAL.rust : (i % 2 ? PAL.cream : PAL.mustard)),
+        s0: UTIL.rng(0.18, 0.42), s1: 0.025,
+        life: UTIL.rng(0.42, 0.9), grav: UTIL.rng(5, 9), spin: UTIL.rng(-12, 12)
+      });
+    }
+    for (let i = 0; i < 11; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(0.8, 3.4);
+      _v.set(Math.cos(a) * speed, UTIL.rng(0.3, 2.1), Math.sin(a) * speed);
+      spawnParticle(point, _v, {
+        map: TEX.puff(i % 3 === 0 ? PAL.blueGray : PAL.cream),
+        s0: UTIL.rng(0.3, 0.58), s1: UTIL.rng(1.0, 1.7),
+        life: UTIL.rng(0.65, 1.1), grav: -0.35, spin: UTIL.rng(-2, 2)
+      });
+    }
+    muzzleLight.position.copy(point);
+    muzzleLight.intensity = 6.2;
+    muzzleLight.visible = true;
   }
 
   function tracer(from, to) {
@@ -3306,9 +3416,9 @@ const FX = (() => {
       if (r.life <= 0) continue;
       r.life -= dt;
       if (r.life <= 0) { r.mesh.visible = false; continue; }
-      const k = 1 - r.life / 0.42;
-      r.mesh.scale.setScalar(0.18 + k * 1.3);
-      r.mesh.material.opacity = 0.85 * (1 - k);
+      const k = 1 - r.life / r.maxLife;
+      r.mesh.scale.setScalar(UTIL.lerp(r.s0, r.s1, k));
+      r.mesh.material.opacity = 0.9 * (1 - k);
     }
 
     // --- decals fade only when they are about to be recycled ---
@@ -3354,7 +3464,7 @@ const FX = (() => {
     return false;
   }
 
-  return { init, update, impact, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler };
+  return { init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler };
 })();
 
 /* ============================== [AUDIO] ============================== */
@@ -3504,13 +3614,35 @@ const AUDIO = (() => {
     }
   }
 
+  function throwable(kind) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    if (kind === 'empty') {
+      tone(t0, 420, 210, 0.08, 0.07, 'square');
+      return;
+    }
+    const f = noiseBurst(t0, 0.12, 1050, 1.4, 0.13);
+    f.frequency.exponentialRampToValueAtTime(360, t0 + 0.1);
+    tone(t0, 180, 430, 0.11, 0.07, 'triangle');
+  }
+
+  function blast() {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    const f = noiseBurst(t0, 0.48, 720, 0.7, 0.72, 'lowpass');
+    f.frequency.exponentialRampToValueAtTime(70, t0 + 0.42);
+    tone(t0, 155, 38, 0.5, 0.46, 'sawtooth');
+    tone(t0 + 0.025, 720, 92, 0.22, 0.16, 'square');
+  }
+
   function pickup(kind) {
     if (!started) return;
     const t0 = ctx.currentTime;
-    const base = kind === 'shield' ? 680 : kind === 'health' ? 520 : kind === 'weapon' ? 360 : 440;
+    const base = kind === 'shield' ? 680 : kind === 'health' ? 520 :
+      (kind === 'weapon' || kind === 'throwable') ? 360 : 440;
     tone(t0, base, base * 1.35, 0.12, 0.08, 'triangle');
     tone(t0 + 0.08, base * 1.28, base * 1.8, 0.16, 0.075, 'sine');
-    if (kind === 'weapon') tone(t0 + 0.17, base * 1.7, base * 2.3, 0.2, 0.07, 'square');
+    if (kind === 'weapon' || kind === 'throwable') tone(t0 + 0.17, base * 1.7, base * 2.3, 0.2, 0.07, 'square');
   }
 
   function shieldHit() {
@@ -3681,7 +3813,7 @@ const AUDIO = (() => {
 
   return {
     start, resume, suspend, update,
-    gunshot, dryFire, melee, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
+    gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
     get running() { return started; }
   };
@@ -3701,7 +3833,7 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, nextWeapon: false, pause: false,
+    melee: false, throwable: false, nextWeapon: false, pause: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -3736,6 +3868,7 @@ const INPUT = (() => {
     'KeyR': 'reload',
     'KeyF': 'lantern',
     'KeyV': 'melee',
+    'KeyG': 'throwable',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
@@ -3832,7 +3965,7 @@ const INPUT = (() => {
     }
     const action = KEYMAP[e.code];
     if (!action) return;
-    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     setAction(action, down);
   }
 
@@ -3981,6 +4114,7 @@ const INPUT = (() => {
     bindTouchButton('mobileMelee', 'melee');
     bindTouchButton('mobileReload', 'reload');
     bindTouchButton('mobileSwap', 'nextWeapon');
+    bindTouchButton('mobileThrowable', 'throwable');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -5036,6 +5170,284 @@ const WEAPON = (() => {
   };
 })();
 
+/* ============================ [THROWABLE] ===========================
+   A separate, data-driven throwable inventory. Grenades are the first entry,
+   but pickup handling, selection, HUD state and projectile lifecycle are
+   shared so later throwable types do not need another input or update loop. */
+const THROWABLE = (() => {
+  const DEFS = CONFIG.throwables;
+  const inventory = {};
+  const active = [];
+  let scene = null;
+  let currentId = 'grenade';
+
+  const _forward = new THREE.Vector3();
+  const _target = new THREE.Vector3();
+  const _delta = new THREE.Vector3();
+  const _dir = new THREE.Vector3();
+  const raycaster = new THREE.Raycaster();
+
+  function define(id, def) {
+    DEFS[id] = Object.assign({
+      id: id, name: id, plural: id, maxCarry: 4,
+      fuse: 1.5, throwSpeed: 10, throwLift: 3.5,
+      radius: 0.18, gravity: 18, bounce: 0.45, friction: 0.78,
+      blastRadius: 4.5, damage: 80, minDamage: 18,
+      playerDamage: 52, playerMinDamage: 10, force: 3
+    }, def || {});
+    if (!inventory[id]) inventory[id] = { owned: false, count: 0 };
+    return DEFS[id];
+  }
+
+  Object.keys(DEFS).forEach(id => {
+    DEFS[id] = Object.assign({ id: id }, DEFS[id]);
+    inventory[id] = { owned: false, count: 0 };
+  });
+
+  function buildGrenadeVisual(parent, scale) {
+    const root = new THREE.Group();
+    root.scale.setScalar(scale || 1);
+    parent.add(root);
+    const body = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    PRIM.sph(0.18, body, {
+      parent: root, scale: [1, 0.94, 1], outline: 0.026, ray: false
+    });
+    PRIM.cyl(0.075, 0.09, 0.105, 9, metal, {
+      pos: [0, 0.19, 0], parent: root, outline: 0.018, ray: false
+    });
+    PRIM.box(0.16, 0.035, 0.055, MAT.toon(PAL.mustardDk), {
+      pos: [0.055, 0.25, 0], rot: [0, 0, -0.18], parent: root, outline: 0.012, ray: false
+    });
+    PRIM.torus(0.055, 0.012, MAT.toon(PAL.creamDim), {
+      pos: [0.15, 0.26, 0], rot: [Math.PI / 2, 0, 0], parent: root, outline: 0.009, ray: false
+    });
+    PRIM.hose(
+      new THREE.Vector3(-0.025, 0.24, 0),
+      new THREE.Vector3(-0.12, 0.34, 0.035),
+      0.025, 0.012, MAT.toon(PAL.rustDeep),
+      { parent: root, outline: 0.008, ray: false }
+    );
+    return root;
+  }
+
+  function buildPickupVisual(parent, id) {
+    if (id === 'grenade') {
+      const a = buildGrenadeVisual(parent, 1.35);
+      const b = buildGrenadeVisual(parent, 1.18);
+      a.position.set(-0.16, 0, 0);
+      a.rotation.z = -0.18;
+      b.position.set(0.18, -0.04, 0.04);
+      b.rotation.z = 0.22;
+      return parent;
+    }
+    PRIM.sph(0.28, MAT.toon(PAL.olive), { parent: parent, outline: 0.034, ray: false });
+    return parent;
+  }
+
+  function syncHUD() {
+    const def = DEFS[currentId];
+    const state = inventory[currentId];
+    if (def && state) UI.setThrowable(def.name, state.count, state.owned);
+  }
+
+  function init(mainScene) {
+    scene = mainScene;
+    syncHUD();
+  }
+
+  function select(id) {
+    if (!DEFS[id] || !inventory[id]) return false;
+    currentId = id;
+    syncHUD();
+    return true;
+  }
+
+  function add(id, quantity) {
+    const def = DEFS[id], state = inventory[id];
+    if (!def || !state) return { consumed: false, newlyOwned: false, added: 0 };
+    quantity = Math.max(0, Math.floor(quantity || 0));
+    const newlyOwned = !state.owned;
+    const before = state.count;
+    state.owned = true;
+    state.count = Math.min(def.maxCarry, state.count + quantity);
+    const added = state.count - before;
+    if (newlyOwned) currentId = id;
+    syncHUD();
+    return { consumed: newlyOwned || added > 0, newlyOwned: newlyOwned, added: added, count: state.count };
+  }
+
+  function worldBlocked(from, to) {
+    _delta.subVectors(to, from);
+    const distance = _delta.length();
+    if (distance < 0.05) return false;
+    _delta.multiplyScalar(1 / distance);
+    raycaster.set(from, _delta);
+    raycaster.far = distance;
+    const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+    for (let i = 0; i < hits.length; i++) {
+      const object = hits[i].object;
+      if (object.userData.outline || object.userData.enemyHit) continue;
+      return hits[i].distance < distance - 0.18;
+    }
+    return false;
+  }
+
+  function throwCurrent(camera) {
+    const def = DEFS[currentId], state = inventory[currentId];
+    if (!def || !state || state.count <= 0) {
+      AUDIO.throwable('empty');
+      UI.toast(state && state.owned ? 'Out of grenades' : 'Grenades have not been found yet', 1.1);
+      return false;
+    }
+    if (!scene || !camera) return false;
+
+    state.count--;
+    syncHUD();
+    PLAYER.forwardVector(_forward);
+    const pos = camera.position.clone().addScaledVector(_forward, 0.58);
+    pos.y -= 0.18;
+    const vel = _forward.clone().multiplyScalar(def.throwSpeed);
+    vel.y += def.throwLift;
+
+    const root = new THREE.Group();
+    root.position.copy(pos);
+    root.rotation.set(UTIL.rng(-0.4, 0.4), UTIL.rng(0, Math.PI * 2), UTIL.rng(-0.4, 0.4));
+    scene.add(root);
+    buildGrenadeVisual(root, 1);
+    active.push({
+      id: currentId, def: def, root: root, pos: pos, vel: vel,
+      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius
+    });
+    AUDIO.throwable('throw');
+    UI.crosshairKick();
+    return true;
+  }
+
+  function collideAxis(projectile, axis, amount) {
+    if (Math.abs(amount) < 0.000001) return;
+    const p = projectile.pos, r = projectile.radius;
+    p[axis] += amount;
+    for (let i = 0; i < WORLD.solids.length; i++) {
+      const s = WORLD.solids[i];
+      if (p.y + r <= s.minY || p.y - r >= s.maxY) continue;
+      if (p.x + r <= s.minX || p.x - r >= s.maxX) continue;
+      if (p.z + r <= s.minZ || p.z - r >= s.maxZ) continue;
+      if (axis === 'x') {
+        p.x = amount > 0 ? s.minX - r : s.maxX + r;
+        projectile.vel.x *= -projectile.def.bounce;
+      } else {
+        p.z = amount > 0 ? s.minZ - r : s.maxZ + r;
+        projectile.vel.z *= -projectile.def.bounce;
+      }
+    }
+  }
+
+  function physicsStep(projectile, dt) {
+    const p = projectile.pos, v = projectile.vel, r = projectile.radius, def = projectile.def;
+    collideAxis(projectile, 'x', v.x * dt);
+    collideAxis(projectile, 'z', v.z * dt);
+
+    const prevY = p.y;
+    v.y -= def.gravity * dt;
+    p.y += v.y * dt;
+
+    if (v.y > 0) {
+      for (let i = 0; i < WORLD.solids.length; i++) {
+        const s = WORLD.solids[i];
+        if (p.x + r <= s.minX || p.x - r >= s.maxX) continue;
+        if (p.z + r <= s.minZ || p.z - r >= s.maxZ) continue;
+        if (prevY + r <= s.minY + 0.01 && p.y + r >= s.minY) {
+          p.y = s.minY - r - 0.002;
+          v.y *= -def.bounce;
+          break;
+        }
+      }
+    }
+
+    const ground = WORLD.groundAt(p.x, p.z, prevY + r + 0.03, projectile.layerId);
+    if (v.y <= 0 && p.y - r <= ground) {
+      p.y = ground + r;
+      if (Math.abs(v.y) > 0.85) v.y *= -def.bounce;
+      else v.y = 0;
+      v.x *= def.friction;
+      v.z *= def.friction;
+      if (Math.hypot(v.x, v.z) < 0.08) { v.x = 0; v.z = 0; }
+    }
+
+    projectile.root.position.copy(p);
+    projectile.root.rotation.x += (v.z * 1.8 + 2.6) * dt;
+    projectile.root.rotation.z -= (v.x * 1.8 - 1.9) * dt;
+  }
+
+  function detonate(projectile) {
+    const point = projectile.pos.clone();
+    if (scene) scene.remove(projectile.root);
+    FX.explosion(point, projectile.def.blastRadius);
+    AUDIO.blast();
+    ENEMY.blast(point, {
+      radius: projectile.def.blastRadius,
+      damage: projectile.def.damage,
+      minDamage: projectile.def.minDamage,
+      force: projectile.def.force
+    });
+
+    _target.copy(PLAYER.position);
+    _target.y += CONFIG.player.height * 0.52;
+    const distance = _target.distanceTo(point);
+    if (!PLAYER.isDead && distance <= projectile.def.blastRadius && !worldBlocked(point, _target)) {
+      const falloff = 1 - UTIL.clamp(distance / projectile.def.blastRadius, 0, 1);
+      const amount = UTIL.lerp(projectile.def.playerMinDamage, projectile.def.playerDamage, falloff);
+      PLAYER.damage(amount, point);
+    }
+  }
+
+  function update(dt, time, camera, simulate, canThrow) {
+    if (canThrow && INPUT.consumePress('throwable')) throwCurrent(camera);
+    if (!simulate || dt <= 0) return;
+    for (let i = active.length - 1; i >= 0; i--) {
+      const projectile = active[i];
+      projectile.timer -= dt;
+      let remaining = dt;
+      while (remaining > 0) {
+        const step = Math.min(remaining, 1 / 90);
+        physicsStep(projectile, step);
+        remaining -= step;
+      }
+      if (projectile.timer <= 0) {
+        detonate(projectile);
+        active.splice(i, 1);
+      }
+    }
+  }
+
+  function clearActive() {
+    for (let i = 0; i < active.length; i++) if (scene) scene.remove(active[i].root);
+    active.length = 0;
+  }
+
+  function reset() {
+    clearActive();
+    Object.keys(DEFS).forEach(id => {
+      if (!inventory[id]) inventory[id] = { owned: false, count: 0 };
+      inventory[id].owned = false;
+      inventory[id].count = 0;
+    });
+    currentId = DEFS.grenade ? 'grenade' : Object.keys(DEFS)[0];
+    syncHUD();
+  }
+
+  return {
+    init, update, reset, define, select, add, throwCurrent, buildPickupVisual,
+    get definitions() { return DEFS; },
+    get inventory() { return inventory; },
+    get active() { return active; },
+    get currentId() { return currentId; },
+    get count() { return inventory[currentId] ? inventory[currentId].count : 0; },
+    get owned() { return !!(inventory[currentId] && inventory[currentId].owned); }
+  };
+})();
+
 /* ================================ [UI] =============================== */
 const UI = (() => {
   const el = {};
@@ -5051,6 +5463,9 @@ const UI = (() => {
     el.shells = document.getElementById('shells');
     el.ammoNum = document.getElementById('ammoNum');
     el.reloadTag = document.getElementById('reloadTag');
+    el.throwableHud = document.getElementById('throwableHud');
+    el.throwableName = document.getElementById('throwableName');
+    el.throwableCount = document.getElementById('throwableCount');
     el.grain = document.getElementById('grain');
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
@@ -5100,6 +5515,13 @@ const UI = (() => {
     if (INPUT.mobile && message === 'Press R to reload') message = 'Tap Load to reload';
     if (message) el.reloadTag.textContent = message;
     el.reloadTag.className = on ? 'on' : '';
+  }
+
+  function setThrowable(name, count, owned) {
+    el.throwableName.textContent = (INPUT.mobile ? 'Throw · ' : 'G · ') + name;
+    el.throwableCount.textContent = count;
+    el.throwableHud.classList.toggle('on', !!owned);
+    el.throwableHud.classList.toggle('empty', !!owned && count <= 0);
   }
 
   function setHealth(n, max) {
@@ -5217,7 +5639,7 @@ const UI = (() => {
   }
 
   return {
-    init, setWeapon, showReloadHint, crosshairKick, enterGame, toast,
+    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setKills, hurtFlash, showDead, hideDead, showFallback, hideFallback,
     get deadShown() { return deadShown; },
@@ -5258,6 +5680,7 @@ const PICKUP = (() => {
     { id: 'healthTonic', x: -15.0, y: -4.0, z: 23.0 },      // generator hall
     { id: 'shieldCell', x: 9.0, y: -4.0, z: -30.0 },        // east tunnel
     { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },      // relay platform
+    { id: 'grenadeBundle', x: -22.2, y: -4.0, z: -43.2 },   // northwest room
 
     // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
     { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
@@ -5304,6 +5727,10 @@ const PICKUP = (() => {
     type: 'shield', label: 'Guard Cell', quantity: 25,
     color: PAL.blue, respawn: 28
   });
+  define('grenadeBundle', {
+    type: 'throwable', label: 'Grenades', throwableId: 'grenade', quantity: 3,
+    color: PAL.olive, respawn: 0
+  });
 
   registerHandler('weapon', def => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity);
@@ -5326,6 +5753,15 @@ const PICKUP = (() => {
   registerHandler('shield', def => {
     const amount = PLAYER.addShield(def.quantity);
     return amount > 0 ? { message: '+' + Math.round(amount) + ' Guard' } : null;
+  });
+  registerHandler('throwable', def => {
+    const result = THROWABLE.add(def.throwableId, def.quantity);
+    if (!result.consumed) return null;
+    return {
+      message: result.newlyOwned
+        ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Throw' : 'press G to throw')
+        : '+' + result.added + ' ' + def.label
+    };
   });
 
   function labelSprite(text, color) {
@@ -5409,6 +5845,7 @@ const PICKUP = (() => {
     else if (def.type === 'ammo') buildAmmoVisual(visual, def);
     else if (def.type === 'health') buildHealthVisual(visual);
     else if (def.type === 'shield') buildShieldVisual(visual);
+    else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
     else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
 
     const ring = PRIM.torus(0.5, 0.045, MAT.toon(def.color), {
@@ -5538,6 +5975,7 @@ const GAME = (() => {
     FX.init(scene, viewScene);
     PLAYER.init(camera);
     WEAPON.build(viewScene);
+    THROWABLE.init(scene);
     // ENEMY.init runs last so its line-of-sight snapshot contains level
     // geometry only, with no viewmodel or enemy proxies mixed in.
     const spawned = ENEMY.init(scene);
@@ -5596,6 +6034,7 @@ const GAME = (() => {
   function restart() {
     PLAYER.revive();
     WEAPON.reset();
+    THROWABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
     UI.setKills(0);
@@ -5629,6 +6068,7 @@ const GAME = (() => {
 
     PLAYER.update(dt, running, look);
     WEAPON.update(dt, time, camera, running && !PLAYER.isDead);
+    THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
     if (running) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
@@ -6328,6 +6768,42 @@ const ENEMY = (() => {
     return true;
   }
 
+  /* Obstruction-aware radial damage for grenades and future explosives. */
+  function blast(center, opts) {
+    opts = opts || {};
+    const radius = opts.radius || 5;
+    const maxDamage = opts.damage || 90;
+    const minDamage = opts.minDamage === undefined ? 18 : opts.minDamage;
+    const force = opts.force === undefined ? 3 : opts.force;
+    let hitCount = 0;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive) continue;
+      _v.set(e.pos.x, e.pos.y + 0.88, e.pos.z);
+      _v2.subVectors(_v, center);
+      const distance = _v2.length();
+      if (distance > radius || distance < 0.001) continue;
+      _dir.copy(_v2).multiplyScalar(1 / distance);
+
+      raycaster.far = distance;
+      raycaster.set(center, _dir);
+      const blocks = raycaster.intersectObjects(LOS_TARGETS, true);
+      let blocked = false;
+      for (let j = 0; j < blocks.length; j++) {
+        if (blocks[j].object.userData.outline) continue;
+        if (blocks[j].distance < distance - 0.22) blocked = true;
+        break;
+      }
+      if (blocked) continue;
+
+      const falloff = 1 - UTIL.clamp(distance / radius, 0, 1);
+      const damage = UTIL.lerp(minDamage, maxDamage, falloff);
+      applyDamage(e, damage, _v, _dir, 'body', force * (0.45 + falloff * 0.55));
+      hitCount++;
+    }
+    return hitCount;
+  }
+
   function revive(e) {
     e.alive = true;
     e.hp = e.maxHp;
@@ -6614,7 +7090,7 @@ const ENEMY = (() => {
   }
 
   return {
-    init, update, hit, melee, reset, applyDamage,
+    init, update, hit, melee, blast, reset, applyDamage,
     get list() { return list; },
     get kills() { return kills; },
     aliveCount
