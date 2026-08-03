@@ -54,3 +54,16 @@ muted cap, tired orange-lidded eyes, gray face covering, gold chain, patched
 shorts, large rust boots, and a red backpack. Character identity, movement,
 climbing, sprinting, and dead state are sent with the existing co-op messages;
 enemy and combat logic remain separate.
+
+## v0.07.04 Hero Specials
+
+Single-player now opens a hero picker. The Scarf Scout gets a downed-only
+double-barrel recovery weapon: two wide-spread, high-damage shots revive the
+player at 25% health. The Masked Runner has a chainsaw-hand special that
+auto-equips at 25% health and stows after recovering above 55%. Co-op keeps its
+host/join farmhand roles.
+
+Enemy spawning now uses an explicit sunflower-only roster, so playable heroes
+cannot appear as enemies. Jays pickups add a five-item consumable stack; press
+`J` (or tap **Jays** on mobile) to regenerate 5 Pep per second for five
+seconds, switching to slower Guard regeneration when Pep is full.

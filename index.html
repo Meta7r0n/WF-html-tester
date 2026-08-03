@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.07.02 Co-op Lobby</title>
+<title>The Withered Farm — v0.07.04 Hero Specials</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -133,6 +133,29 @@
     color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
     box-shadow:3px 4px 0 rgba(22,18,15,.4);
   }
+
+  #jaysHud{
+    display:flex;align-items:center;gap:8px;margin-top:10px;
+    color:var(--cream);font:900 11px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    opacity:0;transition:opacity .18s ease;transform:rotate(1deg);
+  }
+  #jaysHud.on{opacity:1;}
+  #jaysHud.active{color:var(--mustard);}
+  #jaysCount{
+    display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
+    border:3px solid var(--ink);border-radius:50%;background:var(--rust);
+    color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
+    box-shadow:3px 4px 0 rgba(22,18,15,.4);
+  }
+  #downedHud{
+    position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
+    display:none;pointer-events:none;text-align:center;color:var(--cream);
+    font:900 16px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;
+    text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink);
+  }
+  #downedHud.on{display:block;}
+  #downedHud small{display:block;margin-top:7px;color:var(--mustard);font-size:10px;letter-spacing:1.3px;}
 
   /* ---------- Health + tally ---------- */
   #vitals{
@@ -312,6 +335,10 @@
     right:clamp(151px,23vw,194px);bottom:clamp(93px,15vw,118px);
     background:rgba(110,122,66,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
   }
+  #mobileJays{
+    right:clamp(80px,13vw,108px);bottom:clamp(145px,22vw,178px);
+    background:rgba(168,90,60,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+  }
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
@@ -325,6 +352,7 @@
   body.touch-device .touch-help{display:block;}
   body.touch-device .keys{display:none;}
   body.touch-device .alt{display:none;}
+  body.touch-device #playerSelect .alt{display:block;}
   body.touch-device #modeChip{display:none!important;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
@@ -339,6 +367,11 @@
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(82px,calc(env(safe-area-inset-top) + 68px));bottom:auto;
     transform:scale(.8) rotate(1deg);transform-origin:right top;
   }
+  body.touch-device #jaysHud{
+    position:fixed;right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(112px,calc(env(safe-area-inset-top) + 98px));
+    transform:scale(.8) rotate(1deg);transform-origin:right top;
+  }
+  body.touch-device #downedHud{bottom:27%;font-size:13px;}
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #radar{
@@ -435,6 +468,14 @@
   .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
   #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
   #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
+  #playerSelect .card{max-width:700px;}
+  #heroChoices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0 4px;}
+  .hero-choice{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;min-height:128px;padding:16px 18px;background:var(--peach);}
+  .hero-choice b{font-size:16px;letter-spacing:1px;}
+  .hero-choice small{font:700 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.3px;text-transform:none;color:var(--ink-soft);}
+  .hero-choice.scout{background:var(--mustard);}
+  .hero-choice.runner{background:var(--blue);}
+  @media (max-width:540px){#heroChoices{grid-template-columns:1fr;} .hero-choice{min-height:102px;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
   .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
@@ -479,6 +520,7 @@
   <div id="throwableHud" aria-live="polite">
     <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
   </div>
+  <div id="downedHud" aria-live="polite">DOWNED <small>Double Barrel ready · fire twice to revive</small></div>
 
   <div id="vitals">
     <p class="lbl">Pep</p>
@@ -487,6 +529,7 @@
       <p class="lbl">Guard</p>
       <div id="shieldBar"><div id="shieldFill"></div></div>
     </div>
+    <div id="jaysHud" aria-live="polite"><span>Jays</span><b id="jaysCount">0</b><small id="jaysState">J to use</small></div>
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
@@ -519,6 +562,7 @@
       <button type="button" class="mobile-btn" id="mobileReload" aria-label="Reload weapon">Load</button>
       <button type="button" class="mobile-btn" id="mobileSwap" aria-label="Switch weapon">Swap</button>
       <button type="button" class="mobile-btn" id="mobileThrowable" aria-label="Throw selected throwable">Throw</button>
+      <button type="button" class="mobile-btn" id="mobileJays" aria-label="Use Jays health pack">Jays</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
   </div>
@@ -529,7 +573,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.02 Co-op Lobby</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.04 Hero Specials</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
       <ul class="keys">
@@ -575,6 +619,25 @@
       </div>
       <p class="coop-status" id="coopStatus">Choose Host room or Join room to begin.</p>
       <button class="alt" id="backToModeBtn">Back to mode select</button>
+    </div>
+  </div>
+
+  <div id="playerSelect" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Single-player &nbsp;·&nbsp; choose a farmhand</p>
+      <h1>Pick your<br/>special<span>Each hero has one emergency trick</span></h1>
+      <p class="sub">Your choice changes the starting silhouette and the low-health special. Both heroes keep the normal weapon and pickup inventory.</p>
+      <div id="heroChoices">
+        <button class="go hero-choice scout" id="scarfHeroBtn">
+          <b>Scarf Scout · Double Barrel</b>
+          <small>Shotgun farmhand. When downed, fire two wide-spread blasts, then stand back up with 25% health.</small>
+        </button>
+        <button class="go hero-choice runner" id="chainsawHeroBtn">
+          <b>Masked Runner · Chainsaw Hand</b>
+          <small>At 25% health the chainsaw auto-equips for heavy melee. It returns to inventory once you recover above 55%.</small>
+        </button>
+      </div>
+      <button class="alt" id="backToStartBtn">Back to mode select</button>
     </div>
   </div>
 
@@ -722,6 +785,13 @@ const CONFIG = {
       pellets: 8, damage: 15, spread: 0.05, range: 95,
       recoilBack: 0.19, meleeDamage: 42, meleeRange: 2.35, meleeArc: 0.58
     },
+    doubleBarrel: {
+      id: 'doubleBarrel', name: 'Downed Double Barrel', slot: 90, kind: 'gun', ammoType: 'downedShells',
+      magSize: 2, startMag: 0, startReserve: 0, maxReserve: 0,
+      fireInterval: 0.62, reloadTime: 0, automatic: false, specialOnly: true,
+      pellets: 14, damage: 22.5, spread: 0.105, range: 88,
+      recoilBack: 0.26, meleeDamage: 48, meleeRange: 2.35, meleeArc: 0.58
+    },
     tinSixer: {
       id: 'tinSixer', name: 'Tin Sixer', slot: 3, kind: 'gun', ammoType: 'light',
       magSize: 6, startMag: 0, startReserve: 0, maxReserve: 60,
@@ -735,6 +805,10 @@ const CONFIG = {
       fireInterval: 0.11, reloadTime: 1.65, automatic: true,
       pellets: 1, damage: 18, spread: 0.021, range: 105,
       recoilBack: 0.065, meleeDamage: 40, meleeRange: 2.3, meleeArc: 0.58
+    },
+    chainsaw: {
+      id: 'chainsaw', name: 'Emergency Chainsaw', slot: 91, kind: 'melee', specialOnly: true,
+      meleeDamage: 92, meleeRange: 2.45, meleeArc: 0.76, fireInterval: 0.34
     }
   },
   throwables: {
@@ -750,7 +824,8 @@ const CONFIG = {
     swayAmount: 0.028, swayLerp: 8, bobAmount: 0.028, muzzleFlashTime: 0.09
   },
   pickup: {
-    collectRadius: 1.18, bobHeight: 0.13, bobSpeed: 2.4, spinSpeed: 0.7
+    collectRadius: 1.18, bobHeight: 0.13, bobSpeed: 2.4, spinSpeed: 0.7,
+    jaysMaxStack: 5, jaysHealRate: 5, jaysShieldRate: 2.5, jaysDuration: 5
   },
   fx: {
     maxDecals: 34, maxParticles: 190, maxTracers: 14,
@@ -4148,7 +4223,7 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, throwable: false, nextWeapon: false, pause: false,
+    melee: false, throwable: false, useJays: false, nextWeapon: false, pause: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -4184,6 +4259,7 @@ const INPUT = (() => {
     'KeyF': 'lantern',
     'KeyV': 'melee',
     'KeyG': 'throwable',
+    'KeyJ': 'useJays',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
@@ -4280,7 +4356,7 @@ const INPUT = (() => {
     }
     const action = KEYMAP[e.code];
     if (!action) return;
-    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     setAction(action, down);
   }
 
@@ -4430,6 +4506,7 @@ const INPUT = (() => {
     bindTouchButton('mobileReload', 'reload');
     bindTouchButton('mobileSwap', 'nextWeapon');
     bindTouchButton('mobileThrowable', 'throwable');
+    bindTouchButton('mobileJays', 'useJays');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -4608,7 +4685,8 @@ const PLAYER = (() => {
     if (health <= 0) {
       dead = true;
       deadTime = 0;
-      AUDIO.playerDie();
+      if (HERO.beginDowned()) AUDIO.playerHurt();
+      else AUDIO.playerDie();
     } else if (amount > 0) {
       AUDIO.playerHurt();
     }
@@ -4630,14 +4708,20 @@ const PLAYER = (() => {
     return shield - before;
   }
 
-  function revive() {
-    health = C.maxHealth;
+  function reviveAt(percent, resetPosition) {
+    const pct = UTIL.clamp((percent === undefined ? 100 : percent) / 100, 0, 1);
+    health = C.maxHealth * pct;
     shield = 0;
     dead = false;
     deadTime = 0; deadTilt = 0; shake = 0; invuln = 1.2; regenTimer = 0;
-    respawn();
+    if (resetPosition !== false) respawn();
     UI.setHealth(health, C.maxHealth);
     UI.setShield(shield, C.maxShield);
+  }
+
+  function revive() {
+    if (typeof HERO !== 'undefined') HERO.resetRun();
+    reviveAt(100);
   }
 
   function moveAxis(axis, amount) {
@@ -4886,10 +4970,11 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, heal, addShield, revive,
+    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt,
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
+    get isDowned() { return dead && typeof HERO !== 'undefined' && HERO.downedActive; },
     get deadTime() { return deadTime; },
     get position() { return pos; },
     get velocity() { return vel; },
@@ -5017,6 +5102,24 @@ const WEAPON = (() => {
     };
   }
 
+  function buildDoubleBarrel() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    PRIM.box(0.18, 0.18, 0.34, steel, { pos: [0, 0, -0.08], parent: g, outline: 0.014, ray: false });
+    [-0.055, 0.055].forEach(x => PRIM.cyl(0.045, 0.05, 0.9, 10, steel, {
+      pos: [x, 0.025, -0.64], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false
+    }));
+    PRIM.box(0.16, 0.31, 0.42, wood, { pos: [0, -0.08, 0.27], rot: [-0.15, 0, 0.02], parent: g, outline: 0.013, ray: false });
+    PRIM.torus(0.08, 0.016, MAT.toon(PAL.mustard), { pos: [0, 0.025, -1.08], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.009, ray: false });
+    const fx = flashes(g, 0.025, -1.13, 1.12);
+    models.doubleBarrel = {
+      root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
   function buildTinSixer() {
     const g = new THREE.Group();
     rig.add(g);
@@ -5071,6 +5174,26 @@ const WEAPON = (() => {
     models.fieldhand = {
       root: g, forend: handguard, flash: fx.flash, flash2: fx.flash2,
       base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
+  function buildChainsaw() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    PRIM.box(0.2, 0.22, 0.32, body, { pos: [0, -0.08, -0.08], parent: g, outline: 0.014, ray: false });
+    PRIM.box(0.075, 0.10, 0.74, metal, { pos: [0, 0.02, -0.62], parent: g, outline: 0.012, ray: false });
+    for (let i = 0; i < 9; i++) {
+      PRIM.box(0.09, 0.035, 0.055, MAT.toon(PAL.mustard), {
+        pos: [0, 0.07, -0.30 - i * 0.075], rot: [0, 0, i % 2 ? 0.16 : -0.16], parent: g,
+        outline: 0.008, ray: false
+      });
+    }
+    PRIM.torus(0.08, 0.016, MAT.toon(PAL.mustardDk), { pos: [0, 0.025, -1.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+    models.chainsaw = {
+      root: g, forend: null, flash: null, flash2: null,
+      base: [0.27, -0.33, -0.5], rot: [0.08, -0.12, 0.08]
     };
   }
 
@@ -5130,8 +5253,10 @@ const WEAPON = (() => {
     rig = new THREE.Group();
     viewScene.add(rig);
     buildPipePopper();
+    buildDoubleBarrel();
     buildTinSixer();
     buildFieldhand();
+    buildChainsaw();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -5144,7 +5269,7 @@ const WEAPON = (() => {
 
     RAY_TARGETS.length = rayCount;
     initInventory();
-    setCurrent('pipePopper', true);
+    setCurrent('pipePopper', true, true);
   }
 
   function stateFor(id) { return inventory[id || currentId]; }
@@ -5161,14 +5286,16 @@ const WEAPON = (() => {
   function syncHUD() {
     const d = defFor(), s = stateFor();
     UI.setWeapon(d.name, d.kind, s.mag, s.reserve, d.magSize || 0);
-    if (d.kind !== 'gun') UI.showReloadHint(false);
+    if (d.kind !== 'gun' || d.specialOnly) UI.showReloadHint(false);
     else if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
     else UI.showReloadHint(false);
   }
 
-  function setCurrent(id, silent) {
+  function setCurrent(id, silent, force) {
     const d = DEFS[id], s = inventory[id];
     if (!d || !s) return false;
+    if (!force && d.specialOnly) return false;
+    if (!force && DEFS[currentId] && DEFS[currentId].specialOnly && id !== currentId) return false;
     if (!s.owned) {
       if (!silent) UI.toast(d.name + ' has not been found yet', 1.25);
       return false;
@@ -5186,12 +5313,12 @@ const WEAPON = (() => {
   }
 
   function selectSlot(slot) {
-    const id = Object.keys(DEFS).find(k => DEFS[k].slot === slot);
+    const id = Object.keys(DEFS).find(k => DEFS[k].slot === slot && !DEFS[k].specialOnly);
     return id ? setCurrent(id, false) : false;
   }
 
   function cycleWeapon(direction) {
-    const ids = Object.keys(DEFS).sort((a, b) => DEFS[a].slot - DEFS[b].slot);
+    const ids = Object.keys(DEFS).filter(id => !DEFS[id].specialOnly).sort((a, b) => DEFS[a].slot - DEFS[b].slot);
     const start = Math.max(0, ids.indexOf(currentId));
     const step = direction < 0 ? -1 : 1;
     for (let offset = 1; offset <= ids.length; offset++) {
@@ -5313,7 +5440,8 @@ const WEAPON = (() => {
         COOP.relayHostShot(networkShot);
       }
     }
-    if (s.mag === 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+    if (currentId === 'doubleBarrel') HERO.onDoubleBarrelShot();
+    if (currentId === d.id && s.mag === 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
   }
 
   function beginMelee(camera) {
@@ -5367,6 +5495,29 @@ const WEAPON = (() => {
     if (newlyOwned) setCurrent(id, true);
     else syncHUD();
     return { consumed: newlyOwned || ammoAdded > 0, newlyOwned: newlyOwned, ammoAdded: ammoAdded };
+  }
+
+  function beginHeroSpecial(id) {
+    const d = DEFS[id], s = inventory[id];
+    if (!d || !s || !d.specialOnly) return false;
+    s.owned = true;
+    s.mag = d.kind === 'gun' ? d.magSize : 0;
+    s.reserve = 0;
+    setCurrent(id, true, true);
+    syncHUD();
+    return true;
+  }
+
+  function endHeroSpecial(id, restoreId) {
+    const d = DEFS[id], s = inventory[id];
+    if (!d || !s || !d.specialOnly) return false;
+    const target = restoreId && inventory[restoreId] && inventory[restoreId].owned ? restoreId : 'pipePopper';
+    s.owned = false;
+    s.mag = 0;
+    s.reserve = 0;
+    setCurrent(target, true, true);
+    syncHUD();
+    return true;
   }
 
   function update(dt, time, camera, active) {
@@ -5493,11 +5644,12 @@ const WEAPON = (() => {
     initInventory();
     fireTimer = reloadTimer = meleeTimer = recoil = recoilVel = squash = squashVel = 0;
     reloading = false;
-    setCurrent('pipePopper', true);
+    setCurrent('pipePopper', true, true);
   }
 
   return {
     build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon,
+    beginHeroSpecial, endHeroSpecial,
     hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
     get currentId() { return currentId; },
     get ammo() { return stateFor().mag; },
@@ -5784,6 +5936,70 @@ const THROWABLE = (() => {
   };
 })();
 
+/* =========================== [CONSUMABLE] ============================
+   Inventory consumables are intentionally separate from world pickups. Jays
+   is the first stackable item; later packs can register another id without
+   changing pickup physics or the player vitality code. */
+const CONSUMABLE = (() => {
+  const C = CONFIG.pickup;
+  const inventory = { jays: 0 };
+  let activeId = null;
+  let activeTimer = 0;
+
+  function sync() {
+    if (typeof UI !== 'undefined' && UI.setJays) UI.setJays(inventory.jays, !!activeId, activeTimer);
+  }
+
+  function add(id, quantity) {
+    if (id !== 'jays') return { consumed: false, added: 0, count: 0 };
+    const before = inventory.jays;
+    inventory.jays = Math.min(C.jaysMaxStack, before + Math.max(0, Math.floor(quantity || 0)));
+    const added = inventory.jays - before;
+    sync();
+    return { consumed: added > 0, added: added, count: inventory.jays };
+  }
+
+  function use(id) {
+    id = id || 'jays';
+    if (id !== 'jays' || inventory.jays <= 0 || activeId || PLAYER.isDead) return false;
+    inventory.jays--;
+    activeId = id;
+    activeTimer = C.jaysDuration;
+    sync();
+    UI.toast('Jays active · 5 Pep/s for 5 seconds', 1.5);
+    return true;
+  }
+
+  function update(dt, canUse) {
+    if (canUse && INPUT.consumePress('useJays')) use('jays');
+    if (!activeId || !canUse || dt <= 0) return;
+    const step = Math.min(dt, activeTimer);
+    if (PLAYER.health < CONFIG.player.maxHealth - 0.001) PLAYER.heal(C.jaysHealRate * step);
+    else PLAYER.addShield(C.jaysShieldRate * step);
+    activeTimer -= step;
+    if (activeTimer <= 0.001) {
+      activeId = null;
+      activeTimer = 0;
+      UI.toast('Jays finished', 0.9);
+    }
+    sync();
+  }
+
+  function reset() {
+    inventory.jays = 0;
+    activeId = null;
+    activeTimer = 0;
+    sync();
+  }
+
+  return {
+    add, use, update, reset, sync,
+    get count() { return inventory.jays; },
+    get active() { return !!activeId; },
+    get inventory() { return inventory; }
+  };
+})();
+
 /* ================================ [UI] =============================== */
 const UI = (() => {
   const el = {};
@@ -5793,6 +6009,7 @@ const UI = (() => {
   function init() {
     el.start = document.getElementById('start');
     el.coopLobby = document.getElementById('coopLobby');
+    el.playerSelect = document.getElementById('playerSelect');
     el.coopInstructions = document.getElementById('coopInstructions');
     el.signalInput = document.getElementById('signalInput');
     el.signalOutput = document.getElementById('signalOutput');
@@ -5812,6 +6029,10 @@ const UI = (() => {
     el.throwableHud = document.getElementById('throwableHud');
     el.throwableName = document.getElementById('throwableName');
     el.throwableCount = document.getElementById('throwableCount');
+    el.jaysHud = document.getElementById('jaysHud');
+    el.jaysCount = document.getElementById('jaysCount');
+    el.jaysState = document.getElementById('jaysState');
+    el.downedHud = document.getElementById('downedHud');
     el.grain = document.getElementById('grain');
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
@@ -5881,6 +6102,17 @@ const UI = (() => {
     el.throwableCount.textContent = count;
     el.throwableHud.classList.toggle('on', !!owned);
     el.throwableHud.classList.toggle('empty', !!owned && count <= 0);
+  }
+
+  function setJays(count, active, remaining) {
+    if (!el.jaysHud) return;
+    const n = Math.max(0, Math.floor(count || 0));
+    el.jaysCount.textContent = n;
+    el.jaysState.textContent = active
+      ? 'regen ' + Math.max(0, remaining || 0).toFixed(1) + 's'
+      : (INPUT.mobile ? 'tap Jays' : 'J to use');
+    el.jaysHud.classList.toggle('on', n > 0 || !!active);
+    el.jaysHud.classList.toggle('active', !!active);
   }
 
   function setHealth(n, max) {
@@ -6009,6 +6241,7 @@ const UI = (() => {
   function showDead() {
     deadShown = true;
     el.dead.classList.remove('hidden');
+    hideDowned();
     el.pause.classList.add('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
@@ -6022,14 +6255,24 @@ const UI = (() => {
     el.radar.classList.add('on');
     showMobileControls(false);
   }
+  function showDowned() {
+    if (el.downedHud) el.downedHud.classList.add('on');
+    if (el.dead) el.dead.classList.add('hidden');
+    showMobileControls(true);
+  }
+  function hideDowned() {
+    if (el.downedHud) el.downedHud.classList.remove('on');
+  }
   function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
 
   function enterGame() {
     el.start.classList.add('hidden');
     el.coopLobby.classList.add('hidden');
+    if (el.playerSelect) el.playerSelect.classList.add('hidden');
     el.endGame.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
+    hideDowned();
     el.crosshair.classList.add('on');
     el.weaponName.classList.add('on');
     el.ammo.classList.add('on');
@@ -6041,6 +6284,7 @@ const UI = (() => {
   function showCoopLobby() {
     el.start.classList.add('hidden');
     el.coopLobby.classList.remove('hidden');
+    if (el.playerSelect) el.playerSelect.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     el.endGame.classList.add('hidden');
@@ -6122,8 +6366,10 @@ const UI = (() => {
     setSignalOutput('');
     setCoopLobbyStep(null, 'idle');
     el.start.classList.remove('hidden');
+    if (el.playerSelect) el.playerSelect.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
+    hideDowned();
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
@@ -6133,6 +6379,14 @@ const UI = (() => {
     el.tally.classList.remove('on');
     showMobileControls(false);
     setCoopStatus('Choose Single-player or Online co-op to begin.');
+  }
+  function showPlayerSelect() {
+    el.start.classList.add('hidden');
+    el.coopLobby.classList.add('hidden');
+    if (el.playerSelect) el.playerSelect.classList.remove('hidden');
+  }
+  function hidePlayerSelect() {
+    if (el.playerSelect) el.playerSelect.classList.add('hidden');
   }
   function showPause() {
     el.pause.classList.remove('hidden');
@@ -6188,8 +6442,9 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setKills, setBoss, hurtFlash, showDead, hideDead, showEndGame, hideEndGame,
+    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead, showDowned, hideDowned, showEndGame, hideEndGame,
     showStart, showFallback, hideFallback,
+    showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
     el
@@ -6216,6 +6471,7 @@ const PICKUP = (() => {
     { id: 'lightAmmo', x: -13.0, z: 2.0 },
     { id: 'carbineAmmo', x: 18.8, z: -4.0 },
     { id: 'healthTonic', x: 6.2, z: 13.0 },
+    { id: 'jaysPack', x: -8.5, z: 25.0 },
     { id: 'shieldCell', x: 25.0, z: -10.0 },
     { id: 'carbineAmmo', x: 19.0, z: -39.8 },
     { id: 'shieldCell', x: 17.9, z: -29.5 },
@@ -6223,6 +6479,7 @@ const PICKUP = (() => {
     // One visible resource per major underground zone. Explicit y values keep
     // surface and basement pickups independent at shared map coordinates.
     { id: 'healthTonic', x: 20.5, y: -4.0, z: -6.0 },       // barn room
+    { id: 'jaysPack', x: 4.0, y: -4.0, z: -18.0 },           // lower cross tunnel
     { id: 'lightAmmo', x: 0.0, y: -4.0, z: -11.5 },         // service tunnel
     { id: 'shieldCell', x: -15.0, y: -4.0, z: -7.0 },       // utility room
     { id: 'shellBox', x: -7.0, y: -4.0, z: -26.5 },         // root cellar
@@ -6273,6 +6530,10 @@ const PICKUP = (() => {
     type: 'health', label: 'Pep Tonic', quantity: 30,
     color: PAL.mustard, respawn: 24
   });
+  define('jaysPack', {
+    type: 'consumable', label: 'Jays', consumableId: 'jays', quantity: 1,
+    color: PAL.rust, respawn: 22
+  });
   define('shieldCell', {
     type: 'shield', label: 'Guard Cell', quantity: 25,
     color: PAL.blue, respawn: 28
@@ -6299,6 +6560,11 @@ const PICKUP = (() => {
   registerHandler('health', def => {
     const amount = PLAYER.heal(def.quantity);
     return amount > 0 ? { message: '+' + Math.round(amount) + ' Pep' } : null;
+  });
+  registerHandler('consumable', def => {
+    const result = CONSUMABLE.add(def.consumableId, def.quantity);
+    if (!result.consumed) return null;
+    return { message: '+' + result.added + ' Jays · ' + (INPUT.mobile ? 'tap Jays' : 'press J') + ' to use' };
   });
   registerHandler('shield', def => {
     const amount = PLAYER.addShield(def.quantity);
@@ -6393,7 +6659,7 @@ const PICKUP = (() => {
     root.add(visual);
     if (def.type === 'weapon') buildWeaponVisual(visual, def);
     else if (def.type === 'ammo') buildAmmoVisual(visual, def);
-    else if (def.type === 'health') buildHealthVisual(visual);
+    else if (def.type === 'health' || def.type === 'consumable') buildHealthVisual(visual);
     else if (def.type === 'shield') buildShieldVisual(visual);
     else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
     else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
@@ -6489,6 +6755,7 @@ const GAME = (() => {
     if (!window.THREE) { fail('three.js failed to load. Check the network or vendor three.min.js locally.'); return; }
 
     UI.init();
+    CONSUMABLE.sync();
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
@@ -6543,12 +6810,16 @@ const GAME = (() => {
     INPUT.on('unlock', () => {
       running = false;
       if (!entered) return;
-      if (PLAYER.isDead) UI.showDead(); else UI.showPause();
+      if (PLAYER.isDowned) UI.showDowned();
+      else if (PLAYER.isDead) UI.showDead(); else UI.showPause();
     });
 
     INPUT.on('fallback', why => UI.showFallback(why));
 
     document.getElementById('enterBtn').addEventListener('click', startSingle);
+    document.getElementById('scarfHeroBtn').addEventListener('click', () => startSingleHero('scarf'));
+    document.getElementById('chainsawHeroBtn').addEventListener('click', () => startSingleHero('chainsaw'));
+    document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
     document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
@@ -6622,7 +6893,14 @@ const GAME = (() => {
   function startSingle() {
     mode = 'single';
     COOP.stop();
-    enter();
+    UI.showPlayerSelect();
+  }
+
+  function startSingleHero(id) {
+    mode = 'single';
+    COOP.stop();
+    HERO.select(id);
+    restart();
   }
 
   function openCoopLobby() {
@@ -6636,6 +6914,7 @@ const GAME = (() => {
 
   function beginCoop() {
     mode = 'coop';
+    HERO.resetRun();
     UI.setCoopLobbyStep(COOP.role, 'connected');
     UI.setCoopStatus('Connected. Starting the two-player farm…', 'good');
     enter();
@@ -6673,6 +6952,7 @@ const GAME = (() => {
     PLAYER.revive();
     WEAPON.reset();
     THROWABLE.reset();
+    CONSUMABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
     UI.setKills(0);
@@ -6701,6 +6981,7 @@ const GAME = (() => {
     PLAYER.revive();
     WEAPON.reset();
     THROWABLE.reset();
+    CONSUMABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
     UI.setKills(0);
@@ -6739,8 +7020,10 @@ const GAME = (() => {
     if (running) WEAPON.addLook(look.x, look.y);
 
     PLAYER.update(dt, running, look);
-    WEAPON.update(dt, time, camera, running && !PLAYER.isDead);
+    WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned));
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
+    CONSUMABLE.update(dt, running && !PLAYER.isDead);
+    HERO.update();
     if (running) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
@@ -6752,8 +7035,9 @@ const GAME = (() => {
     if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
 
     // let the wilt play out before handing the mouse back
-    if (PLAYER.isDead && !deathPending) deathPending = true;
-    if (deathPending && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
+    if (!PLAYER.isDead) deathPending = false;
+    if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) deathPending = true;
+    if (deathPending && !PLAYER.isDowned && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
       UI.showDead();
     }
@@ -7164,6 +7448,28 @@ const CAST = (() => {
         pos: [0, -0.18, -0.12], rot: [-0.12, 0, 0],
         parent: group, outline: 0.018, ray: false
       });
+    },
+    chainsaw(group, skin) {
+      const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      PRIM.box(0.13, 0.15, 0.28, body, {
+        pos: [0, -0.02, -0.17], rot: [0.08, 0, 0.08], parent: group,
+        outline: 0.022, ray: false
+      });
+      PRIM.box(0.06, 0.085, 0.62, metal, {
+        pos: [0, 0.01, -0.58], rot: [0.04, 0, 0], parent: group,
+        outline: 0.018, ray: false
+      });
+      for (let i = 0; i < 8; i++) {
+        PRIM.box(0.075, 0.035, 0.045, MAT.toon(PAL.mustard), {
+          pos: [0, 0.035, -0.34 - i * 0.075], rot: [0, 0, i % 2 ? 0.15 : -0.15],
+          parent: group, outline: 0.011, ray: false
+        });
+      }
+      PRIM.torus(0.075, 0.014, MAT.toon(PAL.mustardDk), {
+        pos: [0, 0.015, -0.86], rot: [Math.PI / 2, 0, 0], parent: group,
+        outline: 0.009, ray: false
+      });
     }
   };
 
@@ -7247,7 +7553,7 @@ const CAST = (() => {
       noPetals: true,
       collar: 'chain',
       back: 'pack',
-      hand: null,
+      hand: 'chainsaw',
       skin: {
         face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rust,
         shoe: PAL.rustDeep, sole: PAL.rust, accent: PAL.rustDeep,
@@ -7397,6 +7703,105 @@ const CAST = (() => {
   return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list };
 })();
 
+/* ============================== [HERO] ===============================
+   Single-player hero selection and emergency specials. Co-op keeps its
+   role-based silhouettes, while the selected profile owns the local-only
+   downed/low-health rules below. The state lives outside CAST so enemy
+   spawning can never accidentally treat a playable character as hostile. */
+const HERO = (() => {
+  const DEFINITIONS = {
+    scarf: {
+      id: 'scarf', label: 'Scarf Scout', castId: 'playerBluecap',
+      special: 'doubleBarrel', specialLabel: 'Downed Double Barrel'
+    },
+    chainsaw: {
+      id: 'chainsaw', label: 'Masked Runner', castId: 'playerMasked',
+      special: 'chainsaw', specialLabel: 'Emergency Chainsaw'
+    }
+  };
+  let selected = 'scarf';
+  let downedActive = false;
+  let downedShots = 0;
+  let downedRestoreWeapon = null;
+  let chainsawActive = false;
+  let restoreWeapon = null;
+
+  function inSinglePlayer() {
+    return typeof GAME === 'undefined' || !GAME.isCoop;
+  }
+
+  function select(id) {
+    if (!DEFINITIONS[id]) id = 'scarf';
+    selected = id;
+    downedActive = false;
+    downedShots = 0;
+    downedRestoreWeapon = null;
+    chainsawActive = false;
+    restoreWeapon = null;
+    return DEFINITIONS[selected];
+  }
+
+  function resetRun() {
+    downedActive = false;
+    downedShots = 0;
+    downedRestoreWeapon = null;
+    chainsawActive = false;
+    restoreWeapon = null;
+  }
+
+  function beginDowned() {
+    if (!inSinglePlayer() || selected !== 'scarf' || downedActive) return false;
+    downedActive = true;
+    downedShots = 0;
+    downedRestoreWeapon = WEAPON.currentId;
+    WEAPON.beginHeroSpecial('doubleBarrel');
+    UI.showDowned();
+    UI.toast('DOWNED — fire the Double Barrel twice to revive', 2.8);
+    return true;
+  }
+
+  function onDoubleBarrelShot() {
+    if (!downedActive) return;
+    downedShots++;
+    if (downedShots < 2) {
+      UI.toast('One downed blast left', 1.1);
+      return;
+    }
+    downedActive = false;
+    WEAPON.endHeroSpecial('doubleBarrel', downedRestoreWeapon);
+    downedRestoreWeapon = null;
+    PLAYER.reviveAt(25, false);
+    UI.hideDowned();
+    UI.toast('Back on your feet · 25% Pep', 1.8);
+  }
+
+  function update() {
+    if (!inSinglePlayer() || selected !== 'chainsaw' || downedActive || PLAYER.isDead) return;
+    const pct = PLAYER.health / CONFIG.player.maxHealth;
+    if (!chainsawActive && pct <= 0.25) {
+      chainsawActive = true;
+      restoreWeapon = WEAPON.currentId;
+      WEAPON.beginHeroSpecial('chainsaw');
+      UI.toast('CHAINSAW HAND — emergency melee active', 1.8);
+    } else if (chainsawActive && pct >= 0.55) {
+      chainsawActive = false;
+      WEAPON.endHeroSpecial('chainsaw', restoreWeapon);
+      restoreWeapon = null;
+      UI.toast('Chainsaw stowed · Pep recovered', 1.35);
+    }
+  }
+
+  return {
+    definitions: DEFINITIONS, select, resetRun, beginDowned, onDoubleBarrelShot, update,
+    get id() { return selected; },
+    get castId() { return DEFINITIONS[selected].castId; },
+    get label() { return DEFINITIONS[selected].label; },
+    get downedActive() { return downedActive; },
+    get chainsawActive() { return chainsawActive; },
+    get canActWhileDowned() { return downedActive && inSinglePlayer(); }
+  };
+})();
+
 /* ============================== [ENEMY] ==============================
    Pooled entities driven off WORLD.spawnMarkers. Visual meshes are kept out
    of the bullet raycast entirely; each enemy carries two invisible hit
@@ -7404,6 +7809,9 @@ const CAST = (() => {
 const ENEMY = (() => {
   const C = CONFIG.enemy;
   const B = CONFIG.boss;
+  // Playable farmhands live in CAST for shared rendering, but never belong in
+  // the hostile spawn pool. Keep this allow-list explicit as the cast grows.
+  const ENEMY_ROSTER = ['reaper', 'howler', 'gaper', 'grinner'];
   const list = [];
   let scene = null;
   let LOS_TARGETS = [];
@@ -7637,7 +8045,7 @@ const ENEMY = (() => {
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
 
-    const roster = CAST.list().filter(id => id !== B.id);
+    const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
     // Spread the cast across the spawn markers the level already publishes,
     // reserving one slot for each underground marker so a new layer cannot be
     // silently starved by the surface roster. This scales to future rooms
@@ -8828,7 +9236,7 @@ const COOP = (() => {
     armConnectTimeout();
     let next;
     try {
-      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.03' } });
+      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.04' } });
     } catch (err) {
       failJoin(peerErrorText(err));
       return;
