@@ -5634,12 +5634,26 @@ const WEAPON = (() => {
       armedHands.position.set(swayX * 0.35 - swing * 0.12, swayY * 0.35 + by * 0.4 + swing * 0.06, -swing * 0.1);
       armedHands.rotation.z = swayY * 0.25 + swing * 0.28 * meleeSide;
     } else {
-      model.root.position.set(swayX * 0.4 + bx, swayY * 0.4 + by, 0);
-      model.root.rotation.set(-swing * 0.15, swing * 0.12 * meleeSide, swing * 0.08 * meleeSide);
-      fistLeft.position.z = -0.47 - (meleeSide < 0 ? swing * 0.54 : 0);
-      fistRight.position.z = -0.52 - (meleeSide > 0 ? swing * 0.54 : 0);
-      fistLeft.position.y = -0.27 + (meleeSide < 0 ? swing * 0.1 : 0);
-      fistRight.position.y = -0.3 + (meleeSide > 0 ? swing * 0.1 : 0);
+      const base = model.base || [0, 0, 0];
+      const rot = model.rot || [0, 0, 0];
+      model.root.position.set(
+        base[0] + swayX * 0.4 + bx - swing * 0.16,
+        base[1] + swayY * 0.4 + by + swing * 0.08,
+        base[2] - swing * 0.18
+      );
+      model.root.rotation.set(
+        rot[0] - swing * 0.15,
+        rot[1] + swing * 0.12 * meleeSide,
+        rot[2] + swing * 0.08 * meleeSide
+      );
+      // Unarmed fists keep their old individual punch animation. Special
+      // melee models (currently the chainsaw) swing as one complete weapon.
+      if (currentId === 'unarmed') {
+        fistLeft.position.z = -0.47 - (meleeSide < 0 ? swing * 0.54 : 0);
+        fistRight.position.z = -0.52 - (meleeSide > 0 ? swing * 0.54 : 0);
+        fistLeft.position.y = -0.27 + (meleeSide < 0 ? swing * 0.1 : 0);
+        fistRight.position.y = -0.3 + (meleeSide > 0 ? swing * 0.1 : 0);
+      }
     }
 
     rig.position.set(0, 0, 0);
