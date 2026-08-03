@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.06.08 Mini-Boss Test</title>
+<title>The Withered Farm — v0.07.00 Co-op Foundation</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -326,6 +326,7 @@
   body.touch-device .keys{display:none;}
   body.touch-device .alt{display:none;}
   body.touch-device #modeChip{display:none!important;}
+  body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
     max-width:42vw;text-align:right;font-size:10px;
@@ -431,10 +432,23 @@
   .go:hover{transform:rotate(-1deg) translateY(-2px);box-shadow:0 10px 0 var(--ink);}
   .go:active{transform:rotate(-1deg) translateY(6px);box-shadow:0 2px 0 var(--ink);}
   .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
+  #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
+  #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
+  .go.mode-coop{background:var(--blue);}
+  .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
+  .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
+  .signal-box{display:block;width:100%;min-height:74px;resize:vertical;padding:9px 11px;background:var(--peach);border:3px solid var(--ink);border-radius:9px;color:var(--ink);font:600 11px/1.35 "Courier New",monospace;box-shadow:3px 4px 0 rgba(22,18,15,.28);}
+  .signal-box:focus{outline:3px solid var(--blue-deep);outline-offset:2px;}
+  #coopActions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:15px;}
+  .coop-status{min-height:19px;margin:15px 0 0;color:var(--ink-soft);font:800 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.5px;}
+  .coop-status.good{color:var(--olive);}
+  .coop-status.bad{color:var(--rust-deep);}
   .foot{margin:16px 0 0;font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(22,18,15,.45);}
 
   #pause .card{max-width:420px;}
   #endGame .alt{display:block;}
+  #coopLobby .card{max-width:620px;}
+  #coopLobby .alt{display:block;}
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -511,9 +525,9 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.06.08 Mini-Boss Test</p>
-      <h1>The Withered<br/>Farm<span>An inkblot in first person</span></h1>
-      <p class="sub">Nobody's home — not the kind of nobody you were hoping for. Something's been growing in the rows, and it has hands. Mind the barn.</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.00 Co-op Foundation</p>
+      <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
+      <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
       <ul class="keys">
         <li><kbd>W A S D</kbd> Move</li>
         <li><kbd>Mouse</kbd> Look</li>
@@ -529,9 +543,34 @@
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
       <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
-      <button class="go" id="enterBtn">Click to enter →</button>
+      <div id="modeChoices">
+        <button class="go" id="enterBtn">Single-player →</button>
+        <button class="go mode-coop" id="coopBtn">Online co-op →</button>
+      </div>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
-      <p class="foot">Sound starts when you enter</p>
+      <p class="foot">Choose a mode to begin</p>
+    </div>
+  </div>
+
+  <div id="coopLobby" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Online co-op &nbsp;·&nbsp; 2 players</p>
+      <h1>Farmhands<span>One farm, two screens</span></h1>
+      <p class="sub" id="coopInstructions">Host a room or join a teammate. This first co-op layer uses a direct browser connection, so the two players exchange the short connection codes below.</p>
+      <div id="coopRoles">
+        <button class="go" id="hostBtn">Host room →</button>
+        <button class="go mode-coop" id="joinBtn">Join room →</button>
+      </div>
+      <label class="signal-label" for="signalInput" id="signalInputLabel">Connection code from teammate</label>
+      <textarea id="signalInput" class="signal-box" rows="4" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+      <label class="signal-label" for="signalOutput" id="signalOutputLabel">Your connection code</label>
+      <textarea id="signalOutput" class="signal-box" rows="4" readonly spellcheck="false"></textarea>
+      <div id="coopActions">
+        <button class="go compact" id="signalAction">Create code</button>
+        <button class="alt" id="copySignal">Copy my code</button>
+      </div>
+      <p class="coop-status" id="coopStatus">Choose Host room or Join room to begin.</p>
+      <button class="alt" id="backToModeBtn">Back to mode select</button>
     </div>
   </div>
 
@@ -592,6 +631,7 @@
      [THROWABLE] extensible throwable inventory + projectile physics
      [PICKUP]    extensible world pickup registry
      [UI]        HUD + overlays
+     [COOP]      two-player WebRTC transport + remote farmhand
      [GAME]      bootstrap + main loop
      [SPAWN]     enemy spawn markers reserved for Phase 2 (data only)
    ===================================================================== */
@@ -655,6 +695,11 @@ const CONFIG = {
   radar: {
     range: 32,
     refresh: 1 / 12
+  },
+  multiplayer: {
+    maxPlayers: 2,
+    stateRate: 15,
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   },
   weapons: {
     unarmed: {
@@ -4872,6 +4917,7 @@ const WEAPON = (() => {
   const _o = new THREE.Vector3();
   const _d = new THREE.Vector3();
   const _t = new THREE.Vector3();
+  const _end = new THREE.Vector3();
   const _muzzleWorld = new THREE.Vector3();
 
   function starGeometry(points, inner, outer) {
@@ -5228,6 +5274,18 @@ const WEAPON = (() => {
       _t.y += UTIL.rng(-d.spread, d.spread);
       _t.z += UTIL.rng(-d.spread, d.spread);
       _t.normalize();
+      const networkShot = {
+        origin: _o.toArray(), dir: _t.toArray(), damage: d.damage,
+        range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+      };
+      if (COOP.shouldRemoteRelayShots()) {
+        COOP.sendShot(networkShot);
+        if (d.pellets === 1 || i === 0) {
+          _end.copy(_o).addScaledVector(_t, d.range);
+          FX.tracer(_muzzleWorld, _end);
+        }
+        continue;
+      }
       const hit = FX.trace(_o, _t, d.range);
       if (hit) {
         if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
@@ -5239,9 +5297,11 @@ const WEAPON = (() => {
           if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
           FX.hitWobbler(hit.object, _t, 1 / d.pellets * 2.4);
         }
+        COOP.relayHostShot(networkShot);
       } else if (i === 0) {
         _t.copy(_d).multiplyScalar(d.range).add(_o);
         FX.tracer(_muzzleWorld, _t);
+        COOP.relayHostShot(networkShot);
       }
     }
     if (s.mag === 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
@@ -5723,6 +5783,14 @@ const UI = (() => {
 
   function init() {
     el.start = document.getElementById('start');
+    el.coopLobby = document.getElementById('coopLobby');
+    el.coopInstructions = document.getElementById('coopInstructions');
+    el.signalInput = document.getElementById('signalInput');
+    el.signalOutput = document.getElementById('signalOutput');
+    el.signalInputLabel = document.getElementById('signalInputLabel');
+    el.signalOutputLabel = document.getElementById('signalOutputLabel');
+    el.signalAction = document.getElementById('signalAction');
+    el.coopStatus = document.getElementById('coopStatus');
     el.pause = document.getElementById('pause');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
@@ -5948,6 +6016,7 @@ const UI = (() => {
 
   function enterGame() {
     el.start.classList.add('hidden');
+    el.coopLobby.classList.add('hidden');
     el.endGame.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
@@ -5959,6 +6028,50 @@ const UI = (() => {
     el.radar.classList.add('on');
     showMobileControls(true);
   }
+  function showCoopLobby() {
+    el.start.classList.add('hidden');
+    el.coopLobby.classList.remove('hidden');
+    el.pause.classList.add('hidden');
+    el.dead.classList.add('hidden');
+    el.endGame.classList.add('hidden');
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+    showMobileControls(false);
+  }
+  function hideCoopLobby() {
+    if (el.coopLobby) el.coopLobby.classList.add('hidden');
+  }
+  function setCoopLobbyStep(role, step) {
+    if (!role) {
+      if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate. This first co-op layer uses a direct browser connection, so the two players exchange the short connection codes below.';
+      if (el.signalInputLabel) el.signalInputLabel.textContent = 'Connection code from teammate';
+      if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Your connection code';
+      if (el.signalAction) el.signalAction.textContent = 'Create code';
+      return;
+    }
+    const host = role === 'host';
+    if (el.coopInstructions) {
+      el.coopInstructions.textContent = host
+        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'Host a room, send your code to your teammate, then paste their answer back here.')
+        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'Paste the host code below, create your answer, and send it back to the host.');
+    }
+    if (el.signalInputLabel) el.signalInputLabel.textContent = host ? 'Teammate answer code' : 'Host connection code';
+    if (el.signalOutputLabel) el.signalOutputLabel.textContent = host ? 'Host connection code' : 'Your answer code';
+    if (el.signalAction) {
+      el.signalAction.textContent = host
+        ? (step === 'offer' ? 'Finish connection' : 'Create host code')
+        : (step === 'answer' ? 'Create answer' : 'Join room');
+    }
+  }
+  function setCoopStatus(message, kind) {
+    if (!el.coopStatus) return;
+    el.coopStatus.textContent = message || '';
+    el.coopStatus.className = 'coop-status' + (kind ? ' ' + kind : '');
+  }
+  function setSignalOutput(value) {
+    if (el.signalOutput) el.signalOutput.value = value || '';
+  }
+  function getSignalInput() { return el.signalInput ? el.signalInput.value.trim() : ''; }
   function showEndGame(wilted) {
     el.endGameSummary.textContent = 'The Carrot Warden is down after ' + (wilted || 0) +
       ' wilted activations. Continue exploring, or start this run over.';
@@ -5980,6 +6093,10 @@ const UI = (() => {
   }
   function showStart() {
     hideEndGame();
+    hideCoopLobby();
+    if (el.signalInput) el.signalInput.value = '';
+    setSignalOutput('');
+    setCoopLobbyStep(null, 'idle');
     el.start.classList.remove('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
@@ -5991,6 +6108,7 @@ const UI = (() => {
     el.vitals.classList.remove('on');
     el.tally.classList.remove('on');
     showMobileControls(false);
+    setCoopStatus('Choose Single-player or Online co-op to begin.');
   }
   function showPause() {
     el.pause.classList.remove('hidden');
@@ -6043,7 +6161,8 @@ const UI = (() => {
   }
 
   return {
-    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, toast,
+    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, showCoopLobby, hideCoopLobby,
+    setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setKills, setBoss, hurtFlash, showDead, hideDead, showEndGame, hideEndGame,
     showStart, showFallback, hideFallback,
@@ -6334,7 +6453,7 @@ const PICKUP = (() => {
 const GAME = (() => {
   let renderer, scene, camera, viewScene, viewCamera;
   let last = 0, time = 0, running = false, entered = false;
-  let deathPending = false, lastKills = 0, endShown = false;
+  let deathPending = false, lastKills = 0, endShown = false, mode = 'single';
 
   function fail(msg) {
     const e = document.getElementById('err');
@@ -6391,6 +6510,7 @@ const GAME = (() => {
     UI.setShield(0, CONFIG.player.maxShield);
     UI.setKills(0);
     INPUT.init(renderer.domElement);
+    COOP.init(scene);
 
     // shared mouse/touch engagement wiring
     INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); });
@@ -6402,17 +6522,46 @@ const GAME = (() => {
 
     INPUT.on('fallback', why => UI.showFallback(why));
 
-    document.getElementById('enterBtn').addEventListener('click', enter);
+    document.getElementById('enterBtn').addEventListener('click', startSingle);
+    document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
+    document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
+    document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
+    document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
+    document.getElementById('copySignal').addEventListener('click', copySignal);
+    document.getElementById('backToModeBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      COOP.stop();
+      mode = 'single';
+      UI.showStart();
+    });
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
     document.getElementById('againBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
     document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
     document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
     // manual escape hatches, in case the automatic detection ever misses
-    const goFree = e => { e.stopPropagation(); INPUT.forceFree('switched on by hand'); enter(); };
+    const goFree = e => {
+      e.stopPropagation();
+      mode = 'single';
+      COOP.stop();
+      INPUT.forceFree('switched on by hand');
+      enter();
+    };
     document.getElementById('freeBtn').addEventListener('click', goFree);
     document.getElementById('freeBtn2').addEventListener('click', goFree);
     UI.el.modeChip.addEventListener('click', () => { UI.hideFallback(); INPUT.tryLockAgain(); });
     UI.el.pause.addEventListener('click', enter);
+
+    COOP.on('status', (message, kind) => UI.setCoopStatus(message, kind));
+    COOP.on('connected', () => beginCoop());
+    COOP.on('disconnected', message => {
+      if (mode !== 'coop' || !entered) return;
+      running = false;
+      entered = false;
+      INPUT.releaseLock();
+      UI.showCoopLobby();
+      UI.setCoopStatus(message || 'Teammate disconnected. The room is closed.', 'bad');
+    });
+    COOP.on('error', message => UI.setCoopStatus(message || 'Co-op connection error.', 'bad'));
 
     // lantern toggle for the dim corners of the barn
     const lampKey = new THREE.PointLight(0xFFE0A8, 0, 9, 2);
@@ -6438,6 +6587,41 @@ const GAME = (() => {
     AUDIO.resume();
     UI.enterGame();
     INPUT.requestLock();
+  }
+
+  function startSingle() {
+    mode = 'single';
+    COOP.stop();
+    enter();
+  }
+
+  function openCoopLobby() {
+    mode = 'coop';
+    running = false;
+    entered = false;
+    COOP.openLobby();
+    UI.showCoopLobby();
+    UI.setCoopStatus('Choose Host room or Join room to begin.');
+  }
+
+  function beginCoop() {
+    mode = 'coop';
+    UI.setCoopLobbyStep(COOP.role, 'connected');
+    UI.setCoopStatus('Connected. Starting the two-player farm…', 'good');
+    enter();
+  }
+
+  async function copySignal(e) {
+    e.stopPropagation();
+    const value = UI.el.signalOutput ? UI.el.signalOutput.value : '';
+    if (!value) { UI.setCoopStatus('Create a connection code first.', 'bad'); return; }
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(value);
+      else { UI.el.signalOutput.focus(); UI.el.signalOutput.select(); document.execCommand('copy'); }
+      UI.setCoopStatus('Code copied. Send it to your teammate.', 'good');
+    } catch (err) {
+      UI.setCoopStatus('Copy was blocked. Select the code and copy it manually.', 'bad');
+    }
   }
 
   /* Back on your feet: heal up, put the farm back the way it was. */
@@ -6479,6 +6663,8 @@ const GAME = (() => {
     lastKills = 0;
     deathPending = false;
     endShown = false;
+    COOP.stop();
+    mode = 'single';
     entered = false;
     running = false;
     INPUT.releaseLock();
@@ -6514,6 +6700,7 @@ const GAME = (() => {
     if (running) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
+    COOP.update(dt, running && !PLAYER.isDead);
     FX.update(dt, time);
     AUDIO.update(dt);
     UI.update(dt);
@@ -6533,7 +6720,13 @@ const GAME = (() => {
     renderer.render(viewScene, viewCamera);
   }
 
-  return { init, complete, get scene() { return scene; }, get camera() { return camera; } };
+  return {
+    init, complete,
+    get mode() { return mode; },
+    get isCoop() { return mode === 'coop'; },
+    get scene() { return scene; },
+    get camera() { return camera; }
+  };
 })();
 
 /* ============================== [CAST] ===============================
@@ -8039,6 +8232,326 @@ const ENEMY = (() => {
     get bossState() { return bossState; },
     get boss() { return boss; },
     aliveCount, radarContacts
+  };
+})();
+
+/* ============================== [COOP] ===============================
+   First online layer: one host and one joining farmhand over a direct
+   WebRTC data channel. Manual offer/answer exchange keeps this prototype
+   deployable on static GitHub Pages while leaving one transport seam for a
+   future room-code/signaling service. The host is the first authority for
+   relayed gun shots; player movement is interpolated locally on each client.
+   ===================================================================== */
+const COOP = (() => {
+  const C = CONFIG.multiplayer;
+  const callbacks = { status: [], connected: [], disconnected: [], error: [] };
+  const remotes = new Map();
+  let scene = null, pc = null, channel = null;
+  let role = null, phase = 'idle', connected = false, closing = false;
+  let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
+  let sendAcc = 0;
+
+  function on(event, fn) {
+    if (callbacks[event] && typeof fn === 'function') callbacks[event].push(fn);
+  }
+  function emit(event) {
+    const args = Array.prototype.slice.call(arguments, 1);
+    (callbacks[event] || []).forEach(fn => fn.apply(null, args));
+  }
+  function status(message, kind) { emit('status', message, kind); }
+
+  function init(mainScene) {
+    scene = mainScene;
+    clearRemotes();
+  }
+
+  function clearRemotes() {
+    remotes.forEach(remote => { if (scene && remote.group) scene.remove(remote.group); });
+    remotes.clear();
+    if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
+  }
+
+  function closeTransport() {
+    closing = true;
+    connected = false;
+    if (channel) { try { channel.close(); } catch (err) {} }
+    if (pc) { try { pc.close(); } catch (err) {} }
+    channel = null;
+    pc = null;
+    closing = false;
+  }
+
+  function stop() {
+    closeTransport();
+    clearRemotes();
+    role = null;
+    phase = 'idle';
+    sendAcc = 0;
+    if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
+  }
+
+  function openLobby() {
+    stop();
+    if (UI && UI.el) {
+      UI.el.signalInput.value = '';
+      UI.setSignalOutput('');
+    }
+    UI.setCoopLobbyStep(null, 'idle');
+    status('Choose Host room or Join room to begin.');
+  }
+
+  function parseSignal(raw) {
+    try {
+      const value = JSON.parse(raw);
+      if (!value || !value.type || !value.sdp) throw new Error('That code is incomplete.');
+      return value;
+    } catch (err) {
+      throw new Error('Connection code could not be read. Copy it exactly, including braces.');
+    }
+  }
+
+  function makePeer() {
+    const PeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+    if (!PeerConnection) {
+      const message = 'This browser does not expose WebRTC, so online co-op is unavailable here.';
+      emit('error', message);
+      throw new Error(message);
+    }
+    closeTransport();
+    pc = new PeerConnection({ iceServers: C.iceServers });
+    pc.ondatachannel = e => bindChannel(e.channel);
+    pc.onconnectionstatechange = () => {
+      const state = pc && pc.connectionState;
+      if (state === 'failed' || state === 'closed') handleDisconnect('The co-op connection ended.');
+    };
+    pc.oniceconnectionstatechange = () => {
+      const state = pc && pc.iceConnectionState;
+      if (state === 'failed' || state === 'closed') handleDisconnect('The co-op connection could not be maintained.');
+    };
+    return pc;
+  }
+
+  function bindChannel(next) {
+    channel = next;
+    channel.onopen = () => {
+      connected = true;
+      phase = 'connected';
+      send({ type: 'hello', id: localId, maxPlayers: C.maxPlayers });
+      emit('connected');
+      status('Two farmhands connected.', 'good');
+    };
+    channel.onmessage = e => {
+      try { receive(JSON.parse(e.data)); }
+      catch (err) { status('A network message was unreadable; the room is still open.', 'bad'); }
+    };
+    channel.onerror = () => emit('error', 'The co-op data channel reported an error.');
+    channel.onclose = () => handleDisconnect('Your teammate disconnected.');
+  }
+
+  function handleDisconnect(message) {
+    if (closing || !connected && !pc) return;
+    const wasConnected = connected;
+    closeTransport();
+    clearRemotes();
+    phase = 'idle';
+    if (wasConnected) emit('disconnected', message);
+  }
+
+  function waitForIce() {
+    return new Promise(resolve => {
+      const peer = pc;
+      if (!peer || peer.iceGatheringState === 'complete') { resolve(); return; }
+      let done = false;
+      let timer = null;
+      const onStateChange = () => {
+        if (peer.iceGatheringState === 'complete') finish();
+      };
+      const finish = () => {
+        if (done) return;
+        done = true;
+        peer.removeEventListener('icegatheringstatechange', onStateChange);
+        if (timer) clearTimeout(timer);
+        resolve();
+      };
+      peer.addEventListener('icegatheringstatechange', onStateChange);
+      timer = setTimeout(finish, 6500);
+    });
+  }
+
+  async function host() {
+    try {
+      role = 'host';
+      phase = 'offer';
+      const peer = makePeer();
+      bindChannel(peer.createDataChannel('wf-coop', { ordered: true }));
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      await waitForIce();
+      UI.setCoopLobbyStep('host', 'offer');
+      UI.setSignalOutput(JSON.stringify(peer.localDescription));
+      status('Host code ready. Send it to your teammate, then paste their answer below.');
+    } catch (err) {
+      phase = 'idle';
+      emit('error', err.message || 'Could not create a host room.');
+    }
+  }
+
+  function prepareJoin() {
+    try {
+      role = 'join';
+      phase = 'join';
+      makePeer();
+      UI.setCoopLobbyStep('join', 'answer');
+      UI.setSignalOutput('');
+      status('Paste the host code into the first box, then create your answer.');
+    } catch (err) {
+      phase = 'idle';
+      emit('error', err.message || 'Could not prepare a join room.');
+    }
+  }
+
+  async function createAnswer(raw) {
+    try {
+      const offer = parseSignal(raw);
+      await pc.setRemoteDescription(offer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await waitForIce();
+      phase = 'answer';
+      UI.setCoopLobbyStep('join', 'answer');
+      UI.setSignalOutput(JSON.stringify(pc.localDescription));
+      status('Answer ready. Send it back to the host and keep this screen open.');
+    } catch (err) {
+      emit('error', err.message || 'Could not create a join answer.');
+    }
+  }
+
+  async function acceptAnswer(raw) {
+    try {
+      const answer = parseSignal(raw);
+      await pc.setRemoteDescription(answer);
+      phase = 'waiting';
+      status('Answer accepted. Waiting for the two-player channel to open…');
+    } catch (err) {
+      emit('error', err.message || 'Could not accept the teammate answer.');
+    }
+  }
+
+  function signalAction() {
+    const raw = UI.getSignalInput();
+    if (role === 'host' && phase === 'offer') {
+      if (!raw) { status('Paste the teammate answer code first.', 'bad'); return; }
+      acceptAnswer(raw);
+    } else if (role === 'join' && (phase === 'join' || phase === 'answer')) {
+      if (!raw) { status('Paste the host connection code first.', 'bad'); return; }
+      createAnswer(raw);
+    } else if (!role) {
+      status('Choose Host room or Join room first.', 'bad');
+    }
+  }
+
+  function send(message) {
+    if (channel && channel.readyState === 'open') channel.send(JSON.stringify(message));
+  }
+
+  function sendState() {
+    send({
+      type: 'state', id: localId,
+      player: {
+        x: PLAYER.position.x, y: PLAYER.position.y, z: PLAYER.position.z,
+        yaw: PLAYER.yaw, pitch: PLAYER.pitch, layerId: PLAYER.layerId,
+        dead: PLAYER.isDead
+      }
+    });
+  }
+
+  function makeRemote(id) {
+    let remote = remotes.get(id);
+    if (remote) return remote;
+    const built = CAST.build('grinner');
+    const group = built.rig.root;
+    group.scale.setScalar(1.08);
+    group.visible = false;
+    group.userData.coopPlayer = id;
+    if (scene) scene.add(group);
+    PROPS.blobShadow(group, 0, 0, 0.62, 0.5);
+    remote = {
+      id: id, group: group,
+      target: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false },
+      active: true, lastSeen: 0
+    };
+    remotes.set(id, remote);
+    return remote;
+  }
+
+  function receive(message) {
+    if (!message || !message.type) return;
+    if (message.type === 'hello') {
+      if (message.maxPlayers && message.maxPlayers > C.maxPlayers) {
+        emit('error', 'That room supports more players than this build allows.');
+        return;
+      }
+      makeRemote(message.id);
+      sendState();
+    } else if (message.type === 'state' && message.id && message.player) {
+      const remote = makeRemote(message.id);
+      remote.target = Object.assign(remote.target, message.player);
+      remote.lastSeen = 0;
+    } else if (message.type === 'shot' && role === 'host' && message.shot) {
+      resolveShot(message.shot);
+      send({ type: 'shotResolved', shot: message.shot });
+    } else if (message.type === 'shotResolved' && role === 'join' && message.shot) {
+      resolveShot(message.shot);
+    }
+  }
+
+  function resolveShot(shot) {
+    const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
+    const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
+    const range = shot.range || 100;
+    const hit = FX.trace(origin, dir, range);
+    if (hit) {
+      FX.tracer(origin, hit.point);
+      ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+    } else {
+      FX.tracer(origin, origin.clone().addScaledVector(dir, range));
+    }
+  }
+
+  function sendShot(shot) {
+    if (role === 'join' && connected) send({ type: 'shot', shot: shot });
+  }
+  function relayHostShot(shot) {
+    if (role === 'host' && connected) send({ type: 'shotResolved', shot: shot });
+  }
+  function shouldRemoteRelayShots() { return role === 'join' && connected; }
+
+  function update(dt, running) {
+    if (!connected) return;
+    if (running) {
+      sendAcc += dt;
+      if (sendAcc >= 1 / C.stateRate) { sendAcc = 0; sendState(); }
+    }
+    const contacts = [];
+    remotes.forEach(remote => {
+      remote.lastSeen += dt;
+      const target = remote.target;
+      remote.group.visible = target.layerId === PLAYER.layerId && !target.dead;
+      remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
+      remote.group.position.y = UTIL.damp(remote.group.position.y, target.y, 14, dt);
+      remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
+      remote.group.rotation.y = UTIL.damp(remote.group.rotation.y, target.yaw || 0, 14, dt);
+      contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
+    });
+    UI.setRadarContacts(contacts);
+  }
+
+  return {
+    init, on, openLobby, host, prepareJoin, signalAction, stop, update,
+    sendShot, relayHostShot, shouldRemoteRelayShots,
+    get role() { return role; },
+    get connected() { return connected; },
+    get active() { return connected; }
   };
 })();
 
