@@ -1576,7 +1576,10 @@ const PROPS = (() => {
    collision boxes and the art can never drift apart. */
 const LEVEL = (() => {
   let root = null;
-  const animated = { windmillFan: null, vane: null, sails: [], hangers: [], basementHatch: null };
+  const animated = {
+    windmillFan: null, vane: null, sails: [], hangers: [],
+    basementHatch: null, basementHatches: []
+  };
 
   /* soft-edged dirt blob used to paint the footpaths */
   let pathTex = null;
@@ -1938,14 +1941,15 @@ const LEVEL = (() => {
     PROPS.hayBale(parent, 11.0, 0, -3.6, -0.5);
     PROPS.hayBale(parent, 16.5, 3.4, -12.6, 0.1);
     PROPS.hayBale(parent, 12.2, 3.4, -13.0, -0.3);
-    // Store the barrel under the loft, completely away from the stair approach.
-    PROPS.barrel(parent, 19.4, -13.2);
+    // Keep the barrel under the loft but clear of the new back-wall basement
+    // stair and its east-side landing.
+    PROPS.barrel(parent, 20.0, -10.8);
     PROPS.crate(parent, 8.2, 0, -13.4, 1.0);
     PROPS.crate(parent, 8.4, 1.0, -13.2, 0.85, 0.4);
     PROPS.crate(parent, 9.4, 0, -12.6, 0.9, -0.3);
     PROPS.can(parent, 8.4, 1.85, -13.2);
     PROPS.can(parent, 9.4, 0.9, -12.6);
-    PROPS.bottle(parent, 19.4, 1.25, -13.2);
+    PROPS.bottle(parent, 20.0, 1.25, -10.8);
     PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
     PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
 
@@ -2611,12 +2615,29 @@ const LEVEL = (() => {
       (FLOOR_Y + CEIL_Y) * 0.5, -6.35);
     room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MAX_X + 0.2,
       (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
-    // Ceiling underside is visual only for now; a later pass can add
-    // deliberate low-clearance sections without changing the room footprint.
-    // Leave a 3.2 m shaft open above the barn stair so its top step is not
-    // trapped underneath the room ceiling.
-    room.box(4.2, 0.30, MAX_Z - MIN_Z + 0.4, 10.3, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5);
-    room.box(12.2, 0.30, MAX_Z - MIN_Z + 0.4, 21.9, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5);
+    // The old center stair needed a ceiling slot across the entire room. The
+    // replacement hugs the barn's north wall, so a compact rectangular stair
+    // well restores the ceiling everywhere else and keeps sightlines cleaner.
+    const stairOpening = { minX: 13.1, maxX: 20.9, minZ: -14.9, maxZ: -11.1 };
+    const ceilingPieces = [
+      {
+        cx: (MIN_X + MAX_X) * 0.5, cz: (MIN_Z + stairOpening.minZ) * 0.5,
+        w: MAX_X - MIN_X, d: stairOpening.minZ - MIN_Z
+      },
+      {
+        cx: (MIN_X + MAX_X) * 0.5, cz: (stairOpening.maxZ + MAX_Z) * 0.5,
+        w: MAX_X - MIN_X, d: MAX_Z - stairOpening.maxZ
+      },
+      {
+        cx: (MIN_X + stairOpening.minX) * 0.5, cz: (stairOpening.minZ + stairOpening.maxZ) * 0.5,
+        w: stairOpening.minX - MIN_X, d: stairOpening.maxZ - stairOpening.minZ
+      },
+      {
+        cx: (stairOpening.maxX + MAX_X) * 0.5, cz: (stairOpening.minZ + stairOpening.maxZ) * 0.5,
+        w: MAX_X - stairOpening.maxX, d: stairOpening.maxZ - stairOpening.minZ
+      }
+    ];
+    ceilingPieces.forEach(p => room.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz));
     room.build(parent);
     WORLD.addFloor((MIN_X + MAX_X) * 0.5, FLOOR_Y - 0.22, (MIN_Z + MAX_Z) * 0.5,
       MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, 'basement_floor');
@@ -2630,10 +2651,9 @@ const LEVEL = (() => {
       0.30, 3.7, 7.1, 'basement_wall');
     WORLD.add(MAX_X + 0.2, (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5,
       0.30, 3.7, MAX_Z - MIN_Z + 0.4, 'basement_wall');
-    WORLD.add(10.3, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5,
-      4.2, 0.30, MAX_Z - MIN_Z + 0.4, 'basement_ceiling');
-    WORLD.add(21.9, CEIL_Y - 0.15, (MIN_Z + MAX_Z) * 0.5,
-      12.2, 0.30, MAX_Z - MIN_Z + 0.4, 'basement_ceiling');
+    ceilingPieces.forEach(p => WORLD.add(
+      p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, 'basement_ceiling'
+    ));
 
     // Square timber columns make the underground scale readable without
     // creating a maze or introducing extra navigation blockers.
@@ -2649,66 +2669,99 @@ const LEVEL = (() => {
     PROPS.lantern(parent, 11.6, -0.72, -6.2, 0);
     PROPS.lantern(parent, 24.2, -0.72, -17.1, 0);
 
-    // Ten shallow steps descend from the barn's north side. Every rise stays
-    // below PLAYER.stepHeight so walking up never needs a jump or snap.
+    // The barn's original descent cut straight through its central floor. This
+    // wider back-wall flight runs east/west beneath the loft instead, leaving
+    // the main barn lane open for combat and future multiplayer circulation.
+    // Every rise stays below PLAYER.stepHeight.
     const stairMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
     const stairs = new PRIM.Batch(stairMat, 0.030);
-    const stairCount = 10, stairW = 2.6, stairZ0 = -7.6, stairStep = 0.68;
+    const stairCount = 10, stairD = 2.70, stairX0 = 20.15, stairStep = 0.68, stairZ = -13.0;
     for (let i = 0; i < stairCount; i++) {
       const top = -0.4 + (FLOOR_Y + 0.4) * i / (stairCount - 1);
-      const z = stairZ0 - stairStep * i;
-      stairs.box(stairW, 0.22, 0.72, 14, top - 0.11, z, 0, 0, 0, 0.012);
-      WORLD.addFloor(14, top - 0.22, z, stairW, 0.22, 0.76, 'basement_stair');
+      const x = stairX0 - stairStep * i;
+      stairs.box(0.72, 0.22, stairD, x, top - 0.11, stairZ, 0, 0, 0, 0.012);
+      WORLD.addFloor(x, top - 0.22, stairZ, 0.76, 0.22, stairD, 'basement_stair');
     }
-    // A small timber frame marks the opening at surface height; it is not a
-    // blocking lid, so the portal remains a genuine walkable entrance.
-    stairs.box(0.18, 0.36, 0.18, 12.55, 0.18, -7.15);
-    stairs.box(0.18, 0.36, 0.18, 15.45, 0.18, -7.15);
-    stairs.box(3.08, 0.18, 0.18, 14, 0.34, -7.15);
+
+    // Proper handrails make the opening readable without adding thin snagging
+    // colliders. The floor inset and timber portal clearly mark the top landing.
+    const railRun = stairStep * (stairCount - 1);
+    const railRise = 3.6;
+    const railLength = Math.hypot(railRun, railRise);
+    const railAngle = Math.atan2(railRise, railRun);
+    [-1, 1].forEach(side => {
+      const z = stairZ + side * (stairD * 0.5 + 0.08);
+      stairs.box(railLength, 0.12, 0.12, stairX0 - railRun * 0.5, -1.45, z,
+        0, 0, railAngle, 0.008);
+      [0, 3, 6, 9].forEach(i => {
+        const top = -0.4 + (FLOOR_Y + 0.4) * i / (stairCount - 1);
+        stairs.box(0.13, 0.78, 0.13, stairX0 - stairStep * i, top + 0.39, z);
+      });
+    });
+    stairs.box(0.18, 0.36, 0.18, 20.64, 0.18, stairZ - 1.48);
+    stairs.box(0.18, 0.36, 0.18, 20.64, 0.18, stairZ + 1.48);
+    stairs.box(0.18, 0.18, 3.14, 20.64, 0.34, stairZ);
     stairs.build(parent);
-    WORLD.addPortal('barn_basement_stair', 14, -10.7, 2.9, 7.4, {
-      minY: FLOOR_Y - 0.3, maxY: 0.26, from: 'surface', to: 'basement', normalZ: -1
+
+    PRIM.box(1.15, 0.045, 2.78, MAT.flat(PAL.charcoal), {
+      pos: [20.12, 0.035, stairZ], parent: parent, ray: false, outline: 0.022
+    });
+    WORLD.addPortal('barn_basement_stair', 17.1, stairZ, 7.6, 3.0, {
+      minY: FLOOR_Y - 0.3, maxY: 0.26, from: 'surface', to: 'basement', normalX: -1
     });
 
-    // East hatch: one compact vertical ladder gives us a second entrance and
-    // proves the layer-aware ladder controller independently of the stair.
-    const HX = 24, HZ = -9.5;
+    // Reusable hatch authoring keeps every entrance mechanically identical and
+    // makes later expansion a data-only placement decision.
     const ladderMat = MAT.toon(PAL.rustDeep, { map: TEX.metal() });
-    const ladder = new PRIM.Batch(ladderMat, 0.024);
-    ladder.box(0.14, 4.0, 0.14, HX - 0.56, -2.0, HZ);
-    ladder.box(0.14, 4.0, 0.14, HX + 0.56, -2.0, HZ);
-    for (let y = -3.65; y <= -0.35; y += 0.47) ladder.box(1.25, 0.12, 0.14, HX, y, HZ);
-    // Raised hatch rim surrounds a real animated lid. The dark inset stays
-    // above the terrain sheet, so opening the lid actually reveals a readable
-    // shaft instead of the unbroken ground texture beneath it.
-    ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ - 0.72);
-    ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ + 0.72);
-    ladder.box(0.18, 0.18, 1.26, HX - 0.82, 0.12, HZ);
-    ladder.box(0.18, 0.18, 1.26, HX + 0.82, 0.12, HZ);
-    ladder.build(parent);
+    animated.basementHatches.length = 0;
+    animated.basementHatch = null;
 
-    PRIM.box(1.50, 0.045, 1.20, MAT.flat(PAL.charcoal), {
-      pos: [HX, 0.035, HZ], parent: parent, ray: false, outline: 0.022
-    });
+    function addBasementHatch(id, HX, HZ, normalZ) {
+      normalZ = normalZ || 1;
+      const ladder = new PRIM.Batch(ladderMat, 0.024);
+      ladder.box(0.14, 4.0, 0.14, HX - 0.56, -2.0, HZ);
+      ladder.box(0.14, 4.0, 0.14, HX + 0.56, -2.0, HZ);
+      for (let y = -3.65; y <= -0.35; y += 0.47) ladder.box(1.25, 0.12, 0.14, HX, y, HZ);
+      ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ - 0.72);
+      ladder.box(1.8, 0.18, 0.18, HX, 0.12, HZ + 0.72);
+      ladder.box(0.18, 0.18, 1.26, HX - 0.82, 0.12, HZ);
+      ladder.box(0.18, 0.18, 1.26, HX + 0.82, 0.12, HZ);
+      ladder.build(parent);
 
-    const hatchPivot = new THREE.Group();
-    hatchPivot.position.set(HX, 0.075, HZ - 0.575);
-    parent.add(hatchPivot);
-    PRIM.box(1.45, 0.10, 1.15, MAT.toon(PAL.rustDeep, { map: TEX.metal() }), {
-      pos: [0, 0.05, 0.575], parent: hatchPivot, ray: false, outline: 0.030
-    });
-    const hatchBrace = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.018);
-    hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.35);
-    hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.80);
-    hatchBrace.box(0.10, 0.06, 0.92, 0, 0.115, 0.575);
-    hatchBrace.build(hatchPivot);
-    animated.basementHatch = { pivot: hatchPivot, x: HX, z: HZ, openness: 0, target: 0 };
+      PRIM.box(1.50, 0.045, 1.20, MAT.flat(PAL.charcoal), {
+        pos: [HX, 0.035, HZ], parent: parent, ray: false, outline: 0.022
+      });
 
-    WORLD.addLadder(HX, FLOOR_Y, HZ, 1.75, 4.0, 1.55, {
-      topY: 0, topExitX: HX, topExitZ: HZ - 1.08,
-      bottomExitX: HX, bottomExitZ: HZ, normalZ: 1,
-      topLayer: 'surface', bottomLayer: 'basement', tag: 'basement_hatch_ladder'
-    });
+      const hatchPivot = new THREE.Group();
+      hatchPivot.position.set(HX, 0.075, HZ - 0.575 * normalZ);
+      parent.add(hatchPivot);
+      PRIM.box(1.45, 0.10, 1.15, MAT.toon(PAL.rustDeep, { map: TEX.metal() }), {
+        pos: [0, 0.05, 0.575 * normalZ], parent: hatchPivot, ray: false, outline: 0.030
+      });
+      const hatchBrace = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.018);
+      hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.35 * normalZ);
+      hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.80 * normalZ);
+      hatchBrace.box(0.10, 0.06, 0.92, 0, 0.115, 0.575 * normalZ);
+      hatchBrace.build(hatchPivot);
+
+      const hatch = {
+        id: id, pivot: hatchPivot, x: HX, z: HZ,
+        openness: 0, target: 0, openSign: normalZ
+      };
+      animated.basementHatches.push(hatch);
+      if (!animated.basementHatch) animated.basementHatch = hatch;
+
+      WORLD.addLadder(HX, FLOOR_Y, HZ, 1.75, 4.0, 1.55, {
+        topY: 0, topExitX: HX, topExitZ: HZ - normalZ * 1.08,
+        bottomExitX: HX, bottomExitZ: HZ, normalZ: normalZ,
+        topLayer: 'surface', bottomLayer: 'basement', tag: id + '_hatch_ladder'
+      });
+    }
+
+    // Existing barn-side nook, seed-store rear wall, and windmill/root-cellar.
+    addBasementHatch('basement', 24.0, -9.5, 1);
+    addBasementHatch('seed_store', -24.0, 16.0, 1);
+    addBasementHatch('windmill', -7.6, -30.0, 1);
 
     /* ---- v0.06.02 underground expansion ----
        One westbound service spine joins the first basement to a utility room,
@@ -3004,16 +3057,17 @@ const LEVEL = (() => {
       h.obj.rotation.z = Math.sin(t * h.speed + h.phase) * h.amp;
       h.obj.rotation.x = Math.cos(t * h.speed * 0.7 + h.phase) * h.amp * 0.5;
     }
-    const hatch = animated.basementHatch;
-    if (hatch) {
+    for (let i = 0; i < animated.basementHatches.length; i++) {
+      const hatch = animated.basementHatches[i];
       const dx = PLAYER.position.x - hatch.x;
       const dz = PLAYER.position.z - hatch.z;
       // Hysteresis prevents flicker at the edge: open within 3.2 m and remain
-      // open until the player is more than 3.8 m away. Climbing always wins.
+      // open until the player is more than 3.8 m away. The ladder controller
+      // keeps a climbing player snapped to the correct hatch coordinates.
       const limit = hatch.target > 0.5 ? 3.8 : 3.2;
-      hatch.target = (PLAYER.isClimbing || dx * dx + dz * dz < limit * limit) ? 1 : 0;
+      hatch.target = dx * dx + dz * dz < limit * limit ? 1 : 0;
       hatch.openness = UTIL.damp(hatch.openness, hatch.target, hatch.target ? 8.5 : 5.0, dt);
-      hatch.pivot.rotation.x = -hatch.openness * 1.42;
+      hatch.pivot.rotation.x = -hatch.openness * 1.42 * hatch.openSign;
     }
   }
 
@@ -5195,15 +5249,15 @@ const PICKUP = (() => {
     { id: 'carbineAmmo', x: 19.0, z: -39.8 },
     { id: 'shieldCell', x: 17.9, z: -29.5 },
 
-    // Underground combat-room resources. Explicit y values keep surface and
-    // basement pickups independent even when they share map coordinates.
-    { id: 'healthTonic', x: -14.0, y: -4.0, z: 13.0 },
-    { id: 'shieldCell', x: -20.3, y: -4.0, z: 11.8 },
-    { id: 'shellBox', x: -15.0, y: -4.0, z: 23.0 },
-    { id: 'lightAmmo', x: -17.5, y: -2.8, z: 17.5 },
-    { id: 'shieldCell', x: 11.0, y: -4.0, z: -44.0 },
-    { id: 'healthTonic', x: 20.0, y: -4.0, z: -44.0 },
-    { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },
+    // One visible resource per major underground zone. Explicit y values keep
+    // surface and basement pickups independent at shared map coordinates.
+    { id: 'healthTonic', x: 20.5, y: -4.0, z: -6.0 },       // barn room
+    { id: 'lightAmmo', x: 0.0, y: -4.0, z: -11.5 },         // service tunnel
+    { id: 'shieldCell', x: -15.0, y: -4.0, z: -7.0 },       // utility room
+    { id: 'shellBox', x: -7.0, y: -4.0, z: -26.5 },         // root cellar
+    { id: 'healthTonic', x: -15.0, y: -4.0, z: 23.0 },      // generator hall
+    { id: 'shieldCell', x: 9.0, y: -4.0, z: -30.0 },        // east tunnel
+    { id: 'carbineAmmo', x: 13.0, y: -3.0, z: -47.5 },      // relay platform
 
     // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
     { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
