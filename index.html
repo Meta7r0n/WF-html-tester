@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.07.01 Carrot Rogue Boss</title>
+<title>The Withered Farm — v0.07.02 Co-op Lobby</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -431,6 +431,7 @@
   }
   .go:hover{transform:rotate(-1deg) translateY(-2px);box-shadow:0 10px 0 var(--ink);}
   .go:active{transform:rotate(-1deg) translateY(6px);box-shadow:0 2px 0 var(--ink);}
+  .go:disabled{cursor:default;opacity:.6;transform:none;box-shadow:0 4px 0 var(--ink);}
   .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
   #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
   #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
@@ -438,6 +439,9 @@
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
   .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
   .signal-box{display:block;width:100%;min-height:74px;resize:vertical;padding:9px 11px;background:var(--peach);border:3px solid var(--ink);border-radius:9px;color:var(--ink);font:600 11px/1.35 "Courier New",monospace;box-shadow:3px 4px 0 rgba(22,18,15,.28);}
+  input.signal-box.room-code{min-height:0;height:56px;resize:none;text-align:center;font-size:24px;line-height:1;letter-spacing:5px;font-weight:900;text-transform:uppercase;}
+  input.signal-box.room-code::placeholder{color:rgba(22,18,15,.38);letter-spacing:3px;}
+  input.signal-box.room-code:disabled{opacity:.62;}
   .signal-box:focus{outline:3px solid var(--blue-deep);outline-offset:2px;}
   #coopActions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:15px;}
   .coop-status{min-height:19px;margin:15px 0 0;color:var(--ink-soft);font:800 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.5px;}
@@ -525,7 +529,7 @@
 
   <div id="start" class="veil">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.01 Carrot Rogue Boss</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.02 Co-op Lobby</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
       <ul class="keys">
@@ -556,18 +560,18 @@
     <div class="card">
       <p class="eyebrow">Online co-op &nbsp;·&nbsp; 2 players</p>
       <h1>Farmhands<span>One farm, two screens</span></h1>
-      <p class="sub" id="coopInstructions">Host a room or join a teammate. This first co-op layer uses a direct browser connection, so the two players exchange the short connection codes below.</p>
+      <p class="sub" id="coopInstructions">Host a room or join a teammate. Create a short six-character room code, then share it with the other screen.</p>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
         <button class="go mode-coop" id="joinBtn">Join room →</button>
       </div>
-      <label class="signal-label" for="signalInput" id="signalInputLabel">Connection code from teammate</label>
-      <textarea id="signalInput" class="signal-box" rows="4" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
-      <label class="signal-label" for="signalOutput" id="signalOutputLabel">Your connection code</label>
-      <textarea id="signalOutput" class="signal-box" rows="4" readonly spellcheck="false"></textarea>
+      <label class="signal-label" for="signalInput" id="signalInputLabel">Room code</label>
+      <input id="signalInput" class="signal-box room-code" type="text" inputmode="latin" maxlength="6" spellcheck="false" autocomplete="off" autocapitalize="characters" placeholder="WF••••" />
+      <label class="signal-label" for="signalOutput" id="signalOutputLabel">Share this room code</label>
+      <input id="signalOutput" class="signal-box room-code" type="text" readonly spellcheck="false" autocomplete="off" />
       <div id="coopActions">
-        <button class="go compact" id="signalAction">Create code</button>
-        <button class="alt" id="copySignal">Copy my code</button>
+        <button class="go compact" id="signalAction">Join room</button>
+        <button class="alt" id="copySignal">Share room code</button>
       </div>
       <p class="coop-status" id="coopStatus">Choose Host room or Join room to begin.</p>
       <button class="alt" id="backToModeBtn">Back to mode select</button>
@@ -608,6 +612,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 "use strict";
 
@@ -632,7 +637,7 @@
      [THROWABLE] extensible throwable inventory + projectile physics
      [PICKUP]    extensible world pickup registry
      [UI]        HUD + overlays
-     [COOP]      two-player WebRTC transport + remote farmhand
+     [COOP]      two-player PeerJS/WebRTC transport + remote farmhand
      [GAME]      bootstrap + main loop
      [SPAWN]     enemy spawn markers reserved for Phase 2 (data only)
    ===================================================================== */
@@ -5794,6 +5799,7 @@ const UI = (() => {
     el.signalInputLabel = document.getElementById('signalInputLabel');
     el.signalOutputLabel = document.getElementById('signalOutputLabel');
     el.signalAction = document.getElementById('signalAction');
+    el.copySignal = document.getElementById('copySignal');
     el.coopStatus = document.getElementById('coopStatus');
     el.pause = document.getElementById('pause');
     el.loading = document.getElementById('loading');
@@ -6046,25 +6052,39 @@ const UI = (() => {
     if (el.coopLobby) el.coopLobby.classList.add('hidden');
   }
   function setCoopLobbyStep(role, step) {
+    const showInput = role === 'join';
+    const showOutput = role === 'host' && step !== 'idle';
+    if (el.signalInputLabel) el.signalInputLabel.hidden = !showInput;
+    if (el.signalInput) {
+      el.signalInput.hidden = !showInput;
+      el.signalInput.disabled = !showInput;
+      if (!showInput) el.signalInput.value = '';
+    }
+    if (el.signalOutputLabel) el.signalOutputLabel.hidden = !showOutput;
+    if (el.signalOutput) el.signalOutput.hidden = !showOutput;
+    if (el.copySignal) el.copySignal.hidden = !showOutput;
     if (!role) {
-      if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate. This first co-op layer uses a direct browser connection, so the two players exchange the short connection codes below.';
-      if (el.signalInputLabel) el.signalInputLabel.textContent = 'Connection code from teammate';
-      if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Your connection code';
-      if (el.signalAction) el.signalAction.textContent = 'Create code';
+      if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate. Create a short six-character room code, then share it with the other screen.';
+      if (el.signalAction) {
+        el.signalAction.textContent = 'Choose host or join';
+        el.signalAction.disabled = true;
+      }
       return;
     }
     const host = role === 'host';
     if (el.coopInstructions) {
       el.coopInstructions.textContent = host
-        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'Host a room, send your code to your teammate, then paste their answer back here.')
-        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'Paste the host code below, create your answer, and send it back to the host.');
+        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'Share the six-character room code below. Your teammate only needs to enter it once.')
+        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'Enter the host’s six-character room code, then tap Join room.');
     }
-    if (el.signalInputLabel) el.signalInputLabel.textContent = host ? 'Teammate answer code' : 'Host connection code';
-    if (el.signalOutputLabel) el.signalOutputLabel.textContent = host ? 'Host connection code' : 'Your answer code';
+    if (el.signalInputLabel) el.signalInputLabel.textContent = 'Host room code';
+    if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Share this room code';
+    if (el.signalInput) el.signalInput.placeholder = 'WF••••';
     if (el.signalAction) {
+      el.signalAction.disabled = host || step === 'connecting' || step === 'connected';
       el.signalAction.textContent = host
-        ? (step === 'offer' ? 'Finish connection' : 'Create host code')
-        : (step === 'answer' ? 'Create answer' : 'Join room');
+        ? (step === 'connected' ? 'Connected' : 'Waiting for teammate…')
+        : (step === 'connecting' ? 'Connecting…' : step === 'connected' ? 'Connected' : 'Join room');
     }
   }
   function setCoopStatus(message, kind) {
@@ -6534,6 +6554,9 @@ const GAME = (() => {
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
     document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
     document.getElementById('copySignal').addEventListener('click', copySignal);
+    document.getElementById('signalInput').addEventListener('input', e => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+    });
     document.getElementById('backToModeBtn').addEventListener('click', e => {
       e.stopPropagation();
       COOP.stop();
@@ -6620,13 +6643,27 @@ const GAME = (() => {
 
   async function copySignal(e) {
     e.stopPropagation();
-    const value = UI.el.signalOutput ? UI.el.signalOutput.value : '';
-    if (!value) { UI.setCoopStatus('Create a connection code first.', 'bad'); return; }
+    const value = UI.el.signalOutput && UI.el.signalOutput.value
+      ? UI.el.signalOutput.value
+      : (UI.el.signalInput ? UI.el.signalInput.value : '');
+    if (!value) { UI.setCoopStatus('Create a room first.', 'bad'); return; }
     try {
+      if (navigator.share) {
+        await navigator.share({
+          title: 'The Withered Farm co-op',
+          text: 'Join my Withered Farm co-op room with code ' + value
+        });
+        UI.setCoopStatus('Room code shared.', 'good');
+        return;
+      }
       if (navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(value);
       else { UI.el.signalOutput.focus(); UI.el.signalOutput.select(); document.execCommand('copy'); }
-      UI.setCoopStatus('Code copied. Send it to your teammate.', 'good');
+      UI.setCoopStatus('Room code copied. Send it to your teammate.', 'good');
     } catch (err) {
+      if (err && err.name === 'AbortError') {
+        UI.setCoopStatus('Share cancelled. The room code is still above.');
+        return;
+      }
       UI.setCoopStatus('Copy was blocked. Select the code and copy it manually.', 'bad');
     }
   }
@@ -8376,20 +8413,23 @@ const ENEMY = (() => {
 })();
 
 /* ============================== [COOP] ===============================
-   First online layer: one host and one joining farmhand over a direct
-   WebRTC data channel. Manual offer/answer exchange keeps this prototype
-   deployable on static GitHub Pages while leaving one transport seam for a
-   future room-code/signaling service. The host is the first authority for
-   relayed gun shots; player movement is interpolated locally on each client.
+   First online layer: one host and one joining farmhand over a PeerJS data
+   channel. PeerJS handles the WebRTC offer/answer and ICE signaling through
+   its broker, so the player only shares a short six-character room code.
+   The host remains the first authority for relayed gun shots; player movement
+   is interpolated locally on each client. The transport seam can later point
+   at a Lobster Labz-owned PeerServer without changing gameplay messages.
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
   const callbacks = { status: [], connected: [], disconnected: [], error: [] };
   const remotes = new Map();
-  let scene = null, pc = null, channel = null;
-  let role = null, phase = 'idle', connected = false, closing = false;
+  const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const ROOM_PREFIX = 'WF';
+  let scene = null, peer = null, channel = null;
+  let role = null, phase = 'idle', connected = false, closing = false, peerReady = false;
   let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
-  let sendAcc = 0;
+  let roomCode = '', sendAcc = 0, connectTimer = null;
 
   function on(event, fn) {
     if (callbacks[event] && typeof fn === 'function') callbacks[event].push(fn);
@@ -8411,13 +8451,30 @@ const COOP = (() => {
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
   }
 
+  function clearConnectTimer() {
+    if (connectTimer) clearTimeout(connectTimer);
+    connectTimer = null;
+  }
+
+  function destroyPeerOnly() {
+    const oldPeer = peer;
+    peer = null;
+    peerReady = false;
+    if (!oldPeer) return;
+    closing = true;
+    try { oldPeer.destroy(); } catch (err) {}
+    closing = false;
+  }
+
   function closeTransport() {
     closing = true;
+    clearConnectTimer();
     connected = false;
     if (channel) { try { channel.close(); } catch (err) {} }
-    if (pc) { try { pc.close(); } catch (err) {} }
     channel = null;
-    pc = null;
+    if (peer) { try { peer.destroy(); } catch (err) {} }
+    peer = null;
+    peerReady = false;
     closing = false;
   }
 
@@ -8426,6 +8483,7 @@ const COOP = (() => {
     clearRemotes();
     role = null;
     phase = 'idle';
+    roomCode = '';
     sendAcc = 0;
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
   }
@@ -8440,158 +8498,251 @@ const COOP = (() => {
     status('Choose Host room or Join room to begin.');
   }
 
-  function parseSignal(raw) {
-    try {
-      const value = JSON.parse(raw);
-      if (!value || !value.type || !value.sdp) throw new Error('That code is incomplete.');
-      return value;
-    } catch (err) {
-      throw new Error('Connection code could not be read. Copy it exactly, including braces.');
+  function normalizeRoomCode(raw) {
+    return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
+  }
+
+  function validRoomCode(code) { return /^WF[A-HJ-NP-Z2-9]{4}$/.test(code); }
+
+  function makeRoomCode() {
+    let code = ROOM_PREFIX;
+    for (let i = 0; i < 4; i++) code += ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)];
+    return code;
+  }
+
+  function peerErrorText(err) {
+    const type = err && err.type;
+    if (type === 'peer-unavailable') return 'Room not found. Check the six-character code and try again.';
+    if (type === 'unavailable-id') return 'That room code is already in use. Creating a fresh code…';
+    if (type === 'browser-incompatible') return 'This browser does not support the WebRTC features needed for co-op.';
+    if (type === 'network' || type === 'server-error' || type === 'socket-error' || type === 'socket-closed') {
+      return 'The co-op lobby service could not be reached. Check both devices’ internet connections and try again.';
     }
+    if (type === 'webrtc') return 'The browsers could not establish a secure peer connection. Try both devices on the same Wi-Fi or a different network.';
+    return (err && err.message) || 'The co-op lobby reported an unexpected error.';
   }
 
-  function makePeer() {
-    const PeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection;
-    if (!PeerConnection) {
-      const message = 'This browser does not expose WebRTC, so online co-op is unavailable here.';
-      emit('error', message);
-      throw new Error(message);
-    }
-    closeTransport();
-    pc = new PeerConnection({ iceServers: C.iceServers });
-    pc.ondatachannel = e => bindChannel(e.channel);
-    pc.onconnectionstatechange = () => {
-      const state = pc && pc.connectionState;
-      if (state === 'failed' || state === 'closed') handleDisconnect('The co-op connection ended.');
-    };
-    pc.oniceconnectionstatechange = () => {
-      const state = pc && pc.iceConnectionState;
-      if (state === 'failed' || state === 'closed') handleDisconnect('The co-op connection could not be maintained.');
-    };
-    return pc;
+  function failJoin(message) {
+    clearConnectTimer();
+    connected = false;
+    if (channel) { try { channel.close(); } catch (err) {} }
+    channel = null;
+    phase = role === 'join' ? 'ready' : (role === 'host' ? 'hostReady' : 'idle');
+    if (role) UI.setCoopLobbyStep(role, phase);
+    emit('error', message);
   }
 
-  function bindChannel(next) {
-    channel = next;
-    channel.onopen = () => {
-      connected = true;
-      phase = 'connected';
-      send({ type: 'hello', id: localId, maxPlayers: C.maxPlayers });
-      emit('connected');
-      status('Two farmhands connected.', 'good');
-    };
-    channel.onmessage = e => {
-      try { receive(JSON.parse(e.data)); }
-      catch (err) { status('A network message was unreadable; the room is still open.', 'bad'); }
-    };
-    channel.onerror = () => emit('error', 'The co-op data channel reported an error.');
-    channel.onclose = () => handleDisconnect('Your teammate disconnected.');
+  function armConnectTimeout() {
+    clearConnectTimer();
+    connectTimer = setTimeout(() => {
+      if (connected) return;
+      failJoin('No response from that room after 20 seconds. Check the code and try again.');
+    }, 20000);
   }
 
-  function handleDisconnect(message) {
-    if (closing || !connected && !pc) return;
-    const wasConnected = connected;
-    closeTransport();
-    clearRemotes();
-    phase = 'idle';
-    if (wasConnected) emit('disconnected', message);
+  function bindPeerEvents(instance) {
+    instance.on('connection', next => {
+      if (role !== 'host') {
+        try { next.close(); } catch (err) {}
+        return;
+      }
+      if (channel || connected) {
+        try { next.close(); } catch (err) {}
+        status('This room already has two farmhands.', 'bad');
+        return;
+      }
+      bindChannel(next);
+    });
+    instance.on('disconnected', () => {
+      if (closing || connected) return;
+      emit('error', 'The lobby service disconnected before the room opened. Tap Host room or Join room to retry.');
+    });
+    instance.on('close', () => {
+      if (closing || connected) return;
+      emit('error', 'The lobby service closed before the room opened.');
+    });
   }
 
-  function waitForIce() {
-    return new Promise(resolve => {
-      const peer = pc;
-      if (!peer || peer.iceGatheringState === 'complete') { resolve(); return; }
-      let done = false;
-      let timer = null;
-      const onStateChange = () => {
-        if (peer.iceGatheringState === 'complete') finish();
-      };
-      const finish = () => {
-        if (done) return;
-        done = true;
-        peer.removeEventListener('icegatheringstatechange', onStateChange);
-        if (timer) clearTimeout(timer);
-        resolve();
-      };
-      peer.addEventListener('icegatheringstatechange', onStateChange);
-      timer = setTimeout(finish, 6500);
+  function openPeer(id) {
+    return new Promise((resolve, reject) => {
+      const PeerCtor = window.Peer;
+      if (!PeerCtor) {
+        reject(new Error('The co-op lobby library did not load. Refresh the Pages link and try again.'));
+        return;
+      }
+      let instance;
+      try {
+        instance = id
+          ? new PeerCtor(id, { debug: 1, config: { iceServers: C.iceServers } })
+          : new PeerCtor({ debug: 1, config: { iceServers: C.iceServers } });
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      peer = instance;
+      bindPeerEvents(instance);
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        destroyPeerOnly();
+        reject(new Error('The co-op lobby took too long to open. Check the network and try again.'));
+      }, 12000);
+      instance.on('open', assignedId => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        peerReady = true;
+        localId = assignedId || localId;
+        resolve(instance);
+      });
+      instance.on('error', err => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(err);
+        } else if (!closing) {
+          if (phase === 'connecting' && err && err.type === 'peer-unavailable') failJoin(peerErrorText(err));
+          else emit('error', peerErrorText(err));
+        }
+      });
     });
   }
 
   async function host() {
-    try {
-      role = 'host';
-      phase = 'offer';
-      const peer = makePeer();
-      bindChannel(peer.createDataChannel('wf-coop', { ordered: true }));
-      const offer = await peer.createOffer();
-      await peer.setLocalDescription(offer);
-      await waitForIce();
-      UI.setCoopLobbyStep('host', 'offer');
-      UI.setSignalOutput(JSON.stringify(peer.localDescription));
-      status('Host code ready. Send it to your teammate, then paste their answer below.');
-    } catch (err) {
-      phase = 'idle';
-      emit('error', err.message || 'Could not create a host room.');
+    stop();
+    role = 'host';
+    phase = 'creating';
+    UI.setCoopLobbyStep('host', phase);
+    status('Opening a private room…');
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = makeRoomCode();
+      try {
+        await openPeer(candidate);
+        roomCode = candidate;
+        phase = 'hostReady';
+        UI.setSignalOutput(roomCode);
+        UI.setCoopLobbyStep('host', phase);
+        status('Room ' + roomCode + ' is ready. Share the six-character code.', 'good');
+        return;
+      } catch (err) {
+        destroyPeerOnly();
+        if (err && err.type === 'unavailable-id') continue;
+        phase = 'idle';
+        UI.setCoopLobbyStep(null, phase);
+        emit('error', peerErrorText(err));
+        return;
+      }
     }
+    phase = 'idle';
+    UI.setCoopLobbyStep(null, phase);
+    emit('error', 'Could not reserve a room code. Please try Host room again.');
   }
 
   function prepareJoin() {
-    try {
-      role = 'join';
-      phase = 'join';
-      makePeer();
-      UI.setCoopLobbyStep('join', 'answer');
-      UI.setSignalOutput('');
-      status('Paste the host code into the first box, then create your answer.');
-    } catch (err) {
+    stop();
+    role = 'join';
+    phase = 'opening';
+    UI.setSignalOutput('');
+    UI.setCoopLobbyStep('join', phase);
+    status('Opening the join service…');
+    openPeer().then(() => {
+      phase = 'ready';
+      UI.setCoopLobbyStep('join', phase);
+      status('Enter the host’s six-character room code, then tap Join room.');
+    }).catch(err => {
       phase = 'idle';
-      emit('error', err.message || 'Could not prepare a join room.');
-    }
+      UI.setCoopLobbyStep(null, phase);
+      emit('error', peerErrorText(err));
+    });
   }
 
-  async function createAnswer(raw) {
-    try {
-      const offer = parseSignal(raw);
-      await pc.setRemoteDescription(offer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await waitForIce();
-      phase = 'answer';
-      UI.setCoopLobbyStep('join', 'answer');
-      UI.setSignalOutput(JSON.stringify(pc.localDescription));
-      status('Answer ready. Send it back to the host and keep this screen open.');
-    } catch (err) {
-      emit('error', err.message || 'Could not create a join answer.');
+  function connectToRoom(raw) {
+    const code = normalizeRoomCode(raw);
+    if (!validRoomCode(code)) {
+      status('Use the full six-character code beginning with WF.', 'bad');
+      return;
     }
-  }
-
-  async function acceptAnswer(raw) {
-    try {
-      const answer = parseSignal(raw);
-      await pc.setRemoteDescription(answer);
-      phase = 'waiting';
-      status('Answer accepted. Waiting for the two-player channel to open…');
-    } catch (err) {
-      emit('error', err.message || 'Could not accept the teammate answer.');
+    if (!peerReady || !peer) {
+      status('The join service is still opening. Try Join room again in a moment.', 'bad');
+      return;
     }
+    roomCode = code;
+    phase = 'connecting';
+    UI.setCoopLobbyStep('join', phase);
+    status('Connecting to room ' + code + '…');
+    armConnectTimeout();
+    let next;
+    try {
+      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.02' } });
+    } catch (err) {
+      failJoin(peerErrorText(err));
+      return;
+    }
+    bindChannel(next);
   }
 
   function signalAction() {
-    const raw = UI.getSignalInput();
-    if (role === 'host' && phase === 'offer') {
-      if (!raw) { status('Paste the teammate answer code first.', 'bad'); return; }
-      acceptAnswer(raw);
-    } else if (role === 'join' && (phase === 'join' || phase === 'answer')) {
-      if (!raw) { status('Paste the host connection code first.', 'bad'); return; }
-      createAnswer(raw);
+    if (role === 'join' && (phase === 'ready' || phase === 'opening')) {
+      connectToRoom(UI.getSignalInput());
+    } else if (role === 'join' && phase === 'connecting') {
+      status('Already trying to join room ' + roomCode + '…');
     } else if (!role) {
       status('Choose Host room or Join room first.', 'bad');
+    } else if (role === 'host') {
+      status('Your room code is ready above. Waiting for the other farmhand.');
     }
   }
 
+  function bindChannel(next) {
+    if (!next) return;
+    if (channel && channel !== next) {
+      try { next.close(); } catch (err) {}
+      return;
+    }
+    channel = next;
+    const onOpen = () => {
+      if (channel !== next || connected) return;
+      clearConnectTimer();
+      connected = true;
+      phase = 'connected';
+      UI.setCoopLobbyStep(role, phase);
+      send({ type: 'hello', id: localId, maxPlayers: C.maxPlayers });
+      emit('connected');
+      status('Two farmhands connected.', 'good');
+    };
+    next.on('open', onOpen);
+    next.on('data', data => {
+      try {
+        const message = typeof data === 'string' ? JSON.parse(data) : data;
+        receive(message);
+      } catch (err) {
+        status('A network message was unreadable; the room is still open.', 'bad');
+      }
+    });
+    next.on('error', err => {
+      if (connected) emit('error', peerErrorText(err));
+      else failJoin(peerErrorText(err));
+    });
+    next.on('close', () => {
+      if (channel === next) handleDisconnect('Your teammate disconnected.');
+    });
+    if (next.open) onOpen();
+  }
+
+  function handleDisconnect(message) {
+    if (closing) return;
+    const wasConnected = connected;
+    closeTransport();
+    clearRemotes();
+    role = null;
+    phase = 'idle';
+    roomCode = '';
+    if (wasConnected) emit('disconnected', message);
+  }
+
   function send(message) {
-    if (channel && channel.readyState === 'open') channel.send(JSON.stringify(message));
+    if (channel && channel.open) channel.send(message);
   }
 
   function sendState() {

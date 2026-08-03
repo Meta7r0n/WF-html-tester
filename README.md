@@ -6,21 +6,22 @@ The current build opens on a mode menu with:
 
 - **Single-player** — the complete v0.06.08-BM farm run.
 - **Online co-op** — a two-player direct WebRTC lobby. One player hosts, the
-  other joins, and they exchange the generated connection codes through the
-  lobby. Once connected, both clients see the other farmhand and gunfire is
-  relayed through the host before being resolved locally.
+  other joins, and they share a short room code through the lobby. Once
+  connected, both clients see the other farmhand and gunfire is relayed
+  through the host before being resolved locally.
 
-This first multiplayer step intentionally keeps the GitHub Pages deployment
-static. It does not require a game server yet; a later milestone can replace
-the manual offer/answer exchange with a room-code signaling service and move
-the shared enemy simulation to an authoritative match server.
+The GitHub Pages client remains static. PeerJS Cloud handles only the initial
+WebRTC signaling handshake; gameplay data still travels peer-to-peer after the
+connection opens. The transport seam can later point at a Lobster Labz-owned
+PeerServer, while the shared enemy simulation can move to an authoritative
+match server in a later multiplayer milestone.
 
 ### First co-op test
 
 1. Open the build in two browser tabs or devices.
-2. On the first, choose **Online co-op → Host room →**, then copy its host code.
-3. On the second, choose **Online co-op → Join room →**, paste the host code, and create an answer.
-4. Copy the answer back to the host, paste it into the host's input, and choose **Finish connection**.
+2. On the first, choose **Online co-op → Host room →** and wait for the six-character room code.
+3. Share that one code with the second screen (the **Share room code** button uses the phone’s share sheet when available, or copies it).
+4. On the second, choose **Online co-op → Join room →**, enter the code, and tap **Join room**.
 
 Both screens should enter the farm, show the other farmhand on the radar, and
 relay gunfire through the host. Enemy movement, pickups, revival, and shared
@@ -34,3 +35,11 @@ with its embedded materials and `IdleBob` / `RunCycle` animations. Boss
 collision, headshots, melee, seed blasts, radar, and the endgame trigger remain
 separate from the visual asset. If the optional loader or asset is unavailable,
 the procedural boss visual remains as a fallback.
+
+## v0.07.02 Co-op Lobby
+
+The manual multi-kilobyte SDP offer/answer exchange has been removed from the
+normal path. Rooms now use a six-character `WF••••` code, with clear states for
+opening the lobby, waiting for a teammate, connecting, missing rooms, and
+timeouts. The prior direct game-message seam is preserved so future server
+authority can be added without changing the farm gameplay modules.
