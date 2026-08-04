@@ -521,7 +521,7 @@
   <div id="throwableHud" aria-live="polite">
     <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
   </div>
-  <div id="downedHud" aria-live="polite">DOWNED <small>Double Barrel ready · fire twice to revive</small></div>
+  <div id="downedHud" aria-live="polite">DOWNED <small id="downedHint">Double Barrel ready · fire twice to revive</small></div>
 
   <div id="vitals">
     <p class="lbl">Pep</p>
@@ -726,7 +726,10 @@ const CONFIG = {
     landDip: 0.18, landRecover: 9,
     startPos: { x: 0, y: 0, z: 31 }, startYaw: 0,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
-    invulnAfterHit: 0.45, reviveDelay: 2.2
+    invulnAfterHit: 0.45, reviveDelay: 2.2,
+    // Downed is a second chance, not a safe room. You keep your head and the
+    // Double Barrel, but the clock runs and reaching zero here is a real death.
+    downedTime: 16, downedTilt: 0.34
   },
   map: {
     // The south gate stays fixed while the first expansion pushes the farm
@@ -2911,28 +2914,63 @@ const LEVEL = (() => {
       (FLOOR_Y + CEIL_Y) * 0.5, -6.35);
     room.box(0.30, 3.7, MAX_Z - MIN_Z + 0.4, MAX_X + 0.2,
       (FLOOR_Y + CEIL_Y) * 0.5, (MIN_Z + MAX_Z) * 0.5);
+    /* Hatch positions are declared before any ceiling is built, because every
+       hatch ladder needs a matching hole. Three of the four used to climb
+       straight through a solid slab. Adding a fifth entrance is now a one-line
+       change here — the ceiling of whichever room contains it opens up
+       automatically. */
+    const HATCHES = [
+      { id: 'basement',   x: 24.0,  z: -9.5,  normalZ: 1 },
+      { id: 'seed_store', x: -24.0, z: 16.0,  normalZ: 1 },
+      { id: 'windmill',   x: -7.6,  z: -30.0, normalZ: 1 },
+      { id: 'northwest',  x: -18.5, z: -44.8, normalZ: 1 }
+    ];
+    // Comfortably clears the 1.75 x 1.55 ladder collision box.
+    const HATCH_HALF = 1.15;
+    function hatchOpening(h) {
+      return {
+        minX: h.x - HATCH_HALF, maxX: h.x + HATCH_HALF,
+        minZ: h.z - HATCH_HALF, maxZ: h.z + HATCH_HALF
+      };
+    }
+    /* Split a ceiling rectangle around any number of openings with a
+       coordinate-band sweep. Replaces the hand-written four-piece split, which
+       could only ever describe one hole. */
+    function splitCeiling(minX, maxX, minZ, maxZ, openings) {
+      const xs = [minX, maxX], zs = [minZ, maxZ];
+      openings.forEach(o => {
+        if (o.minX > minX && o.minX < maxX) xs.push(o.minX);
+        if (o.maxX > minX && o.maxX < maxX) xs.push(o.maxX);
+        if (o.minZ > minZ && o.minZ < maxZ) zs.push(o.minZ);
+        if (o.maxZ > minZ && o.maxZ < maxZ) zs.push(o.maxZ);
+      });
+      xs.sort((a, b) => a - b);
+      zs.sort((a, b) => a - b);
+      const pieces = [];
+      for (let i = 0; i < xs.length - 1; i++) {
+        for (let j = 0; j < zs.length - 1; j++) {
+          const x0 = xs[i], x1 = xs[i + 1], z0 = zs[j], z1 = zs[j + 1];
+          if (x1 - x0 <= 0.02 || z1 - z0 <= 0.02) continue;
+          const cx = (x0 + x1) * 0.5, cz = (z0 + z1) * 0.5;
+          const inHole = openings.some(o =>
+            cx > o.minX && cx < o.maxX && cz > o.minZ && cz < o.maxZ);
+          if (inHole) continue;
+          pieces.push({ cx: cx, cz: cz, w: x1 - x0, d: z1 - z0 });
+        }
+      }
+      return pieces;
+    }
+    function openingsInside(minX, maxX, minZ, maxZ) {
+      return HATCHES.filter(h =>
+        h.x > minX && h.x < maxX && h.z > minZ && h.z < maxZ).map(hatchOpening);
+    }
+
     // The old center stair needed a ceiling slot across the entire room. The
     // replacement hugs the barn's north wall, so a compact rectangular stair
     // well restores the ceiling everywhere else and keeps sightlines cleaner.
     const stairOpening = { minX: 13.1, maxX: 20.9, minZ: -14.9, maxZ: -11.1 };
-    const ceilingPieces = [
-      {
-        cx: (MIN_X + MAX_X) * 0.5, cz: (MIN_Z + stairOpening.minZ) * 0.5,
-        w: MAX_X - MIN_X, d: stairOpening.minZ - MIN_Z
-      },
-      {
-        cx: (MIN_X + MAX_X) * 0.5, cz: (stairOpening.maxZ + MAX_Z) * 0.5,
-        w: MAX_X - MIN_X, d: MAX_Z - stairOpening.maxZ
-      },
-      {
-        cx: (MIN_X + stairOpening.minX) * 0.5, cz: (stairOpening.minZ + stairOpening.maxZ) * 0.5,
-        w: stairOpening.minX - MIN_X, d: stairOpening.maxZ - stairOpening.minZ
-      },
-      {
-        cx: (stairOpening.maxX + MAX_X) * 0.5, cz: (stairOpening.minZ + stairOpening.maxZ) * 0.5,
-        w: MAX_X - stairOpening.maxX, d: stairOpening.maxZ - stairOpening.minZ
-      }
-    ];
+    const ceilingPieces = splitCeiling(MIN_X, MAX_X, MIN_Z, MAX_Z,
+      [stairOpening].concat(openingsInside(MIN_X, MAX_X, MIN_Z, MAX_Z)));
     ceilingPieces.forEach(p => room.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz));
     room.build(parent);
     WORLD.addFloor((MIN_X + MAX_X) * 0.5, FLOOR_Y - 0.22, (MIN_Z + MAX_Z) * 0.5,
@@ -3072,14 +3110,9 @@ const LEVEL = (() => {
       });
     }
 
-    // Existing barn-side nook, seed-store rear wall, and windmill/root-cellar.
-    addBasementHatch('basement', 24.0, -9.5, 1);
-    addBasementHatch('seed_store', -24.0, 16.0, 1);
-    addBasementHatch('windmill', -7.6, -30.0, 1);
-    // v0.06.05: the northwest grenade room gets its own surface access. The
-    // room ceiling is split around this opening below so the ladder remains a
-    // readable, continuous route instead of ending inside the slab.
-    addBasementHatch('northwest', -18.5, -44.8, 1);
+    // Every entrance now comes from the one HATCHES list above, and every room
+    // ceiling is split around it, so a ladder can never end inside a slab.
+    HATCHES.forEach(h => addBasementHatch(h.id, h.x, h.z, h.normalZ));
 
     // v0.06.06: three explicit underground markers make the first basement
     // roster easy to verify and distribute encounters across separate rooms.
@@ -3098,33 +3131,19 @@ const LEVEL = (() => {
     const wallY = (FLOOR_Y + CEIL_Y) * 0.5;
     const shell = new PRIM.Batch(concrete, 0.028);
 
-    function addSlab(cx, cz, w, d, tag, ceilingOpening) {
+    function addSlab(cx, cz, w, d, tag) {
       shell.box(w, 0.22, d, cx, FLOOR_Y - 0.11, cz);
       WORLD.addFloor(cx, FLOOR_Y - 0.22, cz, w, 0.22, d, tag + '_floor');
-      WORLD.addArea('basement', cx - w * 0.5, cx + w * 0.5,
-        cz - d * 0.5, cz + d * 0.5, tag + '_area');
-      if (!ceilingOpening) {
-        shell.box(w, 0.30, d, cx, CEIL_Y - 0.15, cz);
-        WORLD.add(cx, CEIL_Y - 0.15, cz, w, 0.30, d, tag + '_ceiling');
-        return;
-      }
-      // Hatch rooms keep a small ceiling opening so the ladder is visibly
-      // continuous from the basement floor to the surface hatch.
       const minX = cx - w * 0.5, maxX = cx + w * 0.5;
       const minZ = cz - d * 0.5, maxZ = cz + d * 0.5;
-      const pieces = [
-        { cx: (minX + ceilingOpening.minX) * 0.5, cz: (minZ + maxZ) * 0.5, w: ceilingOpening.minX - minX, d: d },
-        { cx: (ceilingOpening.maxX + maxX) * 0.5, cz: (minZ + maxZ) * 0.5, w: maxX - ceilingOpening.maxX, d: d },
-        { cx: (ceilingOpening.minX + ceilingOpening.maxX) * 0.5, cz: (minZ + ceilingOpening.minZ) * 0.5,
-          w: ceilingOpening.maxX - ceilingOpening.minX, d: ceilingOpening.minZ - minZ },
-        { cx: (ceilingOpening.minX + ceilingOpening.maxX) * 0.5, cz: (ceilingOpening.maxZ + maxZ) * 0.5,
-          w: ceilingOpening.maxX - ceilingOpening.minX, d: maxZ - ceilingOpening.maxZ }
-      ];
-      pieces.forEach(p => {
-        if (p.w <= 0.02 || p.d <= 0.02) return;
-        shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
-        WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, tag + '_ceiling');
-      });
+      WORLD.addArea('basement', minX, maxX, minZ, maxZ, tag + '_area');
+      // Any hatch landing inside this room automatically gets a hole, so
+      // placing a new entrance never means hand-editing a ceiling again.
+      splitCeiling(minX, maxX, minZ, maxZ, openingsInside(minX, maxX, minZ, maxZ))
+        .forEach(p => {
+          shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
+          WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, tag + '_ceiling');
+        });
     }
 
     function addWall(cx, cz, w, d, tag) {
@@ -3262,9 +3281,7 @@ const LEVEL = (() => {
     addWall(-20.25, -36.55, 0.30, 3.60, 'northwest_bend');
     addWall(-16.75, -36.55, 0.30, 3.60, 'northwest_bend');
 
-    addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room', {
-      minX: -19.60, maxX: -17.40, minZ: -45.90, maxZ: -43.70
-    });
+    addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room');
     addWall(-27.15, -43.0, 0.30, 9.30, 'grenade_room');
     addWall(-15.85, -43.0, 0.30, 9.30, 'grenade_room');
     addWall(-21.50, -47.65, 11.30, 0.30, 'grenade_room');
@@ -4753,7 +4770,13 @@ const PLAYER = (() => {
   }
 
   function update(dt, active, look) {
-    if (dead) { active = false; deadTime += dt; }
+    // Downed keeps the camera under player control so the recovery shots can
+    // actually be aimed. A full death still freezes everything.
+    const downed = dead && typeof HERO !== 'undefined' && HERO.downedActive;
+    if (dead) {
+      deadTime += dt;
+      if (!downed) active = false;
+    }
     if (invuln > 0) invuln -= dt;
 
     // ---- slow self-repair once nothing has hit you for a while ----
@@ -4777,7 +4800,8 @@ const PLAYER = (() => {
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     wish.set(0, 0, 0);
     const moveInput = INPUT.moveAxes();
-    if (active) {
+    // Look yes, walk no: a downed farmhand turns on the spot.
+    if (active && !downed) {
       wish.addScaledVector(fwd, moveInput.y);
       wish.addScaledVector(right, moveInput.x);
     }
@@ -4807,7 +4831,7 @@ const PLAYER = (() => {
     const ladderCandidate = WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height, layerId);
     if (ladderNeedsRelease && (Math.abs(moveInput.y) <= 0.10 || !ladderCandidate)) ladderNeedsRelease = false;
     const ladderHere = ladderCooldown <= 0 && !ladderNeedsRelease ? ladderCandidate : null;
-    if (!climbing && active && ladderHere && Math.abs(moveInput.y) > 0.10) {
+    if (!climbing && active && !downed && ladderHere && Math.abs(moveInput.y) > 0.10) {
       climbing = true;
       activeLadder = ladderHere;
       const enteringFromTop = pos.y > (ladderHere.bottomY + ladderHere.topY) * 0.5;
@@ -4829,7 +4853,7 @@ const PLAYER = (() => {
       AUDIO.jump();
     }
 
-    sprinting = !climbing && active && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    sprinting = !climbing && active && !downed && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength;
 
     // ---- horizontal acceleration with real friction, no ice ----
@@ -4846,7 +4870,7 @@ const PLAYER = (() => {
     }
 
     // ---- jump ----
-    if (!climbing && jumpPressed && grounded) {
+    if (!climbing && !downed && jumpPressed && grounded) {
       vel.y = C.jumpForce;
       grounded = false;
       AUDIO.jump();
@@ -4947,7 +4971,8 @@ const PLAYER = (() => {
     // ---- camera ----
     // ---- hurt shake and the slow wilt when you go down ----
     if (shake > 0) shake = Math.max(0, shake - dt * 2.2);
-    deadTilt = UTIL.damp(deadTilt, dead ? 1 : 0, 2.6, dt);
+    // A downed farmhand slumps; a dead one goes all the way over.
+    deadTilt = UTIL.damp(deadTilt, dead ? (downed ? C.downedTilt : 1) : 0, 2.6, dt);
     const sk = shake * shake;
     const sx = UTIL.rng(-sk, sk) * 0.16;
     const sy = UTIL.rng(-sk, sk) * 0.16;
@@ -4974,8 +4999,15 @@ const PLAYER = (() => {
     ).normalize();
   }
 
+  /* Bleed-out: the downed window expired, so commit to a real death and let
+     the wilt animation play from the top instead of snapping to the card. */
+  function finishDowned() {
+    if (!dead) return;
+    deadTime = 0;
+  }
+
   return {
-    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt,
+    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned,
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -5437,18 +5469,28 @@ const WEAPON = (() => {
 
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
+    // Hoisted out of the loop: solo play should not allocate a network payload
+    // per pellet, and every pellet now relays consistently instead of only the
+    // ones that happened to connect.
+    const relayRemote = COOP.shouldRemoteRelayShots();
+    const relayHost = COOP.shouldHostRelayShots();
+    const shotMeta = {
+      damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+    };
     for (let i = 0; i < d.pellets; i++) {
       _t.copy(_d);
       _t.x += UTIL.rng(-d.spread, d.spread);
       _t.y += UTIL.rng(-d.spread, d.spread);
       _t.z += UTIL.rng(-d.spread, d.spread);
       _t.normalize();
-      const networkShot = {
-        origin: _o.toArray(), dir: _t.toArray(), damage: d.damage,
-        range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
-      };
-      if (COOP.shouldRemoteRelayShots()) {
-        COOP.sendShot(networkShot);
+      if (relayRemote || relayHost) {
+        const payload = {
+          origin: _o.toArray(), dir: _t.toArray(),
+          damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+        };
+        if (relayRemote) COOP.sendShot(payload); else COOP.relayHostShot(payload);
+      }
+      if (relayRemote) {
         if (d.pellets === 1 || i === 0) {
           _end.copy(_o).addScaledVector(_t, d.range);
           FX.tracer(_muzzleWorld, _end);
@@ -5458,19 +5500,17 @@ const WEAPON = (() => {
       const hit = FX.trace(_o, _t, d.range);
       if (hit) {
         if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
-        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, {
-          damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
-        })) {
+        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, shotMeta)) {
           const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
                              : _t.clone().negate();
           if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
           FX.hitWobbler(hit.object, _t, 1 / d.pellets * 2.4);
         }
-        COOP.relayHostShot(networkShot);
       } else if (i === 0) {
-        _t.copy(_d).multiplyScalar(d.range).add(_o);
-        FX.tracer(_muzzleWorld, _t);
-        COOP.relayHostShot(networkShot);
+        // Use the spread direction, not the centre line — the old version
+        // overwrote _t with _d and pointed the miss tracer the wrong way.
+        _end.copy(_o).addScaledVector(_t, d.range);
+        FX.tracer(_muzzleWorld, _end);
       }
     }
     if (currentId === 'doubleBarrel') HERO.onDoubleBarrelShot();
@@ -5918,9 +5958,19 @@ const THROWABLE = (() => {
     projectile.root.rotation.z -= (v.x * 1.8 - 1.9) * dt;
   }
 
+  /* Every thrown grenade builds fresh geometry (including a TubeGeometry for
+     the pin). Materials come from the MAT cache, but geometry does not — with
+     no dispose the GPU buffer count climbs for the whole session. */
+  function disposeVisual(root) {
+    root.traverse(obj => {
+      if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+  }
+
   function detonate(projectile) {
     const point = projectile.pos.clone();
     if (scene) scene.remove(projectile.root);
+    disposeVisual(projectile.root);
     FX.explosion(point, projectile.def.blastRadius);
     AUDIO.blast();
     ENEMY.blast(point, {
@@ -5960,7 +6010,10 @@ const THROWABLE = (() => {
   }
 
   function clearActive() {
-    for (let i = 0; i < active.length; i++) if (scene) scene.remove(active[i].root);
+    for (let i = 0; i < active.length; i++) {
+      if (scene) scene.remove(active[i].root);
+      disposeVisual(active[i].root);
+    }
     active.length = 0;
   }
 
@@ -6083,6 +6136,7 @@ const UI = (() => {
     el.jaysCount = document.getElementById('jaysCount');
     el.jaysState = document.getElementById('jaysState');
     el.downedHud = document.getElementById('downedHud');
+    el.downedHint = document.getElementById('downedHint');
     el.grain = document.getElementById('grain');
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
@@ -6313,6 +6367,11 @@ const UI = (() => {
   function hideDowned() {
     if (el.downedHud) el.downedHud.classList.remove('on');
   }
+  function setDownedTimer(seconds) {
+    if (!el.downedHint) return;
+    el.downedHint.textContent = 'Fire twice to revive · ' +
+      Math.max(0, seconds || 0).toFixed(1) + 's';
+  }
   function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
 
   function enterGame() {
@@ -6442,12 +6501,16 @@ const UI = (() => {
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    hideDowned();
     showMobileControls(false);
   }
   function hidePause() {
     el.pause.classList.add('hidden');
     el.crosshair.classList.add('on');
     el.radar.classList.add('on');
+    // Resuming from a pause taken while downed must restore that prompt,
+    // otherwise the recovery instructions vanish for the rest of the run.
+    if (typeof HERO !== 'undefined' && HERO.downedActive) showDowned();
     showMobileControls(true);
   }
   function hideLoading() { el.loading.classList.add('hidden'); }
@@ -6492,7 +6555,8 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead, showDowned, hideDowned, showEndGame, hideEndGame,
+    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead,
+    showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showFallback, hideFallback,
     showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
@@ -6888,8 +6952,10 @@ const GAME = (() => {
     INPUT.on('unlock', () => {
       running = false;
       if (!entered) return;
-      if (PLAYER.isDowned) UI.showDowned();
-      else if (PLAYER.isDead) UI.showDead(); else UI.showPause();
+      // A downed player must still get a clickable way back in. Showing only
+      // the downed HUD here left the game with no overlay and no input at all.
+      if (PLAYER.isDead && !PLAYER.isDowned) UI.showDead();
+      else UI.showPause();
     });
 
     INPUT.on('fallback', why => UI.showFallback(why));
@@ -7102,7 +7168,7 @@ const GAME = (() => {
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned));
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
     CONSUMABLE.update(dt, running && !PLAYER.isDead);
-    HERO.update();
+    HERO.update(dt, running);
     if (running) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
@@ -7801,6 +7867,7 @@ const HERO = (() => {
   let selected = 'scarf';
   let downedActive = false;
   let downedShots = 0;
+  let downedTimer = 0;
   let downedRestoreWeapon = null;
   let chainsawActive = false;
   let restoreWeapon = null;
@@ -7812,17 +7879,14 @@ const HERO = (() => {
   function select(id) {
     if (!DEFINITIONS[id]) id = 'scarf';
     selected = id;
-    downedActive = false;
-    downedShots = 0;
-    downedRestoreWeapon = null;
-    chainsawActive = false;
-    restoreWeapon = null;
+    resetRun();
     return DEFINITIONS[selected];
   }
 
   function resetRun() {
     downedActive = false;
     downedShots = 0;
+    downedTimer = 0;
     downedRestoreWeapon = null;
     chainsawActive = false;
     restoreWeapon = null;
@@ -7834,10 +7898,28 @@ const HERO = (() => {
     if (!WEAPON.beginHeroSpecial('doubleBarrel')) return false;
     downedActive = true;
     downedShots = 0;
+    downedTimer = CONFIG.player.downedTime;
     downedRestoreWeapon = restore;
     UI.showDowned();
+    UI.setDownedTimer(downedTimer);
     UI.toast('DOWNED — fire the Double Barrel twice to revive', 2.8);
     return true;
+  }
+
+  /* One exit for the downed window, so the temporary weapon is always handed
+     back no matter which way the state ends. Safe to call twice. */
+  function endDowned(bledOut) {
+    if (!downedActive) return;
+    downedActive = false;
+    downedTimer = 0;
+    WEAPON.endHeroSpecial('doubleBarrel', downedRestoreWeapon);
+    downedRestoreWeapon = null;
+    UI.hideDowned();
+    if (bledOut) {
+      PLAYER.finishDowned();
+      AUDIO.playerDie();
+      UI.toast('You bled out', 1.6);
+    }
   }
 
   function onDoubleBarrelShot() {
@@ -7847,16 +7929,22 @@ const HERO = (() => {
       UI.toast('One downed blast left', 1.1);
       return;
     }
-    downedActive = false;
-    WEAPON.endHeroSpecial('doubleBarrel', downedRestoreWeapon);
-    downedRestoreWeapon = null;
+    endDowned(false);
     PLAYER.reviveAt(25, false);
-    UI.hideDowned();
     UI.toast('Back on your feet · 25% Pep', 1.8);
   }
 
-  function update() {
-    if (!inSinglePlayer() || selected !== 'chainsaw' || downedActive || PLAYER.isDead) return;
+  function update(dt, running) {
+    // The downed clock only runs while the farm is actually running, so
+    // pausing can never be used to sit in the downed state indefinitely.
+    if (downedActive) {
+      if (!running || !(dt > 0)) return;
+      downedTimer -= dt;
+      UI.setDownedTimer(downedTimer);
+      if (downedTimer <= 0) endDowned(true);
+      return;
+    }
+    if (!inSinglePlayer() || selected !== 'chainsaw' || PLAYER.isDead || !running) return;
     const pct = PLAYER.health / CONFIG.player.maxHealth;
     if (!chainsawActive && pct <= 0.25) {
       const restore = WEAPON.currentId;
@@ -7874,7 +7962,7 @@ const HERO = (() => {
   }
 
   return {
-    definitions: DEFINITIONS, select, resetRun, beginDowned, onDoubleBarrelShot, update,
+    definitions: DEFINITIONS, select, resetRun, beginDowned, endDowned, onDoubleBarrelShot, update,
     get id() { return selected; },
     get castId() { return DEFINITIONS[selected].castId; },
     get label() { return DEFINITIONS[selected].label; },
@@ -7939,6 +8027,20 @@ const ENEMY = (() => {
       }
       const base = typeof document !== 'undefined' && document.baseURI ? document.baseURI : '';
       const url = base ? new URL(CONFIG.boss.asset, base).toString() : CONFIG.boss.asset;
+      // GAME.init awaits this promise, so a request that never calls back
+      // would leave the loading card up forever. Time it out and fall back.
+      let settled = false;
+      let timer = null;
+      const finish = ok => {
+        if (settled) return;
+        settled = true;
+        if (timer) clearTimeout(timer);
+        resolve(ok);
+      };
+      timer = setTimeout(() => {
+        console.warn('Carrot Rogue GLB timed out; using the procedural boss visual.');
+        finish(false);
+      }, 8000);
       const loader = new THREE.GLTFLoader();
       loader.load(url, gltf => {
         bossAsset = gltf.scene;
@@ -7949,10 +8051,10 @@ const ENEMY = (() => {
           obj.castShadow = false;
           obj.receiveShadow = false;
         });
-        resolve(true);
+        finish(true);
       }, undefined, error => {
         console.warn('Carrot Rogue GLB failed to load; using the procedural boss visual.', error);
-        resolve(false);
+        finish(false);
       });
     });
     return bossAssetPromise;
@@ -9472,6 +9574,7 @@ const COOP = (() => {
     if (role === 'host' && connected) send({ type: 'shotResolved', shot: shot });
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
+  function shouldHostRelayShots() { return role === 'host' && connected; }
 
   function poseRemote(remote, dt) {
     const r = remote.rig;
@@ -9526,7 +9629,7 @@ const COOP = (() => {
 
   return {
     init, on, openLobby, host, prepareJoin, signalAction, stop, update,
-    sendShot, relayHostShot, shouldRemoteRelayShots,
+    sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots,
     get role() { return role; },
     get connected() { return connected; },
     get active() { return connected; }
@@ -9542,10 +9645,27 @@ window.addEventListener('error', e => {
   el.textContent = 'Error: ' + (e.message || e) + '\n' + (e.filename || '') + ':' + (e.lineno || '');
 });
 
+/* GAME.init is async, so a throw inside it becomes an unhandled rejection
+   that window.onerror never sees — the old boot left a silent blank screen.
+   Route it to the same red bar as every other error. */
+function boot() {
+  Promise.resolve()
+    .then(() => GAME.init())
+    .catch(err => {
+      const bar = document.getElementById('err');
+      if (bar) {
+        bar.style.display = 'block';
+        bar.textContent = 'Startup failed: ' + ((err && err.stack) || err);
+      }
+      const load = document.getElementById('loading');
+      if (load) load.textContent = 'Startup failed — see the red bar';
+    });
+}
+
 if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', GAME.init);
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
-  GAME.init();
+  boot();
 }
 </script>
 </body>
