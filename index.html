@@ -499,14 +499,21 @@
   .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
   #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
   #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
-  #playerSelect .card{max-width:700px;}
+  #playerSelect .card{max-width:760px;}
   #heroChoices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0 4px;}
-  .hero-choice{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;min-height:128px;padding:16px 18px;background:var(--peach);}
+  .hero-choice{display:flex;flex-direction:row;align-items:center;gap:12px;text-align:left;min-height:104px;padding:14px 16px;background:var(--peach);}
+  .hero-choice-text{display:flex;flex-direction:column;gap:6px;min-width:0;}
   .hero-choice b{font-size:16px;letter-spacing:1px;}
   .hero-choice small{font:700 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.3px;text-transform:none;color:var(--ink-soft);}
+  .hero-portrait{
+    flex:0 0 auto;width:62px;height:74px;object-fit:contain;
+    background:rgba(22,18,15,.1);border:2px solid var(--ink);border-radius:10px;
+  }
   .hero-choice.scout{background:var(--mustard);}
   .hero-choice.runner{background:var(--blue);}
-  @media (max-width:540px){#heroChoices{grid-template-columns:1fr;} .hero-choice{min-height:102px;}}
+  .hero-choice.stoner{background:var(--jays);}
+  .hero-choice.pyro{background:var(--rust);}
+  @media (max-width:540px){#heroChoices{grid-template-columns:1fr;} .hero-choice{min-height:88px;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
   .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
@@ -734,15 +741,35 @@
     <div class="card">
       <p class="eyebrow">Single-player &nbsp;·&nbsp; choose a farmhand</p>
       <h1>Pick your<br/>special<span>Each hero has one emergency trick</span></h1>
-      <p class="sub">Your choice changes the starting silhouette and the low-health special. Both heroes keep the normal weapon and pickup inventory.</p>
+      <p class="sub">Your choice changes your low-health special. All four heroes keep the normal weapon and pickup inventory.</p>
       <div id="heroChoices">
         <button class="go hero-choice scout" id="scarfHeroBtn">
-          <b>Scarf Scout · Double Barrel</b>
-          <small>Shotgun farmhand. When downed, fire two wide-spread blasts, then stand back up with 25% health.</small>
+          <img class="hero-portrait" id="scarfPortrait" alt="" />
+          <span class="hero-choice-text">
+            <b>Larry · Double Barrel</b>
+            <small>Shotgun farmhand. When downed, fire two wide-spread blasts, then stand back up with 25% health.</small>
+          </span>
         </button>
         <button class="go hero-choice runner" id="chainsawHeroBtn">
-          <b>Masked Runner · Chainsaw Hand</b>
-          <small>At 25% health the chainsaw auto-equips for heavy melee. It returns to inventory once you recover above 55%.</small>
+          <img class="hero-portrait" id="chainsawPortrait" alt="" />
+          <span class="hero-choice-text">
+            <b>Smoke · Chainsaw Hand</b>
+            <small>At 25% health the chainsaw auto-equips for heavy melee. It returns to inventory once you recover above 55%.</small>
+          </span>
+        </button>
+        <button class="go hero-choice stoner" id="stonedHeroBtn">
+          <img class="hero-portrait" id="stonedPortrait" alt="" />
+          <span class="hero-choice-text">
+            <b>Stoned · Secret Stash</b>
+            <small>The instant your health hits zero, a hidden stash saves you — back up with 50% health.</small>
+          </span>
+        </button>
+        <button class="go hero-choice pyro" id="pyroHeroBtn">
+          <img class="hero-portrait" id="pyroPortrait" alt="" />
+          <span class="hero-choice-text">
+            <b>Pyro · Dy-No-Mite</b>
+            <small>The instant your health hits zero, three sticks go off around you, clearing the area and healing you for what they take out.</small>
+          </span>
         </button>
       </div>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
@@ -7548,6 +7575,9 @@ const GAME = (() => {
     document.getElementById('enterBtn').addEventListener('click', startSingle);
     document.getElementById('scarfHeroBtn').addEventListener('click', () => startSingleHero('scarf'));
     document.getElementById('chainsawHeroBtn').addEventListener('click', () => startSingleHero('chainsaw'));
+    document.getElementById('stonedHeroBtn').addEventListener('click', () => startSingleHero('stoned'));
+    document.getElementById('pyroHeroBtn').addEventListener('click', () => startSingleHero('pyro'));
+    buildHeroPortraits();
     document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
     document.getElementById('modeCoopBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('coop'); });
@@ -7708,6 +7738,22 @@ const GAME = (() => {
     mode = 'single';
     COOP.stop();
     UI.showPlayerSelect();
+  }
+
+  /* One-time thumbnail render per hero for the select screen -- built once
+     at boot and cached as <img> src, not regenerated on every menu visit. */
+  function buildHeroPortraits() {
+    Object.keys(HERO.definitions).forEach(heroId => {
+      const img = document.getElementById(heroId + 'Portrait');
+      if (!img) return;
+      try {
+        img.src = CAST.renderPortrait(HERO.definitions[heroId].castId);
+      } catch (err) {
+        // A portrait failing to render is cosmetic -- the hero button still
+        // works without it, so this is worth swallowing rather than
+        // breaking hero selection over a thumbnail.
+      }
+    });
   }
 
   function startSingleHero(id) {
@@ -8598,7 +8644,7 @@ const CAST = (() => {
       voice: { pitch: 1.12 }
     },
     playerBluecap: {
-      label: 'Bluecap Scout',
+      label: 'Larry',
       head: 'playerBluecap',
       noPetals: true,
       collar: 'scarf',
@@ -8612,7 +8658,7 @@ const CAST = (() => {
       voice: { pitch: 1.05 }
     },
     playerMasked: {
-      label: 'Masked Runner',
+      label: 'Smoke',
       head: 'playerMasked',
       noPetals: true,
       collar: 'chain',
@@ -8792,7 +8838,48 @@ const CAST = (() => {
 
   function list() { return Object.keys(ROSTER); }
 
-  return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list };
+  /* Small offscreen render used only for the hero-select portraits. One
+     renderer/scene/camera get built lazily on first use and reused for
+     every id after that -- a second live WebGL context is cheap as long as
+     there's only one of them, which sequential reuse here guarantees. */
+  let portraitRenderer = null, portraitScene = null, portraitCamera = null;
+  function ensurePortraitRig(width, height) {
+    if (portraitRenderer) return;
+    const canvas = document.createElement('canvas');
+    portraitRenderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
+    portraitRenderer.setPixelRatio(1);
+    portraitRenderer.setSize(width, height, false);
+    portraitScene = new THREE.Scene();
+    portraitCamera = new THREE.PerspectiveCamera(30, width / height, 0.05, 10);
+    portraitCamera.position.set(0, 0.92, 2.05);
+    portraitCamera.lookAt(0, 0.82, 0);
+    // Same lighting recipe as the weapon viewmodel scene (see GAME.init) so
+    // the portrait's toon shading reads the same as it does in-game.
+    portraitScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.95));
+    const sun = new THREE.DirectionalLight(0xFFF4DC, 1.0);
+    sun.position.set(-1.2, 2.4, 2.0);
+    portraitScene.add(sun);
+    portraitScene.add(new THREE.AmbientLight(0xC9BAA9, 0.5));
+  }
+
+  function renderPortrait(id, width, height) {
+    width = width || 148; height = height || 176;
+    ensurePortraitRig(width, height);
+    const built = build(id);
+    portraitScene.add(built.rig.root);
+    portraitRenderer.render(portraitScene, portraitCamera);
+    const dataUrl = portraitRenderer.domElement.toDataURL('image/png');
+    portraitScene.remove(built.rig.root);
+    // Geometry is per-build and needs disposing; materials come from MAT's
+    // cache and are shared with every other user of that key, so they must
+    // never be disposed here (same rule THROWABLE.disposeVisual follows).
+    built.rig.root.traverse(obj => {
+      if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+    return dataUrl;
+  }
+
+  return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list, renderPortrait };
 })();
 
 /* ============================== [HERO] ===============================
@@ -8803,11 +8890,11 @@ const CAST = (() => {
 const HERO = (() => {
   const DEFINITIONS = {
     scarf: {
-      id: 'scarf', label: 'Scarf Scout', castId: 'playerBluecap',
+      id: 'scarf', label: 'Larry', castId: 'playerBluecap',
       special: 'doubleBarrel', specialLabel: 'Downed Double Barrel'
     },
     chainsaw: {
-      id: 'chainsaw', label: 'Masked Runner', castId: 'playerMasked',
+      id: 'chainsaw', label: 'Smoke', castId: 'playerMasked',
       special: 'chainsaw', specialLabel: 'Emergency Chainsaw'
     },
     stoned: {
@@ -8826,12 +8913,13 @@ const HERO = (() => {
     playerBluecap: 'scarf', playerMasked: 'chainsaw',
     playerStoned: 'stoned', playerPyro: 'pyro'
   };
-  // Scarf/Masked keep their pre-existing single-player-only specials; Stoned/
-  // Pyro's are coop-only. A coop host is always assigned playerBluecap, so
-  // without this split every coop host would inherit Scarf's downed window
-  // just from the castId mapping above resolving to a real hero id.
+  // All four are playable (and their specials active) in single-player. In
+  // coop only Stoned/Pyro get a special — a coop host is always assigned
+  // playerBluecap, so without this split every coop host would inherit
+  // Scarf's downed window just from the castId mapping above resolving to a
+  // real hero id.
   const COOP_SPECIAL_HEROES = { stoned: true, pyro: true };
-  const SOLO_SPECIAL_HEROES = { scarf: true, chainsaw: true };
+  const SOLO_SPECIAL_HEROES = { scarf: true, chainsaw: true, stoned: true, pyro: true };
   let selected = 'scarf';
   let downedActive = false;
   let downedShots = 0;
@@ -8846,10 +8934,10 @@ const HERO = (() => {
     return typeof GAME === 'undefined' || !GAME.isCoop;
   }
 
-  /* Scarf/Masked keep their existing single-player-only gate. Stoned/Pyro
-     are coop-only characters (never selectable in single-player), and their
-     specials are explicitly off in FFA — no shared PvE world there, and
-     dying is meant to cost something. */
+  /* All four specials are active in single-player. In coop, Scarf/Masked
+     stay off (their downed/chainsaw mechanics were never built with a
+     shared world in mind) and Stoned/Pyro's are explicitly off in FFA — no
+     shared PvE world there, and dying is meant to cost something. */
   function activeHeroId() {
     if (typeof GAME !== 'undefined' && GAME.isCoop) {
       if (typeof COOP === 'undefined' || COOP.matchMode !== 'coop') return null;
