@@ -130,7 +130,7 @@
   #throwableHud.empty{opacity:.48;}
   #throwableCount{
     display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
-    border:3px solid var(--ink);border-radius:50%;background:var(--olive);
+    border:3px solid var(--ink);border-radius:50%;background:var(--rust);
     color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
     box-shadow:3px 4px 0 rgba(22,18,15,.4);
   }
@@ -145,7 +145,7 @@
   #jaysHud.active{color:var(--jays, #8EAD4B);}
   #jaysCount{
     display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
-    border:3px solid var(--ink);border-radius:50%;background:var(--olive);
+    border:3px solid var(--ink);border-radius:50%;background:var(--jays);
     color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
     box-shadow:3px 4px 0 rgba(22,18,15,.4);
   }
@@ -399,6 +399,11 @@
   #mobileJays{
     right:clamp(80px,13vw,108px);bottom:clamp(145px,22vw,178px);
     background:rgba(168,90,60,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+  }
+  #mobileThrowSwap{
+    right:clamp(151px,23vw,194px);bottom:clamp(145px,22vw,178px);
+    background:rgba(110,122,66,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+    font-size:clamp(10px,1.5vw,13px);
   }
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
@@ -714,6 +719,7 @@
       <button type="button" class="mobile-btn" id="mobileReload" aria-label="Reload weapon">Load</button>
       <button type="button" class="mobile-btn" id="mobileSwap" aria-label="Switch weapon">Swap</button>
       <button type="button" class="mobile-btn" id="mobileThrowable" aria-label="Throw selected throwable">Throw</button>
+      <button type="button" class="mobile-btn" id="mobileThrowSwap" aria-label="Switch throwable type">Swap ↺</button>
       <button type="button" class="mobile-btn" id="mobileJays" aria-label="Use Jays health pack">Jays</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
@@ -960,6 +966,10 @@ const CONFIG = {
     coopSpawnRing: 1.4,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
     invulnAfterHit: 0.45, reviveDelay: 2.2,
+    // Anti-ladder-camping: continuously topped up while climbing so nobody
+    // can be sniped mid-rung; decays on its own within this window of
+    // stepping off, so it never lingers into a real firefight.
+    ladderInvulnTopUp: 0.4,
     // Downed is a second chance, not a safe room. You keep your head and the
     // Double Barrel, but the clock runs and reaching zero here is a real death.
     downedTime: 16, downedTilt: 0.34
@@ -2547,9 +2557,22 @@ const LEVEL = (() => {
     WORLD.add(X0, TOP / 2, -12.2, WALL + .2, TOP, 5.6, 'barn');
     WORLD.add(X0, TOP / 2, -3.2, WALL + .2, TOP, 4.4, 'barn');
 
-    // --- east wall ---
-    b.box(WALL, TOP, 14, X1, TOP / 2, -8, 0, 0, 0, 0.03);
-    WORLD.add(X1, TOP / 2, -8, WALL + .2, TOP, 14, 'barn');
+    // --- east wall, split around a doorway into the basement-stair vestibule ---
+    b.box(WALL, TOP, 0.5, X1, TOP / 2, -14.75, 0, 0, 0, 0.03);
+    b.box(WALL, TOP, 10.5, X1, TOP / 2, -6.25, 0, 0, 0, 0.03);
+    WORLD.add(X1, TOP / 2, -14.75, WALL + .2, TOP, 0.5, 'barn');
+    WORLD.add(X1, TOP / 2, -6.25, WALL + .2, TOP, 10.5, 'barn');
+
+    // --- basement-stair vestibule: a small east-side bump-out that gives the
+    // stair top landing (below) proper breathing room instead of squeezing it
+    // straight into the original NE corner. Surface-level only -- the stair
+    // itself, its portal and its basement collision are all unchanged. ---
+    b.box(WALL, TOP, 3.4 + WALL, 24.8, TOP / 2, -13.0, 0, 0, 0, 0.03);
+    b.box(2.8 + WALL, TOP, WALL, 23.4, TOP / 2, -14.7, 0, 0, 0, 0.03);
+    b.box(2.8 + WALL, TOP, WALL, 23.4, TOP / 2, -11.3, 0, 0, 0, 0.03);
+    WORLD.add(24.8, TOP / 2, -13.0, WALL + .2, TOP, 3.4 + WALL, 'barn');
+    WORLD.add(23.4, TOP / 2, -14.7, 2.8 + WALL, TOP, WALL + .2, 'barn');
+    WORLD.add(23.4, TOP / 2, -11.3, 2.8 + WALL, TOP, WALL + .2, 'barn');
 
     // --- north gable wall: ground door + hay door ---
     b.box(5.0, TOP, WALL, 8.5, TOP / 2, Z0, 0, 0, 0, 0.03);
@@ -2593,6 +2616,8 @@ const LEVEL = (() => {
     rb.box(9.4, 0.36, 15.4, 10, 7.72, -8, 0, 0, ang, 0.03);
     rb.box(9.4, 0.36, 15.4, 18, 7.72, -8, 0, 0, -ang, 0.03);
     rb.box(0.7, 0.5, 15.8, 14, 9.5, -8, 0, 0, 0, 0.03);
+    // Flat lean-to cap over the basement-stair vestibule bump-out.
+    rb.box(3.4, 0.36, 3.8, 23.6, TOP + 0.18, -13.0, 0, 0, 0, 0.02);
     rb.build(parent);
 
     // --- big sliding doors, cracked open ---
@@ -2655,6 +2680,7 @@ const LEVEL = (() => {
     PROPS.bottle(parent, 20.0, 1.25, -10.8);
     PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
     PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
+    PROPS.lantern(parent, 23.6, 2.4, -13.0, 0);
 
     // Workbench stays along the south wall but no longer forms a funnel into
     // the first step.
@@ -3114,63 +3140,71 @@ const LEVEL = (() => {
   function buildSilo(parent) {
     const CX = 2, CZ = -68;
     const DECK_Y = 8.2, LEG_H = 9.1;
+    // A real 12x12 fighting deck (up from the original 7.6x8.0, which read as
+    // "nearly impossible to maneuver" once more than one player and their
+    // weapon sway were up there) -- HW/HD are the new half-extents.
+    const HW = 6.0, HD = 6.0;
     const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
     const b = new PRIM.Batch(metal, 0.05);
 
-    const legs = [[-2.9, -3.8], [2.9, -3.8], [-2.9, 3.8], [2.9, 3.8]];
+    const legs = [[-4.6, -5.0], [4.6, -5.0], [-4.6, 5.0], [4.6, 5.0]];
     legs.forEach(l => {
-      b.box(0.36, LEG_H, 0.36, CX + l[0], LEG_H / 2, CZ + l[1], -l[1] * 0.02, 0, l[0] * 0.02, 0.02);
-      WORLD.addFloor(CX + l[0], 0, CZ + l[1], 0.58, DECK_Y, 0.58, 'leg');
+      b.box(0.42, LEG_H, 0.42, CX + l[0], LEG_H / 2, CZ + l[1], -l[1] * 0.02, 0, l[0] * 0.02, 0.02);
+      WORLD.addFloor(CX + l[0], 0, CZ + l[1], 0.64, DECK_Y, 0.64, 'leg');
     });
     // cross bracing, two tiers
-    b.box(6.0, 0.16, 0.16, CX, 3.0, CZ - 3.9, 0, 0, 0.04);
-    b.box(6.0, 0.16, 0.16, CX, 3.0, CZ + 3.9, 0, 0, -0.04);
-    b.box(0.16, 0.16, 7.8, CX - 3.1, 3.0, CZ, 0.03, 0, 0);
-    b.box(0.16, 0.16, 7.8, CX + 3.1, 3.0, CZ, -0.03, 0, 0);
-    b.box(6.0, 0.16, 0.16, CX, 6.4, CZ - 3.9, 0, 0, -0.04);
-    b.box(6.0, 0.16, 0.16, CX, 6.4, CZ + 3.9, 0, 0, 0.04);
-    b.box(0.16, 0.16, 7.8, CX - 3.1, 6.4, CZ, -0.03, 0, 0);
-    b.box(0.16, 0.16, 7.8, CX + 3.1, 6.4, CZ, 0.03, 0, 0);
+    b.box(9.6, 0.18, 0.18, CX, 3.0, CZ - 5.1, 0, 0, 0.03);
+    b.box(9.6, 0.18, 0.18, CX, 3.0, CZ + 5.1, 0, 0, -0.03);
+    b.box(0.18, 0.18, 10.4, CX - 4.7, 3.0, CZ, 0.025, 0, 0);
+    b.box(0.18, 0.18, 10.4, CX + 4.7, 3.0, CZ, -0.025, 0, 0);
+    b.box(9.6, 0.18, 0.18, CX, 6.4, CZ - 5.1, 0, 0, -0.03);
+    b.box(9.6, 0.18, 0.18, CX, 6.4, CZ + 5.1, 0, 0, 0.03);
+    b.box(0.18, 0.18, 10.4, CX - 4.7, 6.4, CZ, -0.025, 0, 0);
+    b.box(0.18, 0.18, 10.4, CX + 4.7, 6.4, CZ, 0.025, 0, 0);
 
     // platform deck
-    b.box(7.6, 0.34, 8.0, CX, DECK_Y - 0.17, CZ, 0, 0, 0, 0.02);
-    // North/west/east rails are continuous; south leaves a ladder gap.
-    for (let x = CX - 3.5; x <= CX + 3.5; x += 1.5) {
-      b.box(0.13, 0.95, 0.13, x, DECK_Y + 0.48, CZ - 3.85, 0, 0, UTIL.rng(-.05, .05));
+    b.box(HW * 2, 0.34, HD * 2, CX, DECK_Y - 0.17, CZ, 0, 0, 0, 0.02);
+    // Rails sit 0.4m inboard of the true deck edge -- a walkable lip instead
+    // of a collision box flush with where players actually want to move.
+    // North/west/east rails are continuous; south leaves a wide ladder gap.
+    const railZ = CZ - (HD - 0.4), railZ2 = CZ + (HD - 0.4);
+    const railX = CX - (HW - 0.4), railX2 = CX + (HW - 0.4);
+    for (let x = CX - HW + 1.0; x <= CX + HW - 1.0; x += 1.5) {
+      b.box(0.13, 0.95, 0.13, x, DECK_Y + 0.48, railZ, 0, 0, UTIL.rng(-.05, .05));
     }
-    b.box(7.2, 0.11, 0.11, CX, DECK_Y + 0.9, CZ - 3.85);
-    for (let z = CZ - 3.7; z <= CZ + 3.7; z += 1.5) {
-      b.box(0.13, 0.95, 0.13, CX - 3.65, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.13, 0.95, 0.13, CX + 3.65, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
+    b.box(HW * 2 - 1.2, 0.11, 0.11, CX, DECK_Y + 0.9, railZ);
+    for (let z = railZ + 1.0; z <= railZ2 - 1.0; z += 1.5) {
+      b.box(0.13, 0.95, 0.13, railX, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, railX2, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
     }
-    b.box(0.11, 0.11, 7.4, CX - 3.65, DECK_Y + 0.9, CZ);
-    b.box(0.11, 0.11, 7.4, CX + 3.65, DECK_Y + 0.9, CZ);
-    // Stub rails either side of the ladder opening.
-    [-2.6, 2.6].forEach(o => {
-      b.box(0.13, 0.95, 0.13, CX + o, DECK_Y + 0.48, CZ + 3.85, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.13, 0.95, 0.13, CX + o * 1.35, DECK_Y + 0.48, CZ + 3.85, 0, 0, UTIL.rng(-.05, .05));
-      b.box(2.2, 0.11, 0.11, CX + o * 1.17, DECK_Y + 0.9, CZ + 3.85);
+    b.box(0.11, 0.11, railZ2 - railZ - 1.2, railX, DECK_Y + 0.9, CZ);
+    b.box(0.11, 0.11, railZ2 - railZ - 1.2, railX2, DECK_Y + 0.9, CZ);
+    // Stub rails either side of a wide ladder opening.
+    [-3.4, 3.4].forEach(o => {
+      b.box(0.13, 0.95, 0.13, CX + o, DECK_Y + 0.48, railZ2, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, CX + o * 1.35, DECK_Y + 0.48, railZ2, 0, 0, UTIL.rng(-.05, .05));
+      b.box(1.6, 0.11, 0.11, CX + o * 1.17, DECK_Y + 0.9, railZ2);
     });
 
-    // external ladder
-    const ladderZ = CZ + 4.13;
-    b.box(0.14, DECK_Y + 0.15, 0.14, CX - 0.58, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, -0.015, 0.01);
-    b.box(0.14, DECK_Y + 0.15, 0.14, CX + 0.58, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, 0.015, 0.01);
+    // external ladder -- widened rungs, "more accessible" per the same note
+    const ladderZ = CZ + HD + 0.13;
+    b.box(0.14, DECK_Y + 0.15, 0.14, CX - 0.66, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, -0.015, 0.01);
+    b.box(0.14, DECK_Y + 0.15, 0.14, CX + 0.66, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, 0.015, 0.01);
     for (let y = 0.38; y <= DECK_Y - 0.2; y += 0.47) {
-      b.box(1.3, 0.12, 0.14, CX, y, ladderZ, 0, 0, UTIL.rng(-0.018, 0.018), 0.008);
+      b.box(1.5, 0.12, 0.14, CX, y, ladderZ, 0, 0, UTIL.rng(-0.018, 0.018), 0.008);
     }
     b.build(parent);
 
-    WORLD.addFloor(CX, DECK_Y - 0.34, CZ, 7.6, 0.34, 8.0, 'deck');
-    WORLD.add(CX, DECK_Y + 0.48, CZ - 3.85, 7.2, 1.05, 0.35, 'rail');
-    WORLD.add(CX - 3.65, DECK_Y + 0.48, CZ, 0.35, 1.05, 7.6, 'rail');
-    WORLD.add(CX + 3.65, DECK_Y + 0.48, CZ, 0.35, 1.05, 7.6, 'rail');
-    WORLD.add(CX - 2.9, DECK_Y + 0.48, CZ + 3.85, 2.6, 1.05, 0.35, 'rail');
-    WORLD.add(CX + 2.9, DECK_Y + 0.48, CZ + 3.85, 2.6, 1.05, 0.35, 'rail');
-    WORLD.addLadder(CX, 0, ladderZ, 1.6, DECK_Y + 0.15, 1.2, {
+    WORLD.addFloor(CX, DECK_Y - 0.34, CZ, HW * 2, 0.34, HD * 2, 'deck');
+    WORLD.add(CX, DECK_Y + 0.48, railZ, HW * 2 - 0.8, 1.05, 0.35, 'rail');
+    WORLD.add(railX, DECK_Y + 0.48, CZ, 0.35, 1.05, railZ2 - railZ - 0.8, 'rail');
+    WORLD.add(railX2, DECK_Y + 0.48, CZ, 0.35, 1.05, railZ2 - railZ - 0.8, 'rail');
+    WORLD.add(CX - 4.0, DECK_Y + 0.48, railZ2, 1.6, 1.05, 0.35, 'rail');
+    WORLD.add(CX + 4.0, DECK_Y + 0.48, railZ2, 1.6, 1.05, 0.35, 'rail');
+    WORLD.addLadder(CX, 0, ladderZ, 1.8, DECK_Y + 0.15, 1.2, {
       topY: DECK_Y,
-      topExitX: CX, topExitZ: CZ + 3.4,
-      bottomExitX: CX, bottomExitZ: CZ + 5.1,
+      topExitX: CX, topExitZ: railZ2 - 0.5,
+      bottomExitX: CX, bottomExitZ: ladderZ + 1.0,
       normalZ: 1,
       tag: 'silo_ladder'
     });
@@ -3424,8 +3458,10 @@ const LEVEL = (() => {
     // reason about while leaving the surface map untouched above it.
     room.box(MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, (MIN_X + MAX_X) * 0.5,
       FLOOR_Y - 0.11, (MIN_Z + MAX_Z) * 0.5);
-    room.box(MAX_X - MIN_X + 0.4, 3.7, 0.30, (MIN_X + MAX_X) * 0.5,
-      (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2);
+    // North wall split around a 3.6m doorway at x=18 -- the northeast
+    // expansion's south tunnel (see below) connects the whole network here.
+    room.box(8.4, 3.7, 0.30, 12.0, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2);
+    room.box(8.4, 3.7, 0.30, 24.0, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2);
     room.box(MAX_X - MIN_X + 0.4, 3.7, 0.30, (MIN_X + MAX_X) * 0.5,
       (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2);
     // West wall is split around a 3.2 m service doorway. This becomes the
@@ -3445,7 +3481,8 @@ const LEVEL = (() => {
       { id: 'basement',   x: 24.0,  z: -9.5,  normalZ: 1 },
       { id: 'seed_store', x: -24.0, z: 16.0,  normalZ: 1 },
       { id: 'windmill',   x: -7.6,  z: -30.0, normalZ: 1 },
-      { id: 'northwest',  x: -18.5, z: -44.8, normalZ: 1 }
+      { id: 'northwest',  x: -18.5, z: -44.8, normalZ: 1 },
+      { id: 'northeast',  x: 24.0,  z: -72.0, normalZ: 1 }
     ];
     // Comfortably clears the 1.75 x 1.55 ladder collision box.
     const HATCH_HALF = 1.15;
@@ -3498,8 +3535,11 @@ const LEVEL = (() => {
     WORLD.addFloor((MIN_X + MAX_X) * 0.5, FLOOR_Y - 0.22, (MIN_Z + MAX_Z) * 0.5,
       MAX_X - MIN_X, 0.22, MAX_Z - MIN_Z, 'basement_floor');
     WORLD.addArea('basement', MIN_X, MAX_X, MIN_Z, MAX_Z, 'initial_basement_room');
-    WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2,
-      MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
+    // Split to match the visual doorway gap at x=18 (see room.box above).
+    WORLD.add(12.0, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2,
+      8.4, 3.7, 0.30, 'basement_wall');
+    WORLD.add(24.0, (FLOOR_Y + CEIL_Y) * 0.5, MIN_Z - 0.2,
+      8.4, 3.7, 0.30, 'basement_wall');
     WORLD.add((MIN_X + MAX_X) * 0.5, (FLOOR_Y + CEIL_Y) * 0.5, MAX_Z + 0.2,
       MAX_X - MIN_X + 0.4, 3.7, 0.30, 'basement_wall');
     WORLD.add(MIN_X - 0.2, (FLOOR_Y + CEIL_Y) * 0.5, -16.65,
@@ -3787,7 +3827,10 @@ const LEVEL = (() => {
     addWall(-10.15, -27.55, 0.30, 7.40, 'root_cellar');
     addWall(2.15, -33.925, 0.30, 4.45, 'root_cellar');
     addWall(2.15, -26.075, 0.30, 4.45, 'root_cellar');
-    addWall(-4.0, -36.15, 12.3, 0.30, 'root_cellar');
+    // North wall split around a 3.6 m doorway at x=2 -- the v0.14.01-UGEX
+    // northeast branch descends into this gap (see below).
+    addWall(-4.975, -36.15, 10.35, 0.30, 'root_cellar');
+    addWall(5.975, -36.15, 4.35, 0.30, 'root_cellar');
     addWall(-7.925, -23.85, 4.45, 0.30, 'root_cellar');
     addWall(-0.075, -23.85, 4.45, 0.30, 'root_cellar');
 
@@ -3837,7 +3880,10 @@ const LEVEL = (() => {
 
     addSlab(17.0, -44.0, 16.0, 13.0, 'relay_room');
     addWall(8.85, -44.0, 0.30, 13.3, 'relay_room');
-    addWall(17.0, -50.65, 16.3, 0.30, 'relay_room');
+    // North wall split around a 3.6 m doorway at x=20 -- the v0.14.01-UGEX
+    // northeast branch climbs out of this gap (see below).
+    addWall(13.525, -50.65, 9.35, 0.30, 'relay_room');
+    addWall(23.475, -50.65, 3.35, 0.30, 'relay_room');
     addWall(12.075, -37.35, 6.45, 0.30, 'relay_room');
     addWall(21.925, -37.35, 6.45, 0.30, 'relay_room');
     // East wall is split around the secret panel at z=-44.
@@ -3850,6 +3896,42 @@ const LEVEL = (() => {
     addWall(30.15, -44.0, 0.30, 6.3, 'secret_cache');
     addWall(27.5, -47.15, 5.3, 0.30, 'secret_cache');
     addWall(27.5, -40.85, 5.3, 0.30, 'secret_cache');
+
+    /* ---- v0.14.01-UGEX northeast branch ----
+       A new hatch reaches the far northeast corner of the expanded Silo Row
+       map. Two independent tunnels tie the room into the existing network at
+       different hubs -- one through relay_room, the other via a west jog
+       into root_cellar -- rather than one long shared trunk. */
+    addSlab(21, -73, 12, 12, 'northeast_room');
+    addWall(21, -79.15, 12.3, 0.30, 'northeast_room');
+    addWall(27.15, -73, 0.30, 12.3, 'northeast_room');
+    // South wall split around the relay_room tunnel doorway at x=20.
+    addWall(16.525, -66.85, 3.35, 0.30, 'northeast_room');
+    addWall(24.475, -66.85, 5.35, 0.30, 'northeast_room');
+    // West wall split around the root_cellar tunnel doorway at z=-71.
+    addWall(14.85, -75.975, 0.30, 6.35, 'northeast_room');
+    addWall(14.85, -68.025, 0.30, 2.35, 'northeast_room');
+    WORLD.addSpawn(21, FLOOR_Y, -73, 'basement_northeast', 'basement');
+
+    // West branch: a straight run down into relay_room's newly split north wall.
+    addSlab(20, -58.75, 3.6, 17.5, 'northeast_link_west');
+    addWall(18.2, -58.75, 0.30, 17.8, 'northeast_link_west');
+    addWall(21.8, -58.75, 0.30, 17.8, 'northeast_link_west');
+
+    // South branch: jogs west first to clear relay_room/secret_cache, then
+    // drops straight down into root_cellar's newly split north wall.
+    addSlab(7.75, -71, 15.5, 3.6, 'northeast_link_south_a');
+    addWall(7.75, -72.8, 15.8, 0.30, 'northeast_link_south_a');
+    addWall(7.75, -69.2, 15.8, 0.30, 'northeast_link_south_a');
+    addSlab(2, -52.8, 3.6, 34.4, 'northeast_link_south_b');
+    addWall(0.2, -52.8, 0.30, 34.7, 'northeast_link_south_b');
+    addWall(3.8, -52.8, 0.30, 34.7, 'northeast_link_south_b');
+
+    PROPS.lantern(parent, 21, -0.78, -75, 0);
+    PROPS.lantern(parent, 20, -0.78, -59, 0);
+    PROPS.lantern(parent, 8, -0.78, -71, 0);
+    PROPS.lantern(parent, 2, -0.78, -52.8, 0);
+
     sealFloorEdges();
     shell.build(parent);
 
@@ -3879,6 +3961,10 @@ const LEVEL = (() => {
     doorwayFrame(-10.12, -33.0, false);
     doorwayFrame(-18.50, -34.72, true);
     doorwayFrame(-18.50, -38.32, true);
+    doorwayFrame(20, -66.85, true);
+    doorwayFrame(14.85, -71, false);
+    doorwayFrame(20, -50.65, true);
+    doorwayFrame(2, -36.15, true);
     // Wall-side braces add rhythm without narrowing any walkable lane.
     [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
     [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
@@ -4937,7 +5023,7 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, throwable: false, useJays: false, nextWeapon: false, pause: false,
+    melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -4973,6 +5059,7 @@ const INPUT = (() => {
     'KeyF': 'lantern',
     'KeyV': 'melee',
     'KeyG': 'throwable',
+    'KeyT': 'switchThrowable',
     'KeyJ': 'useJays',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
@@ -5280,6 +5367,7 @@ const INPUT = (() => {
     bindTouchButton('mobileReload', 'reload');
     bindTouchButton('mobileSwap', 'nextWeapon');
     bindTouchButton('mobileThrowable', 'throwable');
+    bindTouchButton('mobileThrowSwap', 'switchThrowable');
     bindTouchButton('mobileJays', 'useJays');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
@@ -5671,6 +5759,10 @@ const PLAYER = (() => {
     }
 
     if (climbing) {
+      // Continuously topped up (never a one-shot grant) so a player mid-ladder
+      // can't be sniped the instant they step onto a rung, and it decays on
+      // its own the moment they step off -- no camper can exploit the window.
+      grantInvuln(CONFIG.player.ladderInvulnTopUp);
       const ladder = activeLadder;
       pos.x = UTIL.damp(pos.x, ladder.snapX, C.ladderSnap, dt);
       pos.z = UTIL.damp(pos.z, ladder.snapZ, C.ladderSnap, dt);
@@ -6693,6 +6785,20 @@ const THROWABLE = (() => {
     return true;
   }
 
+  /* Same pattern as WEAPON.cycleWeapon: walk the owned ids in a stable
+     order and skip anything not yet picked up, so pressing the switch key
+     with only one throwable owned is a harmless no-op instead of selecting
+     something the player doesn't have. */
+  function cycleType() {
+    const ids = Object.keys(DEFS).sort();
+    const start = Math.max(0, ids.indexOf(currentId));
+    for (let offset = 1; offset <= ids.length; offset++) {
+      const index = (start + offset) % ids.length;
+      if (inventory[ids[index]] && inventory[ids[index]].owned) return select(ids[index]);
+    }
+    return false;
+  }
+
   function add(id, quantity) {
     const def = DEFS[id], state = inventory[id];
     if (!def || !state) return { consumed: false, newlyOwned: false, added: 0 };
@@ -6844,6 +6950,7 @@ const THROWABLE = (() => {
 
   function update(dt, time, camera, simulate, canThrow) {
     if (canThrow && INPUT.consumePress('throwable')) throwCurrent(camera);
+    if (canThrow && INPUT.consumePress('switchThrowable')) cycleType();
     if (!simulate || dt <= 0) return;
     for (let i = active.length - 1; i >= 0; i--) {
       const projectile = active[i];
@@ -6881,7 +6988,7 @@ const THROWABLE = (() => {
   }
 
   return {
-    init, update, reset, define, select, add, throwCurrent, buildPickupVisual,
+    init, update, reset, define, select, cycleType, add, throwCurrent, buildPickupVisual,
     get definitions() { return DEFS; },
     get inventory() { return inventory; },
     get active() { return active; },
@@ -7632,7 +7739,7 @@ const UI = (() => {
   const CONTROL_LABELS = {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
     jump: 'Jump', sprint: 'Sprint', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
-    throwable: 'Throw Grenade', useJays: 'Use Jays',
+    throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4'
   };
   let rebindingAction = null;
@@ -7978,28 +8085,29 @@ const PICKUP = (() => {
   }
 
   function buildJaysVisual(parent) {
-    // Jays read as a little cluster of green hop flowers rather than another
-    // bottle: overlapping lobes make the pickup fluffy from every angle, with
-    // lighter bracts and a short leafy stem to keep the silhouette legible.
+    // A small bundle of jays -- white rolling-paper sticks with a green tip
+    // and a darker ember dot, echoing buildDynamiteStickVisual's
+    // stick-plus-end-cap technique (same "bundle of 3, slight offsets"
+    // composition as the dynamite pickup) rather than the old hop-flower look.
     const root = new THREE.Group();
-    root.rotation.z = -0.14;
+    root.rotation.z = -0.1;
     parent.add(root);
-    const deep = MAT.toon(PAL.jaysDeep);
-    const green = MAT.toon(PAL.jays);
-    const light = MAT.toon(PAL.jaysLight);
-    PRIM.sph(0.27, green, { parent: root, scale: [0.94, 1.08, 0.9], outline: 0.032, ray: false });
-    for (let i = 0; i < 7; i++) {
-      const a = i / 7 * Math.PI * 2 + 0.2;
-      const r = i % 2 ? 0.19 : 0.15;
-      PRIM.sph(0.115, i % 2 ? light : green, {
-        pos: [Math.cos(a) * r, 0.015 + Math.sin(a * 1.7) * 0.045, Math.sin(a) * r * 0.76],
-        scale: [0.85, 1.04, 0.72], parent: root, outline: 0.014, ray: false
+    const paper = MAT.toon(PAL.cream);
+    const tip = MAT.toon(PAL.jays);
+    const ember = MAT.toon(PAL.jaysDeep);
+    [-1, 0, 1].forEach(s => {
+      const stick = new THREE.Group();
+      stick.position.set(s * 0.09, s === 0 ? 0.02 : -0.02, s * 0.03);
+      stick.rotation.z = s * 0.1;
+      root.add(stick);
+      PRIM.cyl(0.045, 0.045, 0.34, 8, paper, {
+        rot: [0, 0, Math.PI / 2], parent: stick, outline: 0.012, ray: false
       });
-    }
-    PRIM.cone(0.045, 0.26, 6, deep, { pos: [0, 0.34, 0], parent: root, outline: 0.012, ray: false });
-    [-1, 1].forEach(s => PRIM.cone(0.035, 0.18, 5, green, {
-      pos: [s * 0.075, 0.34, 0.015], rot: [0, 0, s * 0.55], parent: root, outline: 0.009, ray: false
-    }));
+      PRIM.cyl(0.05, 0.045, 0.09, 8, tip, {
+        pos: [0.205, 0, 0], rot: [0, 0, Math.PI / 2], parent: stick, outline: 0.01, ray: false
+      });
+      PRIM.sph(0.02, ember, { pos: [0.25, 0, 0], parent: stick, outline: 0.006, ray: false });
+    });
   }
 
   function buildShieldVisual(parent) {
@@ -8199,7 +8307,20 @@ const GAME = (() => {
     INTRO.init(scene, camera);
 
     // shared mouse/touch engagement wiring
-    INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); AUDIO.unduckGameMusic(); });
+    INPUT.on('lock', () => {
+      running = true;
+      UI.hidePause();
+      AUDIO.resume();
+      AUDIO.unduckGameMusic();
+      // The gameplay theme's first play() often lands with no recent user
+      // gesture (e.g. right as the multi-second insertion cutscene ends,
+      // not from a click), which browsers silently reject -- unlike
+      // playMenuMusic's own version of this problem (see boot()'s
+      // retryMenuMusic), nothing ever retried it. Pointer lock actually
+      // acquiring is itself proof of a genuine gesture, so this is the
+      // reliable place to catch it.
+      if (entered && !AUDIO.gameMusicPlaying) AUDIO.playGameMusic();
+    });
     INPUT.on('unlock', () => {
       running = false;
       if (!entered) return;
@@ -12522,8 +12643,10 @@ const COOP = (() => {
       // or off-layer remote's hit proxies stay raycastable unless this is
       // toggled explicitly too, same reasoning as ENEMY's own NO_RAY swap.
       // Still gated on FFA — a co-op teammate's proxies stay permanently
-      // inert regardless of visibility (see makePlayerProxy).
-      const hittable = visible && matchMode === 'ffa';
+      // inert regardless of visibility (see makePlayerProxy). Also inert
+      // while climbing, mirroring the local player's own ladder invuln so a
+      // mid-rung opponent can't be sniped either.
+      const hittable = visible && matchMode === 'ffa' && !target.climbing;
       if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
       if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
       remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
