@@ -149,6 +149,28 @@
     color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
     box-shadow:3px 4px 0 rgba(22,18,15,.4);
   }
+  #buffHud{
+    display:flex;flex-direction:column;gap:4px;margin-top:8px;
+  }
+  .buffChip{
+    display:flex;align-items:center;gap:8px;
+    color:var(--cream);font:900 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    opacity:0;transition:opacity .18s ease;transform:rotate(-1deg);
+  }
+  .buffChip.on{opacity:1;}
+  .buffChip b{
+    display:grid;place-items:center;min-width:26px;height:26px;padding:0 6px;
+    border:3px solid var(--ink);border-radius:50%;color:var(--cream);
+    font-size:14px;letter-spacing:0;text-shadow:none;box-shadow:3px 4px 0 rgba(22,18,15,.4);
+  }
+  #buffIronHide b{background:#6C7E88;}
+  #buffHotSauce b{background:#9C2F12;}
+  #buffJackrabbit b{background:#B08A2E;}
+  #buffIronHide.on{color:#9FB4BE;}
+  #buffHotSauce.on{color:#D1481F;}
+  #buffJackrabbit.on{color:#E0B84A;}
+
   #downedHud{
     position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
     display:none;pointer-events:none;text-align:center;color:var(--cream);
@@ -627,6 +649,11 @@
       <div id="shieldBar"><div id="shieldFill"></div></div>
     </div>
     <div id="jaysHud" aria-live="polite"><span>Jays</span><b id="jaysCount">0</b><small id="jaysState">J to use</small></div>
+    <div id="buffHud" aria-live="polite">
+      <div class="buffChip" id="buffIronHide" data-buff="ironHide"><span>Iron Hide</span><b>0</b></div>
+      <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><span>Hot Sauce</span><b>0</b></div>
+      <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
+    </div>
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
@@ -912,15 +939,23 @@ const CONFIG = {
     downedTime: 16, downedTilt: 0.34
   },
   map: {
-    // The south gate stays fixed while the first expansion pushes the farm
-    // north. Keeping these limits together makes later horizontal slices less
+    // The south gate stays fixed while expansions push the farm north.
+    // Keeping these limits together makes later horizontal slices less
     // error-prone than scattering invisible-wall coordinates through LEVEL.
-    west: -31.2, east: 31.2, south: 32.6, north: -51.6,
+    west: -31.2, east: 31.2, south: 32.6, north: -80,
     northTransition: -32,
+    // The original outer boundary (WC-v0.12 and earlier) becomes an interior
+    // breached cross-fence here, same trick northTransition already uses —
+    // exact same value the old CONFIG.map.north used to be.
+    siloTransition: -51.6,
     catwalkY: 3.5
   },
   enemy: {
     count: 8,
+    // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
+    // single-player and FFA never touch these two.
+    coopPerExtraPlayer: 3,
+    coopMax: 18,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -1061,7 +1096,14 @@ const CONFIG = {
   },
   pickup: {
     collectRadius: 1.18, bobHeight: 0.13, bobSpeed: 2.4, spinSpeed: 0.7,
-    jaysMaxStack: 5, jaysHealRate: 5, jaysShieldRate: 2.5, jaysDuration: 5
+    jaysMaxStack: 5, jaysHealRate: 5, jaysShieldRate: 2.5, jaysDuration: 5,
+    // Coop pulls from the same fixed pickup pool with up to 4x the consumers —
+    // trim respawn timers a bit rather than cluttering the map with duplicates.
+    coopRespawnMultiplier: 0.8,
+    ironHideDuration: 10,
+    hotSauceMultiplier: 1.5, hotSauceDuration: 15,
+    jackrabbitMultiplier: 1.35, jackrabbitDuration: 12,
+    rallyHornHeal: 30, rallyHornShield: 20, rallyHornRadius: 12
   },
   fx: {
     maxDecals: 34, maxParticles: 190, maxTracers: 14,
@@ -1093,6 +1135,12 @@ const CONFIG = {
     jays:       0x8EAD4B,
     jaysLight:  0xB7CC68,
     jaysDeep:   0x526B2D,
+    ironHide:   0x9FB4BE,
+    ironHideDeep: 0x6C7E88,
+    hotSauce:   0xD1481F,
+    hotSauceDeep: 0x9C2F12,
+    jackrabbit: 0xE0B84A,
+    jackrabbitDeep: 0xB08A2E,
     charcoal:   0x1F1B18,
     ink:        0x120F0D,
     white:      0xFFFBF2,
@@ -2263,6 +2311,10 @@ const LEVEL = (() => {
       [
         [-21, -27], [-18, -31.5], [-16, -37], [-10, -42],      // ruins to west breach
         [-1, -45], [8, -43], [14, -37]                          // pasture loop rejoins east route
+      ],
+      [
+        [20, -46], [16, -48], [11, -50], [10, -53],            // feed shelter through the east
+        [7, -57], [4, -61], [2, -64], [2, -67]                  // breach, orchard to silo base
       ]
     ];
     routes.forEach(route => {
@@ -2347,13 +2399,26 @@ const LEVEL = (() => {
   function buildFences(parent) {
     const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
     const b = new PRIM.Batch(woodMat, 0.04);
+    const M = CONFIG.map;
 
     // perimeter, bowed so nothing reads as a square arena
     fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8 });
     fenceRun(b, 3.6, 31.2, 30, 32, { bow: -0.8 });
-    fenceRun(b, 30, 32, 30.5, -51, { bow: 1.4, broken: true });
-    fenceRun(b, 30.5, -51, -30, -51, { bow: 1.2, broken: true });
-    fenceRun(b, -30, -51, -30.5, 32, { bow: -1.4, broken: true });
+    fenceRun(b, 30, 32, 30.5, M.siloTransition, { bow: 1.4, broken: true });
+    fenceRun(b, -30, M.siloTransition, -30.5, 32, { bow: -1.4, broken: true });
+
+    // The original outer boundary now reads as an old cross-fence -- same
+    // treatment as northTransition below, just further out. Two deliberate
+    // breaches make a proper loop instead of a single campable gate.
+    fenceRun(b, 30.5, M.siloTransition, 14, M.siloTransition, { bow: 0.45, broken: true });
+    fenceRun(b, 8, M.siloTransition, -14, M.siloTransition, { bow: -0.35, broken: true });
+    fenceRun(b, -20, M.siloTransition, -30, M.siloTransition, { bow: 0.3, broken: true });
+
+    // Silo Row approach: fresh outer perimeter continuing both sides from the
+    // old boundary to the new one, plus a new north cap.
+    fenceRun(b, 30.5, M.siloTransition, 30.5, M.north, { bow: 0.7, broken: true });
+    fenceRun(b, -30.5, M.siloTransition, -30.5, M.north, { bow: -0.7, broken: true });
+    fenceRun(b, 30.5, M.north, -30.5, M.north, { bow: 1.0, broken: true });
 
     // The former north edge now reads as an old cross-fence. Two deliberate
     // six-metre breaches make a proper loop instead of a single campable gate.
@@ -2373,7 +2438,6 @@ const LEVEL = (() => {
 
     // Solid boundary. Tall enough that a jump cannot clear it, hidden behind
     // the fence line by hedges, trees and rock piles.
-    const M = CONFIG.map;
     const sideCenterZ = (M.south + M.north) * 0.5;
     const sideDepth = M.south - M.north + 2.0;
     WORLD.addFloor(0, 0, M.south, 70, 5, 1.6, 'bounds');   // just behind the gate
@@ -2392,6 +2456,11 @@ const LEVEL = (() => {
     WORLD.addFloor(22.25, 0, M.northTransition, 16.5, 1.6, 0.7, 'fence');
     WORLD.addFloor(-3, 0, M.northTransition, 22, 1.6, 0.7, 'fence');
     WORLD.addFloor(-25, 0, M.northTransition, 10, 1.6, 0.7, 'fence');
+    // Cross-fence colliders for the Silo Row transition breach (mirrors the
+    // northTransition breach shape above, moved further out).
+    WORLD.addFloor(22.25, 0, M.siloTransition, 16.5, 1.6, 0.7, 'fence');
+    WORLD.addFloor(-3, 0, M.siloTransition, 22, 1.6, 0.7, 'fence');
+    WORLD.addFloor(-25, 0, M.siloTransition, 10, 1.6, 0.7, 'fence');
   }
 
   /* Blobby hedges: one merged sphere soup, no per-lobe outline cost. */
@@ -2414,10 +2483,11 @@ const LEVEL = (() => {
     // One batch PER RUN rather than one for the whole farm: each mesh then has
     // a tight bounding sphere, so frustum culling and bullet raycasts can
     // reject the hedges you are nowhere near.
+    const M = CONFIG.map;
     const runs = [
-      [[[-33, 34], [-33, -53]], 1.9, 0.5],            // outside the west fence
-      [[[33, 34], [33.5, -53]], 1.9, 0.5],            // outside the east fence
-      [[[-33, -53.5], [33, -53.5]], 2.0, 0.5],        // outside the new north fence
+      [[[-33, 34], [-33, M.north - 1.5]], 1.9, 0.5],  // outside the west fence
+      [[[33, 34], [33.5, M.north - 1.5]], 1.9, 0.5],  // outside the east fence
+      [[[-33, M.north - 2], [33, M.north - 2]], 2.0, 0.5], // outside the north fence
       [[[-33, 34.5], [-8, 34]], 1.9, 0.5],            // south-west of the gate
       [[[8, 34], [33, 34.5]], 1.9, 0.5],              // south-east of the gate
       [[[23, -2.5], [28, -3], [28.5, -15]], 1.5, 0.35], // walls the hidden nook
@@ -2984,8 +3054,126 @@ const LEVEL = (() => {
     [[-23, -38, 0.8], [-12, -46, 0.7], [4, -39, 0.65], [27, -37, 0.85]]
       .forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
 
-    // Reserved for later enemy-count/multiplayer passes; count stays at eight today.
     WORLD.addSpawn(-7, 0, -43, 'north_pasture');
+  }
+
+  /* ---------------- Silo Row: orchard approach ----------------
+     Ground-level dressing between the siloTransition breach and the silo
+     base -- short sightlines through tree cover, distinct from the
+     pasture's sparse windbreaks and the hedge-lined perimeter. */
+  function buildOrchard(parent) {
+    // Two staggered rows either side of a clear central lane so the main
+    // path through stays readable at a glance.
+    [[-18, -55, 1.0], [-11, -56, 0.9], [11, -55.5, 0.95], [18, -56, 1.0],
+     [-15, -59.5, 0.85], [-8, -60, 0.9], [8, -59.5, 0.9], [15, -60, 0.85],
+     [-18, -63, 0.95], [-11, -63.5, 0.9], [11, -63, 0.9], [18, -63.5, 1.0]]
+      .forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
+    [[-6, -58, 0.65], [6, -61, 0.7]].forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
+
+    PROPS.signPost(parent, 10, -52.5, ['SILO ROW', '→'], -0.3,
+      { w: 1.7, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
+
+    WORLD.addSpawn(-10, 0, -58, 'orchard');
+    WORLD.addSpawn(9, 0, -60.5, 'orchard');
+  }
+
+  /* ---------------- Silo Row: the silo cluster ----------------
+     Taller than the water tower -- the new highest point on the farm, and
+     a fresh vertical fight for 4-player coop. Own external ladder rather
+     than an extension of the already-tuned barn/pasture catwalk deck. */
+  function buildSilo(parent) {
+    const CX = 2, CZ = -68;
+    const DECK_Y = 8.2, LEG_H = 9.1;
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const b = new PRIM.Batch(metal, 0.05);
+
+    const legs = [[-2.9, -3.8], [2.9, -3.8], [-2.9, 3.8], [2.9, 3.8]];
+    legs.forEach(l => {
+      b.box(0.36, LEG_H, 0.36, CX + l[0], LEG_H / 2, CZ + l[1], -l[1] * 0.02, 0, l[0] * 0.02, 0.02);
+      WORLD.addFloor(CX + l[0], 0, CZ + l[1], 0.58, DECK_Y, 0.58, 'leg');
+    });
+    // cross bracing, two tiers
+    b.box(6.0, 0.16, 0.16, CX, 3.0, CZ - 3.9, 0, 0, 0.04);
+    b.box(6.0, 0.16, 0.16, CX, 3.0, CZ + 3.9, 0, 0, -0.04);
+    b.box(0.16, 0.16, 7.8, CX - 3.1, 3.0, CZ, 0.03, 0, 0);
+    b.box(0.16, 0.16, 7.8, CX + 3.1, 3.0, CZ, -0.03, 0, 0);
+    b.box(6.0, 0.16, 0.16, CX, 6.4, CZ - 3.9, 0, 0, -0.04);
+    b.box(6.0, 0.16, 0.16, CX, 6.4, CZ + 3.9, 0, 0, 0.04);
+    b.box(0.16, 0.16, 7.8, CX - 3.1, 6.4, CZ, -0.03, 0, 0);
+    b.box(0.16, 0.16, 7.8, CX + 3.1, 6.4, CZ, 0.03, 0, 0);
+
+    // platform deck
+    b.box(7.6, 0.34, 8.0, CX, DECK_Y - 0.17, CZ, 0, 0, 0, 0.02);
+    // North/west/east rails are continuous; south leaves a ladder gap.
+    for (let x = CX - 3.5; x <= CX + 3.5; x += 1.5) {
+      b.box(0.13, 0.95, 0.13, x, DECK_Y + 0.48, CZ - 3.85, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(7.2, 0.11, 0.11, CX, DECK_Y + 0.9, CZ - 3.85);
+    for (let z = CZ - 3.7; z <= CZ + 3.7; z += 1.5) {
+      b.box(0.13, 0.95, 0.13, CX - 3.65, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, CX + 3.65, DECK_Y + 0.48, z, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(0.11, 0.11, 7.4, CX - 3.65, DECK_Y + 0.9, CZ);
+    b.box(0.11, 0.11, 7.4, CX + 3.65, DECK_Y + 0.9, CZ);
+    // Stub rails either side of the ladder opening.
+    [-2.6, 2.6].forEach(o => {
+      b.box(0.13, 0.95, 0.13, CX + o, DECK_Y + 0.48, CZ + 3.85, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, CX + o * 1.35, DECK_Y + 0.48, CZ + 3.85, 0, 0, UTIL.rng(-.05, .05));
+      b.box(2.2, 0.11, 0.11, CX + o * 1.17, DECK_Y + 0.9, CZ + 3.85);
+    });
+
+    // external ladder
+    const ladderZ = CZ + 4.13;
+    b.box(0.14, DECK_Y + 0.15, 0.14, CX - 0.58, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, -0.015, 0.01);
+    b.box(0.14, DECK_Y + 0.15, 0.14, CX + 0.58, (DECK_Y + 0.15) / 2, ladderZ, 0, 0, 0.015, 0.01);
+    for (let y = 0.38; y <= DECK_Y - 0.2; y += 0.47) {
+      b.box(1.3, 0.12, 0.14, CX, y, ladderZ, 0, 0, UTIL.rng(-0.018, 0.018), 0.008);
+    }
+    b.build(parent);
+
+    WORLD.addFloor(CX, DECK_Y - 0.34, CZ, 7.6, 0.34, 8.0, 'deck');
+    WORLD.add(CX, DECK_Y + 0.48, CZ - 3.85, 7.2, 1.05, 0.35, 'rail');
+    WORLD.add(CX - 3.65, DECK_Y + 0.48, CZ, 0.35, 1.05, 7.6, 'rail');
+    WORLD.add(CX + 3.65, DECK_Y + 0.48, CZ, 0.35, 1.05, 7.6, 'rail');
+    WORLD.add(CX - 2.9, DECK_Y + 0.48, CZ + 3.85, 2.6, 1.05, 0.35, 'rail');
+    WORLD.add(CX + 2.9, DECK_Y + 0.48, CZ + 3.85, 2.6, 1.05, 0.35, 'rail');
+    WORLD.addLadder(CX, 0, ladderZ, 1.6, DECK_Y + 0.15, 1.2, {
+      topY: DECK_Y,
+      topExitX: CX, topExitZ: CZ + 3.4,
+      bottomExitX: CX, bottomExitZ: CZ + 5.1,
+      normalZ: 1,
+      tag: 'silo_ladder'
+    });
+
+    // the silo tank -- taller and narrower than the water tower
+    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    PRIM.cyl(2.3, 2.45, 5.6, 16, tankMat, { pos: [CX, DECK_Y + 2.9, CZ], parent: parent, outline: 0.055 });
+    PRIM.cone(2.6, 1.6, 16, MAT.toon(PAL.charcoal), { pos: [CX, DECK_Y + 6.5, CZ], parent: parent, outline: 0.055, ray: false });
+    [DECK_Y + 1.2, DECK_Y + 3.4, DECK_Y + 5.4].forEach(y =>
+      PRIM.cyl(2.5, 2.5, 0.14, 16, MAT.toon(PAL.blueGrayDk), { pos: [CX, y, CZ], parent: parent, outline: 0.03, ray: false })
+    );
+    WORLD.add(CX, DECK_Y + 3.5, CZ, 5.0, 7.6, 5.0, 'tank');
+
+    PRIM.box(3.2, 1.4, 0.12, MAT.toon(0xffffff, {
+      map: TEX.sign(['SILO ROW'], PAL.cream, PAL.blueDeep, 256, 110)
+    }), { pos: [CX, DECK_Y + 3.0, CZ + 2.55], parent: parent, ray: false, outline: 0.03 });
+
+    // Two secondary silos flanking the main one -- pure cover silhouettes,
+    // box collision only like the water tank, no climbable platform.
+    [[-8, 3, 6.5], [8.5, -4, 7.2]].forEach(s => {
+      const h = s[2];
+      PRIM.cyl(1.7, 1.8, h, 14, tankMat, { pos: [CX + s[0], h / 2, CZ + s[1]], parent: parent, outline: 0.05 });
+      PRIM.cone(1.95, 1.2, 14, MAT.toon(PAL.charcoal), { pos: [CX + s[0], h + 0.6, CZ + s[1]], parent: parent, outline: 0.05, ray: false });
+      WORLD.add(CX + s[0], h / 2, CZ + s[1], 3.6, h, 3.6, 'tank');
+    });
+
+    PROPS.crate(parent, CX - 2.6, DECK_Y, CZ + 2.2, 0.85, 0.3);
+    PROPS.lantern(parent, CX + 2.5, DECK_Y + 0.7, CZ + 2.6, 0);
+    PROPS.signPost(parent, CX + 1.8, CZ + 3.3, ['HIGHEST', 'GROUND'], Math.PI,
+      { w: 1.6, h: 0.8, postH: 0.7, bg: PAL.cream, fg: PAL.blueDeep });
+
+    WORLD.addSpawn(CX, 0, CZ - 4, 'silo_base'); // clear of the ladder approach
+    WORLD.addSpawn(CX, DECK_Y, CZ, 'silo_deck'); // the new highest point on the farm
   }
 
   /* ---------------- barn-to-pasture catwalk ----------------
@@ -3827,6 +4015,8 @@ const LEVEL = (() => {
     buildNook(root);
     buildScatter(root);
     buildNorthPasture(root);
+    buildOrchard(root);
+    buildSilo(root);
     buildCatwalks(root);
     buildTowerCatwalk(root);
     buildBasement(root);
@@ -5166,6 +5356,8 @@ const PLAYER = (() => {
   let stepDist = 0;
   let health = C.maxHealth, shield = 0, dead = false, deadTime = 0, deadTilt = 0;
   let invuln = 0, regenTimer = 0, shake = 0;
+  let speedMult = 1, speedMultTimer = 0;
+  let ironHideTimer = 0;
   let camera = null;
   let sprinting = false;
   let speedRatio = 0;
@@ -5259,6 +5451,22 @@ const PLAYER = (() => {
     invuln = Math.max(invuln, seconds || 0);
   }
 
+  /* Iron Hide power-up. Rides the same invuln timer grantInvuln already
+     backs damage() with, but tracks its own HUD-facing countdown separately
+     -- invuln alone is shared with post-hit i-frames/hero specials/revive,
+     none of which should make the Iron Hide chip light up. */
+  function applyIronHide(seconds) {
+    grantInvuln(seconds);
+    ironHideTimer = Math.max(ironHideTimer, seconds || 0);
+  }
+
+  /* Jackrabbit Feet power-up. Only ever extends an already-running boost
+     (never shortens/weakens one), same convention as grantInvuln above. */
+  function applySpeedBoost(multiplier, duration) {
+    speedMult = Math.max(speedMult, multiplier || 1);
+    speedMultTimer = Math.max(speedMultTimer, duration || 0);
+  }
+
   function revive() {
     if (typeof HERO !== 'undefined') HERO.resetRun();
     reviveAt(100);
@@ -5296,6 +5504,11 @@ const PLAYER = (() => {
       if (!downed) active = false;
     }
     if (invuln > 0) invuln -= dt;
+    if (ironHideTimer > 0) ironHideTimer = Math.max(0, ironHideTimer - dt);
+    if (speedMultTimer > 0) {
+      speedMultTimer -= dt;
+      if (speedMultTimer <= 0) { speedMultTimer = 0; speedMult = 1; }
+    }
 
     // ---- slow self-repair once nothing has hit you for a while ----
     if (!dead) {
@@ -5372,7 +5585,7 @@ const PLAYER = (() => {
     }
 
     sprinting = !climbing && active && !downed && INPUT.sprinting && moveInput.y > 0.25 && grounded;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
@@ -5526,6 +5739,9 @@ const PLAYER = (() => {
 
   return {
     init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
+    applyIronHide, applySpeedBoost,
+    get ironHideRemaining() { return ironHideTimer; },
+    get speedBoostRemaining() { return speedMultTimer; },
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -5561,6 +5777,7 @@ const WEAPON = (() => {
   let recoil = 0, recoilVel = 0, squash = 0, squashVel = 0;
   let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0, bobPhase = 0;
   let flashTimer = 0;
+  let damageMult = 1, damageMultTimer = 0;
   const reloadMarks = [0.18, 0.5, 0.82];
 
   const _o = new THREE.Vector3();
@@ -5993,7 +6210,7 @@ const WEAPON = (() => {
     const relayRemote = COOP.shouldRemoteRelayShots();
     const relayHost = COOP.shouldHostRelayShots();
     const shotMeta = {
-      damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+      damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
     };
     for (let i = 0; i < d.pellets; i++) {
       _t.copy(_d);
@@ -6004,7 +6221,7 @@ const WEAPON = (() => {
       if (relayRemote || relayHost) {
         const payload = {
           origin: _o.toArray(), dir: _t.toArray(),
-          damage: d.damage, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+          damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
         };
         if (relayRemote) COOP.sendShot(payload); else COOP.relayHostShot(payload);
       }
@@ -6025,7 +6242,7 @@ const WEAPON = (() => {
         if (playerHit && COOP.matchMode === 'ffa') {
           const falloff = UTIL.clamp(1 - hit.distance / d.range, 0.22, 1);
           const head = playerHit.zone === 'head' ? CONFIG.multiplayer.ffaHeadMultiplier : 1;
-          COOP.sendPlayerHit(playerHit.id, d.damage * falloff * head, hit.point.toArray());
+          COOP.sendPlayerHit(playerHit.id, shotMeta.damage * falloff * head, hit.point.toArray());
           FX.impact(hit.point, _t.clone().negate(), { big: playerHit.zone === 'head', scale: d.pellets === 1 ? 0.75 : 1 });
         } else if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, shotMeta)) {
           const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
@@ -6054,7 +6271,7 @@ const WEAPON = (() => {
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
     const connected = ENEMY.melee(_o, _d, {
-      damage: d.meleeDamage,
+      damage: d.meleeDamage * damageMult,
       range: d.meleeRange,
       arc: d.meleeArc,
       force: d.kind === 'melee' ? 1.45 : 1.8
@@ -6081,6 +6298,16 @@ const WEAPON = (() => {
     }
     if (added > 0) syncHUD();
     return added;
+  }
+
+  /* Hot Sauce power-up. Only ever extends an already-running boost, same
+     convention as PLAYER.grantInvuln/applySpeedBoost. Applies at both the
+     local hit-resolution damage read and the coop relay payload (see
+     fireGun/beginMelee above), so it's already correct over the network --
+     damage is computed client-side either way, never recomputed by the host. */
+  function applyDamageBoost(multiplier, duration) {
+    damageMult = Math.max(damageMult, multiplier || 1);
+    damageMultTimer = Math.max(damageMultTimer, duration || 0);
   }
 
   function grantWeapon(id, reserveBonus) {
@@ -6124,6 +6351,10 @@ const WEAPON = (() => {
     if (!rig) return;
     if (fireTimer > 0) fireTimer -= dt;
     if (meleeTimer > 0) meleeTimer -= dt;
+    if (damageMultTimer > 0) {
+      damageMultTimer -= dt;
+      if (damageMultTimer <= 0) { damageMultTimer = 0; damageMult = 1; }
+    }
 
     if (active) {
       for (let slot = 1; slot <= 4; slot++) {
@@ -6266,12 +6497,13 @@ const WEAPON = (() => {
 
   return {
     build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon,
-    beginHeroSpecial, endHeroSpecial,
+    beginHeroSpecial, endHeroSpecial, applyDamageBoost,
     hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
     get currentId() { return currentId; },
     get ammo() { return stateFor().mag; },
     get reserve() { return stateFor().reserve; },
-    get reloading() { return reloading; }
+    get reloading() { return reloading; },
+    get damageBoostRemaining() { return damageMultTimer; }
   };
 })();
 
@@ -6714,6 +6946,9 @@ const UI = (() => {
     el.jaysHud = document.getElementById('jaysHud');
     el.jaysCount = document.getElementById('jaysCount');
     el.jaysState = document.getElementById('jaysState');
+    el.buffIronHide = document.getElementById('buffIronHide');
+    el.buffHotSauce = document.getElementById('buffHotSauce');
+    el.buffJackrabbit = document.getElementById('buffJackrabbit');
     el.downedHud = document.getElementById('downedHud');
     el.downedHint = document.getElementById('downedHint');
     el.grain = document.getElementById('grain');
@@ -6807,6 +7042,18 @@ const UI = (() => {
       : (INPUT.mobile ? 'tap Jays' : 'J to use');
     el.jaysHud.classList.toggle('on', n > 0 || !!active);
     el.jaysHud.classList.toggle('active', !!active);
+  }
+
+  function setBuffChip(chip, remaining) {
+    if (!chip) return;
+    const on = remaining > 0.05;
+    chip.classList.toggle('on', on);
+    if (on) chip.querySelector('b').textContent = Math.ceil(remaining);
+  }
+  function setBuffs(ironHideRemaining, hotSauceRemaining, jackrabbitRemaining) {
+    setBuffChip(el.buffIronHide, ironHideRemaining);
+    setBuffChip(el.buffHotSauce, hotSauceRemaining);
+    setBuffChip(el.buffJackrabbit, jackrabbitRemaining);
   }
 
   function setHealth(n, max) {
@@ -7274,6 +7521,7 @@ const UI = (() => {
       kickTimer -= dt;
       if (kickTimer <= 0) el.crosshair.classList.remove('kick');
     }
+    setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
@@ -7308,7 +7556,7 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, specialFlash, showDead, hideDead,
+    setHealth, setShield, setJays, setBuffs, setKills, setBoss, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showFallback, hideFallback,
@@ -7371,7 +7619,23 @@ const PICKUP = (() => {
     { id: 'healthTonic', x: 26.7, y: -4.0, z: -45.5 },
     { id: 'shieldCell', x: 28.3, y: -4.0, z: -45.5 },
     { id: 'jaysPack', x: 26.2, y: -4.0, z: -43.8 },
-    { id: 'grenadeBundle', x: 29.0, y: -4.0, z: -46.0 }
+    { id: 'grenadeBundle', x: 29.0, y: -4.0, z: -46.0 },
+
+    // Silo Row: orchard approach + silo base/deck.
+    { id: 'carbineAmmo', x: -3.0, z: -57.0 },
+    { id: 'shellBox', x: 3.0, z: -61.5 },
+    { id: 'jaysPack', x: -9.0, z: -64.0 },
+    { id: 'healthTonic', x: 2.0, z: -71.0 },
+    { id: 'shieldCell', x: 5.0, z: -70.0 },
+    // Explicit y matching the deck height, same convention as the basement
+    // entries above -- rewards the player who takes the fight to the top.
+    { id: 'grenadeBundle', x: 2.0, y: 8.2, z: -66.5 },
+
+    // Power-ups.
+    { id: 'ironHidePack', x: -1.5, y: 8.2, z: -68.0 },  // silo deck: the exposed high fight
+    { id: 'hotSauceJar', x: 13.0, z: -58.0 },           // orchard: rewards pushing forward
+    { id: 'jackrabbitPack', x: 17.0, z: 11.0 },         // field: helps cross the bigger farm
+    { id: 'rallyHornPack', x: 0.0, z: -64.0 }           // orchard/silo midpoint: a rally point
   ];
 
   function define(id, def) {
@@ -7423,6 +7687,22 @@ const PICKUP = (() => {
     type: 'throwable', label: 'Dynamite', throwableId: 'dynamite', quantity: 2,
     color: PAL.rustDeep, respawn: 0
   });
+  define('ironHidePack', {
+    type: 'buff', buffId: 'ironHide', label: 'Iron Hide', quantity: 1,
+    color: PAL.ironHide, respawn: 30
+  });
+  define('hotSauceJar', {
+    type: 'buff', buffId: 'hotSauce', label: 'Hot Sauce', quantity: 1,
+    color: PAL.hotSauce, respawn: 28
+  });
+  define('jackrabbitPack', {
+    type: 'buff', buffId: 'jackrabbit', label: 'Jackrabbit Feet', quantity: 1,
+    color: PAL.jackrabbit, respawn: 26
+  });
+  define('rallyHornPack', {
+    type: 'buff', buffId: 'rallyHorn', label: 'Rally Horn', quantity: 1,
+    color: PAL.mustard, respawn: 32
+  });
 
   registerHandler('weapon', def => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity);
@@ -7459,6 +7739,32 @@ const PICKUP = (() => {
         ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Throw' : 'press G to throw')
         : '+' + result.added + ' ' + def.label
     };
+  });
+  registerHandler('buff', def => {
+    const C = CONFIG.pickup;
+    if (typeof UI !== 'undefined' && UI.specialFlash) UI.specialFlash();
+    if (def.buffId === 'ironHide') {
+      PLAYER.applyIronHide(C.ironHideDuration);
+      return { message: 'Iron Hide · invulnerable ' + C.ironHideDuration + 's' };
+    }
+    if (def.buffId === 'hotSauce') {
+      WEAPON.applyDamageBoost(C.hotSauceMultiplier, C.hotSauceDuration);
+      return { message: 'Hot Sauce · +' + Math.round((C.hotSauceMultiplier - 1) * 100) + '% damage for ' + C.hotSauceDuration + 's' };
+    }
+    if (def.buffId === 'jackrabbit') {
+      PLAYER.applySpeedBoost(C.jackrabbitMultiplier, C.jackrabbitDuration);
+      return { message: 'Jackrabbit Feet · faster for ' + C.jackrabbitDuration + 's' };
+    }
+    if (def.buffId === 'rallyHorn') {
+      // A real team share only makes sense in a live coop match. Solo and
+      // FFA still get the personal heal/shield rather than a dead pickup.
+      const isCoop = typeof GAME !== 'undefined' && GAME.mode === 'coop' &&
+        typeof COOP !== 'undefined' && COOP.matchMode === 'coop';
+      if (isCoop) COOP.useRallyHorn(C.rallyHornHeal, C.rallyHornShield, C.rallyHornRadius);
+      else { PLAYER.heal(C.rallyHornHeal); PLAYER.addShield(C.rallyHornShield); }
+      return { message: 'Rally Horn · +' + C.rallyHornHeal + ' Pep, +' + C.rallyHornShield + ' Guard' };
+    }
+    return null;
   });
 
   function labelSprite(text, color) {
@@ -7549,6 +7855,26 @@ const PICKUP = (() => {
     PRIM.box(0.08, 0.4, 0.1, MAT.toon(PAL.blueDeep), { pos: [0, -0.05, 0.14], parent: parent, outline: 0.015, ray: false });
   }
 
+  /* Power-ups: a shared faceted gem base (reads as "special" at a glance,
+     distinct from every other pickup shape) plus one small accent shape per
+     buff so the four are still tellable apart at a distance. */
+  function buildBuffVisual(parent, def) {
+    PRIM.mesh(new THREE.IcosahedronGeometry(0.28, 0), MAT.toon(def.color), { parent: parent, outline: 0.032 });
+    if (def.buffId === 'ironHide') {
+      PRIM.box(0.22, 0.3, 0.06, MAT.toon(PAL.ironHideDeep), { pos: [0, 0, 0.22], parent: parent, outline: 0.02, ray: false });
+    } else if (def.buffId === 'hotSauce') {
+      PRIM.cone(0.1, 0.32, 8, MAT.toon(PAL.hotSauceDeep), { pos: [0, 0.28, 0], parent: parent, outline: 0.02, ray: false });
+    } else if (def.buffId === 'jackrabbit') {
+      [-1, 1].forEach(s => PRIM.cone(0.09, 0.26, 6, MAT.toon(PAL.jackrabbitDeep), {
+        pos: [s * 0.14, 0.22, 0], rot: [0, 0, s * 0.5], parent: parent, outline: 0.018, ray: false
+      }));
+    } else if (def.buffId === 'rallyHorn') {
+      PRIM.cyl(0.05, 0.16, 0.4, 8, MAT.toon(PAL.mustardDk), {
+        pos: [0, 0, 0.12], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.02, ray: false
+      });
+    }
+  }
+
   function spawn(defId, position, options) {
     const def = definitions[defId];
     if (!def) throw new Error('PICKUP: unknown definition "' + defId + '"');
@@ -7569,6 +7895,7 @@ const PICKUP = (() => {
     else if (def.type === 'consumable') buildJaysVisual(visual);
     else if (def.type === 'shield') buildShieldVisual(visual);
     else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
+    else if (def.type === 'buff') buildBuffVisual(visual, def);
     else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
 
     const ring = PRIM.torus(0.5, 0.045, MAT.toon(def.color), {
@@ -7594,7 +7921,10 @@ const PICKUP = (() => {
     if (!result) return false;
     p.active = false;
     p.root.visible = false;
-    p.timer = p.respawn || 0;
+    // Coop pulls from the same fixed pool with up to 4x the consumers --
+    // trim the wait rather than cluttering the map with duplicate pickups.
+    const coop = typeof GAME !== 'undefined' && GAME.mode === 'coop';
+    p.timer = (p.respawn || 0) * (coop ? C.coopRespawnMultiplier : 1);
     AUDIO.pickup(p.def.type);
     UI.toast(result.message || p.def.label, 1.55);
     return true;
@@ -7827,7 +8157,7 @@ const GAME = (() => {
     UI.el.pause.addEventListener('click', enter);
 
     COOP.on('status', (message, kind) => UI.setCoopStatus(message, kind));
-    COOP.on('matchStart', () => beginCoop());
+    COOP.on('matchStart', playerCount => beginCoop(playerCount));
     COOP.on('disconnected', message => {
       if (mode !== 'coop' || !entered) return;
       running = false;
@@ -7994,7 +8324,7 @@ const GAME = (() => {
     UI.setCoopStatus('Choose Host room or Join room to begin.');
   }
 
-  function beginCoop() {
+  function beginCoop(playerCount) {
     mode = 'coop';
     HERO.resetRun();
     const ffa = COOP.matchMode === 'ffa';
@@ -8011,6 +8341,10 @@ const GAME = (() => {
       ENEMY.disableForFfa();
       UI.showFfaScoreboard();
       UI.updateFfaScoreboard(COOP.scores);
+    } else {
+      // A 4-player farm should feel busier than a solo one. Called
+      // identically on host and every join at this same matchStart moment.
+      ENEMY.rescaleForCoop(playerCount || COOP.roster.length || 1);
     }
     UI.setCoopLobbyStep(COOP.role, 'connected');
     UI.setCoopStatus('Connected. Starting the farm…', 'good');
@@ -10024,6 +10358,31 @@ const ENEMY = (() => {
     return boss;
   }
 
+  // Tracks which spawn-marker kinds have already been used, so a coop
+  // rescale (see rescaleForCoop) continues from the next unused markers
+  // instead of re-picking ones init() already filled.
+  const usedMarkerKinds = new Set();
+
+  /* Spreads the cast across the spawn markers the level already publishes,
+     reserving one slot for each underground marker so a new layer cannot be
+     silently starved by the surface roster, and fills up to `targetTotal`
+     non-boss enemies total (not `targetTotal` *more* -- safe to call again
+     with a bigger number to top up an already-populated roster). */
+  function spawnAdditional(targetTotal, roster) {
+    const need = targetTotal - nonBossList().length;
+    if (need <= 0) return;
+    const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard' && !usedMarkerKinds.has(m.kind));
+    const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
+    const surfaceMarkers = eligible.filter(m => (m.layerId || 'surface') !== 'basement');
+    const reserve = Math.min(basementMarkers.length, need);
+    const markers = surfaceMarkers.slice(0, need - reserve).concat(basementMarkers.slice(0, reserve));
+    markers.forEach(m => {
+      if (nonBossList().length >= targetTotal) return;
+      create(roster[usedMarkerKinds.size % roster.length], m);
+      usedMarkerKinds.add(m.kind);
+    });
+  }
+
   function init(mainScene) {
     scene = mainScene;
     boss = null;
@@ -10031,23 +10390,27 @@ const ENEMY = (() => {
     // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
+    usedMarkerKinds.clear();
 
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
-    // Spread the cast across the spawn markers the level already publishes,
-    // reserving one slot for each underground marker so a new layer cannot be
-    // silently starved by the surface roster. This scales to future rooms
-    // without changing the total enemy count.
-    const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard');
-    const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
-    const surfaceMarkers = eligible.filter(m => (m.layerId || 'surface') !== 'basement');
-    const reserve = Math.min(basementMarkers.length, C.count);
-    const markers = surfaceMarkers.slice(0, C.count - reserve)
-      .concat(basementMarkers.slice(0, reserve));
-    markers.forEach((m, i) => {
-      if (list.length >= C.count) return;
-      create(roster[i % roster.length], m);
-    });
+    spawnAdditional(C.count, roster);
     UI.setBoss(false, 0, B.hp, bossState);
+    return list.length;
+  }
+
+  /* Called once at coop match start (see GAME.beginCoop) with the real
+     roster size, so a 4-player farm actually feels busier than a solo one.
+     Safe to call on host AND every join identically at the same moment --
+     both already build the full local enemy roster at boot the same way,
+     this just tops it up further before anyone's snapshot sync begins.
+     Single-player and FFA never call this. Rescales once, at match start;
+     a player joining mid-match won't retroactively grow existing peers'
+     enemy counts (live rescale / shrink-on-leave are both out of scope). */
+  function rescaleForCoop(playerCount) {
+    const n = Math.max(1, Math.floor(playerCount) || 1);
+    const target = Math.min(C.coopMax, C.count + C.coopPerExtraPlayer * (n - 1));
+    const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
+    spawnAdditional(target, roster);
     return list.length;
   }
 
@@ -11118,6 +11481,7 @@ const ENEMY = (() => {
   return {
     init, prepareAssets, update, hit, melee, blast, reset, applyDamage, spawnBoss,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
+    rescaleForCoop,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -11671,6 +12035,8 @@ const COOP = (() => {
       applyPlayerHit(message.targetId, message.amount, message.source, fromId);
     } else if (message.type === 'playerDied' && message.victimId) {
       registerKill(message.killerId, message.victimId);
+    } else if (message.type === 'teamHealUse') {
+      resolveTeamHeal(fromId, message.heal, message.shield, message.radius);
     }
   }
 
@@ -11683,7 +12049,10 @@ const COOP = (() => {
       matchMode = message.matchMode === 'ffa' ? 'ffa' : 'coop';
       (message.roster || []).forEach(p => { if (p.id !== localId) makeRemote(p.id, p.characterId); });
       UI.setCoopLobbyStep(role, phase);
-      if (matchRunning) emit('matchStart');
+      // A late join has no record of the real starting count -- roster.length
+      // (peers already connected, not counting this join) is the best
+      // available approximation, assuming no one's left since match start.
+      if (matchRunning) emit('matchStart', (message.roster || []).length || 1);
     } else if (message.type === 'playerJoined' && message.id) {
       makeRemote(message.id, message.characterId);
       UI.setCoopLobbyStep(role, phase);
@@ -11711,13 +12080,17 @@ const COOP = (() => {
       PLAYER.damage(message.amount, message.source);
     } else if (message.type === 'matchStart') {
       matchRunning = true;
-      emit('matchStart');
+      emit('matchStart', message.playerCount || 1);
     } else if (message.type === 'matchState') {
       lastScores = message.scores || {};
     } else if (message.type === 'matchOver') {
       matchRunning = false;
       lastScores = message.scores || lastScores;
       emit('matchOver', message.winnerId, lastScores);
+    } else if (message.type === 'teamHeal') {
+      PLAYER.heal(message.heal || 0);
+      PLAYER.addShield(message.shield || 0);
+      UI.toast('Rally Horn · +' + Math.round(message.heal || 0) + ' Pep, +' + Math.round(message.shield || 0) + ' Guard', 1.4);
     }
   }
 
@@ -11767,6 +12140,44 @@ const COOP = (() => {
   }
   function sendPlayerDamage(targetId, amount, source, attackerId) {
     if (role === 'host') sendTo(targetId, { type: 'playerDamage', targetId: targetId, amount: amount, source: source, attackerId: attackerId });
+  }
+
+  /* Rally Horn power-up: instant heal+shield burst to the picker-upper and
+     every teammate within radius. Host-authoritative like everything else
+     above — only the host has a trustworthy position for every connected
+     player, so a join reports its own use (see useRallyHorn) rather than
+     computing radius itself. */
+  function resolveTeamHeal(originId, healAmount, shieldAmount, radius) {
+    if (matchMode !== 'coop') return;
+    const originPos = originId === localId ? PLAYER.position
+      : (remotes.get(originId) && remotes.get(originId).target);
+    if (!originPos) return;
+    const r2 = radius * radius;
+    remotes.forEach((remote, id) => {
+      if (id === originId) return;
+      const t = remote.target;
+      const dx = t.x - originPos.x, dz = t.z - originPos.z;
+      if (dx * dx + dz * dz <= r2) sendTo(id, { type: 'teamHeal', heal: healAmount, shield: shieldAmount });
+    });
+    // The host itself might be the teammate in range of a join's horn.
+    if (originId !== localId) {
+      const dx = PLAYER.position.x - originPos.x, dz = PLAYER.position.z - originPos.z;
+      if (dx * dx + dz * dz <= r2) {
+        PLAYER.heal(healAmount);
+        PLAYER.addShield(shieldAmount);
+        UI.toast('Rally Horn · +' + Math.round(healAmount) + ' Pep, +' + Math.round(shieldAmount) + ' Guard', 1.4);
+      }
+    }
+  }
+  /* Called by PICKUP's rallyHornPack handler. Always heals the local picker
+     up immediately (feels responsive, no round trip needed for your own
+     share); coop-only, gated the same way ENEMY disables itself in FFA. */
+  function useRallyHorn(healAmount, shieldAmount, radius) {
+    if (matchMode !== 'coop') return;
+    PLAYER.heal(healAmount);
+    PLAYER.addShield(shieldAmount);
+    if (role === 'host') resolveTeamHeal(localId, healAmount, shieldAmount, radius);
+    else if (role === 'join' && connected) send({ type: 'teamHealUse', heal: healAmount, shield: shieldAmount, radius: radius });
   }
   /* Called once by GAME when this client's own player just died — reports
      who killed them (if known) so the host can credit the right scoreboard
@@ -11842,16 +12253,14 @@ const COOP = (() => {
   function broadcastWorldReset() {
     if (role === 'host' && connected) broadcast({ type: 'worldReset' });
   }
-  function sendPlayerDamage(targetId, amount, source) {
-    if (role === 'host') sendTo(targetId, { type: 'playerDamage', targetId: targetId, amount: amount, source: source });
-  }
 
   /* Host-only: called when the host clicks "Start Farm". */
   function startMatch() {
     if (role !== 'host' || matchRunning) return;
     matchRunning = true;
-    broadcast({ type: 'matchStart' });
-    emit('matchStart');
+    const startingPlayerCount = channels.size + 1;
+    broadcast({ type: 'matchStart', playerCount: startingPlayerCount });
+    emit('matchStart', startingPlayerCount);
   }
 
   function poseRemote(remote, dt) {
@@ -11918,7 +12327,7 @@ const COOP = (() => {
   return {
     init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
-    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath,
+    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     get role() { return role; },
     get connected() { return connected; },
     get active() { return connected; },
@@ -11926,7 +12335,9 @@ const COOP = (() => {
     get matchMode() { return matchMode; },
     get localId() { return localId; },
     get scores() { return lastScores; },
-    get playerCount() { return channels.size + 1; },
+    // channels.size + 1 only counts right on the host -- a join only ever
+    // holds one channel (keyed 'host'). this.roster is correct for both.
+    get playerCount() { return this.roster.length; },
     get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
     get localCharacterId() { return myCharacterId; },
     get roster() {
