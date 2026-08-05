@@ -4570,7 +4570,8 @@ const AUDIO = (() => {
     gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
     playMenuMusic, stopMenuMusic, setMusicVolume, setMasterVolume, setSfxVolume,
-    get running() { return started; }
+    get running() { return started; },
+    get menuMusicPlaying() { return !!(musicEl && !musicEl.paused); }
   };
 })();
 
@@ -7771,9 +7772,11 @@ const GAME = (() => {
   /* What "enter" used to do outright -- now the part that only runs once
      the insertion cutscene (if any) has finished or been skipped. Menus are
      already hidden by enter() below by this point, so this only has the
-     HUD left to bring up. */
+     HUD to bring up and the menu music to cut, now that the cutscene (which
+     plays over that same music) is actually done. */
   function enterNow() {
     entered = true;
+    AUDIO.stopMenuMusic();
     UI.showHud();
     INPUT.requestLock();
   }
@@ -7782,12 +7785,14 @@ const GAME = (() => {
      that default, respawnAttempt() and continueAfterEnd() pass false since
      neither of those is the match actually starting. Menus are hidden here,
      immediately, either way -- otherwise the cutscene would play invisibly
-     behind whichever card was showing (player select, coop lobby, dead). */
+     behind whichever card was showing (player select, coop lobby, dead).
+     Menu music is deliberately left running here (not stopped until
+     enterNow()) so it plays through the cutscene instead of cutting out the
+     instant a match starts. */
   function enter(playIntro) {
     endShown = false;
     AUDIO.start();
     AUDIO.resume();
-    AUDIO.stopMenuMusic();
     UI.hideMenus();
     if (playIntro === false || typeof INTRO === 'undefined') { enterNow(); return; }
     INTRO.play(camera, enterNow);
@@ -8203,25 +8208,81 @@ const CAST = (() => {
     });
   }
 
-  /* Leather flying cap: same silhouette as the trapper hat, khaki instead
-     of blue so the pilot doesn't read as a reskinned Larry. Placeholder
-     until the reference image comes in -- geometry only, easy to swap the
-     head builder later without touching the roster entry or rig. */
+  /* Flat cap cocked to one side, light blue with a darker underbrim and two
+     soft flared pieces standing up off the crown -- built from the
+     reference photo (blue cap worn at an angle, shutter shades, cigarette,
+     gold chain w/ dog-tag charm). */
   function pilotCap(group) {
-    const khaki = MAT.toon(PAL.olive);
-    const khakiDeep = MAT.toon(PAL.oliveDeep);
-    PRIM.sph(0.235, khaki, {
-      pos: [0, 0.235, 0.015], scale: [1.14, 0.58, 0.94],
-      parent: group, outline: 0.028, ray: false
+    const blue = MAT.toon(PAL.blue);
+    const blueDeep = MAT.toon(PAL.blueDeep);
+    const cap = new THREE.Group();
+    cap.rotation.z = -0.2;
+    group.add(cap);
+    PRIM.sph(0.225, blue, {
+      pos: [0, 0.245, 0.01], scale: [1.1, 0.6, 0.92],
+      parent: cap, outline: 0.028, ray: false
     });
-    PRIM.box(0.42, 0.05, 0.17, khakiDeep, {
-      pos: [0, 0.155, -0.19], rot: [0.08, 0, 0],
-      parent: group, outline: 0.02, ray: false
+    PRIM.box(0.34, 0.055, 0.15, blueDeep, {
+      pos: [0.13, 0.195, -0.14], rot: [0.08, 0.35, 0],
+      parent: cap, outline: 0.02, ray: false
     });
+    PRIM.sph(0.09, blue, {
+      pos: [-0.1, 0.4, 0.03], scale: [0.75, 1.3, 0.6], rot: [0, 0, -0.35],
+      parent: cap, outline: 0.02, ray: false
+    });
+    PRIM.sph(0.075, blue, {
+      pos: [0.15, 0.36, -0.02], scale: [0.7, 1.15, 0.55], rot: [0.15, 0, 0.4],
+      parent: cap, outline: 0.018, ray: false
+    });
+  }
+
+  /* Shutter shades: one continuous rust lens across both eyes with dark
+     horizontal slats, plus short temple arms. */
+  function pilotShades(group) {
+    const lens = MAT.toon(PAL.rust);
+    const slat = MAT.toon(PAL.rustDeep);
+    PRIM.box(0.32, 0.115, 0.02, lens, {
+      pos: [0, 0.048, FZ - 0.012], rot: [0, 0, 0.03],
+      parent: group, outline: 0.016, ray: false
+    });
+    for (let i = -2; i <= 2; i++) {
+      PRIM.box(0.30, 0.014, 0.008, slat, {
+        pos: [0, 0.048 + i * 0.023, FZ - 0.02], rot: [0, 0, 0.03],
+        parent: group, outline: 0, ray: false
+      });
+    }
     [-1, 1].forEach(s => {
-      PRIM.box(0.13, 0.32, 0.07, khaki, {
-        pos: [s * 0.245, 0.02, 0.07], rot: [0, 0, s * 0.08],
-        parent: group, outline: 0.022, ray: false
+      PRIM.box(0.02, 0.02, 0.11, lens, {
+        pos: [s * 0.165, 0.05, FZ + 0.03], parent: group, outline: 0.01, ray: false
+      });
+    });
+  }
+
+  /* Freckle/stubble stipple below the shades. */
+  function pilotFreckles(group, skin) {
+    const speck = new PRIM.Batch(MAT.toon(skin.ink), 0.006);
+    [
+      [-0.13, -0.02], [-0.1, -0.05], [-0.06, -0.08], [0.06, -0.08], [0.1, -0.05],
+      [0.13, -0.02], [-0.15, -0.09], [0.15, -0.09], [-0.03, -0.1], [0.03, -0.1]
+    ].forEach(p => speck.sphere(0.007, p[0], p[1], FZ, 1, 1, 0.5));
+    speck.build(group, { ray: false });
+  }
+
+  /* Cigarette clenched at one corner of the mouth, with a rising smoke wisp
+     built the same way as Stoned's joint hand-prop. */
+  function pilotCigarette(group) {
+    const b = new PRIM.Batch(MAT.toon(PAL.creamDim), 0.006);
+    b.cyl(0.012, 0.014, 0.09, 6, 0.09, -0.075, FZ - 0.03, 0, 0, 0.35);
+    b.build(group, { ray: false });
+    PRIM.sph(0.012, MAT.toon(PAL.rust), {
+      pos: [0.135, -0.09, FZ - 0.03], parent: group, outline: 0.006, ray: false
+    });
+    [[0.26, 0.022], [0.17, 0.017], [0.09, 0.013]].forEach((cfg, i) => {
+      PRIM.sph(cfg[1], MAT.flat(PAL.blueGray, {
+        transparent: true, opacity: cfg[0], depthWrite: false, fog: false
+      }), {
+        pos: [0.15 + i * 0.01, -0.03 + i * 0.09, FZ - 0.05 - i * 0.02],
+        parent: group, outline: false, ray: false
       });
     });
   }
@@ -8463,22 +8524,16 @@ const CAST = (() => {
       browGoggles(group);
     },
 
-    /* Placeholder pilot face -- friendly, calm eyes and a small confident
-       smile under the flying cap and goggles. Replace once the reference
-       image is in hand; the rest of the rig (roster entry, INTRO seating)
-       doesn't depend on what this specific builder draws. */
+    /* Built from the reference photo: blue cap cocked to the side, rust
+       shutter shades, freckled scowl, cigarette with a rising smoke wisp. */
     pilot(group, skin) {
       const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
-      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
       pilotCap(group);
-      oval(light, -0.095, 0.05, 0.06, 0.048, 0.05);
-      oval(light, 0.095, 0.05, 0.06, 0.048, -0.05);
-      oval(dark, -0.095, 0.045, 0.028, 0.03, 0.05, 0.055);
-      oval(dark, 0.095, 0.045, 0.028, 0.03, -0.05, 0.055);
-      arc(dark, 0, -0.06, 0.075, 0.013, 1.7, Math.PI + 0.28);
+      pilotShades(group);
+      pilotFreckles(group, skin);
+      arc(dark, 0, -0.075, 0.075, 0.013, 1.55, Math.PI + 0.32);
       dark.build(group, { ray: false });
-      light.build(group, { ray: false });
-      browGoggles(group);
+      pilotCigarette(group);
     }
   };
 
@@ -8559,6 +8614,26 @@ const CAST = (() => {
       PRIM.box(0.016, 0.02, 0.05, MAT.toon(PAL.oliveDeep), {
         pos: [0, -0.132, -0.135], parent: group, outline: 0.008, ray: false
       });
+    },
+    /* Same gold rope loop as `chain`, with a round medallion and a snub
+       bulldog-face charm -- built from the pilot reference photo. */
+    bulldogChain(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(skin.metal), 0.014);
+      const N = 16;
+      for (let i = 0; i < N; i++) {
+        const a = Math.PI * 0.15 + (i / (N - 1)) * Math.PI * 0.7;
+        b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
+      }
+      b.build(group, { ray: false });
+      PRIM.cyl(0.052, 0.052, 0.02, 12, MAT.toon(skin.metal), {
+        pos: [0, -0.17, -0.13], rot: [Math.PI / 2, 0, 0],
+        parent: group, outline: 0.012, ray: false
+      });
+      const face = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.008);
+      face.sphere(0.026, 0, -0.175, -0.148, 1, 0.9, 0.7);
+      face.sphere(0.014, -0.032, -0.148, -0.145, 1, 1, 0.8);
+      face.sphere(0.014, 0.032, -0.148, -0.145, 1, 1, 0.8);
+      face.build(group, { ray: false });
     }
   };
 
@@ -8817,18 +8892,18 @@ const CAST = (() => {
       voice: { pitch: 1.18 }
     },
     // Not a HERO.DEFINITIONS entry yet -- appears only in the intro
-    // cutscene's cockpit seat. No hand prop while the look is a
-    // placeholder; the reference image will likely dictate one.
+    // cutscene's cockpit seat. No hand prop -- the reference photo holds a
+    // knife, which the brief explicitly asked to leave out.
     pilot: {
       label: 'Pilot',
       head: 'pilot',
       noPetals: true,
-      collar: null,
+      collar: 'bulldogChain',
       hand: null,
       skin: {
-        face: PAL.cream, limb: PAL.olive, shorts: PAL.oliveDeep,
-        shoe: PAL.charcoal, sole: PAL.charcoal, accent: PAL.mustard,
-        metal: PAL.blueGray
+        face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rust,
+        shoe: PAL.blue, sole: PAL.white, accent: PAL.rustDeep,
+        metal: PAL.mustard
       },
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 1.0 }
@@ -9034,8 +9109,6 @@ const INTRO = (() => {
   let heliRoot = null, rotorHub = null, tailRotorHub = null, pilotRig = null;
   const crew = [];
 
-  const HEROES = ['scarf', 'chainsaw', 'stoned', 'pyro'];
-
   const _v1 = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
   const _up = new THREE.Vector3(0, 1, 0);
@@ -9119,15 +9192,31 @@ const INTRO = (() => {
   }
 
   /* ---------------- crew ---------------- */
-  function buildCrew(landCenter) {
-    HEROES.forEach((heroId, i) => {
-      const castId = HERO.definitions[heroId].castId;
+  /* Which characters actually drop: in coop/FFA, everyone currently
+     connected (2-4, whatever the real roster is) -- in single-player, just
+     the one hero picked. COOP.roster already carries a castId per
+     connected player (host and joins alike), so this doesn't need its own
+     network round-trip; it just reads state beginCoop() already settled
+     before enter() ever called play(). */
+  function crewCastIds() {
+    if (typeof GAME !== 'undefined' && GAME.isCoop && typeof COOP !== 'undefined') {
+      const roster = COOP.roster;
+      const ids = (roster || []).map(p => p.characterId).filter(id => CAST.ROSTER[id]);
+      if (ids.length) return ids;
+      if (CAST.ROSTER[COOP.localCharacterId]) return [COOP.localCharacterId];
+    }
+    return [HERO.castId];
+  }
+
+  function buildCrew(landCenter, castIds) {
+    const n = castIds.length;
+    castIds.forEach((castId, i) => {
       const built = CAST.build(castId);
       const root = built.rig.root;
       root.visible = false;
       scene.add(root);
 
-      const angle = (i / HEROES.length) * Math.PI * 2 + Math.PI / 4;
+      const angle = (i / n) * Math.PI * 2 + Math.PI / 4;
       const landX = landCenter.x + Math.cos(angle) * C.landRing;
       const landZ = landCenter.z + Math.sin(angle) * C.landRing;
       const landY = WORLD.groundAt(landX, landZ, 8);
@@ -9175,7 +9264,7 @@ const INTRO = (() => {
     pilotRig = buildPilot();
     heliRoot.add(pilotRig);
 
-    buildCrew(C.landCenter);
+    buildCrew(C.landCenter, crewCastIds());
     attachSkipListener();
   }
 
