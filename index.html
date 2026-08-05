@@ -486,6 +486,14 @@
   input.signal-box.room-code:disabled{opacity:.62;}
   .signal-box:focus{outline:3px solid var(--blue-deep);outline-offset:2px;}
   #coopActions{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:15px;}
+  #coopRoster{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:8px;}
+  #coopRoster:empty{margin:0;}
+  #coopRoster li{
+    font:800 11.5px/1 "Rockwell",Georgia,serif;letter-spacing:.4px;
+    padding:7px 12px;border-radius:20px;background:rgba(22,18,15,.08);color:var(--ink-soft);
+  }
+  #coopRoster li.host{background:var(--mustard);color:var(--ink);}
+  #startFarmBtn{margin-top:14px;}
   .coop-status{min-height:19px;margin:15px 0 0;color:var(--ink-soft);font:800 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.5px;}
   .coop-status.good{color:var(--olive);}
   .coop-status.bad{color:var(--rust-deep);}
@@ -603,9 +611,9 @@
 
   <div id="coopLobby" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Online co-op &nbsp;·&nbsp; 2 players</p>
-      <h1>Farmhands<span>One farm, two screens</span></h1>
-      <p class="sub" id="coopInstructions">Host a room or join a teammate. Create a short six-character room code, then share it with the other screen. Host plays Bluecap Scout; the joining farmhand plays Masked Runner.</p>
+      <p class="eyebrow">Online co-op &nbsp;·&nbsp; up to 4 players</p>
+      <h1>Farmhands<span>One farm, four screens</span></h1>
+      <p class="sub" id="coopInstructions">Host a room or join with a teammate's six-character code. The host starts the farm whenever the room is ready — no need to wait for a full room.</p>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
         <button class="go mode-coop" id="joinBtn">Join room →</button>
@@ -618,6 +626,8 @@
         <button class="go compact" id="signalAction">Join room</button>
         <button class="alt" id="copySignal">Share room code</button>
       </div>
+      <ul id="coopRoster" aria-live="polite"></ul>
+      <button class="go" id="startFarmBtn" hidden>Start Farm →</button>
       <p class="coop-status" id="coopStatus">Choose Host room or Join room to begin.</p>
       <button class="alt" id="backToModeBtn">Back to mode select</button>
     </div>
@@ -655,9 +665,9 @@
 
   <div id="dead" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Well now</p>
-      <h1>You<br/>Wilted<span>The corn saw everything</span></h1>
-      <p class="sub">Dust yourself off. The gate's where you left it, and so are they.</p>
+      <p class="eyebrow" id="deadEyebrow">Well now</p>
+      <h1 id="deadHeadline">You<br/>Wilted<span>The corn saw everything</span></h1>
+      <p class="sub" id="deadSub">Dust yourself off. The gate's where you left it, and so are they.</p>
       <button class="go" id="againBtn">Get back up →</button>
     </div>
   </div>
@@ -725,6 +735,9 @@ const CONFIG = {
     bobFreq: 9.2, bobAmp: 0.042, bobSide: 0.028, bobRoll: 0.012,
     landDip: 0.18, landRecover: 9,
     startPos: { x: 0, y: 0, z: 31 }, startYaw: 0,
+    // Four farmhands spawning on the exact same point stack visually. Each
+    // coop slot gets a small fixed offset around startPos instead.
+    coopSpawnRing: 1.4,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
     invulnAfterHit: 0.45, reviveDelay: 2.2,
     // Downed is a second chance, not a safe room. You keep your head and the
@@ -774,8 +787,11 @@ const CONFIG = {
     refresh: 1 / 12
   },
   multiplayer: {
-    maxPlayers: 2,
+    maxPlayers: 4,
     stateRate: 15,
+    // A downed coop farmhand waits this out and rejoins in place — the shared
+    // enemies, pickups, and kill count are never reset by one player dying.
+    respawnDelay: 8,
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   },
   weapons: {
@@ -4648,6 +4664,9 @@ const INPUT = (() => {
 /* ============================== [PLAYER] ============================= */
 const PLAYER = (() => {
   const C = CONFIG.player;
+  // Coop gives each connected slot a small fixed offset (set by COOP once the
+  // local slot is known) so simultaneous spawns/respawns don't stack.
+  let spawnOffsetX = 0, spawnOffsetZ = 0;
   const pos = new THREE.Vector3(C.startPos.x, C.startPos.y, C.startPos.z);
   const vel = new THREE.Vector3();
   let yaw = C.startYaw, pitch = 0;
@@ -4671,8 +4690,10 @@ const PLAYER = (() => {
 
   function init(cam) { camera = cam; }
 
+  function setSpawnOffset(x, z) { spawnOffsetX = x || 0; spawnOffsetZ = z || 0; }
+
   function respawn() {
-    pos.set(C.startPos.x, C.startPos.y, C.startPos.z);
+    pos.set(C.startPos.x + spawnOffsetX, C.startPos.y, C.startPos.z + spawnOffsetZ);
     vel.set(0, 0, 0);
     yaw = C.startYaw; pitch = 0;
     climbing = false; activeLadder = null; ladderCooldown = 0;
@@ -5007,7 +5028,7 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned,
+    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset,
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -6121,6 +6142,8 @@ const UI = (() => {
     el.signalAction = document.getElementById('signalAction');
     el.copySignal = document.getElementById('copySignal');
     el.coopStatus = document.getElementById('coopStatus');
+    el.coopRoster = document.getElementById('coopRoster');
+    el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
@@ -6160,6 +6183,10 @@ const UI = (() => {
       ? el.radarCanvas.getContext('2d') : null;
     el.hurt = document.getElementById('hurt');
     el.dead = document.getElementById('dead');
+    el.deadEyebrow = document.getElementById('deadEyebrow');
+    el.deadHeadline = document.getElementById('deadHeadline');
+    el.deadSub = document.getElementById('deadSub');
+    el.againBtn = document.getElementById('againBtn');
     el.modeChip = document.getElementById('modeChip');
     el.modeWhy = document.getElementById('modeWhy');
     el.pauseHint = document.getElementById('pauseHint');
@@ -6352,6 +6379,24 @@ const UI = (() => {
     if (el.bossHud) el.bossHud.classList.remove('on');
     showMobileControls(false);
   }
+  /* Coop death isn't a run-ending "You Wilted" card — it's a short wait
+     before rejoining the still-running farm, so the copy and the button's
+     eventual click both need to read that way instead of single-player's. */
+  function setDeadCoopMode(active) {
+    if (!el.deadEyebrow) return;
+    if (active) {
+      el.deadEyebrow.textContent = 'Down for now';
+      if (el.deadHeadline) el.deadHeadline.innerHTML = 'Back<br/>Soon<span>The farm keeps going without you</span>';
+      if (el.againBtn) el.againBtn.textContent = 'Waiting…';
+    } else {
+      el.deadEyebrow.textContent = 'Well now';
+      if (el.deadHeadline) el.deadHeadline.innerHTML = 'You<br/>Wilted<span>The corn saw everything</span>';
+      if (el.againBtn) el.againBtn.textContent = 'Get back up →';
+    }
+  }
+  function setDeadHint(text) {
+    if (el.deadSub) el.deadSub.textContent = text;
+  }
   function hideDead() {
     deadShown = false;
     el.dead.classList.add('hidden');
@@ -6404,6 +6449,14 @@ const UI = (() => {
   function hideCoopLobby() {
     if (el.coopLobby) el.coopLobby.classList.add('hidden');
   }
+  function renderCoopRoster() {
+    if (!el.coopRoster) return;
+    const roster = (typeof COOP !== 'undefined' && COOP.roster) ? COOP.roster : [];
+    el.coopRoster.innerHTML = roster.map(p => {
+      const label = (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId;
+      return '<li' + (p.isHost ? ' class="host"' : '') + '>' + label + (p.isHost ? ' · Host' : '') + '</li>';
+    }).join('');
+  }
   function setCoopLobbyStep(role, step) {
     const showInput = role === 'join';
     const showOutput = role === 'host' && step !== 'idle';
@@ -6417,18 +6470,21 @@ const UI = (() => {
     if (el.signalOutput) el.signalOutput.hidden = !showOutput;
     if (el.copySignal) el.copySignal.hidden = !showOutput;
     if (!role) {
-      if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate. Create a short six-character room code, then share it with the other screen.';
+      if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate\'s six-character code.';
       if (el.signalAction) {
         el.signalAction.textContent = 'Choose host or join';
         el.signalAction.disabled = true;
       }
+      if (el.coopRoster) el.coopRoster.innerHTML = '';
+      if (el.startFarmBtn) el.startFarmBtn.hidden = true;
       return;
     }
     const host = role === 'host';
+    const running = typeof COOP !== 'undefined' && COOP.matchRunning;
     if (el.coopInstructions) {
       el.coopInstructions.textContent = host
-        ? (step === 'connected' ? 'Your teammate is connected. Starting the farm…' : 'You are the Bluecap Scout. Share the six-character room code below; your teammate only needs to enter it once.')
-        : (step === 'connected' ? 'Connected to the host. Starting the farm…' : 'You are the Masked Runner. Enter the host’s six-character room code, then tap Join room.');
+        ? (running ? 'The farm is running.' : 'Share the room code below. Start whenever you\'re ready — more farmhands can still join after you start.')
+        : (running ? 'Connected — jumping into the farm…' : 'Connected. Waiting for the host to start the farm…');
     }
     if (el.signalInputLabel) el.signalInputLabel.textContent = 'Host room code';
     if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Share this room code';
@@ -6436,9 +6492,11 @@ const UI = (() => {
     if (el.signalAction) {
       el.signalAction.disabled = host || step === 'connecting' || step === 'connected';
       el.signalAction.textContent = host
-        ? (step === 'connected' ? 'Connected' : 'Waiting for teammate…')
+        ? (step === 'connected' ? 'Room open' : 'Waiting for farmhands…')
         : (step === 'connecting' ? 'Connecting…' : step === 'connected' ? 'Connected' : 'Join room');
     }
+    if (el.startFarmBtn) el.startFarmBtn.hidden = !host || running;
+    renderCoopRoster();
   }
   function setCoopStatus(message, kind) {
     if (!el.coopStatus) return;
@@ -6556,6 +6614,7 @@ const UI = (() => {
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead,
+    setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showFallback, hideFallback,
     showPlayerSelect, hidePlayerSelect,
@@ -6969,6 +7028,7 @@ const GAME = (() => {
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
     document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
     document.getElementById('copySignal').addEventListener('click', copySignal);
+    document.getElementById('startFarmBtn').addEventListener('click', e => { e.stopPropagation(); COOP.startMatch(); });
     document.getElementById('signalInput').addEventListener('input', e => {
       e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
     });
@@ -6980,7 +7040,10 @@ const GAME = (() => {
     });
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
     document.getElementById('pauseMenuBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
-    document.getElementById('againBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
+    document.getElementById('againBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      if (mode === 'coop') respawnAttempt(); else restart();
+    });
     document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
     document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
     // manual escape hatches, in case the automatic detection ever misses
@@ -6997,14 +7060,14 @@ const GAME = (() => {
     UI.el.pause.addEventListener('click', enter);
 
     COOP.on('status', (message, kind) => UI.setCoopStatus(message, kind));
-    COOP.on('connected', () => beginCoop());
+    COOP.on('matchStart', () => beginCoop());
     COOP.on('disconnected', message => {
       if (mode !== 'coop' || !entered) return;
       running = false;
       entered = false;
       INPUT.releaseLock();
       UI.showCoopLobby();
-      UI.setCoopStatus(message || 'Teammate disconnected. The room is closed.', 'bad');
+      UI.setCoopStatus(message || 'Disconnected from the room.', 'bad');
     });
     COOP.on('error', message => UI.setCoopStatus(message || 'Co-op connection error.', 'bad'));
 
@@ -7060,8 +7123,30 @@ const GAME = (() => {
   function beginCoop() {
     mode = 'coop';
     HERO.resetRun();
+    // Spread the 4 coop slots around startPos on a small ring so simultaneous
+    // spawns/respawns don't stack on top of each other.
+    const ring = CONFIG.player.coopSpawnRing;
+    const angle = (COOP.spawnSlotIndex || 0) / 4 * Math.PI * 2;
+    PLAYER.setSpawnOffset(Math.cos(angle) * ring, Math.sin(angle) * ring);
+    PLAYER.respawn();
     UI.setCoopLobbyStep(COOP.role, 'connected');
-    UI.setCoopStatus('Connected. Starting the two-player farm…', 'good');
+    UI.setCoopStatus('Connected. Starting the farm…', 'good');
+    enter();
+  }
+
+  /* Coop-only "Get back up": gated by the same respawn window shown in the
+     dead card's countdown, but doesn't touch ENEMY/WEAPON/PICKUP/kills —
+     those stay host-authoritative and untouched by any one player's death. */
+  function respawnAttempt() {
+    if (!PLAYER.isDead) return;
+    const minWait = CONFIG.player.reviveDelay + CONFIG.multiplayer.respawnDelay;
+    const remain = minWait - PLAYER.deadTime;
+    if (remain > 0) {
+      UI.toast('Still down · ' + Math.ceil(remain) + 's', 1.1);
+      return;
+    }
+    UI.hideDead();
+    PLAYER.reviveAt(50, true);
     enter();
   }
 
@@ -7108,12 +7193,14 @@ const GAME = (() => {
     enter();
   }
 
-  function complete() {
+  function complete(killsOverride) {
     if (endShown || !CONFIG.progress.endOnBossDefeat) return;
     endShown = true;
     running = false;
     INPUT.releaseLock();
-    UI.showEndGame(ENEMY.kills);
+    // A join hears about the boss dying over the network rather than from
+    // its own (nonexistent, under host authority) local kill count.
+    UI.showEndGame(killsOverride !== undefined ? killsOverride : ENEMY.kills);
   }
 
   function continueAfterEnd() {
@@ -7184,7 +7271,14 @@ const GAME = (() => {
     if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) deathPending = true;
     if (deathPending && !PLAYER.isDowned && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
+      UI.setDeadCoopMode(mode === 'coop');
       UI.showDead();
+    }
+    if (mode === 'coop' && UI.deadShown && PLAYER.isDead) {
+      const remain = CONFIG.player.reviveDelay + CONFIG.multiplayer.respawnDelay - PLAYER.deadTime;
+      UI.setDeadHint(remain > 0
+        ? 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's'
+        : 'Ready — tap to get back up.');
     }
 
     renderer.clear();
@@ -7325,6 +7419,64 @@ const CAST = (() => {
         pos: [s * 0.285, 0.015, 0.01], scale: [0.62, 1.18, 0.72],
         parent: group, outline: 0.02, ray: false
       });
+    });
+  }
+
+  /* Floppy trapper hat with two ear flaps hanging past the temples. */
+  function trapperHat(group) {
+    const blue = MAT.toon(PAL.blue);
+    const darkBlue = MAT.toon(PAL.blueDeep);
+    PRIM.sph(0.235, blue, {
+      pos: [0, 0.235, 0.015], scale: [1.14, 0.58, 0.94],
+      parent: group, outline: 0.028, ray: false
+    });
+    PRIM.box(0.42, 0.05, 0.17, darkBlue, {
+      pos: [0, 0.155, -0.19], rot: [0.08, 0, 0],
+      parent: group, outline: 0.02, ray: false
+    });
+    [-1, 1].forEach(s => {
+      PRIM.box(0.13, 0.32, 0.07, blue, {
+        pos: [s * 0.245, 0.02, 0.07], rot: [0, 0, s * 0.08],
+        parent: group, outline: 0.022, ray: false
+      });
+    });
+  }
+
+  /* Pointed cat/wolf ears. */
+  function catEars(group, skin) {
+    const m = MAT.toon(skin.ink);
+    [-1, 1].forEach(s => {
+      PRIM.cone(0.115, 0.15, 4, m, {
+        pos: [s * 0.175, 0.305, -0.01], rot: [0.05, 0, s * 0.32],
+        parent: group, outline: 0.02, ray: false
+      });
+    });
+  }
+
+  /* Goggles pushed up onto the forehead — two lens discs on a strap. Sits
+     further forward than the flat face plate (FZ = -0.252) so it isn't
+     swallowed by that plate's own depth. */
+  function browGoggles(group) {
+    const rim = MAT.toon(PAL.mustardDk);
+    const lens = MAT.toon(PAL.blueGray);
+    [-1, 1].forEach(s => {
+      PRIM.cyl(0.062, 0.062, 0.03, 14, rim, {
+        pos: [s * 0.1, 0.235, -0.285], rot: [Math.PI / 2, 0, 0],
+        parent: group, outline: 0.014, ray: false
+      });
+      PRIM.cyl(0.05, 0.05, 0.026, 14, lens, {
+        pos: [s * 0.1, 0.235, -0.305], rot: [Math.PI / 2, 0, 0],
+        parent: group, outline: 0, ray: false
+      });
+    });
+    PRIM.box(0.09, 0.03, 0.03, rim, {
+      pos: [0, 0.235, -0.285], parent: group, outline: 0.012, ray: false
+    });
+    // No rotation: a torus already lies flat in XY by default, which wraps
+    // around the head's Y axis like a brim/headband (same as carrotWarden's
+    // beanie ring) — a rotated one renders edge-on as a thin vertical spike.
+    PRIM.torus(0.285, 0.014, MAT.toon(PAL.charcoal), {
+      pos: [0, 0.25, -0.01], parent: group, outline: 0.012, ray: false
     });
   }
 
@@ -7480,6 +7632,51 @@ const CAST = (() => {
       arc(dark, 0.012, -0.075, 0.075, 0.011, 1.5, Math.PI + 0.25);
       dark.build(group, { ray: false });
       light.build(group, { ray: false });
+    },
+
+    /* Skeleton-faced burnout under a floppy trapper hat: hollow dot eyes,
+       high surprised brows, and a stitched-shut mouth. */
+    playerStoned(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      disc(dark, -0.095, 0.045, 0.05, 0.058);
+      disc(dark, 0.095, 0.045, 0.05, 0.058);
+      bar(dark, -0.095, 0.115, 0.13, 0.02, 0.05);
+      bar(dark, 0.095, 0.115, 0.13, 0.02, -0.05);
+      arc(dark, -0.095, 0.185, 0.055, 0.009, 1.3, Math.PI * 0.72);
+      arc(dark, 0.095, 0.185, 0.055, 0.009, 1.3, Math.PI * 1.28);
+      bar(dark, 0, -0.015, 0.018, 0.03, 0, 0.06);
+      // a stitched-shut mouth: short dashes along a seam
+      bar(dark, 0, -0.095, 0.19, 0.01, 0, 0.06);
+      for (let i = -2; i <= 2; i++) bar(dark, i * 0.038, -0.095, 0.01, 0.05, 0, 0.064);
+      dark.build(group, { ray: false });
+      trapperHat(group);
+    },
+
+    /* Black cat/wolf farmhand: angry amber eyes, a snarling muzzle, pointed
+       ears, and goggles shoved up onto the forehead. */
+    playerPyro(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      const amber = new PRIM.Batch(MAT.toon(PAL.rust), 0.011);
+      oval(light, -0.1, 0.045, 0.065, 0.05, 0.18);
+      oval(light, 0.1, 0.045, 0.065, 0.05, -0.18);
+      oval(amber, -0.1, 0.04, 0.036, 0.032, 0.18, 0.055);
+      oval(amber, 0.1, 0.04, 0.036, 0.032, -0.18, 0.055);
+      disc(dark, -0.1, 0.035, 0.014, 0.06);
+      disc(dark, 0.1, 0.035, 0.014, 0.06);
+      bar(dark, -0.1, 0.10, 0.13, 0.024, 0.32);
+      bar(dark, 0.1, 0.10, 0.13, 0.024, -0.32);
+      oval(light, 0, -0.08, 0.1, 0.065, 0, 0.055);
+      oval(dark, 0, -0.03, 0.03, 0.022, 0, 0.06);
+      bar(dark, 0, -0.065, 0.012, 0.045);
+      arc(dark, 0, -0.085, 0.06, 0.011, Math.PI, Math.PI);
+      bar(light, -0.024, -0.125, 0.02, 0.04, 0.08, 0.055);
+      bar(light, 0.024, -0.125, 0.02, 0.04, -0.08, 0.055);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
+      amber.build(group, { ray: false });
+      catEars(group, skin);
+      browGoggles(group);
     }
   };
 
@@ -7525,6 +7722,41 @@ const CAST = (() => {
           Math.cos(a) * 0.16, -0.04 + Math.sin(a) * 0.16, -0.06, 0, 0, a + Math.PI);
       }
       b.build(group, { ray: false });
+    },
+    /* Same gold rope loop as `chain`, with a five-blade leaf charm. */
+    leafChain(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(skin.metal), 0.014);
+      const N = 16;
+      for (let i = 0; i < N; i++) {
+        const a = Math.PI * 0.15 + (i / (N - 1)) * Math.PI * 0.7;
+        b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
+      }
+      b.build(group, { ray: false });
+      const leaf = new PRIM.Batch(MAT.toon(PAL.olive), 0.011);
+      [-2, -1, 0, 1, 2].forEach(i => {
+        const a = i * 0.34;
+        leaf.custom(() => new THREE.ConeGeometry(0.017, 0.095 - Math.abs(i) * 0.014, 5),
+          [0.034, 0.095, 0.034],
+          Math.sin(a) * 0.05, -0.155 - Math.cos(a) * 0.05, -0.135, Math.PI, 0, a);
+      });
+      leaf.build(group, { ray: false });
+    },
+    /* Same gold rope loop as `chain`, with a small jack-o-lantern charm. */
+    pumpkinChain(group, skin) {
+      const b = new PRIM.Batch(MAT.toon(skin.metal), 0.014);
+      const N = 16;
+      for (let i = 0; i < N; i++) {
+        const a = Math.PI * 0.15 + (i / (N - 1)) * Math.PI * 0.7;
+        b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
+      }
+      b.build(group, { ray: false });
+      PRIM.sph(0.048, MAT.toon(PAL.mustard), {
+        pos: [0, -0.165, -0.135], scale: [1.1, 0.92, 0.88],
+        parent: group, outline: 0.014, ray: false
+      });
+      PRIM.box(0.016, 0.02, 0.05, MAT.toon(PAL.oliveDeep), {
+        pos: [0, -0.132, -0.135], parent: group, outline: 0.008, ray: false
+      });
     }
   };
 
@@ -7614,6 +7846,53 @@ const CAST = (() => {
       PRIM.torus(0.075, 0.014, MAT.toon(PAL.mustardDk), {
         pos: [0, 0.015, -0.86], rot: [Math.PI / 2, 0, 0], parent: group,
         outline: 0.009, ray: false
+      });
+    },
+    joint(group) {
+      PRIM.cyl(0.018, 0.022, 0.22, 8, MAT.toon(PAL.cream), {
+        pos: [0.02, 0.05, -0.14], rot: [1.15, 0.2, 0.3],
+        parent: group, outline: 0.01, ray: false
+      });
+      PRIM.sph(0.02, MAT.toon(PAL.rust), {
+        pos: [0.09, 0.14, -0.22], parent: group, outline: 0.008, ray: false
+      });
+      // a soft rising wisp: three shrinking, fading blobs. Different opacity
+      // values give each blob its own cached material rather than sharing one
+      // (MAT caches by key, so mutating .opacity after the fact would leak
+      // across every user of that material).
+      [[0.32, 0.028], [0.20, 0.022], [0.11, 0.016]].forEach((cfg, i) => {
+        PRIM.sph(cfg[1], MAT.flat(PAL.blueGray, {
+          transparent: true, opacity: cfg[0], depthWrite: false, fog: false
+        }), {
+          pos: [0.10 + i * 0.012, 0.20 + i * 0.11, -0.24 - i * 0.02],
+          parent: group, outline: false, ray: false
+        });
+      });
+    },
+    dynamite(group) {
+      PRIM.cyl(0.055, 0.055, 0.30, 10, MAT.toon(PAL.rustDeep), {
+        pos: [0.02, 0.08, -0.22], rot: [1.35, 0.1, 0.15],
+        parent: group, outline: 0.018, ray: false
+      });
+      [-1, 1].forEach(s => PRIM.torus(0.056, 0.01, MAT.toon(PAL.creamDim), {
+        pos: [0.02 + s * 0.085, 0.075 + s * 0.045, -0.20 - s * 0.03],
+        rot: [1.35, 0.1, 0.15], parent: group, outline: 0.006, ray: false
+      }));
+      // twisted fuse rising to a lit spark
+      PRIM.cyl(0.008, 0.006, 0.14, 6, MAT.toon(PAL.charcoal), {
+        pos: [0.05, 0.24, -0.31], rot: [0.35, 0, 0.2],
+        parent: group, outline: 0.006, ray: false
+      });
+      PRIM.sph(0.024, MAT.flat(PAL.mustard, { transparent: false, fog: false }), {
+        pos: [0.075, 0.305, -0.335], parent: group, outline: 0.01, ray: false
+      });
+      // a few small spark motes around the flame
+      [0, 1, 2, 3].forEach(i => {
+        const a = i / 4 * Math.PI * 2;
+        PRIM.sph(0.009, MAT.flat(PAL.rust, { transparent: true, opacity: 0.85, depthWrite: false, fog: false }), {
+          pos: [0.075 + Math.cos(a) * 0.045, 0.305 + Math.sin(a) * 0.045 + 0.02, -0.335],
+          parent: group, outline: false, ray: false
+        });
       });
     }
   };
@@ -7706,6 +7985,34 @@ const CAST = (() => {
       },
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 0.92 }
+    },
+    playerStoned: {
+      label: 'Stoned',
+      head: 'playerStoned',
+      noPetals: true,
+      collar: 'leafChain',
+      hand: 'joint',
+      skin: {
+        face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rustDeep,
+        shoe: PAL.mustard, sole: PAL.creamDim, accent: PAL.blue,
+        metal: PAL.mustard
+      },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 0.85 }
+    },
+    playerPyro: {
+      label: 'Pyro',
+      head: 'playerPyro',
+      noPetals: true,
+      collar: 'pumpkinChain',
+      hand: 'dynamite',
+      skin: {
+        face: PAL.cream, limb: PAL.charcoal, shorts: PAL.rustDeep,
+        shoe: PAL.rustDeep, sole: PAL.cream, accent: PAL.rust,
+        metal: PAL.mustard
+      },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 1.18 }
     },
     carrotWarden: {
       label: 'Carrot Warden',
@@ -8279,6 +8586,18 @@ const ENEMY = (() => {
   /* ---------------- damage ---------------- */
   function applyDamage(e, amount, point, dir, zone, force) {
     if (!e.alive) return;
+    // A join's melee/blast/gun hits still run this same query-and-target
+    // code locally (see melee/blast/hit above), but a join is never
+    // authoritative for enemy HP. Hand the attempt to the host instead of
+    // mutating a copy that the next network snapshot would just overwrite
+    // anyway — that overwrite-fighting-prediction is exactly the kind of
+    // divergence this rewrite exists to remove.
+    if (typeof COOP !== 'undefined' && COOP.role === 'join') {
+      const key = e.isBoss ? 'boss' : nonBossList().indexOf(e);
+      COOP.sendEnemyDamage(key, amount,
+        [point.x, point.y, point.z], [dir.x, dir.y, dir.z], zone, force);
+      return;
+    }
     e.hp -= amount;
     e.hitFlash = 0.12;
     e.squashVel -= 7;
@@ -8327,6 +8646,10 @@ const ENEMY = (() => {
       e.respawnAt = 0;
       UI.setBoss(false, 0, e.maxHp, bossState);
       UI.toast('CARROT WARDEN WILTED', 2.4);
+      // die() only ever runs on the host or in single-player (a join never
+      // reaches this point — its applyDamage relays out instead), so this is
+      // the one authoritative place a boss kill can happen. Tell any joiners.
+      if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills);
       if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
     } else {
       kills++;
@@ -9117,9 +9440,144 @@ const ENEMY = (() => {
     pose(e, t);
   }
 
+  /* ---------------- coop: host-authoritative sync ----------------
+     Only the host (or a single-player game, where the distinction is moot)
+     ever runs the AI/physics above. A join client instead renders the exact
+     same locally-built `list` — same spawn markers, same roster cycling, so
+     it's index-identical to the host's — driven purely by the host's
+     periodic snapshot. This keeps every client's enemy positions, HP, and
+     kill count in lockstep instead of each running its own independent
+     simulation (which is what caused the coop desync this system replaces:
+     enemies used to chase and take damage separately on every peer). */
+  let netSnapshot = null, netBoss = null, remoteKills = 0;
+
+  // The same boss-exclusion filter is used both when the host packages a
+  // snapshot and when it resolves a join's melee/blast index, so the two
+  // stay index-compatible no matter when spawnBoss() happened to run.
+  function nonBossList() { return list.filter(e => !e.isBoss); }
+
+  /* Host/single-player only: a plain-data read of the current authoritative
+     state, cheap enough to call every network tick. No side effects. */
+  function snapshot() {
+    return {
+      enemies: nonBossList().map(e => ({
+        x: Math.round(e.pos.x * 100) / 100, y: Math.round(e.pos.y * 100) / 100,
+        z: Math.round(e.pos.z * 100) / 100, yaw: Math.round(e.yaw * 1000) / 1000,
+        hp: Math.round(e.hp), alive: e.alive, state: e.state, layerId: e.layerId
+      })),
+      boss: boss ? {
+        x: Math.round(boss.pos.x * 100) / 100, y: Math.round(boss.pos.y * 100) / 100,
+        z: Math.round(boss.pos.z * 100) / 100, yaw: Math.round(boss.yaw * 1000) / 1000,
+        hp: Math.round(boss.hp), maxHp: boss.maxHp, alive: boss.alive,
+        state: boss.state, layerId: boss.layerId
+      } : null,
+      kills: kills
+    };
+  }
+
+  /* Join-only: stash the latest snapshot; applied on the next update() tick
+     rather than mutated immediately, so it stays in step with dt-based
+     interpolation instead of snapping. */
+  function applyRemoteState(enemies, bossSnap, killsValue) {
+    netSnapshot = enemies || [];
+    netBoss = bossSnap || null;
+    remoteKills = killsValue || 0;
+  }
+
+  /* Join-only: the host reset the shared world. Nothing to actively clear —
+     ghosts simply hold their last pose until the next real snapshot arrives,
+     which follows a world reset almost immediately. */
+  function applyRemoteReset() {
+    netSnapshot = null;
+    netBoss = null;
+  }
+
+  function applyGhostSnapshot(e, snap, dt, t) {
+    const wasAlive = e.alive, prevHp = e.hp;
+    e.layerId = snap.layerId;
+    e.alive = snap.alive;
+    e.hp = snap.hp;
+    e.state = snap.state;
+    if (wasAlive && snap.hp < prevHp) e.hitFlash = 0.12;
+    if (wasAlive && !snap.alive) {
+      e.mark.visible = false;
+      e.headProxy.raycast = NO_RAY;
+      e.bodyProxy.raycast = NO_RAY;
+    } else if (!wasAlive && snap.alive) {
+      e.headProxy.raycast = THREE.Mesh.prototype.raycast;
+      e.bodyProxy.raycast = THREE.Mesh.prototype.raycast;
+    }
+    if (snap.alive) e.mark.visible = snap.state === 'alert';
+    // No local AI, so approximate velocity from the position delta — just
+    // enough for the existing walk-cycle pose() to read as motion rather
+    // than a statue sliding into place.
+    e.vel.x = dt > 0 ? (snap.x - e.pos.x) / dt : 0;
+    e.vel.z = dt > 0 ? (snap.z - e.pos.z) / dt : 0;
+    e.pos.x = UTIL.damp(e.pos.x, snap.x, 12, dt);
+    e.pos.y = UTIL.damp(e.pos.y, snap.y, 12, dt);
+    e.pos.z = UTIL.damp(e.pos.z, snap.z, 12, dt);
+    let yawDiff = snap.yaw - e.yaw;
+    while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+    e.yaw += yawDiff * UTIL.clamp(10 * dt, 0, 1);
+    if (e.hitFlash > 0) e.hitFlash -= dt;
+    if (e.isBoss) e.assetDelta = dt;
+    e.group.visible = snap.alive && e.layerId === PLAYER.layerId;
+    e.group.position.copy(e.pos);
+    e.group.rotation.y = e.yaw;
+    pose(e, t);
+    // The join's own bossState never transitions (only the host runs the
+    // real state machine), so derive the HUD text from the synced fields
+    // directly rather than that stale local variable.
+    if (e.isBoss) UI.setBoss(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
+  }
+
+  function createBossGhost() {
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss',
+      position: new THREE.Vector3(B.spawn.x, B.spawn.y, B.spawn.z)
+    };
+    create(B.id, marker, { isBoss: true });
+    bossState = 'active';
+  }
+
+  function updateGhosts(dt, t) {
+    kills = remoteKills;
+    if (netSnapshot) {
+      const regulars = nonBossList();
+      for (let i = 0; i < regulars.length && i < netSnapshot.length; i++) {
+        applyGhostSnapshot(regulars[i], netSnapshot[i], dt, t);
+      }
+    }
+    if (netBoss) {
+      if (!boss) createBossGhost();
+      applyGhostSnapshot(boss, netBoss, dt, t);
+    } else if (boss && bossState === 'active') {
+      // Host hasn't spawned the boss yet on this snapshot cycle, or the
+      // fight ended; either way there's nothing authoritative to show.
+      boss.group.visible = false;
+    }
+  }
+
   function update(dt, t) {
+    if (typeof COOP !== 'undefined' && COOP.role === 'join') {
+      updateGhosts(dt, t);
+      return;
+    }
     if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
+  }
+
+  /* Resolve a join's reported melee/blast hit against the host's own
+     authoritative list, using the same boss-exclusion index the snapshot
+     is built from. Called only on the host, from COOP's 'enemyDamage'
+     handler — a join never calls applyDamage for real (see below). */
+  function applyDamageByKey(key, amount, pointArr, dirArr, zone, force) {
+    const target = key === 'boss' ? boss : nonBossList()[key];
+    if (!target) return;
+    const point = new THREE.Vector3().fromArray(pointArr || [target.pos.x, target.pos.y, target.pos.z]);
+    const dir = new THREE.Vector3().fromArray(dirArr || [0, 0, -1]);
+    applyDamage(target, amount, point, dir, zone, force);
   }
 
   function aliveCount() {
@@ -9147,6 +9605,7 @@ const ENEMY = (() => {
 
   return {
     init, prepareAssets, update, hit, melee, blast, reset, applyDamage, spawnBoss,
+    snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -9165,17 +9624,29 @@ const ENEMY = (() => {
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
-  const callbacks = { status: [], connected: [], disconnected: [], error: [] };
+  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [] };
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
-  const PLAYER_CHARACTERS = { host: 'playerBluecap', join: 'playerMasked' };
-  let scene = null, peer = null, channel = null;
+  // Host is always slot 0. Joiners get the next free slot in join order; it
+  // frees up again when that peer disconnects. Same 4 IDs as CAST.ROSTER.
+  const CHARACTER_POOL = ['playerBluecap', 'playerMasked', 'playerStoned', 'playerPyro'];
+  let scene = null, peer = null;
+  // One DataConnection per remote peer. Host keys this by each joiner's peer
+  // id (so it can hold up to maxPlayers-1 of them); a joiner only ever has
+  // one entry, keyed 'host'. Same map shape on both sides keeps send/relay
+  // code from having to fork.
+  const channels = new Map();
+  // Host-only: peerId -> assigned character id, freed on disconnect so a
+  // later joiner can reuse it.
+  const slotAssignments = new Map();
   let role = null, phase = 'idle', connected = false, closing = false, peerReady = false;
   let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
+  let myCharacterId = 'playerBluecap';
   let roomCode = '', sendAcc = 0, connectTimer = null;
+  let matchRunning = false;
 
-  function localCharacterId() { return PLAYER_CHARACTERS[role] || 'playerBluecap'; }
+  function localCharacterId() { return myCharacterId; }
 
   function on(event, fn) {
     if (callbacks[event] && typeof fn === 'function') callbacks[event].push(fn);
@@ -9216,8 +9687,9 @@ const COOP = (() => {
     closing = true;
     clearConnectTimer();
     connected = false;
-    if (channel) { try { channel.close(); } catch (err) {} }
-    channel = null;
+    channels.forEach(ch => { try { ch.close(); } catch (err) {} });
+    channels.clear();
+    slotAssignments.clear();
     if (peer) { try { peer.destroy(); } catch (err) {} }
     peer = null;
     peerReady = false;
@@ -9231,6 +9703,8 @@ const COOP = (() => {
     phase = 'idle';
     roomCode = '';
     sendAcc = 0;
+    matchRunning = false;
+    myCharacterId = 'playerBluecap';
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
   }
 
@@ -9271,8 +9745,8 @@ const COOP = (() => {
   function failJoin(message) {
     clearConnectTimer();
     connected = false;
-    if (channel) { try { channel.close(); } catch (err) {} }
-    channel = null;
+    channels.forEach(ch => { try { ch.close(); } catch (err) {} });
+    channels.clear();
     phase = role === 'join' ? 'ready' : (role === 'host' ? 'hostReady' : 'idle');
     if (role) UI.setCoopLobbyStep(role, phase);
     emit('error', message);
@@ -9286,18 +9760,27 @@ const COOP = (() => {
     }, 20000);
   }
 
+  /* Host-only: the next character not already worn by the host or another
+     connected joiner. Null only if the pool is exhausted, which shouldn't
+     happen since the pool size matches C.maxPlayers. */
+  function nextFreeCharacter() {
+    const taken = new Set(slotAssignments.values());
+    taken.add(myCharacterId);
+    return CHARACTER_POOL.find(id => !taken.has(id)) || null;
+  }
+
   function bindPeerEvents(instance) {
     instance.on('connection', next => {
       if (role !== 'host') {
         try { next.close(); } catch (err) {}
         return;
       }
-      if (channel || connected) {
+      if (channels.size >= C.maxPlayers - 1) {
         try { next.close(); } catch (err) {}
-        status('This room already has two farmhands.', 'bad');
+        status('This room is full.', 'bad');
         return;
       }
-      bindChannel(next);
+      bindHostChannel(next);
     });
     instance.on('disconnected', () => {
       if (closing || connected) return;
@@ -9358,6 +9841,7 @@ const COOP = (() => {
   async function host() {
     stop();
     role = 'host';
+    myCharacterId = 'playerBluecap';
     phase = 'creating';
     UI.setCoopLobbyStep('host', phase);
     status('Opening a private room…');
@@ -9420,12 +9904,12 @@ const COOP = (() => {
     armConnectTimeout();
     let next;
     try {
-      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.07.04' } });
+      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.08.00' } });
     } catch (err) {
       failJoin(peerErrorText(err));
       return;
     }
-    bindChannel(next);
+    bindJoinChannel(next);
   }
 
   function signalAction() {
@@ -9436,32 +9920,81 @@ const COOP = (() => {
     } else if (!role) {
       status('Choose Host room or Join room first.', 'bad');
     } else if (role === 'host') {
-      status('Your room code is ready above. Waiting for the other farmhand.');
+      status('Your room code is ready above. Start the farm whenever you are ready.');
     }
   }
 
-  function bindChannel(next) {
+  /* ---- host side: one DataConnection per joiner ---- */
+  function bindHostChannel(next) {
     if (!next) return;
-    if (channel && channel !== next) {
-      try { next.close(); } catch (err) {}
-      return;
-    }
-    channel = next;
+    const peerId = next.peer;
+    channels.set(peerId, next);
     const onOpen = () => {
-      if (channel !== next || connected) return;
-      clearConnectTimer();
+      if (channels.get(peerId) !== next) return;
       connected = true;
-      phase = 'connected';
-      UI.setCoopLobbyStep(role, phase);
-      send({ type: 'hello', id: localId, characterId: localCharacterId(), maxPlayers: C.maxPlayers });
-      emit('connected');
-      status('Two farmhands connected.', 'good');
+      const characterId = nextFreeCharacter();
+      if (!characterId) { try { next.close(); } catch (err) {} channels.delete(peerId); return; }
+      slotAssignments.set(peerId, characterId);
+      // Tell the new joiner who they are and who else is already here.
+      const roster = [{ id: localId, characterId: myCharacterId }];
+      channels.forEach((ch, id) => { if (id !== peerId) roster.push({ id: id, characterId: slotAssignments.get(id) }); });
+      sendTo(peerId, {
+        type: 'welcome', id: localId, characterId: characterId,
+        roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers
+      });
+      // Tell everyone ELSE a new farmhand joined, so their remote list grows too.
+      broadcast({ type: 'playerJoined', id: peerId, characterId: characterId }, peerId);
+      UI.setCoopLobbyStep('host', phase);
+      emit('connected', peerId);
+      status(roster.length + ' of ' + C.maxPlayers + ' farmhands connected.', 'good');
     };
     next.on('open', onOpen);
     next.on('data', data => {
       try {
         const message = typeof data === 'string' ? JSON.parse(data) : data;
-        receive(message);
+        receiveOnHost(peerId, message);
+      } catch (err) {
+        status('A network message was unreadable; the room is still open.', 'bad');
+      }
+    });
+    next.on('error', () => {});
+    next.on('close', () => hostLosePeer(peerId, 'A farmhand disconnected.'));
+    if (next.open) onOpen();
+  }
+
+  function hostLosePeer(peerId, message) {
+    if (!channels.has(peerId) && !remotes.has(peerId)) return;
+    channels.delete(peerId);
+    slotAssignments.delete(peerId);
+    const remote = remotes.get(peerId);
+    if (remote && scene && remote.group) scene.remove(remote.group);
+    remotes.delete(peerId);
+    broadcast({ type: 'playerLeft', id: peerId });
+    status(message, 'bad');
+    if (channels.size === 0) connected = false;
+  }
+
+  /* ---- join side: exactly one DataConnection, to the host ---- */
+  function bindJoinChannel(next) {
+    if (!next) return;
+    if (channels.get('host') && channels.get('host') !== next) {
+      try { next.close(); } catch (err) {}
+      return;
+    }
+    channels.set('host', next);
+    const onOpen = () => {
+      if (channels.get('host') !== next || connected) return;
+      clearConnectTimer();
+      connected = true;
+      phase = 'connected';
+      UI.setCoopLobbyStep(role, phase);
+      status('Connected. Waiting for the host to start the farm…', 'good');
+    };
+    next.on('open', onOpen);
+    next.on('data', data => {
+      try {
+        const message = typeof data === 'string' ? JSON.parse(data) : data;
+        receiveOnJoin(message);
       } catch (err) {
         status('A network message was unreadable; the room is still open.', 'bad');
       }
@@ -9470,13 +10003,11 @@ const COOP = (() => {
       if (connected) emit('error', peerErrorText(err));
       else failJoin(peerErrorText(err));
     });
-    next.on('close', () => {
-      if (channel === next) handleDisconnect('Your teammate disconnected.');
-    });
+    next.on('close', () => handleHostLost('The host ended the room.'));
     if (next.open) onOpen();
   }
 
-  function handleDisconnect(message) {
+  function handleHostLost(message) {
     if (closing) return;
     const wasConnected = connected;
     closeTransport();
@@ -9484,15 +10015,23 @@ const COOP = (() => {
     role = null;
     phase = 'idle';
     roomCode = '';
+    matchRunning = false;
     if (wasConnected) emit('disconnected', message);
   }
 
-  function send(message) {
-    if (channel && channel.open) channel.send(message);
+  /* ---- send helpers ---- */
+  function sendTo(peerId, message) {
+    const ch = channels.get(peerId);
+    if (ch && ch.open) ch.send(message);
   }
+  function broadcast(message, exceptId) {
+    channels.forEach((ch, id) => { if (id !== exceptId && ch.open) ch.send(message); });
+  }
+  // Join's single upstream link to the host.
+  function send(message) { sendTo('host', message); }
 
   function sendState() {
-    send({
+    const payload = {
       type: 'state', id: localId, characterId: localCharacterId(),
       player: {
         x: PLAYER.position.x, y: PLAYER.position.y, z: PLAYER.position.z,
@@ -9502,11 +10041,22 @@ const COOP = (() => {
         climbing: PLAYER.isClimbing,
         sprinting: PLAYER.sprinting
       }
-    });
+    };
+    if (role === 'host') {
+      broadcast(payload);
+      // Piggyback the authoritative enemy snapshot on the same throttled
+      // tick — one host-only network hook, no separate timer to keep in sync.
+      if (typeof ENEMY !== 'undefined') {
+        const snap = ENEMY.snapshot();
+        broadcast({ type: 'enemyState', enemies: snap.enemies, boss: snap.boss, kills: snap.kills });
+      }
+    } else {
+      send(payload);
+    }
   }
 
   function makeRemote(id, characterId) {
-    const desired = characterId === 'playerMasked' ? 'playerMasked' : 'playerBluecap';
+    const desired = CHARACTER_POOL.indexOf(characterId) >= 0 ? characterId : 'playerMasked';
     let remote = remotes.get(id);
     if (remote && remote.characterId !== desired) {
       if (scene && remote.group) scene.remove(remote.group);
@@ -9533,48 +10083,126 @@ const COOP = (() => {
     return remote;
   }
 
-  function receive(message) {
+  function removeRemote(id) {
+    const remote = remotes.get(id);
+    if (remote && scene && remote.group) scene.remove(remote.group);
+    remotes.delete(id);
+  }
+
+  /* ---- host's message handling: one connection per sender, so the sender's
+     peer id comes from which channel the data arrived on, not the payload */
+  function receiveOnHost(fromId, message) {
     if (!message || !message.type) return;
-    if (message.type === 'hello') {
-      if (message.maxPlayers && message.maxPlayers > C.maxPlayers) {
-        emit('error', 'That room supports more players than this build allows.');
-        return;
-      }
+    if (message.type === 'state' && message.player) {
+      const remote = makeRemote(fromId, slotAssignments.get(fromId));
+      remote.target = Object.assign(remote.target, message.player);
+      remote.lastSeen = 0;
+      // Relay to every OTHER joiner so peers see each other through the hub.
+      broadcast(message, fromId);
+    } else if (message.type === 'shot' && message.shot) {
+      sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot) });
+    } else if (message.type === 'enemyDamage' && message.key !== undefined) {
+      ENEMY.applyDamageByKey(message.key, message.amount, message.point, message.dir, message.zone, message.force);
+    }
+  }
+
+  /* ---- join's message handling: everything comes from the host ---- */
+  function receiveOnJoin(message) {
+    if (!message || !message.type) return;
+    if (message.type === 'welcome') {
+      myCharacterId = message.characterId || myCharacterId;
+      matchRunning = !!message.matchRunning;
+      (message.roster || []).forEach(p => { if (p.id !== localId) makeRemote(p.id, p.characterId); });
+      UI.setCoopLobbyStep(role, phase);
+      if (matchRunning) emit('matchStart');
+    } else if (message.type === 'playerJoined' && message.id) {
       makeRemote(message.id, message.characterId);
-      sendState();
+      UI.setCoopLobbyStep(role, phase);
+    } else if (message.type === 'playerLeft' && message.id) {
+      removeRemote(message.id);
+      UI.setCoopLobbyStep(role, phase);
     } else if (message.type === 'state' && message.id && message.player) {
       const remote = makeRemote(message.id, message.characterId);
       remote.target = Object.assign(remote.target, message.player);
       remote.lastSeen = 0;
-    } else if (message.type === 'shot' && role === 'host' && message.shot) {
-      resolveShot(message.shot);
-      send({ type: 'shotResolved', shot: message.shot });
-    } else if (message.type === 'shotResolved' && role === 'join' && message.shot) {
-      resolveShot(message.shot);
+    } else if (message.type === 'shotResolved' && message.shot) {
+      drawShotTracer(message.shot, message.endPoint);
+    } else if (message.type === 'enemyState') {
+      ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0);
+    } else if (message.type === 'bossDefeated') {
+      GAME.complete(message.kills || 0);
+    } else if (message.type === 'worldReset') {
+      ENEMY.applyRemoteReset();
+    } else if (message.type === 'playerDamage' && message.targetId === localId) {
+      PLAYER.damage(message.amount, message.source);
+    } else if (message.type === 'matchStart') {
+      matchRunning = true;
+      emit('matchStart');
     }
   }
 
-  function resolveShot(shot) {
+  /* Host-only: the one place damage actually applies to an enemy from a shot.
+     Returns the tracer endpoint (hit point, or full range on a miss) so the
+     shooter can draw a tracer that matches what really happened instead of
+     re-deriving it from a raycast against its own, possibly-stale geometry. */
+  function resolveShotAsHost(shot) {
     const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
     const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
     const range = shot.range || 100;
     const hit = FX.trace(origin, dir, range);
-    if (hit) {
-      FX.tracer(origin, hit.point);
-      ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
-    } else {
-      FX.tracer(origin, origin.clone().addScaledVector(dir, range));
-    }
+    const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
+    if (hit) ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+    return end.toArray();
+  }
+
+  /* Any client's local, visual-only feedback for a shot someone already
+     fired — never touches ENEMY/HP, just draws where it went. */
+  function drawShotTracer(shot, endPointArr) {
+    const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
+    const end = endPointArr
+      ? new THREE.Vector3().fromArray(endPointArr)
+      : origin.clone().addScaledVector(new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize(), shot.range || 100);
+    FX.tracer(origin, end);
   }
 
   function sendShot(shot) {
     if (role === 'join' && connected) send({ type: 'shot', shot: shot });
   }
   function relayHostShot(shot) {
-    if (role === 'host' && connected) send({ type: 'shotResolved', shot: shot });
+    // The host's own shot never goes through receiveOnHost, so resolve it
+    // here and broadcast the same {shot, endPoint} shape a joiner's would get.
+    if (role === 'host' && connected) broadcast({ type: 'shotResolved', shot: shot, endPoint: resolveShotAsHost(shot) });
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
   function shouldHostRelayShots() { return role === 'host' && connected; }
+
+  /* Join-only: report an attempted melee/blast hit for the host to resolve
+     authoritatively. `key` is either 'boss' or the index applyDamage found
+     the target at in ENEMY's own boss-excluded list. */
+  function sendEnemyDamage(key, amount, point, dir, zone, force) {
+    if (role === 'join' && connected) send({ type: 'enemyDamage', key: key, amount: amount, point: point, dir: dir, zone: zone, force: force });
+  }
+
+  /* Host-only network hooks used by ENEMY/GAME once per tick or on a
+     one-off event — every one is a no-op for single-player and for join,
+     since only the host ever runs the authoritative simulation. */
+  function broadcastBossDefeated(kills) {
+    if (role === 'host' && connected) broadcast({ type: 'bossDefeated', kills: kills });
+  }
+  function broadcastWorldReset() {
+    if (role === 'host' && connected) broadcast({ type: 'worldReset' });
+  }
+  function sendPlayerDamage(targetId, amount, source) {
+    if (role === 'host') sendTo(targetId, { type: 'playerDamage', targetId: targetId, amount: amount, source: source });
+  }
+
+  /* Host-only: called when the host clicks "Start Farm". */
+  function startMatch() {
+    if (role !== 'host' || matchRunning) return;
+    matchRunning = true;
+    broadcast({ type: 'matchStart' });
+    emit('matchStart');
+  }
 
   function poseRemote(remote, dt) {
     const r = remote.rig;
@@ -9628,11 +10256,24 @@ const COOP = (() => {
   }
 
   return {
-    init, on, openLobby, host, prepareJoin, signalAction, stop, update,
-    sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots,
+    init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch,
+    sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
+    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage,
     get role() { return role; },
     get connected() { return connected; },
-    get active() { return connected; }
+    get active() { return connected; },
+    get matchRunning() { return matchRunning; },
+    get playerCount() { return channels.size + 1; },
+    get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
+    get roster() {
+      const list = [{ id: localId, characterId: myCharacterId, isHost: role === 'host' }];
+      if (role === 'host') {
+        channels.forEach((ch, id) => list.push({ id: id, characterId: slotAssignments.get(id), isHost: false }));
+      } else {
+        remotes.forEach((remote, id) => list.push({ id: id, characterId: remote.characterId, isHost: true }));
+      }
+      return list;
+    }
   };
 })();
 
