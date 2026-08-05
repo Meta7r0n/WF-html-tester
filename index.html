@@ -839,6 +839,16 @@
     </div>
   </div>
 
+  <div id="crewLeft" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Co-op</p>
+      <h1>Down a<br/>Hand<span>One of your crew must leave</span></h1>
+      <p class="sub">Do you wish to continue without them, or go back to the main menu?</p>
+      <button class="go" id="crewLeftContinueBtn">Continue →</button>
+      <button class="go compact" id="crewLeftMenuBtn">Main menu</button>
+    </div>
+  </div>
+
   <div id="loading">Inking the farm…</div>
   <div id="err"></div>
 
@@ -4181,7 +4191,16 @@ const AUDIO = (() => {
   let started = false;
   let ambientTimer = 0, ambientNext = 3;
   let windLfo = null;
-  let musicEl = null, musicSource = null;
+  let musicEl = null, musicSource = null, musicGain = null;
+  let gameMusicEl = null, gameMusicSource = null, gameMusicGain = null;
+  let gameMusicDucked = false;
+  // Menu<->gameplay crossfade and the pause duck both ride Web Audio's own
+  // gain automation (linearRampToValueAtTime) rather than being stepped by
+  // hand each frame -- sample-accurate and glitch-free regardless of this
+  // game's own frame rate, which a hand-rolled per-frame fade would not be.
+  const TRACK_FADE = 0.9;
+  const DUCK_FADE = 0.35;
+  const DUCK_LEVEL = 0.5;
 
   function makeNoise() {
     const len = ctx.sampleRate * 2;
@@ -4209,13 +4228,24 @@ const AUDIO = (() => {
     musicBus = ctx.createGain(); musicBus.gain.value = CONFIG.audio.music; musicBus.connect(master);
     noiseBuf = makeNoise();
 
-    // --- menu theme, streamed rather than decoded whole so a multi-minute
-    // compressed file doesn't have to load into an AudioBuffer up front ---
+    // --- menu/intro theme and the locked-in gameplay theme, both streamed
+    // rather than decoded whole so multi-minute compressed files don't have
+    // to load into an AudioBuffer up front. Each gets its own gain node so
+    // the two can crossfade independently of musicBus's own "Music" volume
+    // slider, which still scales both together. ---
     musicEl = new Audio('assets/menu-theme.mp3');
     musicEl.loop = true;
     musicEl.preload = 'auto';
     musicSource = ctx.createMediaElementSource(musicEl);
-    musicSource.connect(musicBus);
+    musicGain = ctx.createGain(); musicGain.gain.value = 0;
+    musicSource.connect(musicGain); musicGain.connect(musicBus);
+
+    gameMusicEl = new Audio('assets/gameplay-theme.mp3');
+    gameMusicEl.loop = true;
+    gameMusicEl.preload = 'auto';
+    gameMusicSource = ctx.createMediaElementSource(gameMusicEl);
+    gameMusicGain = ctx.createGain(); gameMusicGain.gain.value = 0;
+    gameMusicSource.connect(gameMusicGain); gameMusicGain.connect(musicBus);
 
     // --- looping outdoor wind ---
     const src = ctx.createBufferSource();
@@ -4241,6 +4271,34 @@ const AUDIO = (() => {
   function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
   function suspend() { /* keep ambience running while paused; it reads better */ }
 
+  /* Ramp a gain node to `target` over `duration` seconds using the audio
+     clock, not the game's own (variable, sometimes stalled) frame timer --
+     this is what makes every fade below glitch-free regardless of frame
+     rate, instead of a hand-stepped .value that can stutter or overshoot. */
+  function fadeGain(node, target, duration) {
+    if (!ctx || !node) return;
+    const now = ctx.currentTime;
+    node.gain.cancelScheduledValues(now);
+    node.gain.setValueAtTime(node.gain.value, now);
+    node.gain.linearRampToValueAtTime(target, now + duration);
+  }
+
+  /* Fades an <audio> element's gain to 0 then actually pauses it once the
+     fade lands, instead of cutting playback the instant the fade begins --
+     pausing immediately, with the gain fade layered on top, is exactly the
+     "glitches then stops" behavior this replaces (the browser can still
+     emit a couple of stale buffered frames right as pause() lands). Guards
+     against a play() that starts again mid-fade (the gain would already be
+     back above 0 by the time this fires) stealing the element out from
+     under it. */
+  function fadeOutAndPause(el, gainNode, duration) {
+    if (!el || el.paused) return;
+    fadeGain(gainNode, 0, duration);
+    setTimeout(() => {
+      if (el && gainNode && gainNode.gain.value < 0.01) el.pause();
+    }, duration * 1000 + 80);
+  }
+
   /* Lazily brings up the whole engine (not just music) the first time the
      menu wants to play something — GAME.enter() also calls start(), but
      that only happens once the player is already past the menu, and the
@@ -4248,14 +4306,53 @@ const AUDIO = (() => {
   function playMenuMusic() {
     start();
     resume();
-    if (!musicEl || !musicEl.paused) return;
-    const p = musicEl.play();
-    // Browsers reject this without a preceding user gesture; the caller
-    // retries on the next real click/keydown rather than surfacing an error.
-    if (p && p.catch) p.catch(() => {});
+    if (!musicEl) return;
+    if (musicEl.paused) {
+      const p = musicEl.play();
+      // Browsers reject this without a preceding user gesture; the caller
+      // retries on the next real click/keydown rather than surfacing an error.
+      if (p && p.catch) p.catch(() => {});
+    }
+    fadeGain(musicGain, 1, TRACK_FADE);
   }
   function stopMenuMusic() {
-    if (musicEl && !musicEl.paused) musicEl.pause();
+    fadeOutAndPause(musicEl, musicGain, TRACK_FADE);
+  }
+
+  /* The locked-in gameplay theme -- same track everywhere (single-player,
+     coop, FFA), starts the instant real gameplay begins (after the intro,
+     or immediately if it was skipped) and crossfades against whichever of
+     the two tracks was playing, since both share one bus but fade on
+     independent gain nodes. */
+  function playGameMusic() {
+    start();
+    resume();
+    if (!gameMusicEl) return;
+    if (gameMusicEl.paused) {
+      const p = gameMusicEl.play();
+      if (p && p.catch) p.catch(() => {});
+    }
+    gameMusicDucked = false;
+    fadeGain(gameMusicGain, 1, TRACK_FADE);
+  }
+  function stopGameMusic() {
+    gameMusicDucked = false;
+    fadeOutAndPause(gameMusicEl, gameMusicGain, TRACK_FADE);
+  }
+  /* Pausing mid-match ducks the gameplay theme to half volume rather than
+     stopping it -- the shared coop world may still be live (see GAME.loop's
+     hostSimActive), so the music staying on read as more honest than
+     cutting it the moment one player alt-tabs. */
+  function duckGameMusic() {
+    if (gameMusicDucked || !gameMusicEl || gameMusicEl.paused) return;
+    gameMusicDucked = true;
+    fadeGain(gameMusicGain, DUCK_LEVEL, DUCK_FADE);
+  }
+  function unduckGameMusic() {
+    if (!gameMusicDucked) return;
+    gameMusicDucked = false;
+    if (!gameMusicEl || gameMusicEl.paused) return;
+    fadeGain(gameMusicGain, 1, DUCK_FADE);
   }
   function setMusicVolume(v) {
     const clamped = UTIL.clamp(v, 0, 1);
@@ -4569,9 +4666,13 @@ const AUDIO = (() => {
     start, resume, suspend, update,
     gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
-    playMenuMusic, stopMenuMusic, setMusicVolume, setMasterVolume, setSfxVolume,
+    playMenuMusic, stopMenuMusic, playGameMusic, stopGameMusic, duckGameMusic, unduckGameMusic,
+    setMusicVolume, setMasterVolume, setSfxVolume,
     get running() { return started; },
-    get menuMusicPlaying() { return !!(musicEl && !musicEl.paused); }
+    get menuMusicPlaying() { return !!(musicEl && !musicEl.paused); },
+    get gameMusicPlaying() { return !!(gameMusicEl && !gameMusicEl.paused); },
+    get gameMusicGainValue() { return gameMusicGain ? gameMusicGain.gain.value : null; },
+    get gameMusicDucked() { return gameMusicDucked; }
   };
 })();
 
@@ -6627,6 +6728,7 @@ const UI = (() => {
     el.matchOverEyebrow = document.getElementById('matchOverEyebrow');
     el.matchOverSub = document.getElementById('matchOverSub');
     el.matchOverScores = document.getElementById('matchOverScores');
+    el.crewLeft = document.getElementById('crewLeft');
     el.killNum = document.getElementById('killNum');
     el.bossHud = document.getElementById('bossHud');
     el.bossHudName = document.getElementById('bossHudName');
@@ -6757,6 +6859,17 @@ const UI = (() => {
   }
   function hideMatchOver() {
     if (el.matchOver) el.matchOver.classList.add('hidden');
+  }
+
+  function showCrewLeft() {
+    if (!el.crewLeft) return;
+    el.crewLeft.classList.remove('hidden');
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+    showMobileControls(false);
+  }
+  function hideCrewLeft() {
+    if (el.crewLeft) el.crewLeft.classList.add('hidden');
   }
 
   function setBoss(active, hp, maxHp, state) {
@@ -7201,6 +7314,7 @@ const UI = (() => {
     showStart, showSplash, hideSplash, showFallback, hideFallback,
     showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
+    showCrewLeft, hideCrewLeft,
     get rebindingAction() { return rebindingAction; },
     showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
@@ -7537,6 +7651,7 @@ const GAME = (() => {
   let renderer, scene, camera, viewScene, viewCamera;
   let last = 0, time = 0, running = false, entered = false;
   let deathPending = false, lastKills = 0, endShown = false, mode = 'single';
+  let crewLeftPending = false;
 
   function fail(msg) {
     const e = document.getElementById('err');
@@ -7601,14 +7716,16 @@ const GAME = (() => {
     INTRO.init(scene, camera);
 
     // shared mouse/touch engagement wiring
-    INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); });
+    INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); AUDIO.unduckGameMusic(); });
     INPUT.on('unlock', () => {
       running = false;
       if (!entered) return;
       // A downed player must still get a clickable way back in. Showing only
       // the downed HUD here left the game with no overlay and no input at all.
-      if (PLAYER.isDead && !PLAYER.isDowned) UI.showDead();
+      if (PLAYER.isDead && !PLAYER.isDowned) { UI.showDead(); return; }
+      if (crewLeftPending) { crewLeftPending = false; UI.showCrewLeft(); }
       else UI.showPause();
+      AUDIO.duckGameMusic();
     });
 
     INPUT.on('fallback', why => UI.showFallback(why));
@@ -7682,6 +7799,16 @@ const GAME = (() => {
       UI.hideMatchOver();
       returnToStart();
     });
+    document.getElementById('crewLeftContinueBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      UI.hideCrewLeft();
+      enter(false);
+    });
+    document.getElementById('crewLeftMenuBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      UI.hideCrewLeft();
+      returnToStart();
+    });
     // manual escape hatches, in case the automatic detection ever misses
     const goFree = e => {
       e.stopPropagation();
@@ -7717,6 +7844,27 @@ const GAME = (() => {
       UI.hideFfaScoreboard();
       UI.hideDead();
       UI.showMatchOver(winnerId, scores);
+    });
+    // A crew member disconnecting mid-match interrupts whoever's left (host
+    // and any other joins alike -- COOP emits this identically for both,
+    // see hostLosePeer/receiveOnJoin) to ask whether to carry on without
+    // them or head back. The host stays authoritative regardless (see
+    // GAME.loop's hostSimActive), so "continue" is a real option here.
+    COOP.on('crewMemberLeft', () => {
+      if (mode !== 'coop' || !entered) return;
+      crewLeftPending = true;
+      if (running) {
+        INPUT.releaseLock(); // async browser event -> the unlock handler above picks this up
+      } else if (!PLAYER.isDead || PLAYER.isDowned) {
+        // Already paused (pointer already free) -- no new unlock event is
+        // coming to act on the pending flag, so swap the veil directly.
+        crewLeftPending = false;
+        UI.hidePause();
+        UI.showCrewLeft();
+        AUDIO.duckGameMusic();
+      }
+      // else: currently on the dead screen -- leave crewLeftPending set;
+      // the next unlock (after getting back up) surfaces it instead.
     });
 
     // lantern toggle for the dim corners of the barn
@@ -7772,11 +7920,14 @@ const GAME = (() => {
   /* What "enter" used to do outright -- now the part that only runs once
      the insertion cutscene (if any) has finished or been skipped. Menus are
      already hidden by enter() below by this point, so this only has the
-     HUD to bring up and the menu music to cut, now that the cutscene (which
-     plays over that same music) is actually done. */
+     HUD to bring up and the music to crossfade, now that the cutscene
+     (which plays over the menu theme) is actually done. playGameMusic() is
+     idempotent -- calling it again on respawn/continue/resume just holds
+     the same track at full volume, it doesn't restart anything. */
   function enterNow() {
     entered = true;
     AUDIO.stopMenuMusic();
+    AUDIO.playGameMusic();
     UI.showHud();
     INPUT.requestLock();
   }
@@ -7966,6 +8117,7 @@ const GAME = (() => {
     entered = false;
     running = false;
     INPUT.releaseLock();
+    AUDIO.stopGameMusic();
     UI.showStart();
   }
 
@@ -8008,15 +8160,26 @@ const GAME = (() => {
     if (edge.y) look.y += edge.y * CONFIG.input.edgeTurnY * dt;
     if (running) WEAPON.addLook(look.x, look.y);
 
+    // A paused host must not freeze the shared world for everyone else --
+    // ENEMY only really simulates on the host (joins just render its
+    // snapshots), and that snapshot is piggybacked on the same throttled
+    // broadcast COOP.update() sends here. Pausing already stops local
+    // input via `running`; simRunning only widens the *simulation/
+    // broadcast* gate back open for a paused host so their teammates keep
+    // seeing a live world. A paused join has no such authority to protect,
+    // so it stays exactly as before.
+    const hostSimActive = mode === 'coop' && COOP.role === 'host' && COOP.matchRunning;
+    const simRunning = running || hostSimActive;
+
     PLAYER.update(dt, running, look);
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned));
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
     CONSUMABLE.update(dt, running && !PLAYER.isDead);
     HERO.update(dt, running);
-    if (running) ENEMY.update(dt, time);
+    if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
-    COOP.update(dt, running && !PLAYER.isDead);
+    COOP.update(dt, simRunning && !PLAYER.isDead);
     FX.update(dt, time);
     AUDIO.update(dt);
     UI.update(dt);
@@ -10973,7 +11136,7 @@ const ENEMY = (() => {
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
-  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [] };
+  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [] };
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
@@ -11347,6 +11510,14 @@ const COOP = (() => {
     broadcast({ type: 'playerLeft', id: peerId });
     status(message, 'bad');
     if (channels.size === 0) connected = false;
+    // A farmhand disconnecting mid-lobby is just a roster update (handled
+    // above); mid-match it's disruptive enough to actually interrupt
+    // whoever's left and ask what they want to do, since the host stays
+    // authoritative either way and "keep going" is a real option here (the
+    // symmetric case -- the host itself disconnecting -- isn't, since a
+    // join has no simulation to fall back on; that stays the existing
+    // 'disconnected' -> back-to-lobby handling).
+    if (matchRunning) emit('crewMemberLeft', peerId);
   }
 
   /* ---- join side: exactly one DataConnection, to the host ---- */
@@ -11519,6 +11690,10 @@ const COOP = (() => {
     } else if (message.type === 'playerLeft' && message.id) {
       removeRemote(message.id);
       UI.setCoopLobbyStep(role, phase);
+      // Mirrors the host-side emit in hostLosePeer -- same event, same
+      // "continue without them or head back" choice, for whichever other
+      // joins are still around to see it.
+      if (matchRunning) emit('crewMemberLeft', message.id);
     } else if (message.type === 'state' && message.id && message.player) {
       const remote = makeRemote(message.id, message.characterId);
       remote.target = Object.assign(remote.target, message.player);
