@@ -969,6 +969,29 @@ const CONFIG = {
     pyroKillHealPct: 15,
     pyroStickOffset: 1.8
   },
+  // Insertion cutscene played once at the start of every run/match (not on
+  // a mid-match respawn) — helicopter flies the crew in over the farm and
+  // drops them on rappel lines just inside the south gate. A fixed spot
+  // rather than the player's own (possibly ring-offset, in coop/FFA) spawn
+  // point -- verified clear of the entrance gate's crossbeam at z 32-33
+  // (WORLD.groundAt resolves onto the beam itself if the ring reaches it),
+  // and one shared landing zone reads better as "the whole crew arriving
+  // together" than four different points scattered by spawn slot anyway.
+  intro: {
+    duration: 6.4,
+    hoverStart: 2.0,       // when the helicopter settles into its hover
+    flyOffStart: 5.0,      // when it peels away again
+    dropStagger: 0.4,      // gap between each crew member's drop
+    dropTime: 1.05,        // one crew member's descent, hover to ground
+    landCenter: { x: 0, y: 0, z: 27 },
+    landRing: 2.6,          // radius of the ring the 4 crew land on
+    rotorSpeed: 26,
+    shotBlendStart: 2.2,   // camera shot A -> shot B blend window
+    shotBlendEnd: 2.8,
+    startPos: { x: -54, y: 25, z: 18 },
+    hoverPos: { x: 3, y: 14, z: 24 },
+    endPos: { x: 50, y: 23, z: -16 }
+  },
   weapons: {
     unarmed: {
       id: 'unarmed', name: 'Bare Knuckles', slot: 1, kind: 'melee',
@@ -6907,7 +6930,11 @@ const UI = (() => {
   }
   function crosshairKick() { kickTimer = 0.09; el.crosshair.classList.add('kick'); }
 
-  function enterGame() {
+  /* Split so the insertion cutscene can hide every menu veil the instant a
+     match starts (otherwise it plays invisibly behind whichever card was
+     showing) while still holding the HUD back until the cutscene actually
+     hands off to real gameplay. */
+  function hideMenus() {
     el.start.classList.add('hidden');
     el.coopLobby.classList.add('hidden');
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
@@ -6915,6 +6942,14 @@ const UI = (() => {
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     hideDowned();
+    // restart()/respawnAttempt() call hideDead() as part of their own reset
+    // sequence, which turns these two on as a side effect independent of
+    // showHud() below -- undo that here so the cutscene starts with a clean
+    // view instead of a stray crosshair/radar floating over it.
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+  }
+  function showHud() {
     el.crosshair.classList.add('on');
     el.weaponName.classList.add('on');
     el.ammo.classList.add('on');
@@ -6922,6 +6957,10 @@ const UI = (() => {
     el.tally.classList.add('on');
     el.radar.classList.add('on');
     showMobileControls(true);
+  }
+  function enterGame() {
+    hideMenus();
+    showHud();
   }
   function showCoopLobby() {
     el.start.classList.add('hidden');
@@ -7152,7 +7191,7 @@ const UI = (() => {
   }
 
   return {
-    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, showCoopLobby, hideCoopLobby,
+    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setJays, setKills, setBoss, hurtFlash, specialFlash, showDead, hideDead,
@@ -7558,6 +7597,7 @@ const GAME = (() => {
     UI.setKills(0);
     INPUT.init(renderer.domElement);
     COOP.init(scene);
+    INTRO.init(scene, camera);
 
     // shared mouse/touch engagement wiring
     INPUT.on('lock', () => { running = true; UI.hidePause(); AUDIO.resume(); });
@@ -7596,7 +7636,7 @@ const GAME = (() => {
       mode = 'single';
       UI.showStart();
     });
-    document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
+    document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(false); });
     document.getElementById('pauseMenuBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
 
     // Options is a veil layered over whichever screen opened it (see UI's
@@ -7647,7 +7687,11 @@ const GAME = (() => {
       mode = 'single';
       COOP.stop();
       INPUT.forceFree('switched on by hand');
-      enter();
+      // Shared by #freeBtn (start menu) and #freeBtn2 (pause card) -- the
+      // pause-card case must never replay the cutscene mid-match, and since
+      // both buttons share this one handler, skip it for both rather than
+      // threading a flag through just to intro the rarer start-menu path.
+      enter(false);
     };
     document.getElementById('freeBtn').addEventListener('click', goFree);
     document.getElementById('freeBtn2').addEventListener('click', goFree);
@@ -7724,14 +7768,29 @@ const GAME = (() => {
     document.addEventListener('pointerdown', advance);
   }
 
-  function enter() {
+  /* What "enter" used to do outright -- now the part that only runs once
+     the insertion cutscene (if any) has finished or been skipped. Menus are
+     already hidden by enter() below by this point, so this only has the
+     HUD left to bring up. */
+  function enterNow() {
     entered = true;
+    UI.showHud();
+    INPUT.requestLock();
+  }
+
+  /* playIntro defaults true (a real match start): restart()/beginCoop() use
+     that default, respawnAttempt() and continueAfterEnd() pass false since
+     neither of those is the match actually starting. Menus are hidden here,
+     immediately, either way -- otherwise the cutscene would play invisibly
+     behind whichever card was showing (player select, coop lobby, dead). */
+  function enter(playIntro) {
     endShown = false;
     AUDIO.start();
     AUDIO.resume();
     AUDIO.stopMenuMusic();
-    UI.enterGame();
-    INPUT.requestLock();
+    UI.hideMenus();
+    if (playIntro === false || typeof INTRO === 'undefined') { enterNow(); return; }
+    INTRO.play(camera, enterNow);
   }
 
   function startSingle() {
@@ -7823,7 +7882,7 @@ const GAME = (() => {
     }
     UI.hideDead();
     PLAYER.reviveAt(ffa ? 100 : 50, true);
-    enter();
+    enter(false);
   }
 
   async function copySignal(e) {
@@ -7882,7 +7941,7 @@ const GAME = (() => {
   function continueAfterEnd() {
     if (!endShown) return;
     endShown = false;
-    enter();
+    enter(false);
   }
 
   function returnToStart() {
@@ -7919,6 +7978,22 @@ const GAME = (() => {
     last = now;
     if (dt > 0.06) dt = 0.06;   // never let a stall throw the player through a wall
     time += dt;
+
+    if (INTRO.active) {
+      // Drained but unused -- no pointer lock is held yet during the intro,
+      // but this keeps any stray delta from piling up and snapping the
+      // camera the instant enterNow() re-requests the lock afterward.
+      INPUT.consumeMouse();
+      INPUT.edgeTurn();
+      INTRO.update(dt);
+      LEVEL.update(dt, time);
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      renderer.clear();
+      renderer.render(scene, INTRO.camera);
+      return;
+    }
 
     // one read of the mouse delta per frame, shared by the look and the sway
     const look = INPUT.consumeMouse();
@@ -8122,6 +8197,29 @@ const CAST = (() => {
     });
     [-1, 1].forEach(s => {
       PRIM.box(0.13, 0.32, 0.07, blue, {
+        pos: [s * 0.245, 0.02, 0.07], rot: [0, 0, s * 0.08],
+        parent: group, outline: 0.022, ray: false
+      });
+    });
+  }
+
+  /* Leather flying cap: same silhouette as the trapper hat, khaki instead
+     of blue so the pilot doesn't read as a reskinned Larry. Placeholder
+     until the reference image comes in -- geometry only, easy to swap the
+     head builder later without touching the roster entry or rig. */
+  function pilotCap(group) {
+    const khaki = MAT.toon(PAL.olive);
+    const khakiDeep = MAT.toon(PAL.oliveDeep);
+    PRIM.sph(0.235, khaki, {
+      pos: [0, 0.235, 0.015], scale: [1.14, 0.58, 0.94],
+      parent: group, outline: 0.028, ray: false
+    });
+    PRIM.box(0.42, 0.05, 0.17, khakiDeep, {
+      pos: [0, 0.155, -0.19], rot: [0.08, 0, 0],
+      parent: group, outline: 0.02, ray: false
+    });
+    [-1, 1].forEach(s => {
+      PRIM.box(0.13, 0.32, 0.07, khaki, {
         pos: [s * 0.245, 0.02, 0.07], rot: [0, 0, s * 0.08],
         parent: group, outline: 0.022, ray: false
       });
@@ -8362,6 +8460,24 @@ const CAST = (() => {
       light.build(group, { ray: false });
       amber.build(group, { ray: false });
       catEars(group, skin);
+      browGoggles(group);
+    },
+
+    /* Placeholder pilot face -- friendly, calm eyes and a small confident
+       smile under the flying cap and goggles. Replace once the reference
+       image is in hand; the rest of the rig (roster entry, INTRO seating)
+       doesn't depend on what this specific builder draws. */
+    pilot(group, skin) {
+      const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
+      const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
+      pilotCap(group);
+      oval(light, -0.095, 0.05, 0.06, 0.048, 0.05);
+      oval(light, 0.095, 0.05, 0.06, 0.048, -0.05);
+      oval(dark, -0.095, 0.045, 0.028, 0.03, 0.05, 0.055);
+      oval(dark, 0.095, 0.045, 0.028, 0.03, -0.05, 0.055);
+      arc(dark, 0, -0.06, 0.075, 0.013, 1.7, Math.PI + 0.28);
+      dark.build(group, { ray: false });
+      light.build(group, { ray: false });
       browGoggles(group);
     }
   };
@@ -8700,6 +8816,23 @@ const CAST = (() => {
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 1.18 }
     },
+    // Not a HERO.DEFINITIONS entry yet -- appears only in the intro
+    // cutscene's cockpit seat. No hand prop while the look is a
+    // placeholder; the reference image will likely dictate one.
+    pilot: {
+      label: 'Pilot',
+      head: 'pilot',
+      noPetals: true,
+      collar: null,
+      hand: null,
+      skin: {
+        face: PAL.cream, limb: PAL.olive, shorts: PAL.oliveDeep,
+        shoe: PAL.charcoal, sole: PAL.charcoal, accent: PAL.mustard,
+        metal: PAL.blueGray
+      },
+      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      voice: { pitch: 1.0 }
+    },
     carrotWarden: {
       label: 'Carrot Warden',
       head: 'carrotWarden',
@@ -8880,6 +9013,294 @@ const CAST = (() => {
   }
 
   return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list, renderPortrait };
+})();
+
+/* ============================== [INTRO] ===============================
+   The insertion cutscene played once at the start of every run/match, in
+   every mode -- a helicopter flies the crew in over the farm and drops all
+   four on rappel lines near wherever the player is about to spawn. Purely
+   local/cosmetic: coop and FFA clients each play it independently with no
+   network sync, the same way a thrown grenade's flight is already
+   local-only in this project (see THROWABLE) -- nothing here needs to
+   agree between peers. */
+const INTRO = (() => {
+  const C = CONFIG.intro;
+  let scene = null;
+  let camera = null;
+  let active = false;
+  let t = 0;
+  let onDone = null;
+
+  let heliRoot = null, rotorHub = null, tailRotorHub = null, pilotRig = null;
+  const crew = [];
+
+  const HEROES = ['scarf', 'chainsaw', 'stoned', 'pyro'];
+
+  const _v1 = new THREE.Vector3();
+  const _v2 = new THREE.Vector3();
+  const _up = new THREE.Vector3(0, 1, 0);
+  const _quat = new THREE.Quaternion();
+  const _shotACam = new THREE.Vector3();
+  const _shotALook = new THREE.Vector3();
+  const _shotBCam = new THREE.Vector3();
+  const _shotBLook = new THREE.Vector3();
+  const _blendLook = new THREE.Vector3();
+
+  function ease(x) { return x * x * (3 - 2 * x); }
+
+  function init(mainScene, mainCamera) {
+    scene = mainScene;
+    camera = new THREE.PerspectiveCamera(
+      CONFIG.render.fov, mainCamera.aspect, CONFIG.render.near, CONFIG.render.far
+    );
+  }
+
+  /* ---------------- helicopter ---------------- */
+  function buildHelicopter() {
+    const g = new THREE.Group();
+    const body = MAT.toon(PAL.olive, { map: TEX.metal() });
+    const bodyDeep = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const glass = MAT.flat(0xBFE3EE, { transparent: true, opacity: 0.55, depthWrite: false, fog: false });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const accent = MAT.toon(PAL.mustard);
+
+    PRIM.sph(1, body, {
+      scale: [1.05, 0.95, 2.1], pos: [0, 0, 0.2], parent: g, outline: 0.05, ray: false
+    });
+    PRIM.sph(0.72, glass, {
+      scale: [1, 1.05, 1.1], pos: [0, 0.12, -1.35], parent: g, outline: 0.03, ray: false
+    });
+    PRIM.box(1.5, 0.4, 2.6, bodyDeep, { pos: [0, -0.62, 0.2], parent: g, outline: 0.04, ray: false });
+    PRIM.box(1.52, 0.16, 0.05, accent, { pos: [0, -0.35, -1.3], parent: g, outline: 0, ray: false });
+
+    PRIM.cyl(0.32, 0.16, 3.6, 10, body, {
+      pos: [0, 0.25, 3.0], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.04, ray: false
+    });
+    PRIM.box(0.08, 0.9, 0.55, bodyDeep, { pos: [0, 0.75, 4.65], parent: g, outline: 0.03, ray: false });
+
+    const tailRotor = new THREE.Group();
+    tailRotor.position.set(0.14, 0.75, 4.75);
+    g.add(tailRotor);
+    [0, Math.PI / 2].forEach(a => {
+      PRIM.box(0.035, 0.5, 0.08, metal, { rot: [0, 0, a], parent: tailRotor, outline: 0.01, ray: false });
+    });
+
+    [-1, 1].forEach(s => {
+      PRIM.cyl(0.07, 0.07, 3.0, 8, metal, {
+        pos: [s * 0.9, -1.15, 0.2], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.02, ray: false
+      });
+      [-0.9, 0.9].forEach(zoff => {
+        PRIM.cyl(0.05, 0.05, 0.55, 6, metal, {
+          pos: [s * 0.9, -0.85, 0.2 + zoff], parent: g, outline: 0.015, ray: false
+        });
+      });
+    });
+
+    PRIM.cyl(0.09, 0.09, 0.5, 8, metal, { pos: [0, 0.85, 0.1], parent: g, outline: 0.02, ray: false });
+    const hub = new THREE.Group();
+    hub.position.set(0, 1.12, 0.1);
+    g.add(hub);
+    PRIM.cyl(0.16, 0.16, 0.14, 10, metal, { parent: hub, outline: 0.02, ray: false });
+    [0, Math.PI / 2].forEach(a => {
+      PRIM.box(0.14, 0.03, 3.6, accent, { rot: [0, a, 0], parent: hub, outline: 0.015, ray: false });
+    });
+
+    return { root: g, rotorHub: hub, tailRotorHub: tailRotor };
+  }
+
+  /* Placeholder look pending the reference image (see CAST.ROSTER.pilot) --
+     everything about how they're seated and cleaned up here is independent
+     of what that builder eventually draws. */
+  function buildPilot() {
+    const built = CAST.build('pilot');
+    built.rig.root.scale.setScalar(0.92);
+    built.rig.root.position.set(0, -0.62, -0.85);
+    return built.rig.root;
+  }
+
+  /* ---------------- crew ---------------- */
+  function buildCrew(landCenter) {
+    HEROES.forEach((heroId, i) => {
+      const castId = HERO.definitions[heroId].castId;
+      const built = CAST.build(castId);
+      const root = built.rig.root;
+      root.visible = false;
+      scene.add(root);
+
+      const angle = (i / HEROES.length) * Math.PI * 2 + Math.PI / 4;
+      const landX = landCenter.x + Math.cos(angle) * C.landRing;
+      const landZ = landCenter.z + Math.sin(angle) * C.landRing;
+      const landY = WORLD.groundAt(landX, landZ, 8);
+
+      const lineMesh = PRIM.cyl(0.02, 0.02, 1, 6, MAT.toon(PAL.creamDim), {
+        parent: scene, outline: 0, ray: false
+      });
+      lineMesh.visible = false;
+
+      crew.push({
+        root, lineMesh,
+        landX, landZ, landY, startY: 0,
+        dropStart: C.hoverStart + i * C.dropStagger,
+        landed: false
+      });
+    });
+  }
+
+  function orientLine(mesh, a, b) {
+    _v1.subVectors(b, a);
+    const len = Math.max(_v1.length(), 0.001);
+    mesh.position.copy(a).addScaledVector(_v1, 0.5);
+    mesh.scale.set(1, len, 1);
+    _quat.setFromUnitVectors(_up, _v1.multiplyScalar(1 / len));
+    mesh.quaternion.copy(_quat);
+  }
+
+  /* ---------------- lifecycle ---------------- */
+  function play(mainCamera, onCompleteFn) {
+    if (active) return;
+    onDone = onCompleteFn;
+    t = 0;
+    active = true;
+
+    camera.aspect = mainCamera.aspect;
+    camera.updateProjectionMatrix();
+
+    const heli = buildHelicopter();
+    heliRoot = heli.root;
+    rotorHub = heli.rotorHub;
+    tailRotorHub = heli.tailRotorHub;
+    heliRoot.position.set(C.startPos.x, C.startPos.y, C.startPos.z);
+    scene.add(heliRoot);
+
+    pilotRig = buildPilot();
+    heliRoot.add(pilotRig);
+
+    buildCrew(C.landCenter);
+    attachSkipListener();
+  }
+
+  let skipHandler = null;
+  function attachSkipListener() {
+    if (skipHandler) return;
+    skipHandler = () => skip();
+    window.addEventListener('pointerdown', skipHandler, { once: true });
+    window.addEventListener('keydown', skipHandler, { once: true });
+  }
+  function detachSkipListener() {
+    if (!skipHandler) return;
+    window.removeEventListener('pointerdown', skipHandler);
+    window.removeEventListener('keydown', skipHandler);
+    skipHandler = null;
+  }
+
+  function skip() { finish(); }
+
+  function disposeGroup(root) {
+    if (!root) return;
+    if (root.parent) root.parent.remove(root);
+    root.traverse(obj => {
+      if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+  }
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    detachSkipListener();
+    disposeGroup(heliRoot);
+    crew.forEach(c => { disposeGroup(c.root); disposeGroup(c.lineMesh); });
+    crew.length = 0;
+    heliRoot = null; rotorHub = null; tailRotorHub = null; pilotRig = null;
+    const cb = onDone; onDone = null;
+    if (cb) cb();
+  }
+
+  /* ---------------- per-frame ---------------- */
+  function updateHelicopterFlight() {
+    if (t < C.hoverStart) {
+      const p = ease(UTIL.clamp(t / C.hoverStart, 0, 1));
+      heliRoot.position.set(
+        UTIL.lerp(C.startPos.x, C.hoverPos.x, p),
+        UTIL.lerp(C.startPos.y, C.hoverPos.y, p),
+        UTIL.lerp(C.startPos.z, C.hoverPos.z, p)
+      );
+    } else if (t < C.flyOffStart) {
+      heliRoot.position.set(C.hoverPos.x, C.hoverPos.y + Math.sin(t * 1.6) * 0.18, C.hoverPos.z);
+    } else {
+      const p = ease(UTIL.clamp((t - C.flyOffStart) / (C.duration - C.flyOffStart), 0, 1));
+      heliRoot.position.set(
+        UTIL.lerp(C.hoverPos.x, C.endPos.x, p),
+        UTIL.lerp(C.hoverPos.y, C.endPos.y, p),
+        UTIL.lerp(C.hoverPos.z, C.endPos.z, p)
+      );
+    }
+  }
+
+  function updateCrew() {
+    for (let i = 0; i < crew.length; i++) {
+      const c = crew[i];
+      if (c.landed || t < c.dropStart) continue;
+      if (!c.root.visible) {
+        c.root.visible = true;
+        c.lineMesh.visible = true;
+        c.startY = heliRoot.position.y - 0.6;
+        c.root.position.set(c.landX, c.startY, c.landZ);
+      }
+      const dropT = UTIL.clamp((t - c.dropStart) / C.dropTime, 0, 1);
+      const y = UTIL.lerp(c.startY, c.landY, ease(dropT));
+      c.root.position.set(c.landX, y, c.landZ);
+      _v1.set(c.landX, heliRoot.position.y - 0.15, c.landZ);
+      _v2.set(c.landX, y + 1.5, c.landZ);
+      orientLine(c.lineMesh, _v1, _v2);
+      if (dropT >= 1) {
+        c.landed = true;
+        c.lineMesh.visible = false;
+        FX.spawnParticle(
+          new THREE.Vector3(c.landX, c.landY + 0.1, c.landZ),
+          new THREE.Vector3(0, 1.5, 0),
+          { map: TEX.puff(PAL.cream), s0: 0.1, s1: 1.1, life: 0.6, grav: -0.5 }
+        );
+      }
+    }
+  }
+
+  function updateCamera() {
+    _shotACam.set(C.hoverPos.x - 22, 9, C.hoverPos.z - 4);
+    _shotALook.copy(heliRoot.position);
+    if (t <= C.shotBlendStart) {
+      camera.position.copy(_shotACam);
+      camera.lookAt(_shotALook);
+      return;
+    }
+    _shotBCam.set(C.hoverPos.x + 9, 3.4, C.hoverPos.z - 6);
+    _shotBLook.set(C.landCenter.x, 1.3, C.landCenter.z);
+    if (t >= C.shotBlendEnd) {
+      camera.position.copy(_shotBCam);
+      camera.lookAt(_shotBLook);
+      return;
+    }
+    const p = ease(UTIL.clamp((t - C.shotBlendStart) / (C.shotBlendEnd - C.shotBlendStart), 0, 1));
+    camera.position.lerpVectors(_shotACam, _shotBCam, p);
+    _blendLook.lerpVectors(_shotALook, _shotBLook, p);
+    camera.lookAt(_blendLook);
+  }
+
+  function update(dt) {
+    if (!active) return;
+    t += dt;
+    if (rotorHub) rotorHub.rotation.y += dt * C.rotorSpeed;
+    if (tailRotorHub) tailRotorHub.rotation.x += dt * C.rotorSpeed * 1.4;
+    updateHelicopterFlight();
+    updateCrew();
+    updateCamera();
+    if (t >= C.duration) finish();
+  }
+
+  return {
+    init, play, skip, update,
+    get active() { return active; },
+    get camera() { return camera; }
+  };
 })();
 
 /* ============================== [HERO] ===============================
