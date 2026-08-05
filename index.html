@@ -209,6 +209,20 @@
   #tally.on{opacity:1;}
   #tally b{color:var(--mustard);font-size:19px;}
 
+  /* ---------- Free-for-all live scoreboard ---------- */
+  #ffaScoreboard{
+    position:fixed;right:26px;top:22px;z-index:30;list-style:none;margin:0;padding:0;
+    opacity:0;transition:opacity .2s ease;transform:rotate(1deg);
+    font:900 12px/1.5 "Rockwell",Georgia,serif;letter-spacing:1px;text-transform:uppercase;
+    text-align:right;
+  }
+  #ffaScoreboard.on{opacity:1;}
+  #ffaScoreboard li{
+    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #ffaScoreboard li.me{color:var(--mustard);}
+  #ffaScoreboard li b{margin-left:6px;}
+
   /* ---------- Mini-boss status ---------- */
   #bossHud{
     position:fixed;left:50%;top:22px;z-index:31;width:min(390px,48vw);
@@ -494,15 +508,66 @@
   }
   #coopRoster li.host{background:var(--mustard);color:var(--ink);}
   #startFarmBtn{margin-top:14px;}
+  #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
+  #matchModeToggle.hidden{display:none;}
+  .mode-toggle-label{font:800 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--rust-deep);width:100%;}
+  .mode-toggle-btn{
+    flex:1 1 200px;padding:9px 12px;text-align:center;cursor:pointer;
+    background:var(--cream);border:3px solid var(--ink);border-radius:10px;
+    font:700 12px/1.3 "Rockwell",Georgia,serif;letter-spacing:.3px;color:var(--ink-soft);
+  }
+  .mode-toggle-btn.active{background:var(--mustard);color:var(--ink);box-shadow:0 3px 0 var(--ink);}
   .coop-status{min-height:19px;margin:15px 0 0;color:var(--ink-soft);font:800 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.5px;}
   .coop-status.good{color:var(--olive);}
   .coop-status.bad{color:var(--rust-deep);}
   .foot{margin:16px 0 0;font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(22,18,15,.45);}
 
   #pause .card{max-width:420px;}
+  #splash .splash-card{max-width:440px;text-align:center;animation:splashIn .5s ease both;}
+  #splash .eyebrow{text-align:center;}
+  #splash h1{margin-bottom:10px;}
+  #splash .foot{margin-top:22px;}
+  @keyframes splashIn{
+    from{opacity:0;transform:rotate(-.6deg) translateY(10px) scale(.97);}
+    to{opacity:1;transform:rotate(-.6deg) translateY(0) scale(1);}
+  }
   #endGame .alt{display:block;}
+  #matchOverScores{list-style:none;margin:6px 0 22px;padding:0;display:grid;gap:8px;}
+  #matchOverScores li{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:9px 14px;border-radius:12px;background:rgba(22,18,15,.06);
+    font:800 13px/1 "Rockwell",Georgia,serif;letter-spacing:.4px;color:var(--ink-soft);
+  }
+  #matchOverScores li.winner{background:var(--mustard);color:var(--ink);}
+  #matchOverScores li b{font-size:16px;}
   #coopLobby .card{max-width:620px;}
   #coopLobby .alt{display:block;}
+
+  #options .options-card{max-width:520px;max-height:86vh;overflow-y:auto;}
+  .opt-section{margin:18px 0;}
+  .opt-heading{
+    margin:0 0 10px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
+    text-transform:uppercase;color:var(--rust-deep);border-bottom:2px dashed rgba(22,18,15,.2);
+    padding-bottom:6px;
+  }
+  .opt-row{display:flex;align-items:center;gap:12px;margin:10px 0;font-size:13.5px;color:var(--ink-soft);}
+  .opt-row span{flex:0 0 84px;font-weight:700;}
+  .opt-row input[type="range"]{flex:1 1 auto;accent-color:var(--rust);}
+  .opt-row b{flex:0 0 42px;text-align:right;font:800 12px/1 "Rockwell",Georgia,serif;color:var(--ink);}
+  .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:7px;}
+  .opt-controls li{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:13px;color:var(--ink-soft);
+  }
+  .key-btn{
+    min-width:88px;padding:6px 10px;text-align:center;cursor:pointer;
+    background:var(--peach);border:3px solid var(--ink);border-radius:8px;
+    font:700 12px/1 "Rockwell",Georgia,serif;letter-spacing:.4px;color:var(--ink);
+    box-shadow:0 3px 0 var(--ink);
+  }
+  .key-btn:hover{background:var(--cream);}
+  .key-btn.listening{background:var(--mustard);animation:keyPulse 1s ease-in-out infinite;}
+  @keyframes keyPulse{50%{opacity:.6;}}
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -542,6 +607,7 @@
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
+  <ul id="ffaScoreboard" aria-live="polite"></ul>
   <div id="bossHud" aria-live="polite">
     <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar"><i id="bossHudFill"></i></div>
@@ -580,9 +646,17 @@
   <div id="scratches"></div>
   <div id="vignette"></div>
 
-  <div id="start" class="veil">
+  <div id="splash" class="veil">
+    <div class="card splash-card">
+      <p class="eyebrow">Lobster Labz presents</p>
+      <h1>The Withered<br/>Farm<span>A pitchfork, a flashlight, and the corn</span></h1>
+      <p class="foot" id="splashHint">Click or press any key to continue</p>
+    </div>
+  </div>
+
+  <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.07.05 Pause Menu</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.09</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
       <ul class="keys">
@@ -602,8 +676,9 @@
       <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
       <div id="modeChoices">
         <button class="go" id="enterBtn">Single-player →</button>
-        <button class="go mode-coop" id="coopBtn">Online co-op →</button>
+        <button class="go mode-coop" id="coopBtn">Online multiplayer →</button>
       </div>
+      <button class="alt" id="startOptionsBtn">Options</button>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Choose a mode to begin</p>
     </div>
@@ -614,6 +689,11 @@
       <p class="eyebrow">Online co-op &nbsp;·&nbsp; up to 4 players</p>
       <h1>Farmhands<span>One farm, four screens</span></h1>
       <p class="sub" id="coopInstructions">Host a room or join with a teammate's six-character code. The host starts the farm whenever the room is ready — no need to wait for a full room.</p>
+      <div id="matchModeToggle">
+        <span class="mode-toggle-label">Hosting mode</span>
+        <button class="mode-toggle-btn active" id="modeCoopBtn" data-mode="coop">Co-op · fight the farm together</button>
+        <button class="mode-toggle-btn" id="modeFfaBtn" data-mode="ffa">Free-for-all · everyone for themselves</button>
+      </div>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
         <button class="go mode-coop" id="joinBtn">Join room →</button>
@@ -652,6 +732,29 @@
     </div>
   </div>
 
+  <div id="options" class="veil hidden">
+    <div class="card options-card">
+      <p class="eyebrow">Options</p>
+      <h1>Farm<br/>Settings<span>Sound, display, and controls</span></h1>
+      <div class="opt-section">
+        <p class="opt-heading">Sound</p>
+        <label class="opt-row"><span>Master</span><input type="range" id="optMaster" min="0" max="100" step="1" /><b id="optMasterVal"></b></label>
+        <label class="opt-row"><span>Effects</span><input type="range" id="optSfx" min="0" max="100" step="1" /><b id="optSfxVal"></b></label>
+        <label class="opt-row"><span>Music</span><input type="range" id="optMusic" min="0" max="100" step="1" /><b id="optMusicVal"></b></label>
+      </div>
+      <div class="opt-section">
+        <p class="opt-heading">Display</p>
+        <label class="opt-row"><span>Brightness</span><input type="range" id="optBrightness" min="60" max="140" step="1" /><b id="optBrightnessVal"></b></label>
+      </div>
+      <div class="opt-section">
+        <p class="opt-heading">Controls</p>
+        <ul id="optControlsList" class="opt-controls"></ul>
+        <button class="alt" id="optResetControls">Reset controls to default</button>
+      </div>
+      <button class="go compact" id="optionsBackBtn">Back →</button>
+    </div>
+  </div>
+
   <div id="pause" class="veil hidden">
     <div class="card">
       <p class="eyebrow">Paused</p>
@@ -659,6 +762,7 @@
       <p class="sub" id="pauseHint">Click anywhere to grab the mouse again and get back to the farm.</p>
       <button class="go" id="resumeBtn">Back to it →</button>
       <button class="go compact" id="pauseMenuBtn">Main menu</button>
+      <button class="alt" id="pauseOptionsBtn">Options</button>
       <button class="alt" id="freeBtn2">Mouse won't lock? Use free-look instead</button>
     </div>
   </div>
@@ -679,6 +783,15 @@
       <p class="sub" id="endGameSummary">The Carrot Warden is down. The farm has gone quiet.</p>
       <button class="go" id="continueBtn">Keep exploring →</button>
       <button class="alt" id="startOverBtn">Return to start screen</button>
+    </div>
+  </div>
+
+  <div id="matchOver" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow" id="matchOverEyebrow">Free-for-all</p>
+      <h1 id="matchOverHeadline">Farm's<br/>Cleared<span id="matchOverSub">Someone's the last farmhand standing</span></h1>
+      <ul id="matchOverScores"></ul>
+      <button class="go" id="matchOverBackBtn">Back to lobby →</button>
     </div>
   </div>
 
@@ -792,6 +905,14 @@ const CONFIG = {
     // A downed coop farmhand waits this out and rejoins in place — the shared
     // enemies, pickups, and kill count are never reset by one player dying.
     respawnDelay: 8,
+    // Free-for-all: no shared PvE world to protect, so a much shorter
+    // respawn, and the match ends the moment someone reaches the kill target.
+    ffaRespawnDelay: 3,
+    ffaKillTarget: 15,
+    ffaHeadMultiplier: 2.0,
+    // Respawns land on a ring around startPos at a re-randomized angle each
+    // time rather than a fixed per-slot spot, same mechanic coop spawns use.
+    ffaSpawnRing: 6,
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   },
   weapons: {
@@ -853,7 +974,7 @@ const CONFIG = {
     boilFPS: 12, weaponStepFPS: 15,
     boilAmount: 0.014
   },
-  audio: { master: 0.5, wind: 0.5, sfx: 0.85 },
+  audio: { master: 0.5, wind: 0.5, sfx: 0.85, music: 0.6 },
   input: {
     // free-look fallback: how close to the window edge starts a steady turn,
     // as a fraction of the viewport, and how fast that turn goes
@@ -886,6 +1007,79 @@ const CONFIG = {
   }
 };
 const PAL = CONFIG.palette;
+
+/* ============================== [SETTINGS] ============================
+   The project's first localStorage use — before this, every option (there
+   weren't any) reset on reload. Deliberately split into load() (safe to run
+   immediately, touches only localStorage) and applyAll() (touches AUDIO/
+   INPUT, so it can't run until those modules exist further down the file —
+   GAME.init() calls it once everything is ready). */
+const SETTINGS = (() => {
+  const STORAGE_KEY = 'wf-settings-v1';
+  const DEFAULTS = { master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music, brightness: 100, keymap: {} };
+  let current = Object.assign({}, DEFAULTS);
+
+  function load() {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      current = Object.assign({}, DEFAULTS, parsed, { keymap: Object.assign({}, parsed.keymap || {}) });
+    } catch (err) { /* corrupt or blocked storage — defaults are fine */ }
+  }
+  function save() {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(current)); } catch (err) {}
+  }
+
+  function applyBrightness() {
+    const el = document.getElementById('app');
+    if (el) el.style.filter = current.brightness === 100 ? '' : 'brightness(' + (current.brightness / 100) + ')';
+  }
+
+  function applyAll() {
+    if (typeof AUDIO !== 'undefined') {
+      AUDIO.setMasterVolume(current.master);
+      AUDIO.setSfxVolume(current.sfx);
+      AUDIO.setMusicVolume(current.music);
+    }
+    if (typeof INPUT !== 'undefined') INPUT.applyBindings(current.keymap);
+    applyBrightness();
+  }
+
+  function setMaster(v) { current.master = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setMasterVolume(v); }
+  function setSfx(v) { current.sfx = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setSfxVolume(v); }
+  function setMusic(v) { current.music = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setMusicVolume(v); }
+  function setBrightness(v) { current.brightness = v; save(); applyBrightness(); }
+
+  /* current.keymap is just a cached snapshot of INPUT's live bindings for
+     persistence — INPUT.getBindings() stays the source of truth, this never
+     gets hand-patched. */
+  function setBinding(action, code) {
+    if (typeof INPUT === 'undefined') return { ok: false };
+    const result = INPUT.rebind(action, code);
+    if (result.ok) { current.keymap = INPUT.getBindings(); save(); }
+    return result;
+  }
+  function resetBindings() {
+    if (typeof INPUT !== 'undefined') {
+      INPUT.resetKeymap();
+      current.keymap = INPUT.getBindings();
+    } else {
+      current.keymap = {};
+    }
+    save();
+  }
+
+  load();
+
+  return {
+    applyAll, setMaster, setSfx, setMusic, setBrightness, setBinding, resetBindings,
+    get master() { return current.master; },
+    get sfx() { return current.sfx; },
+    get music() { return current.music; },
+    get brightness() { return current.brightness; }
+  };
+})();
 
 /* =============================== [UTIL] ============================== */
 const UTIL = (() => {
@@ -3898,11 +4092,12 @@ const FX = (() => {
 /* ============================== [AUDIO] ============================== */
 /* Everything is synthesised. No files, no external assets, no licences. */
 const AUDIO = (() => {
-  let ctx = null, master = null, sfxBus = null, windBus = null;
+  let ctx = null, master = null, sfxBus = null, windBus = null, musicBus = null;
   let noiseBuf = null;
   let started = false;
   let ambientTimer = 0, ambientNext = 3;
   let windLfo = null;
+  let musicEl = null, musicSource = null;
 
   function makeNoise() {
     const len = ctx.sampleRate * 2;
@@ -3927,7 +4122,16 @@ const AUDIO = (() => {
     master.connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = CONFIG.audio.sfx; sfxBus.connect(master);
     windBus = ctx.createGain(); windBus.gain.value = 0; windBus.connect(master);
+    musicBus = ctx.createGain(); musicBus.gain.value = CONFIG.audio.music; musicBus.connect(master);
     noiseBuf = makeNoise();
+
+    // --- menu theme, streamed rather than decoded whole so a multi-minute
+    // compressed file doesn't have to load into an AudioBuffer up front ---
+    musicEl = new Audio('assets/menu-theme.mp3');
+    musicEl.loop = true;
+    musicEl.preload = 'auto';
+    musicSource = ctx.createMediaElementSource(musicEl);
+    musicSource.connect(musicBus);
 
     // --- looping outdoor wind ---
     const src = ctx.createBufferSource();
@@ -3952,6 +4156,44 @@ const AUDIO = (() => {
 
   function resume() { if (ctx && ctx.state === 'suspended') ctx.resume(); }
   function suspend() { /* keep ambience running while paused; it reads better */ }
+
+  /* Lazily brings up the whole engine (not just music) the first time the
+     menu wants to play something — GAME.enter() also calls start(), but
+     that only happens once the player is already past the menu, and the
+     menu needs its theme playing before that. start() is idempotent. */
+  function playMenuMusic() {
+    start();
+    resume();
+    if (!musicEl || !musicEl.paused) return;
+    const p = musicEl.play();
+    // Browsers reject this without a preceding user gesture; the caller
+    // retries on the next real click/keydown rather than surfacing an error.
+    if (p && p.catch) p.catch(() => {});
+  }
+  function stopMenuMusic() {
+    if (musicEl && !musicEl.paused) musicEl.pause();
+  }
+  function setMusicVolume(v) {
+    const clamped = UTIL.clamp(v, 0, 1);
+    CONFIG.audio.music = clamped;
+    if (musicBus) musicBus.gain.value = clamped;
+  }
+  function setMasterVolume(v) {
+    const clamped = UTIL.clamp(v, 0, 1);
+    CONFIG.audio.master = clamped;
+    if (master) master.gain.value = clamped;
+  }
+  function setSfxVolume(v) {
+    const clamped = UTIL.clamp(v, 0, 1);
+    CONFIG.audio.sfx = clamped;
+    CONFIG.audio.wind = clamped;
+    if (sfxBus) sfxBus.gain.value = clamped;
+    // Wind ambience shares the SFX slider rather than getting a fourth one.
+    // windBus.gain is also driven by a continuous gust-swell LFO (see
+    // start()); setting .value here just moves the base the LFO modulates
+    // around, so this doesn't fight that modulation.
+    if (windBus) windBus.gain.value = clamped * 0.5;
+  }
 
   function env(node, t0, a, d, peak) {
     node.gain.setValueAtTime(0.0001, t0);
@@ -4243,6 +4485,7 @@ const AUDIO = (() => {
     start, resume, suspend, update,
     gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
+    playMenuMusic, stopMenuMusic, setMusicVolume, setMasterVolume, setSfxVolume,
     get running() { return started; }
   };
 })();
@@ -4303,6 +4546,66 @@ const INPUT = (() => {
     'Digit3': 'slot3', 'Numpad3': 'slot3',
     'Digit4': 'slot4', 'Numpad4': 'slot4'
   };
+  // Snapshot of the defaults, taken before anything can rebind KEYMAP, so
+  // Options -> Controls has something to reset back to.
+  const DEFAULT_KEYMAP = Object.assign({}, KEYMAP);
+  // Arrows/numpad/right-shift stay bound no matter what the player rebinds,
+  // so movement and weapon slots can never end up fully unreachable.
+  const PERMANENT_CODES = new Set([
+    'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftRight',
+    'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'
+  ]);
+  const REBINDABLE_ACTIONS = [
+    'forward', 'back', 'left', 'right', 'jump', 'sprint',
+    'reload', 'lantern', 'melee', 'throwable', 'useJays',
+    'slot1', 'slot2', 'slot3', 'slot4'
+  ];
+
+  function primaryCodeFor(action) {
+    for (const code in KEYMAP) {
+      if (KEYMAP[code] === action && !PERMANENT_CODES.has(code)) return code;
+    }
+    return null;
+  }
+  function codeLabel(code) {
+    if (!code) return '—';
+    if (code.indexOf('Key') === 0) return code.slice(3);
+    if (code.indexOf('Digit') === 0) return code.slice(5);
+    if (code.indexOf('Numpad') === 0) return 'Num' + code.slice(6);
+    const names = {
+      Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'Shift',
+      ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+      ControlLeft: 'Ctrl', ControlRight: 'Ctrl', AltLeft: 'Alt', AltRight: 'Alt', Escape: 'Esc'
+    };
+    return names[code] || code;
+  }
+  /* Returns { ok, bumpedAction } — bumpedAction is set when this code was
+     already bound to a different rebindable action, so the caller (the
+     options UI) can tell the player what just got knocked loose. */
+  function rebind(action, code) {
+    if (REBINDABLE_ACTIONS.indexOf(action) === -1 || !code || PERMANENT_CODES.has(code)) return { ok: false };
+    const bumpedAction = (KEYMAP[code] && KEYMAP[code] !== action) ? KEYMAP[code] : null;
+    if (KEYMAP[code]) delete KEYMAP[code];
+    const oldCode = primaryCodeFor(action);
+    if (oldCode && oldCode !== code) delete KEYMAP[oldCode];
+    KEYMAP[code] = action;
+    return { ok: true, bumpedAction: bumpedAction };
+  }
+  function resetKeymap() {
+    Object.keys(KEYMAP).forEach(k => delete KEYMAP[k]);
+    Object.assign(KEYMAP, DEFAULT_KEYMAP);
+  }
+  function getBindings() {
+    const out = {};
+    REBINDABLE_ACTIONS.forEach(a => { out[a] = primaryCodeFor(a); });
+    return out;
+  }
+  /* Applies a saved {action: code} map (from settings persistence) on top
+     of the defaults, reusing rebind()'s own conflict handling. */
+  function applyBindings(map) {
+    if (!map) return;
+    REBINDABLE_ACTIONS.forEach(a => { if (map[a]) rebind(a, map[a]); });
+  }
 
   function on(evt, fn) { (listeners[evt] || (listeners[evt] = [])).push(fn); }
   function emit(evt, a) { (listeners[evt] || []).forEach(f => f(a)); }
@@ -4652,6 +4955,7 @@ const INPUT = (() => {
   return {
     init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
     edgeTurn, forceFree: goFree, tryLockAgain,
+    rebind, resetKeymap, getBindings, applyBindings, codeLabel,
     get locked() { return locked; },
     get engaged() { return engaged; },
     get mode() { return mode; },
@@ -5521,7 +5825,16 @@ const WEAPON = (() => {
       const hit = FX.trace(_o, _t, d.range);
       if (hit) {
         if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
-        if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, shotMeta)) {
+        // Only reachable for the host's own shots — a join never gets here
+        // (see the relayRemote branch above), and single-player never has a
+        // playerHit proxy to find in the first place.
+        const playerHit = hit.object.userData && hit.object.userData.playerHit;
+        if (playerHit && COOP.matchMode === 'ffa') {
+          const falloff = UTIL.clamp(1 - hit.distance / d.range, 0.22, 1);
+          const head = playerHit.zone === 'head' ? CONFIG.multiplayer.ffaHeadMultiplier : 1;
+          COOP.sendPlayerHit(playerHit.id, d.damage * falloff * head, hit.point.toArray());
+          FX.impact(hit.point, _t.clone().negate(), { big: playerHit.zone === 'head', scale: d.pellets === 1 ? 0.75 : 1 });
+        } else if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, shotMeta)) {
           const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
                              : _t.clone().negate();
           if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
@@ -6131,6 +6444,7 @@ const UI = (() => {
   let externalRadarContacts = [];
 
   function init() {
+    el.splash = document.getElementById('splash');
     el.start = document.getElementById('start');
     el.coopLobby = document.getElementById('coopLobby');
     el.playerSelect = document.getElementById('playerSelect');
@@ -6143,8 +6457,21 @@ const UI = (() => {
     el.copySignal = document.getElementById('copySignal');
     el.coopStatus = document.getElementById('coopStatus');
     el.coopRoster = document.getElementById('coopRoster');
+    el.matchModeToggle = document.getElementById('matchModeToggle');
+    el.modeCoopBtn = document.getElementById('modeCoopBtn');
+    el.modeFfaBtn = document.getElementById('modeFfaBtn');
     el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
+    el.options = document.getElementById('options');
+    el.optMaster = document.getElementById('optMaster');
+    el.optMasterVal = document.getElementById('optMasterVal');
+    el.optSfx = document.getElementById('optSfx');
+    el.optSfxVal = document.getElementById('optSfxVal');
+    el.optMusic = document.getElementById('optMusic');
+    el.optMusicVal = document.getElementById('optMusicVal');
+    el.optBrightness = document.getElementById('optBrightness');
+    el.optBrightnessVal = document.getElementById('optBrightnessVal');
+    el.optControlsList = document.getElementById('optControlsList');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
     el.weaponName = document.getElementById('weaponName');
@@ -6167,6 +6494,11 @@ const UI = (() => {
     el.shieldFill = document.getElementById('shieldFill');
     el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
+    el.ffaScoreboard = document.getElementById('ffaScoreboard');
+    el.matchOver = document.getElementById('matchOver');
+    el.matchOverEyebrow = document.getElementById('matchOverEyebrow');
+    el.matchOverSub = document.getElementById('matchOverSub');
+    el.matchOverScores = document.getElementById('matchOverScores');
     el.killNum = document.getElementById('killNum');
     el.bossHud = document.getElementById('bossHud');
     el.bossHudName = document.getElementById('bossHudName');
@@ -6256,6 +6588,47 @@ const UI = (() => {
     el.shieldFill.style.width = (pct * 100).toFixed(1) + '%';
   }
   function setKills(n) { el.killNum.textContent = n; }
+
+  function ffaRoster(scores) {
+    if (typeof COOP === 'undefined') return [];
+    return COOP.roster.map(p => ({
+      id: p.id,
+      label: (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId,
+      score: (scores && scores[p.id]) || 0
+    })).sort((a, b) => b.score - a.score);
+  }
+  function updateFfaScoreboard(scores) {
+    if (!el.ffaScoreboard) return;
+    const myId = typeof COOP !== 'undefined' ? COOP.localId : null;
+    el.ffaScoreboard.innerHTML = ffaRoster(scores).map(r =>
+      '<li' + (r.id === myId ? ' class="me"' : '') + '>' + r.label + '<b>' + r.score + '</b></li>'
+    ).join('');
+  }
+  function showFfaScoreboard() { if (el.ffaScoreboard) el.ffaScoreboard.classList.add('on'); }
+  function hideFfaScoreboard() {
+    if (el.ffaScoreboard) { el.ffaScoreboard.classList.remove('on'); el.ffaScoreboard.innerHTML = ''; }
+  }
+
+  function showMatchOver(winnerId, scores) {
+    if (!el.matchOver) return;
+    const myId = typeof COOP !== 'undefined' ? COOP.localId : null;
+    const won = winnerId && winnerId === myId;
+    if (el.matchOverSub) el.matchOverSub.textContent = won ? 'You cleared the farm' : 'Someone else cleared the farm';
+    if (el.matchOverScores) {
+      el.matchOverScores.innerHTML = ffaRoster(scores).map(r =>
+        '<li' + (r.id === winnerId ? ' class="winner"' : '') + '>' + r.label + (r.id === winnerId ? ' — Winner' : '') + '<b>' + r.score + '</b></li>'
+      ).join('');
+    }
+    hideFfaScoreboard();
+    el.matchOver.classList.remove('hidden');
+    el.crosshair.classList.remove('on');
+    el.radar.classList.remove('on');
+    if (el.bossHud) el.bossHud.classList.remove('on');
+    showMobileControls(false);
+  }
+  function hideMatchOver() {
+    if (el.matchOver) el.matchOver.classList.add('hidden');
+  }
 
   function setBoss(active, hp, maxHp, state) {
     if (!el.bossHud) return;
@@ -6469,6 +6842,9 @@ const UI = (() => {
     if (el.signalOutputLabel) el.signalOutputLabel.hidden = !showOutput;
     if (el.signalOutput) el.signalOutput.hidden = !showOutput;
     if (el.copySignal) el.copySignal.hidden = !showOutput;
+    // The mode toggle only makes sense before a room exists — once a role
+    // is chosen the match type is locked in for that room's lifetime.
+    if (el.matchModeToggle) el.matchModeToggle.classList.toggle('hidden', !!role);
     if (!role) {
       if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate\'s six-character code.';
       if (el.signalAction) {
@@ -6481,10 +6857,11 @@ const UI = (() => {
     }
     const host = role === 'host';
     const running = typeof COOP !== 'undefined' && COOP.matchRunning;
+    const ffa = typeof COOP !== 'undefined' && COOP.matchMode === 'ffa';
     if (el.coopInstructions) {
       el.coopInstructions.textContent = host
-        ? (running ? 'The farm is running.' : 'Share the room code below. Start whenever you\'re ready — more farmhands can still join after you start.')
-        : (running ? 'Connected — jumping into the farm…' : 'Connected. Waiting for the host to start the farm…');
+        ? (running ? (ffa ? 'The farm-off is running.' : 'The farm is running.') : 'Share the room code below. Start whenever you\'re ready — more farmhands can still join after you start.')
+        : (running ? 'Connected — jumping into the farm…' : 'Connected. Waiting for the host to start ' + (ffa ? 'the free-for-all…' : 'the farm…'));
     }
     if (el.signalInputLabel) el.signalInputLabel.textContent = 'Host room code';
     if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Share this room code';
@@ -6526,9 +6903,17 @@ const UI = (() => {
   function hideEndGame() {
     if (el.endGame) el.endGame.classList.add('hidden');
   }
+  function showSplash() {
+    if (el.splash) el.splash.classList.remove('hidden');
+  }
+  function hideSplash() {
+    if (el.splash) el.splash.classList.add('hidden');
+  }
   function showStart() {
+    hideSplash();
     hideEndGame();
     hideCoopLobby();
+    if (typeof AUDIO !== 'undefined') AUDIO.playMenuMusic();
     if (el.signalInput) el.signalInput.value = '';
     setSignalOutput('');
     setCoopLobbyStep(null, 'idle');
@@ -6573,6 +6958,48 @@ const UI = (() => {
   }
   function hideLoading() { el.loading.classList.add('hidden'); }
 
+  /* Options is a veil layered on top of whatever opened it (start or pause)
+     rather than swapping screens — every .veil background is ~95% opaque,
+     so the screen underneath is fully covered and just reappears untouched
+     once options closes. No "return to X" state to track. */
+  const CONTROL_LABELS = {
+    forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
+    jump: 'Jump', sprint: 'Sprint', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
+    throwable: 'Throw Grenade', useJays: 'Use Jays',
+    slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4'
+  };
+  let rebindingAction = null;
+  function renderControlsList() {
+    if (!el.optControlsList || typeof INPUT === 'undefined') return;
+    const bindings = INPUT.getBindings();
+    el.optControlsList.innerHTML = Object.keys(bindings).map(action => {
+      const listening = rebindingAction === action;
+      const label = listening ? 'Press a key…' : INPUT.codeLabel(bindings[action]);
+      return '<li><span>' + (CONTROL_LABELS[action] || action) + '</span>' +
+        '<button class="key-btn' + (listening ? ' listening' : '') + '" data-rebind="' + action + '">' + label + '</button></li>';
+    }).join('');
+  }
+  function setRebinding(action) {
+    rebindingAction = action;
+    renderControlsList();
+  }
+  function syncOptionsUI() {
+    if (el.optMaster) { const v = Math.round(SETTINGS.master * 100); el.optMaster.value = v; el.optMasterVal.textContent = v + '%'; }
+    if (el.optSfx) { const v = Math.round(SETTINGS.sfx * 100); el.optSfx.value = v; el.optSfxVal.textContent = v + '%'; }
+    if (el.optMusic) { const v = Math.round(SETTINGS.music * 100); el.optMusic.value = v; el.optMusicVal.textContent = v + '%'; }
+    if (el.optBrightness) { el.optBrightness.value = SETTINGS.brightness; el.optBrightnessVal.textContent = SETTINGS.brightness + '%'; }
+    rebindingAction = null;
+    renderControlsList();
+  }
+  function showOptions() {
+    if (el.options) el.options.classList.remove('hidden');
+    syncOptionsUI();
+  }
+  function hideOptions() {
+    if (el.options) el.options.classList.add('hidden');
+    rebindingAction = null;
+  }
+
   let grainStep = 0, grainAcc = 0;
   function update(dt) {
     if (kickTimer > 0) {
@@ -6616,7 +7043,10 @@ const UI = (() => {
     setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
-    showStart, showFallback, hideFallback,
+    showStart, showSplash, hideSplash, showFallback, hideFallback,
+    showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding,
+    updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
+    get rebindingAction() { return rebindingAction; },
     showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
@@ -6956,6 +7386,7 @@ const GAME = (() => {
     if (!window.THREE) { fail('three.js failed to load. Check the network or vendor three.min.js locally.'); return; }
 
     UI.init();
+    SETTINGS.applyAll();
     CONSUMABLE.sync();
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -7024,6 +7455,8 @@ const GAME = (() => {
     document.getElementById('chainsawHeroBtn').addEventListener('click', () => startSingleHero('chainsaw'));
     document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
+    document.getElementById('modeCoopBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('coop'); });
+    document.getElementById('modeFfaBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('ffa'); });
     document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
     document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
@@ -7040,12 +7473,49 @@ const GAME = (() => {
     });
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(); });
     document.getElementById('pauseMenuBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
+
+    // Options is a veil layered over whichever screen opened it (see UI's
+    // showOptions/hideOptions), so both entry points just toggle it directly.
+    document.getElementById('startOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
+    document.getElementById('pauseOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
+    document.getElementById('optionsBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideOptions(); });
+    document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('optMusic').addEventListener('input', e => { SETTINGS.setMusic(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('optBrightness').addEventListener('input', e => { SETTINGS.setBrightness(Number(e.target.value)); UI.syncOptionsUI(); });
+    document.getElementById('optControlsList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-rebind]');
+      if (btn) UI.setRebinding(btn.getAttribute('data-rebind'));
+    });
+    document.getElementById('optResetControls').addEventListener('click', e => {
+      e.stopPropagation();
+      SETTINGS.resetBindings();
+      UI.renderControlsList();
+    });
+    // Capture phase + stopPropagation, ahead of INPUT's own window-level
+    // bubble-phase keydown listener, so a key pressed to rebind an action
+    // never also fires that key's *current* game action on its way through.
+    document.addEventListener('keydown', e => {
+      const action = UI.rebindingAction;
+      if (!action) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.code === 'Escape') { UI.setRebinding(null); return; }
+      const result = SETTINGS.setBinding(action, e.code);
+      UI.setRebinding(null);
+      if (!result.ok) UI.toast('That key can’t be used there.', 1.4);
+    }, true);
     document.getElementById('againBtn').addEventListener('click', e => {
       e.stopPropagation();
       if (mode === 'coop') respawnAttempt(); else restart();
     });
     document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
     document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
+    document.getElementById('matchOverBackBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      UI.hideMatchOver();
+      returnToStart();
+    });
     // manual escape hatches, in case the automatic detection ever misses
     const goFree = e => {
       e.stopPropagation();
@@ -7070,6 +7540,14 @@ const GAME = (() => {
       UI.setCoopStatus(message || 'Disconnected from the room.', 'bad');
     });
     COOP.on('error', message => UI.setCoopStatus(message || 'Co-op connection error.', 'bad'));
+    COOP.on('matchOver', (winnerId, scores) => {
+      running = false;
+      entered = false;
+      INPUT.releaseLock();
+      UI.hideFfaScoreboard();
+      UI.hideDead();
+      UI.showMatchOver(winnerId, scores);
+    });
 
     // lantern toggle for the dim corners of the barn
     const lampKey = new THREE.PointLight(0xFFE0A8, 0, 9, 2);
@@ -7084,9 +7562,41 @@ const GAME = (() => {
     onResize();
     if (UI.el.loading) UI.el.loading.textContent = 'Inking the farm…';
     UI.hideLoading();
+    armSplash();
+    // The splash can auto-advance on its own timer with no click/keypress
+    // yet, so the menu music's first play() attempt may land before any
+    // user gesture and get silently blocked. Catch the player's actual
+    // first interaction, whenever it comes, and retry once.
+    const retryMenuMusic = () => {
+      document.removeEventListener('pointerdown', retryMenuMusic);
+      document.removeEventListener('keydown', retryMenuMusic);
+      AUDIO.playMenuMusic();
+    };
+    document.addEventListener('pointerdown', retryMenuMusic);
+    document.addEventListener('keydown', retryMenuMusic);
 
     last = performance.now();
     requestAnimationFrame(loop);
+  }
+
+  /* By the time #loading hides, every asset it was gating is already
+     loaded, so the splash's own minimum-display timer is the only thing
+     that can still be "waiting" — a click or keypress skips straight past
+     it into the mode-select screen. */
+  function armSplash() {
+    UI.showSplash();
+    let advanced = false;
+    const advance = () => {
+      if (advanced) return;
+      advanced = true;
+      clearTimeout(timer);
+      document.removeEventListener('keydown', advance);
+      document.removeEventListener('pointerdown', advance);
+      UI.showStart();
+    };
+    const timer = setTimeout(advance, 1800);
+    document.addEventListener('keydown', advance);
+    document.addEventListener('pointerdown', advance);
   }
 
   function enter() {
@@ -7094,6 +7604,7 @@ const GAME = (() => {
     endShown = false;
     AUDIO.start();
     AUDIO.resume();
+    AUDIO.stopMenuMusic();
     UI.enterGame();
     INPUT.requestLock();
   }
@@ -7111,11 +7622,18 @@ const GAME = (() => {
     restart();
   }
 
+  function setLobbyMode(m) {
+    COOP.setMatchMode(m);
+    if (UI.el.modeCoopBtn) UI.el.modeCoopBtn.classList.toggle('active', m !== 'ffa');
+    if (UI.el.modeFfaBtn) UI.el.modeFfaBtn.classList.toggle('active', m === 'ffa');
+  }
+
   function openCoopLobby() {
     mode = 'coop';
     running = false;
     entered = false;
     COOP.openLobby();
+    setLobbyMode('coop');
     UI.showCoopLobby();
     UI.setCoopStatus('Choose Host room or Join room to begin.');
   }
@@ -7123,30 +7641,47 @@ const GAME = (() => {
   function beginCoop() {
     mode = 'coop';
     HERO.resetRun();
-    // Spread the 4 coop slots around startPos on a small ring so simultaneous
-    // spawns/respawns don't stack on top of each other.
-    const ring = CONFIG.player.coopSpawnRing;
-    const angle = (COOP.spawnSlotIndex || 0) / 4 * Math.PI * 2;
+    const ffa = COOP.matchMode === 'ffa';
+    // Spread players around startPos on a ring so simultaneous spawns/
+    // respawns don't stack — coop uses a fixed angle per slot, FFA
+    // re-randomizes it (also redone on every respawn, see respawnAttempt()).
+    const ring = ffa ? CONFIG.multiplayer.ffaSpawnRing : CONFIG.player.coopSpawnRing;
+    const angle = ffa ? UTIL.rng(0, Math.PI * 2) : (COOP.spawnSlotIndex || 0) / 4 * Math.PI * 2;
     PLAYER.setSpawnOffset(Math.cos(angle) * ring, Math.sin(angle) * ring);
     PLAYER.respawn();
+    if (ffa) {
+      // Players only — ENEMY.update() already skips its whole AI loop in
+      // FFA on every client, this just hides what's already inert.
+      ENEMY.disableForFfa();
+      UI.showFfaScoreboard();
+      UI.updateFfaScoreboard(COOP.scores);
+    }
     UI.setCoopLobbyStep(COOP.role, 'connected');
     UI.setCoopStatus('Connected. Starting the farm…', 'good');
     enter();
   }
 
-  /* Coop-only "Get back up": gated by the same respawn window shown in the
-     dead card's countdown, but doesn't touch ENEMY/WEAPON/PICKUP/kills —
-     those stay host-authoritative and untouched by any one player's death. */
+  /* Coop/FFA "Get back up": gated by the same respawn window shown in the
+     dead card's countdown. Coop deliberately doesn't touch ENEMY/WEAPON/
+     PICKUP/kills — that stays host-authoritative and untouched by any one
+     player's death. FFA has no shared PvE world to protect, so it's just a
+     faster timer and a fresh spawn point, back in at full health. */
   function respawnAttempt() {
     if (!PLAYER.isDead) return;
-    const minWait = CONFIG.player.reviveDelay + CONFIG.multiplayer.respawnDelay;
-    const remain = minWait - PLAYER.deadTime;
+    const ffa = COOP.matchMode === 'ffa';
+    const delay = ffa ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
+    const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
     if (remain > 0) {
       UI.toast('Still down · ' + Math.ceil(remain) + 's', 1.1);
       return;
     }
+    if (ffa) {
+      const ring = CONFIG.multiplayer.ffaSpawnRing;
+      const angle = UTIL.rng(0, Math.PI * 2);
+      PLAYER.setSpawnOffset(Math.cos(angle) * ring, Math.sin(angle) * ring);
+    }
     UI.hideDead();
-    PLAYER.reviveAt(50, true);
+    PLAYER.reviveAt(ffa ? 100 : 50, true);
     enter();
   }
 
@@ -7217,6 +7752,7 @@ const GAME = (() => {
     ENEMY.reset();
     PICKUP.reset();
     UI.setKills(0);
+    UI.hideFfaScoreboard();
     lastKills = 0;
     deathPending = false;
     endShown = false;
@@ -7265,19 +7801,28 @@ const GAME = (() => {
     UI.update(dt);
 
     if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
+    if (mode === 'coop' && COOP.matchMode === 'ffa' && running) UI.updateFfaScoreboard(COOP.scores);
 
     // let the wilt play out before handing the mouse back
     if (!PLAYER.isDead) deathPending = false;
-    if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) deathPending = true;
+    if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) {
+      deathPending = true;
+      // Reported once, right as the death happens — reportDeath() reads
+      // whichever attacker last damaged this client, so it has to fire
+      // before anything else has a chance to land another hit first.
+      if (mode === 'coop' && COOP.matchMode === 'ffa') COOP.reportDeath();
+    }
     if (deathPending && !PLAYER.isDowned && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
       UI.setDeadCoopMode(mode === 'coop');
       UI.showDead();
     }
     if (mode === 'coop' && UI.deadShown && PLAYER.isDead) {
-      const remain = CONFIG.player.reviveDelay + CONFIG.multiplayer.respawnDelay - PLAYER.deadTime;
+      const ffa = COOP.matchMode === 'ffa';
+      const delay = ffa ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
+      const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
       UI.setDeadHint(remain > 0
-        ? 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's'
+        ? (ffa ? 'Eliminated · back up in ' + Math.ceil(remain) + 's' : 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's')
         : 'Ready — tap to get back up.');
     }
 
@@ -9560,12 +10105,28 @@ const ENEMY = (() => {
   }
 
   function update(dt, t) {
+    // Free-for-all is players only — no AI runs at all, on host or join.
+    if (typeof COOP !== 'undefined' && COOP.matchMode === 'ffa') return;
     if (typeof COOP !== 'undefined' && COOP.role === 'join') {
       updateGhosts(dt, t);
       return;
     }
     if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
+  }
+
+  /* Called once, by GAME, the moment a free-for-all match actually starts.
+     update() already skips the whole AI loop in FFA, so this is purely
+     "make them invisible and unshootable" — it deliberately doesn't touch
+     alive/respawnAt/state, since that state machine only ever runs inside
+     updateOne(), which FFA mode never reaches. */
+  function disableForFfa() {
+    list.forEach(e => {
+      e.group.visible = false;
+      if (e.headProxy) e.headProxy.raycast = NO_RAY;
+      if (e.bodyProxy) e.bodyProxy.raycast = NO_RAY;
+      if (e.mark) e.mark.visible = false;
+    });
   }
 
   /* Resolve a join's reported melee/blast hit against the host's own
@@ -9605,7 +10166,7 @@ const ENEMY = (() => {
 
   return {
     init, prepareAssets, update, hit, melee, blast, reset, applyDamage, spawnBoss,
-    snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey,
+    snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -9624,7 +10185,7 @@ const ENEMY = (() => {
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
-  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [] };
+  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [] };
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
@@ -9645,6 +10206,18 @@ const COOP = (() => {
   let myCharacterId = 'playerBluecap';
   let roomCode = '', sendAcc = 0, connectTimer = null;
   let matchRunning = false;
+  // Host picks this before hosting; joiners learn it from `welcome`. Match-
+  // type-agnostic lobby/room plumbing (star topology, slot assignment, state
+  // relay) stays the same either way — only what happens once the match
+  // starts differs, gated on this flag throughout ENEMY/WEAPON/GAME.
+  let matchMode = 'coop';
+  // Host-only: peerId -> kill count for the free-for-all scoreboard.
+  const killCounts = new Map();
+  // Join-only mirror of the host's kill-count broadcast, for the HUD.
+  let lastScores = {};
+  // The most recent attacker to damage *this* client's own player, so a
+  // death can be attributed to the right killer when reported to the host.
+  let lastAttackerId = null;
 
   function localCharacterId() { return myCharacterId; }
 
@@ -9704,8 +10277,17 @@ const COOP = (() => {
     roomCode = '';
     sendAcc = 0;
     matchRunning = false;
+    matchMode = 'coop';
     myCharacterId = 'playerBluecap';
+    killCounts.clear();
+    lastScores = {};
+    lastAttackerId = null;
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
+  }
+  /* Called from the lobby before host() opens the room — can't change the
+     mode of an already-connected room. */
+  function setMatchMode(m) {
+    if (!connected) matchMode = (m === 'ffa') ? 'ffa' : 'coop';
   }
 
   function openLobby() {
@@ -9839,7 +10421,12 @@ const COOP = (() => {
   }
 
   async function host() {
+    // The lobby's mode toggle calls setMatchMode() before the player clicks
+    // "Host room" — stop() unconditionally resets matchMode back to 'coop',
+    // so it has to be captured first or an FFA pick silently reverts.
+    const chosenMode = matchMode;
     stop();
+    matchMode = chosenMode;
     role = 'host';
     myCharacterId = 'playerBluecap';
     phase = 'creating';
@@ -9940,7 +10527,7 @@ const COOP = (() => {
       channels.forEach((ch, id) => { if (id !== peerId) roster.push({ id: id, characterId: slotAssignments.get(id) }); });
       sendTo(peerId, {
         type: 'welcome', id: localId, characterId: characterId,
-        roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers
+        roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers, matchMode: matchMode
       });
       // Tell everyone ELSE a new farmhand joined, so their remote list grows too.
       broadcast({ type: 'playerJoined', id: peerId, characterId: characterId }, peerId);
@@ -10055,6 +10642,21 @@ const COOP = (() => {
     }
   }
 
+  /* Invisible hit colliders, same idea as ENEMY.makeProxy — but a co-op
+     teammate must never be shootable, so raycast only gets wired to a real
+     hit test when this room is actually in FFA mode. That decision is made
+     once, at proxy creation, since matchMode is fixed for the room's
+     lifetime (see setMatchMode). */
+  function makePlayerProxy(parent, geo, y, id, zone) {
+    const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
+    m.position.y = y;
+    m.userData.playerHit = { id: id, zone: zone };
+    m.raycast = matchMode === 'ffa' ? THREE.Mesh.prototype.raycast : function () {};
+    parent.add(m);
+    RAY_TARGETS.push(m);
+    return m;
+  }
+
   function makeRemote(id, characterId) {
     const desired = CHARACTER_POOL.indexOf(characterId) >= 0 ? characterId : 'playerMasked';
     let remote = remotes.get(id);
@@ -10071,8 +10673,11 @@ const COOP = (() => {
     group.userData.coopPlayer = id;
     if (scene) scene.add(group);
     PROPS.blobShadow(group, 0, 0, 0.62, 0.5);
+    const headProxy = makePlayerProxy(group, new THREE.SphereGeometry(0.32, 8, 6), 1.28, id, 'head');
+    const bodyProxy = makePlayerProxy(group, new THREE.BoxGeometry(0.6, 0.96, 0.48), 0.68, id, 'body');
     remote = {
       id: id, characterId: desired, rig: built.rig, group: group,
+      headProxy: headProxy, bodyProxy: bodyProxy,
       target: {
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
         moving: false, climbing: false, sprinting: false
@@ -10103,6 +10708,10 @@ const COOP = (() => {
       sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot) });
     } else if (message.type === 'enemyDamage' && message.key !== undefined) {
       ENEMY.applyDamageByKey(message.key, message.amount, message.point, message.dir, message.zone, message.force);
+    } else if (message.type === 'playerHitReport' && message.targetId) {
+      applyPlayerHit(message.targetId, message.amount, message.source, fromId);
+    } else if (message.type === 'playerDied' && message.victimId) {
+      registerKill(message.killerId, message.victimId);
     }
   }
 
@@ -10112,6 +10721,7 @@ const COOP = (() => {
     if (message.type === 'welcome') {
       myCharacterId = message.characterId || myCharacterId;
       matchRunning = !!message.matchRunning;
+      matchMode = message.matchMode === 'ffa' ? 'ffa' : 'coop';
       (message.roster || []).forEach(p => { if (p.id !== localId) makeRemote(p.id, p.characterId); });
       UI.setCoopLobbyStep(role, phase);
       if (matchRunning) emit('matchStart');
@@ -10134,25 +10744,102 @@ const COOP = (() => {
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
+      lastAttackerId = message.attackerId || lastAttackerId;
       PLAYER.damage(message.amount, message.source);
     } else if (message.type === 'matchStart') {
       matchRunning = true;
       emit('matchStart');
+    } else if (message.type === 'matchState') {
+      lastScores = message.scores || {};
+    } else if (message.type === 'matchOver') {
+      matchRunning = false;
+      lastScores = message.scores || lastScores;
+      emit('matchOver', message.winnerId, lastScores);
     }
   }
 
-  /* Host-only: the one place damage actually applies to an enemy from a shot.
-     Returns the tracer endpoint (hit point, or full range on a miss) so the
-     shooter can draw a tracer that matches what really happened instead of
-     re-deriving it from a raycast against its own, possibly-stale geometry. */
+  /* Host-only: the one place damage actually applies to an enemy — or, in
+     FFA, a player — from a shot. Returns the tracer endpoint (hit point, or
+     full range on a miss) so the shooter can draw a tracer that matches
+     what really happened instead of re-deriving it from a raycast against
+     its own, possibly-stale geometry. */
   function resolveShotAsHost(shot) {
     const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
     const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
     const range = shot.range || 100;
     const hit = FX.trace(origin, dir, range);
     const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
-    if (hit) ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+    if (hit) {
+      const playerHit = hit.object.userData && hit.object.userData.playerHit;
+      if (playerHit && matchMode === 'ffa') {
+        const base = shot.damage === undefined ? CONFIG.enemy.pelletDamage : shot.damage;
+        const falloff = UTIL.clamp(1 - hit.distance / range, 0.22, 1);
+        const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
+        applyPlayerHit(playerHit.id, base * falloff * head, hit.point.toArray(), localId);
+      } else {
+        ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+      }
+    }
     return end.toArray();
+  }
+
+  /* Host-only: route a resolved hit on a player to its target — apply it
+     directly if the target is the host's own avatar, otherwise hand it to
+     that peer over the network. attackerId travels along so a death can be
+     attributed to the right killer. */
+  function applyPlayerHit(targetId, amount, source, attackerId) {
+    if (targetId === localId) {
+      lastAttackerId = attackerId;
+      PLAYER.damage(amount, source);
+    } else {
+      sendPlayerDamage(targetId, amount, source, attackerId);
+    }
+  }
+  /* Join-only: the local gun/melee/blast query already found `targetId`
+     (see WEAPON) — relay it to the host for authoritative resolution. Host
+     calling this directly (no relay needed) covers its own shots. */
+  function sendPlayerHit(targetId, amount, source) {
+    if (role === 'join' && connected) send({ type: 'playerHitReport', targetId: targetId, amount: amount, source: source });
+    else if (role === 'host') applyPlayerHit(targetId, amount, source, localId);
+  }
+  function sendPlayerDamage(targetId, amount, source, attackerId) {
+    if (role === 'host') sendTo(targetId, { type: 'playerDamage', targetId: targetId, amount: amount, source: source, attackerId: attackerId });
+  }
+  /* Called once by GAME when this client's own player just died — reports
+     who killed them (if known) so the host can credit the right scoreboard
+     entry. Safe to call in coop too; it's a no-op there (see the mode guard
+     GAME uses before calling it). */
+  function reportDeath() {
+    const killerId = lastAttackerId;
+    lastAttackerId = null;
+    if (role === 'host') registerKill(killerId, localId);
+    else if (role === 'join' && connected) send({ type: 'playerDied', killerId: killerId, victimId: localId });
+  }
+  /* Host-only. */
+  function registerKill(killerId, victimId) {
+    if (killerId && killerId !== victimId) killCounts.set(killerId, (killCounts.get(killerId) || 0) + 1);
+    broadcastMatchState();
+    checkFfaWinCondition();
+  }
+  function scoresSnapshot() {
+    const out = {};
+    killCounts.forEach((v, k) => { out[k] = v; });
+    return out;
+  }
+  function broadcastMatchState() {
+    if (role !== 'host') return;
+    lastScores = scoresSnapshot();
+    if (connected) broadcast({ type: 'matchState', scores: lastScores });
+  }
+  function checkFfaWinCondition() {
+    if (role !== 'host' || matchMode !== 'ffa' || !matchRunning) return;
+    let winnerId = null, winnerScore = 0;
+    killCounts.forEach((v, k) => { if (v > winnerScore) { winnerScore = v; winnerId = k; } });
+    if (winnerScore < C.ffaKillTarget) return;
+    matchRunning = false;
+    const scores = scoresSnapshot();
+    if (connected) broadcast({ type: 'matchOver', winnerId: winnerId, scores: scores });
+    emit('matchOver', winnerId, scores);
   }
 
   /* Any client's local, visual-only feedback for a shot someone already
@@ -10244,7 +10931,17 @@ const COOP = (() => {
     remotes.forEach(remote => {
       remote.lastSeen += dt;
       const target = remote.target;
-      remote.group.visible = target.layerId === PLAYER.layerId && !target.dead;
+      const visible = target.layerId === PLAYER.layerId && !target.dead;
+      remote.group.visible = visible;
+      // A flat RAY_TARGETS array doesn't inherit the parent group's
+      // .visible for free the way a recursive scene raycast would — a dead
+      // or off-layer remote's hit proxies stay raycastable unless this is
+      // toggled explicitly too, same reasoning as ENEMY's own NO_RAY swap.
+      // Still gated on FFA — a co-op teammate's proxies stay permanently
+      // inert regardless of visibility (see makePlayerProxy).
+      const hittable = visible && matchMode === 'ffa';
+      if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
+      if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
       remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
       remote.group.position.y = UTIL.damp(remote.group.position.y, target.y, 14, dt);
       remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
@@ -10256,13 +10953,16 @@ const COOP = (() => {
   }
 
   return {
-    init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch,
+    init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
-    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage,
+    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath,
     get role() { return role; },
     get connected() { return connected; },
     get active() { return connected; },
     get matchRunning() { return matchRunning; },
+    get matchMode() { return matchMode; },
+    get localId() { return localId; },
+    get scores() { return lastScores; },
     get playerCount() { return channels.size + 1; },
     get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
     get roster() {
