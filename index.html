@@ -242,8 +242,16 @@
   #ffaScoreboard li{
     color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
   }
+  #ffaScoreboard li.team-a{color:var(--rust);}
+  #ffaScoreboard li.team-b{color:var(--blue);}
   #ffaScoreboard li.me{color:var(--mustard);}
   #ffaScoreboard li b{margin-left:6px;}
+  #ffaScoreboard li.team-totals{
+    display:flex;gap:14px;justify-content:flex-end;margin-bottom:5px;
+    padding-bottom:5px;border-bottom:2px solid var(--ink);
+  }
+  #ffaScoreboard li.team-totals span.team-a{color:var(--rust);}
+  #ffaScoreboard li.team-totals span.team-b{color:var(--blue);}
 
   /* ---------- Deathmatch kill feed ---------- */
   #killFeed{
@@ -581,6 +589,8 @@
     padding:7px 12px;border-radius:20px;background:rgba(22,18,15,.08);color:var(--ink-soft);
   }
   #coopRoster li.host{background:var(--mustard);color:var(--ink);}
+  #coopRoster li.team-a{background:var(--rust);color:var(--cream);}
+  #coopRoster li.team-b{background:var(--blue);color:var(--ink);}
   #startFarmBtn{margin-top:14px;}
   #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   #matchModeToggle.hidden{display:none;}
@@ -613,6 +623,10 @@
     font:800 13px/1 "Rockwell",Georgia,serif;letter-spacing:.4px;color:var(--ink-soft);
   }
   #matchOverScores li.winner{background:var(--mustard);color:var(--ink);}
+  #matchOverScores li.team-a{background:rgba(168,90,60,.22);}
+  #matchOverScores li.team-b{background:rgba(143,179,204,.28);}
+  #matchOverScores li.team-a.winner{background:var(--rust);color:var(--cream);}
+  #matchOverScores li.team-b.winner{background:var(--blue);color:var(--ink);}
   #matchOverScores li b{font-size:16px;}
   #coopLobby .card{max-width:620px;}
   #coopLobby .alt{display:block;}
@@ -776,6 +790,7 @@
         <span class="mode-toggle-label">Hosting mode</span>
         <button class="mode-toggle-btn active" id="modeCoopBtn" data-mode="coop">Co-op · fight the farm together</button>
         <button class="mode-toggle-btn" id="modeFfaBtn" data-mode="ffa">Free-for-all · everyone for themselves</button>
+        <button class="mode-toggle-btn" id="modeTeamsBtn" data-mode="teams">Team Deathmatch · 2 vs 2</button>
       </div>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
@@ -1042,6 +1057,9 @@ const CONFIG = {
     // Respawns land on a ring around startPos at a re-randomized angle each
     // time rather than a fixed per-slot spot, same mechanic coop spawns use.
     ffaSpawnRing: 6,
+    // Team Deathmatch: aggregated across up to two players per side, so
+    // this sits well above ffaKillTarget rather than simply doubling it.
+    teamKillTarget: 25,
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   },
   // Coop-only hero specials that catch a lethal hit before it becomes a real
@@ -6388,7 +6406,7 @@ const WEAPON = (() => {
         // (see the relayRemote branch above), and single-player never has a
         // playerHit proxy to find in the first place.
         const playerHit = hit.object.userData && hit.object.userData.playerHit;
-        if (playerHit && COOP.matchMode === 'ffa') {
+        if (playerHit && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')) {
           const falloff = UTIL.clamp(1 - hit.distance / d.range, 0.22, 1);
           const head = playerHit.zone === 'head' ? CONFIG.multiplayer.ffaHeadMultiplier : 1;
           COOP.sendPlayerHit(playerHit.id, shotMeta.damage * falloff * head, hit.point.toArray());
@@ -7151,6 +7169,7 @@ const UI = (() => {
     el.matchModeToggle = document.getElementById('matchModeToggle');
     el.modeCoopBtn = document.getElementById('modeCoopBtn');
     el.modeFfaBtn = document.getElementById('modeFfaBtn');
+    el.modeTeamsBtn = document.getElementById('modeTeamsBtn');
     el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
     el.options = document.getElementById('options');
@@ -7301,18 +7320,31 @@ const UI = (() => {
 
   function ffaRoster(scores) {
     if (typeof COOP === 'undefined') return [];
+    const teams = COOP.matchMode === 'teams';
     return COOP.roster.map(p => ({
       id: p.id,
       label: (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId,
-      score: (scores && scores[p.id]) || 0
+      score: (scores && scores[p.id]) || 0,
+      team: teams ? COOP.teamOf(p.id) : null
     })).sort((a, b) => b.score - a.score);
   }
   function updateFfaScoreboard(scores) {
     if (!el.ffaScoreboard) return;
     const myId = typeof COOP !== 'undefined' ? COOP.localId : null;
-    el.ffaScoreboard.innerHTML = ffaRoster(scores).map(r =>
-      '<li' + (r.id === myId ? ' class="me"' : '') + '>' + r.label + '<b>' + r.score + '</b></li>'
-    ).join('');
+    const teams = typeof COOP !== 'undefined' && COOP.matchMode === 'teams';
+    let html = '';
+    if (teams) {
+      const totals = COOP.teamScores;
+      html += '<li class="team-totals"><span class="team-a">Red ' + totals[0] +
+        '</span><span class="team-b">Blue ' + totals[1] + '</span></li>';
+    }
+    html += ffaRoster(scores).map(r => {
+      const classes = [];
+      if (r.id === myId) classes.push('me');
+      if (r.team !== null) classes.push(r.team === 0 ? 'team-a' : 'team-b');
+      return '<li' + (classes.length ? ' class="' + classes.join(' ') + '"' : '') + '>' + r.label + '<b>' + r.score + '</b></li>';
+    }).join('');
+    el.ffaScoreboard.innerHTML = html;
   }
   function showFfaScoreboard() { if (el.ffaScoreboard) el.ffaScoreboard.classList.add('on'); }
   function hideFfaScoreboard() {
@@ -7348,13 +7380,27 @@ const UI = (() => {
 
   function showMatchOver(winnerId, scores) {
     if (!el.matchOver) return;
+    const teams = typeof COOP !== 'undefined' && COOP.matchMode === 'teams';
     const myId = typeof COOP !== 'undefined' ? COOP.localId : null;
-    const won = winnerId && winnerId === myId;
-    if (el.matchOverSub) el.matchOverSub.textContent = won ? 'You cleared the farm' : 'Someone else cleared the farm';
+    // In Team Deathmatch, winnerId is a team index (0/1) rather than a peer
+    // id -- COOP.checkTeamWinCondition broadcasts it that way since a whole
+    // side wins together, not one player.
+    const won = teams
+      ? (typeof COOP !== 'undefined' && COOP.teamOf(myId) === winnerId)
+      : !!(winnerId && winnerId === myId);
+    if (el.matchOverEyebrow) el.matchOverEyebrow.textContent = teams ? 'Team Deathmatch' : 'Free-for-all';
+    if (el.matchOverSub) el.matchOverSub.textContent = teams
+      ? (won ? 'Your team won' : (winnerId === 0 ? 'Team Red' : 'Team Blue') + ' won')
+      : (won ? 'You cleared the farm' : 'Someone else cleared the farm');
     if (el.matchOverScores) {
-      el.matchOverScores.innerHTML = ffaRoster(scores).map(r =>
-        '<li' + (r.id === winnerId ? ' class="winner"' : '') + '>' + r.label + (r.id === winnerId ? ' — Winner' : '') + '<b>' + r.score + '</b></li>'
-      ).join('');
+      el.matchOverScores.innerHTML = ffaRoster(scores).map(r => {
+        const isWinnerRow = teams ? r.team === winnerId : r.id === winnerId;
+        const classes = [];
+        if (isWinnerRow) classes.push('winner');
+        if (r.team !== null) classes.push(r.team === 0 ? 'team-a' : 'team-b');
+        return '<li' + (classes.length ? ' class="' + classes.join(' ') + '"' : '') + '>' +
+          r.label + (isWinnerRow ? ' — Winner' : '') + '<b>' + r.score + '</b></li>';
+      }).join('');
     }
     hideFfaScoreboard();
     el.matchOver.classList.remove('hidden');
@@ -7599,9 +7645,15 @@ const UI = (() => {
   function renderCoopRoster() {
     if (!el.coopRoster) return;
     const roster = (typeof COOP !== 'undefined' && COOP.roster) ? COOP.roster : [];
+    const teams = typeof COOP !== 'undefined' && COOP.matchMode === 'teams';
     el.coopRoster.innerHTML = roster.map(p => {
       const label = (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId;
-      return '<li' + (p.isHost ? ' class="host"' : '') + '>' + label + (p.isHost ? ' · Host' : '') + '</li>';
+      const team = teams ? COOP.teamOf(p.id) : null;
+      const classes = [];
+      if (p.isHost) classes.push('host');
+      if (team !== null) classes.push(team === 0 ? 'team-a' : 'team-b');
+      const suffix = (p.isHost ? ' · Host' : '') + (team !== null ? (team === 0 ? ' · Team Red' : ' · Team Blue') : '');
+      return '<li' + (classes.length ? ' class="' + classes.join(' ') + '"' : '') + '>' + label + suffix + '</li>';
     }).join('');
   }
   function setCoopLobbyStep(role, step) {
@@ -7631,11 +7683,15 @@ const UI = (() => {
     }
     const host = role === 'host';
     const running = typeof COOP !== 'undefined' && COOP.matchRunning;
-    const ffa = typeof COOP !== 'undefined' && COOP.matchMode === 'ffa';
+    const lobbyMode = typeof COOP !== 'undefined' ? COOP.matchMode : 'coop';
+    const ffa = lobbyMode === 'ffa';
+    const teams = lobbyMode === 'teams';
+    const runningLabel = ffa ? 'The farm-off is running.' : teams ? 'The team deathmatch is running.' : 'The farm is running.';
+    const waitingLabel = ffa ? 'the free-for-all…' : teams ? 'the team deathmatch…' : 'the farm…';
     if (el.coopInstructions) {
       el.coopInstructions.textContent = host
-        ? (running ? (ffa ? 'The farm-off is running.' : 'The farm is running.') : 'Share the room code below. Start whenever you\'re ready — more farmhands can still join after you start.')
-        : (running ? 'Connected — jumping into the farm…' : 'Connected. Waiting for the host to start ' + (ffa ? 'the free-for-all…' : 'the farm…'));
+        ? (running ? runningLabel : 'Share the room code below. Start whenever you\'re ready — more farmhands can still join after you start.')
+        : (running ? 'Connected — jumping into the farm…' : 'Connected. Waiting for the host to start ' + waitingLabel);
     }
     if (el.signalInputLabel) el.signalInputLabel.textContent = 'Host room code';
     if (el.signalOutputLabel) el.signalOutputLabel.textContent = 'Share this room code';
@@ -8016,11 +8072,12 @@ const PICKUP = (() => {
       return { message: 'Jackrabbit Feet · faster for ' + C.jackrabbitDuration + 's' };
     }
     if (def.buffId === 'rallyHorn') {
-      // A real team share only makes sense in a live coop match. Solo and
-      // FFA still get the personal heal/shield rather than a dead pickup.
-      const isCoop = typeof GAME !== 'undefined' && GAME.mode === 'coop' &&
-        typeof COOP !== 'undefined' && COOP.matchMode === 'coop';
-      if (isCoop) COOP.useRallyHorn(C.rallyHornHeal, C.rallyHornShield, C.rallyHornRadius);
+      // A real team share only makes sense in a live coop or team-vs-team
+      // match. Solo and FFA still get the personal heal/shield rather than
+      // a dead pickup.
+      const isTeamShare = typeof GAME !== 'undefined' && GAME.mode === 'coop' &&
+        typeof COOP !== 'undefined' && (COOP.matchMode === 'coop' || COOP.matchMode === 'teams');
+      if (isTeamShare) COOP.useRallyHorn(C.rallyHornHeal, C.rallyHornShield, C.rallyHornRadius);
       else { PLAYER.heal(C.rallyHornHeal); PLAYER.addShield(C.rallyHornShield); }
       return { message: 'Rally Horn · +' + C.rallyHornHeal + ' Pep, +' + C.rallyHornShield + ' Guard' };
     }
@@ -8344,6 +8401,7 @@ const GAME = (() => {
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
     document.getElementById('modeCoopBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('coop'); });
     document.getElementById('modeFfaBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('ffa'); });
+    document.getElementById('modeTeamsBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('teams'); });
     document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
     document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
@@ -8452,19 +8510,22 @@ const GAME = (() => {
       UI.showMatchOver(winnerId, scores);
     });
     // Kill feed line + combo/first-blood/match-point callout for every kill
-    // in an FFA match -- COOP.registerKill computes and broadcasts this
-    // identically for host and every join, so this handler just renders it.
+    // in an FFA or Team Deathmatch match -- COOP.registerKill computes and
+    // broadcasts this identically for host and every join, so this handler
+    // just renders it.
     COOP.on('killFeed', ev => {
-      if (mode !== 'coop' || COOP.matchMode !== 'ffa') return;
+      if (mode !== 'coop' || (COOP.matchMode !== 'ffa' && COOP.matchMode !== 'teams')) return;
       const roster = COOP.roster;
       const label = id => {
         const p = roster.find(r => r.id === id);
         return (p && typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId])
           ? CAST.ROSTER[p.characterId].label : 'Someone';
       };
-      const line = ev.killerId
-        ? label(ev.killerId) + ' eliminated ' + label(ev.victimId)
-        : label(ev.victimId) + ' went out on their own';
+      const line = !ev.killerId
+        ? label(ev.victimId) + ' went out on their own'
+        : ev.friendlyFire
+        ? label(ev.killerId) + ' hit their own teammate ' + label(ev.victimId) + ' (no credit)'
+        : label(ev.killerId) + ' eliminated ' + label(ev.victimId);
       UI.pushKillFeed(line);
       ANNOUNCER.trigger(ev);
     });
@@ -8603,8 +8664,10 @@ const GAME = (() => {
 
   function setLobbyMode(m) {
     COOP.setMatchMode(m);
-    if (UI.el.modeCoopBtn) UI.el.modeCoopBtn.classList.toggle('active', m !== 'ffa');
-    if (UI.el.modeFfaBtn) UI.el.modeFfaBtn.classList.toggle('active', m === 'ffa');
+    const chosen = COOP.matchMode;
+    if (UI.el.modeCoopBtn) UI.el.modeCoopBtn.classList.toggle('active', chosen === 'coop');
+    if (UI.el.modeFfaBtn) UI.el.modeFfaBtn.classList.toggle('active', chosen === 'ffa');
+    if (UI.el.modeTeamsBtn) UI.el.modeTeamsBtn.classList.toggle('active', chosen === 'teams');
   }
 
   function openCoopLobby() {
@@ -8620,17 +8683,23 @@ const GAME = (() => {
   function beginCoop(playerCount) {
     mode = 'coop';
     HERO.resetRun();
+    // Team Deathmatch shares FFA's PvP pacing (no PvE, ring spawns, fast
+    // full-health respawns) throughout this function and respawnAttempt()
+    // below -- only the scoreboard/kill-feed rendering (UI module) actually
+    // tells the two modes apart.
     const ffa = COOP.matchMode === 'ffa';
+    const deathmatch = ffa || COOP.matchMode === 'teams';
     // Spread players around startPos on a ring so simultaneous spawns/
-    // respawns don't stack — coop uses a fixed angle per slot, FFA
-    // re-randomizes it (also redone on every respawn, see respawnAttempt()).
-    const ring = ffa ? CONFIG.multiplayer.ffaSpawnRing : CONFIG.player.coopSpawnRing;
-    const angle = ffa ? UTIL.rng(0, Math.PI * 2) : (COOP.spawnSlotIndex || 0) / 4 * Math.PI * 2;
+    // respawns don't stack — coop uses a fixed angle per slot, deathmatch
+    // modes re-randomize it (also redone on every respawn, see respawnAttempt()).
+    const ring = deathmatch ? CONFIG.multiplayer.ffaSpawnRing : CONFIG.player.coopSpawnRing;
+    const angle = deathmatch ? UTIL.rng(0, Math.PI * 2) : (COOP.spawnSlotIndex || 0) / 4 * Math.PI * 2;
     PLAYER.setSpawnOffset(Math.cos(angle) * ring, Math.sin(angle) * ring);
     PLAYER.respawn();
-    if (ffa) {
+    if (deathmatch) {
       // Players only — ENEMY.update() already skips its whole AI loop in
-      // FFA on every client, this just hides what's already inert.
+      // both deathmatch modes on every client, this just hides what's
+      // already inert.
       ENEMY.disableForFfa();
       UI.showFfaScoreboard();
       UI.updateFfaScoreboard(COOP.scores);
@@ -8645,27 +8714,28 @@ const GAME = (() => {
     enter();
   }
 
-  /* Coop/FFA "Get back up": gated by the same respawn window shown in the
-     dead card's countdown. Coop deliberately doesn't touch ENEMY/WEAPON/
-     PICKUP/kills — that stays host-authoritative and untouched by any one
-     player's death. FFA has no shared PvE world to protect, so it's just a
-     faster timer and a fresh spawn point, back in at full health. */
+  /* Coop/deathmatch "Get back up": gated by the same respawn window shown
+     in the dead card's countdown. Coop deliberately doesn't touch ENEMY/
+     WEAPON/PICKUP/kills — that stays host-authoritative and untouched by
+     any one player's death. FFA/Teams have no shared PvE world to protect,
+     so it's just a faster timer and a fresh spawn point, back in at full
+     health. */
   function respawnAttempt() {
     if (!PLAYER.isDead) return;
-    const ffa = COOP.matchMode === 'ffa';
-    const delay = ffa ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
+    const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+    const delay = deathmatch ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
     const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
     if (remain > 0) {
       UI.toast('Still down · ' + Math.ceil(remain) + 's', 1.1);
       return;
     }
-    if (ffa) {
+    if (deathmatch) {
       const ring = CONFIG.multiplayer.ffaSpawnRing;
       const angle = UTIL.rng(0, Math.PI * 2);
       PLAYER.setSpawnOffset(Math.cos(angle) * ring, Math.sin(angle) * ring);
     }
     UI.hideDead();
-    PLAYER.reviveAt(ffa ? 100 : 50, true);
+    PLAYER.reviveAt(deathmatch ? 100 : 50, true);
     enter(false);
   }
 
@@ -8816,7 +8886,7 @@ const GAME = (() => {
     ANNOUNCER.update(dt);
 
     if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
-    if (mode === 'coop' && COOP.matchMode === 'ffa' && running) UI.updateFfaScoreboard(COOP.scores);
+    if (mode === 'coop' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams') && running) UI.updateFfaScoreboard(COOP.scores);
 
     // let the wilt play out before handing the mouse back
     if (!PLAYER.isDead) deathPending = false;
@@ -8825,7 +8895,7 @@ const GAME = (() => {
       // Reported once, right as the death happens — reportDeath() reads
       // whichever attacker last damaged this client, so it has to fire
       // before anything else has a chance to land another hit first.
-      if (mode === 'coop' && COOP.matchMode === 'ffa') COOP.reportDeath();
+      if (mode === 'coop' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')) COOP.reportDeath();
     }
     if (deathPending && !PLAYER.isDowned && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
@@ -8833,11 +8903,11 @@ const GAME = (() => {
       UI.showDead();
     }
     if (mode === 'coop' && UI.deadShown && PLAYER.isDead) {
-      const ffa = COOP.matchMode === 'ffa';
-      const delay = ffa ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
+      const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+      const delay = deathmatch ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
       const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
       UI.setDeadHint(remain > 0
-        ? (ffa ? 'Eliminated · back up in ' + Math.ceil(remain) + 's' : 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's')
+        ? (deathmatch ? 'Eliminated · back up in ' + Math.ceil(remain) + 's' : 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's')
         : 'Ready — tap to get back up.');
     }
 
@@ -10241,10 +10311,12 @@ const HERO = (() => {
   /* All four specials are active in single-player. In coop, Scarf/Masked
      stay off (their downed/chainsaw mechanics were never built with a
      shared world in mind) and Stoned/Pyro's are explicitly off in FFA — no
-     shared PvE world there, and dying is meant to cost something. */
+     shared PvE world there, and dying is meant to cost something. Team
+     Deathmatch keeps them on, same as coop -- teammates still benefit from
+     an auto-revive or a heal-on-kill even with an enemy team on the map. */
   function activeHeroId() {
     if (typeof GAME !== 'undefined' && GAME.isCoop) {
-      if (typeof COOP === 'undefined' || COOP.matchMode !== 'coop') return null;
+      if (typeof COOP === 'undefined' || (COOP.matchMode !== 'coop' && COOP.matchMode !== 'teams')) return null;
       const heroId = CASTID_TO_HERO[COOP.localCharacterId];
       return (heroId && COOP_SPECIAL_HEROES[heroId]) ? heroId : null;
     }
@@ -11716,8 +11788,9 @@ const ENEMY = (() => {
   }
 
   function update(dt, t) {
-    // Free-for-all is players only — no AI runs at all, on host or join.
-    if (typeof COOP !== 'undefined' && COOP.matchMode === 'ffa') return;
+    // Free-for-all/Team Deathmatch are players only — no AI runs at all,
+    // on host or join, in either PvP mode.
+    if (typeof COOP !== 'undefined' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')) return;
     if (typeof COOP !== 'undefined' && COOP.role === 'join') {
       updateGhosts(dt, t);
       return;
@@ -11908,7 +11981,7 @@ const COOP = (() => {
   /* Called from the lobby before host() opens the room — can't change the
      mode of an already-connected room. */
   function setMatchMode(m) {
-    if (!connected) matchMode = (m === 'ffa') ? 'ffa' : 'coop';
+    if (!connected) matchMode = (m === 'ffa' || m === 'teams') ? m : 'coop';
   }
 
   function openLobby() {
@@ -11970,6 +12043,28 @@ const COOP = (() => {
     const taken = new Set(slotAssignments.values());
     taken.add(myCharacterId);
     return CHARACTER_POOL.find(id => !taken.has(id)) || null;
+  }
+
+  function rosterList() {
+    const list = [{ id: localId, characterId: myCharacterId, isHost: role === 'host' }];
+    if (role === 'host') {
+      channels.forEach((ch, id) => list.push({ id: id, characterId: slotAssignments.get(id), isHost: false }));
+    } else {
+      remotes.forEach((remote, id) => list.push({ id: id, characterId: remote.characterId, isHost: true }));
+    }
+    return list;
+  }
+
+  /* Team Deathmatch: even CHARACTER_POOL slot (host + the 2nd joiner) is
+     Team A, odd (1st + 3rd joiner) is Team B -- deterministic from the
+     same join-order assignment nextFreeCharacter() already does, so no
+     separate team-picker UI is needed for a first pass. */
+  function teamOfId(id) {
+    const entry = rosterList().find(p => p.id === id);
+    return entry ? CHARACTER_POOL.indexOf(entry.characterId) % 2 : 0;
+  }
+  function sameTeam(idA, idB) {
+    return teamOfId(idA) === teamOfId(idB);
   }
 
   function bindPeerEvents(instance) {
@@ -12273,14 +12368,17 @@ const COOP = (() => {
 
   /* Invisible hit colliders, same idea as ENEMY.makeProxy — but a co-op
      teammate must never be shootable, so raycast only gets wired to a real
-     hit test when this room is actually in FFA mode. That decision is made
-     once, at proxy creation, since matchMode is fixed for the room's
-     lifetime (see setMatchMode). */
+     hit test when this room is actually in FFA or Team Deathmatch. That
+     decision is made once, at proxy creation, since matchMode is fixed for
+     the room's lifetime (see setMatchMode). Teams mode leaves every
+     player's proxy raycastable regardless of team -- a shared RAY_TARGETS
+     pool has no notion of "who's asking," so friendly fire is blocked
+     downstream in applyPlayerHit instead, not by hiding the geometry. */
   function makePlayerProxy(parent, geo, y, id, zone) {
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
     m.position.y = y;
     m.userData.playerHit = { id: id, zone: zone };
-    m.raycast = matchMode === 'ffa' ? THREE.Mesh.prototype.raycast : function () {};
+    m.raycast = (matchMode === 'ffa' || matchMode === 'teams') ? THREE.Mesh.prototype.raycast : function () {};
     parent.add(m);
     RAY_TARGETS.push(m);
     return m;
@@ -12352,7 +12450,7 @@ const COOP = (() => {
     if (message.type === 'welcome') {
       myCharacterId = message.characterId || myCharacterId;
       matchRunning = !!message.matchRunning;
-      matchMode = message.matchMode === 'ffa' ? 'ffa' : 'coop';
+      matchMode = (message.matchMode === 'ffa' || message.matchMode === 'teams') ? message.matchMode : 'coop';
       (message.roster || []).forEach(p => { if (p.id !== localId) makeRemote(p.id, p.characterId); });
       UI.setCoopLobbyStep(role, phase);
       // A late join has no record of the real starting count -- roster.length
@@ -12415,7 +12513,7 @@ const COOP = (() => {
     const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
     if (hit) {
       const playerHit = hit.object.userData && hit.object.userData.playerHit;
-      if (playerHit && matchMode === 'ffa') {
+      if (playerHit && (matchMode === 'ffa' || matchMode === 'teams')) {
         const base = shot.damage === undefined ? CONFIG.enemy.pelletDamage : shot.damage;
         const falloff = UTIL.clamp(1 - hit.distance / range, 0.22, 1);
         const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
@@ -12430,8 +12528,12 @@ const COOP = (() => {
   /* Host-only: route a resolved hit on a player to its target — apply it
      directly if the target is the host's own avatar, otherwise hand it to
      that peer over the network. attackerId travels along so a death can be
-     attributed to the right killer. */
+     attributed to the right killer. In Team Deathmatch every player's proxy
+     stays raycastable (see makePlayerProxy/update's hittable gate) since a
+     shared pool can't tell shooter from target — so friendly fire is
+     blocked right here instead, the one place every hit funnels through. */
   function applyPlayerHit(targetId, amount, source, attackerId) {
+    if (matchMode === 'teams' && sameTeam(attackerId, targetId)) return;
     if (targetId === localId) {
       lastAttackerId = attackerId;
       PLAYER.damage(amount, source);
@@ -12456,19 +12558,22 @@ const COOP = (() => {
      player, so a join reports its own use (see useRallyHorn) rather than
      computing radius itself. */
   function resolveTeamHeal(originId, healAmount, shieldAmount, radius) {
-    if (matchMode !== 'coop') return;
+    if (matchMode !== 'coop' && matchMode !== 'teams') return;
     const originPos = originId === localId ? PLAYER.position
       : (remotes.get(originId) && remotes.get(originId).target);
     if (!originPos) return;
     const r2 = radius * radius;
     remotes.forEach((remote, id) => {
       if (id === originId) return;
+      // Teams: the horn only ever reaches your own side -- an opposing
+      // player standing in the blast radius gets nothing from it.
+      if (matchMode === 'teams' && !sameTeam(originId, id)) return;
       const t = remote.target;
       const dx = t.x - originPos.x, dz = t.z - originPos.z;
       if (dx * dx + dz * dz <= r2) sendTo(id, { type: 'teamHeal', heal: healAmount, shield: shieldAmount });
     });
     // The host itself might be the teammate in range of a join's horn.
-    if (originId !== localId) {
+    if (originId !== localId && (matchMode !== 'teams' || sameTeam(originId, localId))) {
       const dx = PLAYER.position.x - originPos.x, dz = PLAYER.position.z - originPos.z;
       if (dx * dx + dz * dz <= r2) {
         PLAYER.heal(healAmount);
@@ -12479,9 +12584,11 @@ const COOP = (() => {
   }
   /* Called by PICKUP's rallyHornPack handler. Always heals the local picker
      up immediately (feels responsive, no round trip needed for your own
-     share); coop-only, gated the same way ENEMY disables itself in FFA. */
+     share); coop/teams-only, gated the same way ENEMY disables itself in
+     FFA (Team Deathmatch keeps the shared-heal spirit of coop, just scoped
+     to your own side -- see resolveTeamHeal). */
   function useRallyHorn(healAmount, shieldAmount, radius) {
-    if (matchMode !== 'coop') return;
+    if (matchMode !== 'coop' && matchMode !== 'teams') return;
     PLAYER.heal(healAmount);
     PLAYER.addShield(shieldAmount);
     if (role === 'host') resolveTeamHeal(localId, healAmount, shieldAmount, radius);
@@ -12503,8 +12610,13 @@ const COOP = (() => {
      every client renders/announces the identical result. A self/environment
      elimination (no killerId, or killerId === victimId) still broadcasts a
      killFeed event -- the feed shows it -- but never carries a combo. */
+  /* A teammate kill in Team Deathmatch is treated the same way a self-kill
+     already is: still shows a real killer name in the feed (the line is
+     informative either way), but scores/combos/first-blood/match-point
+     never trigger from it -- friendly fire earns nothing. */
   function registerKill(killerId, victimId) {
-    const real = !!(killerId && killerId !== victimId);
+    const friendlyFire = matchMode === 'teams' && !!killerId && sameTeam(killerId, victimId);
+    const real = !!(killerId && killerId !== victimId && !friendlyFire);
     let comboCount = 0, firstBlood = false, matchPoint = false;
     if (real) {
       const now = performance.now() / 1000;
@@ -12517,21 +12629,34 @@ const COOP = (() => {
       firstBloodClaimed = true;
       const bonus = Math.min(Math.max(comboCount - 1, 0), C.comboBonusCap);
       killCounts.set(killerId, (killCounts.get(killerId) || 0) + 1 + bonus);
-      matchPoint = matchMode === 'ffa' && killCounts.get(killerId) === C.ffaKillTarget - 1;
+      if (matchMode === 'ffa') matchPoint = killCounts.get(killerId) === C.ffaKillTarget - 1;
+      else if (matchMode === 'teams') matchPoint = teamTotalsFrom(scoresSnapshot())[teamOfId(killerId)] === C.teamKillTarget - 1;
     }
     const ev = {
       type: 'killFeed', killerId: killerId || null, victimId: victimId,
-      comboCount: comboCount, firstBlood: firstBlood, matchPoint: matchPoint
+      comboCount: comboCount, firstBlood: firstBlood, matchPoint: matchPoint,
+      friendlyFire: friendlyFire
     };
     if (connected) broadcast(ev);
     emit('killFeed', ev);
     broadcastMatchState();
     checkFfaWinCondition();
+    checkTeamWinCondition();
   }
   function scoresSnapshot() {
     const out = {};
     killCounts.forEach((v, k) => { out[k] = v; });
     return out;
+  }
+  // [totalTeamA, totalTeamB], summed from individual scores rather than
+  // tracked separately -- one source of truth either way. Takes a scores
+  // object rather than reading killCounts directly so the same helper works
+  // host-side (off the live Map) and join-side (off the lastScores mirror,
+  // since killCounts itself only ever exists on the host).
+  function teamTotalsFrom(scores) {
+    const totals = [0, 0];
+    Object.keys(scores).forEach(id => { totals[teamOfId(id)] += scores[id]; });
+    return totals;
   }
   function broadcastMatchState() {
     if (role !== 'host') return;
@@ -12547,6 +12672,18 @@ const COOP = (() => {
     const scores = scoresSnapshot();
     if (connected) broadcast({ type: 'matchOver', winnerId: winnerId, scores: scores });
     emit('matchOver', winnerId, scores);
+  }
+  // winnerId here is a team index (0/1) rather than a peer id -- UI/roster
+  // code tells them apart by matchMode when rendering the result.
+  function checkTeamWinCondition() {
+    if (role !== 'host' || matchMode !== 'teams' || !matchRunning) return;
+    const totals = teamTotalsFrom(scoresSnapshot());
+    const winnerTeam = totals[0] >= totals[1] ? 0 : 1;
+    if (totals[winnerTeam] < C.teamKillTarget) return;
+    matchRunning = false;
+    const scores = scoresSnapshot();
+    if (connected) broadcast({ type: 'matchOver', winnerId: winnerTeam, scores: scores });
+    emit('matchOver', winnerTeam, scores);
   }
 
   /* Any client's local, visual-only feedback for a shot someone already
@@ -12642,11 +12779,11 @@ const COOP = (() => {
       // .visible for free the way a recursive scene raycast would — a dead
       // or off-layer remote's hit proxies stay raycastable unless this is
       // toggled explicitly too, same reasoning as ENEMY's own NO_RAY swap.
-      // Still gated on FFA — a co-op teammate's proxies stay permanently
-      // inert regardless of visibility (see makePlayerProxy). Also inert
-      // while climbing, mirroring the local player's own ladder invuln so a
-      // mid-rung opponent can't be sniped either.
-      const hittable = visible && matchMode === 'ffa' && !target.climbing;
+      // Still gated on FFA/Teams — a co-op teammate's proxies stay
+      // permanently inert regardless of visibility (see makePlayerProxy).
+      // Also inert while climbing, mirroring the local player's own ladder
+      // invuln so a mid-rung opponent can't be sniped either.
+      const hittable = visible && (matchMode === 'ffa' || matchMode === 'teams') && !target.climbing;
       if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
       if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
       remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
@@ -12670,20 +12807,15 @@ const COOP = (() => {
     get matchMode() { return matchMode; },
     get localId() { return localId; },
     get scores() { return lastScores; },
+    get teamScores() { return teamTotalsFrom(lastScores); },
     // channels.size + 1 only counts right on the host -- a join only ever
     // holds one channel (keyed 'host'). this.roster is correct for both.
     get playerCount() { return this.roster.length; },
     get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
     get localCharacterId() { return myCharacterId; },
-    get roster() {
-      const list = [{ id: localId, characterId: myCharacterId, isHost: role === 'host' }];
-      if (role === 'host') {
-        channels.forEach((ch, id) => list.push({ id: id, characterId: slotAssignments.get(id), isHost: false }));
-      } else {
-        remotes.forEach((remote, id) => list.push({ id: id, characterId: remote.characterId, isHost: true }));
-      }
-      return list;
-    }
+    get roster() { return rosterList(); },
+    teamOf: teamOfId,
+    get localTeam() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)) % 2; }
   };
 })();
 
