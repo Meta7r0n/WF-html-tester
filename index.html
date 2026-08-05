@@ -245,6 +245,30 @@
   #ffaScoreboard li.me{color:var(--mustard);}
   #ffaScoreboard li b{margin-left:6px;}
 
+  /* ---------- Deathmatch kill feed ---------- */
+  #killFeed{
+    position:fixed;right:26px;top:130px;z-index:30;
+    display:flex;flex-direction:column;align-items:flex-end;gap:4px;
+    pointer-events:none;
+  }
+  #killFeed .line{
+    font:900 11px/1.3 "Rockwell",Georgia,serif;letter-spacing:1px;text-transform:uppercase;
+    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    background:rgba(18,15,13,.35);padding:3px 8px;border-radius:6px;
+    opacity:0;transform:translateX(8px);transition:opacity .18s ease,transform .18s ease;
+  }
+  #killFeed .line.on{opacity:1;transform:translateX(0);}
+
+  /* ---------- Deathmatch announcer banner ---------- */
+  #announcerBanner{
+    position:fixed;left:50%;top:26%;z-index:34;transform:translate(-50%,-10px) rotate(-1.5deg);
+    display:none;pointer-events:none;text-align:center;
+    font:900 40px/1 "Rockwell",Georgia,serif;letter-spacing:4px;text-transform:uppercase;
+    color:var(--mustard);text-shadow:4px 0 0 var(--ink),-4px 0 0 var(--ink),0 4px 0 var(--ink),0 -4px 0 var(--ink);
+    opacity:0;transition:opacity .12s ease,transform .12s ease;
+  }
+  #announcerBanner.on{display:block;opacity:1;transform:translate(-50%,0) rotate(-1.5deg);}
+
   /* ---------- Mini-boss status ---------- */
   #bossHud{
     position:fixed;left:50%;top:22px;z-index:31;width:min(390px,48vw);
@@ -658,6 +682,8 @@
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
   <ul id="ffaScoreboard" aria-live="polite"></ul>
+  <div id="killFeed" aria-live="polite"></div>
+  <div id="announcerBanner" aria-live="polite"></div>
   <div id="bossHud" aria-live="polite">
     <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar"><i id="bossHudFill"></i></div>
@@ -999,6 +1025,10 @@ const CONFIG = {
     ffaRespawnDelay: 3,
     ffaKillTarget: 15,
     ffaHeadMultiplier: 2.0,
+    // Deathmatch flourishes: how long a kill streak stays alive, and the
+    // most bonus score a single kill can add on top of its base point.
+    comboWindow: 6,
+    comboBonusCap: 3,
     // Respawns land on a ring around startPos at a re-randomized angle each
     // time rather than a fixed per-slot spot, same mechanic coop spawns use.
     ffaSpawnRing: 6,
@@ -4852,10 +4882,37 @@ const AUDIO = (() => {
     o.start(t0); o.stop(t0 + 1.7);
   }
 
+  /* Deathmatch announcer stingers -- same tone()/noiseBurst() toolkit as
+     every other SFX here, just a distinct recipe per cue. Text-only lookup
+     lives in ANNOUNCER; this is purely the sound half, kept swappable for
+     a real recorded voice line later without touching the cue dispatch. */
+  function announcerStinger(cueId) {
+    if (!started) return;
+    const t0 = ctx.currentTime;
+    if (cueId === 'firstBlood') {
+      tone(t0, 220, 90, 0.5, 0.32, 'sawtooth');
+      noiseBurst(t0 + 0.05, 0.3, 400, 0.9, 0.28, 'lowpass');
+    } else if (cueId === 'doubleKill') {
+      tone(t0, 520, 620, 0.12, 0.3, 'square');
+      tone(t0 + 0.11, 660, 780, 0.14, 0.32, 'square');
+    } else if (cueId === 'tripleKill') {
+      tone(t0, 520, 620, 0.1, 0.28, 'square');
+      tone(t0 + 0.09, 660, 780, 0.1, 0.3, 'square');
+      tone(t0 + 0.18, 840, 980, 0.16, 0.34, 'square');
+    } else if (cueId === 'rampage') {
+      const f = noiseBurst(t0, 0.4, 900, 0.8, 0.4, 'lowpass');
+      f.frequency.exponentialRampToValueAtTime(160, t0 + 0.35);
+      tone(t0, 140, 50, 0.4, 0.3, 'sawtooth');
+      tone(t0 + 0.3, 700, 1100, 0.18, 0.3, 'square');
+    } else if (cueId === 'matchPoint') {
+      tone(t0, 440, 880, 0.55, 0.3, 'triangle');
+    }
+  }
+
   return {
     start, resume, suspend, update,
     gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
-    enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie,
+    enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie, announcerStinger,
     playMenuMusic, stopMenuMusic, playGameMusic, stopGameMusic, duckGameMusic, unduckGameMusic,
     setMusicVolume, setMasterVolume, setSfxVolume,
     get running() { return started; },
@@ -6898,6 +6955,72 @@ const CONSUMABLE = (() => {
   };
 })();
 
+/* ============================= [ANNOUNCER] ============================
+   Deathmatch's event->cue lookup table. A killFeed event (see COOP's
+   registerKill) can produce up to two cue ids (a combo tier and match-point
+   can land on the same kill); each queues a banner+stinger shown in turn
+   rather than fighting over the screen. `audioSrc` is a deliberate seam:
+   nothing plays it today, but dropping a real recorded clip in per-cue
+   later is a config-table edit here, not a restructure of trigger/update. */
+const ANNOUNCER = (() => {
+  const CUES = {
+    firstBlood: { text: 'FIRST BLOOD', audioSrc: null },
+    doubleKill: { text: 'DOUBLE KILL', audioSrc: null },
+    tripleKill: { text: 'TRIPLE KILL', audioSrc: null },
+    rampage: { text: 'RAMPAGE', audioSrc: null },
+    matchPoint: { text: 'MATCH POINT', audioSrc: null }
+  };
+  const DISPLAY_TIME = 1.6;
+  const queue = [];
+  let activeId = null, activeTimer = 0;
+
+  function cueForCombo(comboCount) {
+    if (comboCount >= 4) return 'rampage';
+    if (comboCount === 3) return 'tripleKill';
+    if (comboCount === 2) return 'doubleKill';
+    return null;
+  }
+
+  /* ev: the killFeed payload COOP broadcasts. firstBlood takes priority
+     over the combo cue on the very first kill of a match (can't be both);
+     matchPoint is independent and queues separately so both are seen even
+     when they land on the same kill. */
+  function trigger(ev) {
+    if (!ev) return;
+    if (ev.firstBlood) queue.push('firstBlood');
+    else {
+      const comboCue = cueForCombo(ev.comboCount);
+      if (comboCue) queue.push(comboCue);
+    }
+    if (ev.matchPoint) queue.push('matchPoint');
+  }
+
+  function update(dt) {
+    if (activeId) {
+      activeTimer -= dt;
+      if (activeTimer > 0) return;
+      activeId = null;
+      if (typeof UI !== 'undefined') UI.hideAnnouncerBanner();
+    }
+    if (!queue.length) return;
+    activeId = queue.shift();
+    activeTimer = DISPLAY_TIME;
+    const cue = CUES[activeId];
+    if (!cue) return;
+    if (typeof UI !== 'undefined') UI.showAnnouncerBanner(cue.text);
+    if (typeof AUDIO !== 'undefined') AUDIO.announcerStinger(activeId);
+  }
+
+  function reset() {
+    queue.length = 0;
+    activeId = null;
+    activeTimer = 0;
+    if (typeof UI !== 'undefined') UI.hideAnnouncerBanner();
+  }
+
+  return { trigger, update, reset };
+})();
+
 /* ================================ [UI] =============================== */
 const UI = (() => {
   const el = {};
@@ -6959,6 +7082,8 @@ const UI = (() => {
     el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
     el.ffaScoreboard = document.getElementById('ffaScoreboard');
+    el.killFeed = document.getElementById('killFeed');
+    el.announcerBanner = document.getElementById('announcerBanner');
     el.matchOver = document.getElementById('matchOver');
     el.matchOverEyebrow = document.getElementById('matchOverEyebrow');
     el.matchOverSub = document.getElementById('matchOverSub');
@@ -7085,6 +7210,33 @@ const UI = (() => {
   function showFfaScoreboard() { if (el.ffaScoreboard) el.ffaScoreboard.classList.add('on'); }
   function hideFfaScoreboard() {
     if (el.ffaScoreboard) { el.ffaScoreboard.classList.remove('on'); el.ffaScoreboard.innerHTML = ''; }
+  }
+
+  const KILL_FEED_LIFE = 4;
+  function pushKillFeed(text) {
+    if (!el.killFeed || !text) return;
+    const line = document.createElement('div');
+    line.className = 'line';
+    line.textContent = text;
+    el.killFeed.appendChild(line);
+    requestAnimationFrame(() => line.classList.add('on'));
+    // Cap visible lines -- drop the oldest past 4 so a hot streak doesn't
+    // pile the feed into an unreadable column.
+    while (el.killFeed.children.length > 4) el.killFeed.removeChild(el.killFeed.firstChild);
+    setTimeout(() => {
+      line.classList.remove('on');
+      setTimeout(() => { if (line.parentNode) line.parentNode.removeChild(line); }, 200);
+    }, KILL_FEED_LIFE * 1000);
+  }
+  function hideKillFeed() { if (el.killFeed) el.killFeed.innerHTML = ''; }
+
+  function showAnnouncerBanner(text) {
+    if (!el.announcerBanner) return;
+    el.announcerBanner.textContent = text;
+    el.announcerBanner.classList.add('on');
+  }
+  function hideAnnouncerBanner() {
+    if (el.announcerBanner) el.announcerBanner.classList.remove('on');
   }
 
   function showMatchOver(winnerId, scores) {
@@ -7562,6 +7714,7 @@ const UI = (() => {
     showStart, showSplash, hideSplash, showFallback, hideFallback,
     showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
+    pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showCrewLeft, hideCrewLeft,
     get rebindingAction() { return rebindingAction; },
     showPlayerSelect, hidePlayerSelect,
@@ -8172,8 +8325,27 @@ const GAME = (() => {
       entered = false;
       INPUT.releaseLock();
       UI.hideFfaScoreboard();
+      UI.hideKillFeed();
+      ANNOUNCER.reset();
       UI.hideDead();
       UI.showMatchOver(winnerId, scores);
+    });
+    // Kill feed line + combo/first-blood/match-point callout for every kill
+    // in an FFA match -- COOP.registerKill computes and broadcasts this
+    // identically for host and every join, so this handler just renders it.
+    COOP.on('killFeed', ev => {
+      if (mode !== 'coop' || COOP.matchMode !== 'ffa') return;
+      const roster = COOP.roster;
+      const label = id => {
+        const p = roster.find(r => r.id === id);
+        return (p && typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId])
+          ? CAST.ROSTER[p.characterId].label : 'Someone';
+      };
+      const line = ev.killerId
+        ? label(ev.killerId) + ' eliminated ' + label(ev.victimId)
+        : label(ev.victimId) + ' went out on their own';
+      UI.pushKillFeed(line);
+      ANNOUNCER.trigger(ev);
     });
     // A crew member disconnecting mid-match interrupts whoever's left (host
     // and any other joins alike -- COOP emits this identically for both,
@@ -8341,6 +8513,7 @@ const GAME = (() => {
       ENEMY.disableForFfa();
       UI.showFfaScoreboard();
       UI.updateFfaScoreboard(COOP.scores);
+      UI.hideKillFeed();
     } else {
       // A 4-player farm should feel busier than a solo one. Called
       // identically on host and every join at this same matchStart moment.
@@ -8441,8 +8614,10 @@ const GAME = (() => {
     CONSUMABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
+    ANNOUNCER.reset();
     UI.setKills(0);
     UI.hideFfaScoreboard();
+    UI.hideKillFeed();
     lastKills = 0;
     deathPending = false;
     endShown = false;
@@ -8517,6 +8692,7 @@ const GAME = (() => {
     FX.update(dt, time);
     AUDIO.update(dt);
     UI.update(dt);
+    ANNOUNCER.update(dt);
 
     if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
     if (mode === 'coop' && COOP.matchMode === 'ffa' && running) UI.updateFfaScoreboard(COOP.scores);
@@ -11500,7 +11676,7 @@ const ENEMY = (() => {
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
-  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [] };
+  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [], killFeed: [] };
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
@@ -11528,6 +11704,12 @@ const COOP = (() => {
   let matchMode = 'coop';
   // Host-only: peerId -> kill count for the free-for-all scoreboard.
   const killCounts = new Map();
+  // Host-only: per-killer combo tracking for the deathmatch kill feed/
+  // announcer -- last kill time and current streak length, plus whether
+  // anyone's claimed the match's first kill yet.
+  const lastKillTime = new Map();
+  const comboStreak = new Map();
+  let firstBloodClaimed = false;
   // Join-only mirror of the host's kill-count broadcast, for the HUD.
   let lastScores = {};
   // The most recent attacker to damage *this* client's own player, so a
@@ -11595,6 +11777,9 @@ const COOP = (() => {
     matchMode = 'coop';
     myCharacterId = 'playerBluecap';
     killCounts.clear();
+    lastKillTime.clear();
+    comboStreak.clear();
+    firstBloodClaimed = false;
     lastScores = {};
     lastAttackerId = null;
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
@@ -12091,6 +12276,8 @@ const COOP = (() => {
       PLAYER.heal(message.heal || 0);
       PLAYER.addShield(message.shield || 0);
       UI.toast('Rally Horn · +' + Math.round(message.heal || 0) + ' Pep, +' + Math.round(message.shield || 0) + ' Guard', 1.4);
+    } else if (message.type === 'killFeed') {
+      emit('killFeed', message);
     }
   }
 
@@ -12189,9 +12376,34 @@ const COOP = (() => {
     if (role === 'host') registerKill(killerId, localId);
     else if (role === 'join' && connected) send({ type: 'playerDied', killerId: killerId, victimId: localId });
   }
-  /* Host-only. */
+  /* Host-only. Also drives the deathmatch kill feed/combo/announcer: a real
+     kill's bonus score, combo tier, first-blood, and match-point status are
+     all computed here and broadcast once as a single killFeed event so
+     every client renders/announces the identical result. A self/environment
+     elimination (no killerId, or killerId === victimId) still broadcasts a
+     killFeed event -- the feed shows it -- but never carries a combo. */
   function registerKill(killerId, victimId) {
-    if (killerId && killerId !== victimId) killCounts.set(killerId, (killCounts.get(killerId) || 0) + 1);
+    const real = !!(killerId && killerId !== victimId);
+    let comboCount = 0, firstBlood = false, matchPoint = false;
+    if (real) {
+      const now = performance.now() / 1000;
+      const last = lastKillTime.get(killerId);
+      comboCount = (last !== undefined && now - last <= C.comboWindow)
+        ? (comboStreak.get(killerId) || 1) + 1 : 1;
+      comboStreak.set(killerId, comboCount);
+      lastKillTime.set(killerId, now);
+      firstBlood = !firstBloodClaimed;
+      firstBloodClaimed = true;
+      const bonus = Math.min(Math.max(comboCount - 1, 0), C.comboBonusCap);
+      killCounts.set(killerId, (killCounts.get(killerId) || 0) + 1 + bonus);
+      matchPoint = matchMode === 'ffa' && killCounts.get(killerId) === C.ffaKillTarget - 1;
+    }
+    const ev = {
+      type: 'killFeed', killerId: killerId || null, victimId: victimId,
+      comboCount: comboCount, firstBlood: firstBlood, matchPoint: matchPoint
+    };
+    if (connected) broadcast(ev);
+    emit('killFeed', ev);
     broadcastMatchState();
     checkFfaWinCondition();
   }
