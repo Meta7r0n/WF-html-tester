@@ -424,6 +424,22 @@
     transition:opacity .12s ease;
   }
 
+  /* A hero special saving a player from death -- a green haze sweeping
+     across the screen (Stoned's Secret Stash). Opacity/position are driven
+     entirely by the keyframes so retriggering is just a class bounce. */
+  #specialHaze{
+    position:fixed;inset:0;pointer-events:none;z-index:26;opacity:0;
+    background:linear-gradient(100deg, rgba(142,173,75,0) 0%, rgba(142,173,75,.55) 45%, rgba(142,173,75,0) 78%);
+    background-size:220% 100%;background-position:120% 0;
+  }
+  #specialHaze.on{animation:specialHazeSweep 1.15s ease-out;}
+  @keyframes specialHazeSweep{
+    0%{opacity:0;background-position:120% 0;}
+    18%{opacity:.85;}
+    60%{opacity:.5;}
+    100%{opacity:0;background-position:-40% 0;}
+  }
+
   /* ---------- Overlays ---------- */
   .veil{
     position:fixed;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;
@@ -619,6 +635,7 @@
     <div id="radarSignal">Clear</div>
   </div>
   <div id="hurt"></div>
+  <div id="specialHaze"></div>
   <div id="modeChip">
     Free-look &middot; <b>Esc</b> to pause
     <span id="modeWhy"></span>
@@ -915,6 +932,16 @@ const CONFIG = {
     ffaSpawnRing: 6,
     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
   },
+  // Coop-only hero specials that catch a lethal hit before it becomes a real
+  // death. Off in FFA and single-player (except Scarf/Masked, which stay on
+  // their existing single-player-only gate — see HERO).
+  heroSpecial: {
+    invulnDuration: 4,
+    stonedHealPct: 50,
+    pyroBaseHealPct: 15,
+    pyroKillHealPct: 15,
+    pyroStickOffset: 1.8
+  },
   weapons: {
     unarmed: {
       id: 'unarmed', name: 'Bare Knuckles', slot: 1, kind: 'melee',
@@ -960,6 +987,13 @@ const CONFIG = {
       radius: 0.18, gravity: 18, bounce: 0.46, friction: 0.78,
       blastRadius: 5.4, damage: 105, minDamage: 24,
       playerDamage: 68, playerMinDamage: 14, force: 3.8
+    },
+    dynamite: {
+      id: 'dynamite', name: 'Dynamite', plural: 'Dynamite',
+      maxCarry: 3, fuse: 1.5, throwSpeed: 10.5, throwLift: 3.8,
+      radius: 0.2, gravity: 18, bounce: 0.4, friction: 0.78,
+      blastRadius: 7.2, damage: 130, minDamage: 30,
+      playerDamage: 78, playerMinDamage: 18, force: 4.2
     }
   },
   weaponView: {
@@ -5066,6 +5100,13 @@ const PLAYER = (() => {
     UI.setShield(shield, C.maxShield);
   }
 
+  /* A hero special gets a longer, explicit invulnerability window than the
+     brief post-hit i-frame reviveAt() already grants on its own — this only
+     ever extends it (never shortens one already running from a fresher hit). */
+  function grantInvuln(seconds) {
+    invuln = Math.max(invuln, seconds || 0);
+  }
+
   function revive() {
     if (typeof HERO !== 'undefined') HERO.resetRun();
     reviveAt(100);
@@ -5332,7 +5373,7 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset,
+    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -6143,6 +6184,33 @@ const THROWABLE = (() => {
     return root;
   }
 
+  /* Same silhouette Pyro's hand-prop uses (CAST's HANDS.dynamite): a stick
+     of rust-red TNT with cream straps and a lit fuse, just freestanding
+     instead of rigged to a hand. */
+  function buildDynamiteStickVisual(parent, scale) {
+    const root = new THREE.Group();
+    root.scale.setScalar(scale || 1);
+    parent.add(root);
+    const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const strap = MAT.toon(PAL.creamDim);
+    PRIM.cyl(0.09, 0.09, 0.5, 10, body, {
+      pos: [0, 0.09, 0], rot: [0, 0, Math.PI / 2], parent: root, outline: 0.02, ray: false
+    });
+    [-1, 1].forEach(s => PRIM.torus(0.093, 0.016, strap, {
+      pos: [s * 0.15, 0.09, 0], rot: [0, Math.PI / 2, 0], parent: root, outline: 0.008, ray: false
+    }));
+    PRIM.hose(
+      new THREE.Vector3(0.22, 0.16, 0),
+      new THREE.Vector3(0.32, 0.36, 0.04),
+      0.014, 0.007, MAT.toon(PAL.charcoal),
+      { parent: root, outline: 0.005, ray: false }
+    );
+    PRIM.sph(0.03, MAT.flat(PAL.mustard, { transparent: false, fog: false }), {
+      pos: [0.34, 0.4, 0.045], parent: root, outline: 0.012, ray: false
+    });
+    return root;
+  }
+
   function buildPickupVisual(parent, id) {
     if (id === 'grenade') {
       const a = buildGrenadeVisual(parent, 1.35);
@@ -6151,6 +6219,15 @@ const THROWABLE = (() => {
       a.rotation.z = -0.18;
       b.position.set(0.18, -0.04, 0.04);
       b.rotation.z = 0.22;
+      return parent;
+    }
+    if (id === 'dynamite') {
+      // A bundle of three, echoing the special's "three sticks" flavor.
+      [-1, 0, 1].forEach(s => {
+        const stick = buildDynamiteStickVisual(parent, 1);
+        stick.position.set(s * 0.16, s === 0 ? 0.05 : -0.03, s * 0.05);
+        stick.rotation.z = s * 0.12;
+      });
       return parent;
     }
     PRIM.sph(0.28, MAT.toon(PAL.olive), { parent: parent, outline: 0.034, ray: false });
@@ -6514,6 +6591,7 @@ const UI = (() => {
     el.radarCtx = el.radarCanvas && typeof el.radarCanvas.getContext === 'function'
       ? el.radarCanvas.getContext('2d') : null;
     el.hurt = document.getElementById('hurt');
+    el.specialHaze = document.getElementById('specialHaze');
     el.dead = document.getElementById('dead');
     el.deadEyebrow = document.getElementById('deadEyebrow');
     el.deadHeadline = document.getElementById('deadHeadline');
@@ -6719,6 +6797,16 @@ const UI = (() => {
   function hurtFlash(strength) {
     hurtTimer = 0.42;
     el.hurt.style.opacity = UTIL.clamp(strength, 0, 1);
+  }
+
+  /* The keyframe animation drives its own opacity/timing (see #specialHaze
+     in the stylesheet); this just bounces the class so it can retrigger
+     mid-run instead of only ever playing once. */
+  function specialFlash() {
+    if (!el.specialHaze) return;
+    el.specialHaze.classList.remove('on');
+    void el.specialHaze.offsetWidth;
+    el.specialHaze.classList.add('on');
   }
 
   /* Pointer Lock was refused. Say so plainly and retitle the pause card, so
@@ -7040,7 +7128,7 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, showDead, hideDead,
+    setHealth, setShield, setJays, setKills, setBoss, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showFallback, hideFallback,
@@ -7091,6 +7179,9 @@ const PICKUP = (() => {
     { id: 'carbineAmmo', x: 17.5, y: -3.0, z: -48.8 },      // relay platform
     { id: 'grenadeBundle', x: -23.8, y: -4.0, z: -41.0 },   // northwest room
     { id: 'grenadeBundle', x: 11.2, z: -7.6 },              // barn interior
+    // Single, rarer spot for the bigger-radius throwable — same barn room as
+    // the grenades so it's found by anyone already looking there.
+    { id: 'dynamiteBundle', x: 13.7, z: -7.6 },
 
     // Secret-cache stock: one box for every ammo family, plus Pep and Guard.
     { id: 'shellBox', x: 26.1, y: -4.0, z: -42.0 },
@@ -7146,6 +7237,10 @@ const PICKUP = (() => {
   define('grenadeBundle', {
     type: 'throwable', label: 'Grenades', throwableId: 'grenade', quantity: 3,
     color: PAL.olive, respawn: 0
+  });
+  define('dynamiteBundle', {
+    type: 'throwable', label: 'Dynamite', throwableId: 'dynamite', quantity: 2,
+    color: PAL.rustDeep, respawn: 0
   });
 
   registerHandler('weapon', def => {
@@ -8714,8 +8809,29 @@ const HERO = (() => {
     chainsaw: {
       id: 'chainsaw', label: 'Masked Runner', castId: 'playerMasked',
       special: 'chainsaw', specialLabel: 'Emergency Chainsaw'
+    },
+    stoned: {
+      id: 'stoned', label: 'Stoned', castId: 'playerStoned',
+      special: 'secretStash', specialLabel: 'Secret Stash'
+    },
+    pyro: {
+      id: 'pyro', label: 'Pyro', castId: 'playerPyro',
+      special: 'dynamite', specialLabel: 'Dy-No-Mite'
     }
   };
+  // Coop's four slots are filled in a fixed order (see COOP.CHARACTER_POOL),
+  // never player-chosen, so this is the only way to know which hero a coop
+  // client is actually playing.
+  const CASTID_TO_HERO = {
+    playerBluecap: 'scarf', playerMasked: 'chainsaw',
+    playerStoned: 'stoned', playerPyro: 'pyro'
+  };
+  // Scarf/Masked keep their pre-existing single-player-only specials; Stoned/
+  // Pyro's are coop-only. A coop host is always assigned playerBluecap, so
+  // without this split every coop host would inherit Scarf's downed window
+  // just from the castId mapping above resolving to a real hero id.
+  const COOP_SPECIAL_HEROES = { stoned: true, pyro: true };
+  const SOLO_SPECIAL_HEROES = { scarf: true, chainsaw: true };
   let selected = 'scarf';
   let downedActive = false;
   let downedShots = 0;
@@ -8723,9 +8839,24 @@ const HERO = (() => {
   let downedRestoreWeapon = null;
   let chainsawActive = false;
   let restoreWeapon = null;
+  const _pyroPoint = new THREE.Vector3();
+  const _pyroFx = new THREE.Vector3();
 
   function inSinglePlayer() {
     return typeof GAME === 'undefined' || !GAME.isCoop;
+  }
+
+  /* Scarf/Masked keep their existing single-player-only gate. Stoned/Pyro
+     are coop-only characters (never selectable in single-player), and their
+     specials are explicitly off in FFA — no shared PvE world there, and
+     dying is meant to cost something. */
+  function activeHeroId() {
+    if (typeof GAME !== 'undefined' && GAME.isCoop) {
+      if (typeof COOP === 'undefined' || COOP.matchMode !== 'coop') return null;
+      const heroId = CASTID_TO_HERO[COOP.localCharacterId];
+      return (heroId && COOP_SPECIAL_HEROES[heroId]) ? heroId : null;
+    }
+    return (inSinglePlayer() && SOLO_SPECIAL_HEROES[selected]) ? selected : null;
   }
 
   function select(id) {
@@ -8744,22 +8875,79 @@ const HERO = (() => {
     restoreWeapon = null;
   }
 
-  function beginDowned() {
-    if (!inSinglePlayer() || selected !== 'scarf' || downedActive) return false;
+  function beginScarfDowned() {
     const restore = WEAPON.currentId;
     if (!WEAPON.beginHeroSpecial('doubleBarrel')) return false;
     downedActive = true;
     downedShots = 0;
     downedTimer = CONFIG.player.downedTime;
     downedRestoreWeapon = restore;
+    PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
     UI.showDowned();
     UI.setDownedTimer(downedTimer);
     UI.toast('DOWNED — fire the Double Barrel twice to revive', 2.8);
     return true;
   }
 
-  /* One exit for the downed window, so the temporary weapon is always handed
-     back no matter which way the state ends. Safe to call twice. */
+  /* Stoned and Pyro don't get an interactive downed window like Scarf's —
+     their stash/dynamite goes off automatically the instant they'd
+     otherwise die, so there's no persisted state to track here at all. */
+  function beginStonedDowned() {
+    const pct = CONFIG.heroSpecial.stonedHealPct;
+    PLAYER.reviveAt(pct, false);
+    PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
+    UI.specialFlash();
+    UI.toast('Secret Stash — back up · ' + pct + '% Pep', 2);
+    return true;
+  }
+
+  function beginPyroDowned() {
+    const origin = PLAYER.position;
+    const def = (typeof THROWABLE !== 'undefined') ? THROWABLE.definitions.dynamite : null;
+    const radius = def ? def.blastRadius : 7.2;
+    const stickOffset = CONFIG.heroSpecial.pyroStickOffset;
+    // One combined guaranteed-lethal query sized to cover the same ground as
+    // the three visible detonation points below, rather than three separate
+    // blast() calls -- overlapping radii would let a join (never
+    // authoritative for enemy HP, see ENEMY.applyDamage) double-count the
+    // same enemy across sticks since its local alive flag doesn't flip until
+    // the host's next snapshot confirms the kill.
+    _pyroPoint.set(origin.x, origin.y + 0.4, origin.z);
+    const hits = (typeof ENEMY !== 'undefined')
+      ? ENEMY.blast(_pyroPoint, { radius: radius + stickOffset, damage: 99999, minDamage: 99999, force: 4.5 })
+      : 0;
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2 + UTIL.rng(-0.3, 0.3);
+      _pyroFx.set(
+        origin.x + Math.cos(angle) * stickOffset,
+        origin.y + 0.4,
+        origin.z + Math.sin(angle) * stickOffset
+      );
+      FX.explosion(_pyroFx.clone(), radius * 0.6);
+      AUDIO.blast();
+    }
+    // Guaranteed-lethal damage means every enemy blast() reports as hit is
+    // going to die (immediately here on host/single-player, a beat later on
+    // a join once the host confirms it), so the hit count doubles as a kill
+    // count without waiting on that confirmation.
+    const healPct = Math.min(100, CONFIG.heroSpecial.pyroBaseHealPct + hits * CONFIG.heroSpecial.pyroKillHealPct);
+    PLAYER.reviveAt(healPct, false);
+    PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
+    UI.toast('DY-NO-MITE — ' + hits + ' down · +' + Math.round(healPct) + '% Pep', 2.2);
+    return true;
+  }
+
+  function beginDowned() {
+    if (downedActive) return false;
+    const heroId = activeHeroId();
+    if (heroId === 'scarf') return beginScarfDowned();
+    if (heroId === 'stoned') return beginStonedDowned();
+    if (heroId === 'pyro') return beginPyroDowned();
+    return false;
+  }
+
+  /* One exit for Scarf's downed window, so the temporary weapon is always
+     handed back no matter which way the state ends. Safe to call twice. */
   function endDowned(bledOut) {
     if (!downedActive) return;
     downedActive = false;
@@ -8796,13 +8984,14 @@ const HERO = (() => {
       if (downedTimer <= 0) endDowned(true);
       return;
     }
-    if (!inSinglePlayer() || selected !== 'chainsaw' || PLAYER.isDead || !running) return;
+    if (activeHeroId() !== 'chainsaw' || PLAYER.isDead || !running) return;
     const pct = PLAYER.health / CONFIG.player.maxHealth;
     if (!chainsawActive && pct <= 0.25) {
       const restore = WEAPON.currentId;
       if (WEAPON.beginHeroSpecial('chainsaw')) {
         chainsawActive = true;
         restoreWeapon = restore;
+        PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
         UI.toast('CHAINSAW HAND — emergency melee active', 1.8);
       }
     } else if (chainsawActive && pct >= 0.55) {
@@ -8820,7 +9009,8 @@ const HERO = (() => {
     get label() { return DEFINITIONS[selected].label; },
     get downedActive() { return downedActive; },
     get chainsawActive() { return chainsawActive; },
-    get canActWhileDowned() { return downedActive && inSinglePlayer(); }
+    get canActWhileDowned() { return downedActive && inSinglePlayer(); },
+    get activeHeroId() { return activeHeroId(); }
   };
 })();
 
@@ -10965,6 +11155,7 @@ const COOP = (() => {
     get scores() { return lastScores; },
     get playerCount() { return channels.size + 1; },
     get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
+    get localCharacterId() { return myCharacterId; },
     get roster() {
       const list = [{ id: localId, characterId: myCharacterId, isHost: role === 'host' }];
       if (role === 'host') {
