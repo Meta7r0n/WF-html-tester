@@ -1190,6 +1190,35 @@ const CONFIG = {
     knives: {
       id: 'knives', name: 'Throwing Knives', slot: 92, kind: 'melee', specialOnly: true,
       meleeDamage: 99999, meleeRange: 3.2, meleeArc: 6.28, fireInterval: 0.5
+    },
+    // v0.16.01: a junk-drawer railgun -- press fire, it whines through a
+    // short charge (see WEAPON's charging state), then a single high-damage
+    // shot resolves exactly like every other single-pellet gun (still
+    // hitscan under the hood, still coop/FFA-relay-safe for free), with a
+    // random bit of comic junk (trophy/hot dog/rubber chicken) flying the
+    // visible distance as pure cosmetic flair (projectileVisual, see
+    // fireGun's instrumentation and FX.launchJunk).
+    scrapRailgun: {
+      id: 'scrapRailgun', name: 'Scrap Railgun', slot: 6, kind: 'gun', ammoType: 'battery',
+      magSize: 4, startMag: 0, startReserve: 0, maxReserve: 16,
+      fireInterval: 0.9, reloadTime: 1.9, automatic: false,
+      pellets: 1, damage: 70, spread: 0.006, range: 150,
+      recoilBack: 0.32, meleeDamage: 44, meleeRange: 2.3, meleeArc: 0.58,
+      chargeTime: 0.55, projectileVisual: true
+    },
+    // A lighter in one hand, a can of spray paint in the other -- a whole
+    // new weapon class ('flame'), not a reskinned gun: held fire sprays a
+    // continuous damage tick in a cone (ENEMY.coneDamage) rather than
+    // discrete pellets. magSize/reserve are measured in fuel ticks
+    // (tickInterval seconds each) instead of shots, so one can (magSize)
+    // is a real ~8 seconds of stream. Reloading throws the spent can and
+    // pulls a fresh one (see WEAPON's reload animation reuse).
+    sprayTorch: {
+      id: 'sprayTorch', name: 'Spray Torch', slot: 7, kind: 'flame', ammoType: 'spraycan',
+      magSize: 80, startMag: 0, startReserve: 0, maxReserve: 240,
+      fireInterval: 0, reloadTime: 1.3, automatic: true,
+      tickInterval: 0.1, damage: 9, minDamage: 3, range: 7, arc: 0.82,
+      recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58
     }
   },
   throwables: {
@@ -1225,7 +1254,14 @@ const CONFIG = {
   fx: {
     maxDecals: 34, maxParticles: 190, maxTracers: 14,
     boilFPS: 12, weaponStepFPS: 15,
-    boilAmount: 0.014
+    boilAmount: 0.014,
+    // Scrap Railgun's cosmetic flying junk (trophy/hot dog/rubber chicken).
+    maxJunkProjectiles: 6, junkFlightTime: 0.22,
+    // Spray Torch decal foundation: point sprayImage at a real file once
+    // it's in the assets folder (e.g. 'assets/spray-tag.png') and every
+    // future spray decal picks it up automatically in place of the
+    // procedural placeholder blob -- no other code needs to change.
+    maxSprayDecals: 18, sprayImage: null
   },
   audio: { master: 0.5, wind: 0.35, sfx: 0.85, music: 0.6 },
   // v0.16: Ultra Mode -- a single switch (see start screen) that harshens
@@ -1563,6 +1599,45 @@ const TEX = (() => {
     return cache[key];
   }
 
+  // Spray Torch decal foundation: a rough painted-on placeholder blob until
+  // CONFIG.fx.sprayImage points at a real asset (see FX.loadSprayTexture).
+  function spray() {
+    if (cache.spray) return cache.spray;
+    const w = 160, c = cv(w, w), x = c.getContext('2d');
+    x.clearRect(0, 0, w, w);
+    x.translate(w / 2, w / 2);
+    x.fillStyle = hex(PAL.hotSauce);
+    x.beginPath();
+    const pts = 16;
+    for (let i = 0; i <= pts; i++) {
+      const a = i / pts * Math.PI * 2;
+      const r = w * (0.24 + 0.09 * Math.sin(a * 3.4 + 1.2) + UTIL.rng(0, 0.04));
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+    }
+    x.closePath(); x.fill();
+    // overspray speckle ring, like a can held a little too far away
+    x.globalAlpha = 0.6;
+    for (let i = 0; i < 40; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), r = UTIL.rng(w * 0.26, w * 0.46);
+      x.beginPath();
+      x.arc(Math.cos(a) * r, Math.sin(a) * r, UTIL.rng(1, 3.5), 0, 6.3);
+      x.fill();
+    }
+    // a couple of drips
+    x.globalAlpha = 0.85;
+    [-0.3, 0.4].forEach(dx => {
+      x.beginPath();
+      x.moveTo(dx * w * 0.3, w * 0.1);
+      x.lineTo(dx * w * 0.3 - 3, w * (0.32 + UTIL.rng(0, 0.1)));
+      x.lineTo(dx * w * 0.3 + 3, w * (0.32 + UTIL.rng(0, 0.1)));
+      x.closePath(); x.fill();
+    });
+    x.globalAlpha = 1;
+    cache.spray = new THREE.CanvasTexture(c);
+    return cache.spray;
+  }
+
   // blob shadow under props
   function shadow() {
     if (cache.shadow) return cache.shadow;
@@ -1629,7 +1704,7 @@ const TEX = (() => {
     return c.toDataURL('image/png');
   }
 
-  return { ground, wood, metal, sky, splat, star, puff, shadow, sign, grainDataURL, scratchDataURL, finish };
+  return { ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, grainDataURL, scratchDataURL, finish };
 })();
 
 /* ================================ [MAT] ============================== */
@@ -4375,11 +4450,50 @@ const FX = (() => {
   let decalIdx = 0, ringIdx = 0, tracerIdx = 0;
   let muzzleLight = null;
   let boilAcc = 0, boilFrame = 0;
+  // Scrap Railgun's cosmetic flying junk.
+  const junkProjectiles = [];
+  let junkIdx = 0;
+  // Spray Torch decal foundation.
+  const sprayDecals = [];
+  let sprayIdx = 0;
+  let sprayTexture = null, sprayTextureRequested = false;
 
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
   const _q = new THREE.Quaternion();
   const UP = new THREE.Vector3(0, 1, 0);
+
+  /* Scrap Railgun's comic payload -- built once per pool slot (see init),
+     one random pick shown per shot. Small, cheap, purely cosmetic. */
+  function buildJunkTrophy(parent) {
+    const gold = MAT.toon(PAL.mustard);
+    const goldDk = MAT.toon(PAL.mustardDk);
+    PRIM.cyl(0.05, 0.09, 0.05, 10, goldDk, { pos: [0, -0.1, 0], parent: parent, outline: 0.01, ray: false });
+    PRIM.cyl(0.012, 0.012, 0.12, 6, gold, { pos: [0, -0.03, 0], parent: parent, outline: 0.006, ray: false });
+    PRIM.sph(0.09, gold, { pos: [0, 0.08, 0], scale: [1, 1.1, 1], parent: parent, outline: 0.012, ray: false });
+    [-1, 1].forEach(s => PRIM.torus(0.05, 0.014, gold, {
+      pos: [s * 0.08, 0.06, 0], rot: [0, Math.PI / 2, 0], parent: parent, outline: 0.008, ray: false
+    }));
+  }
+  function buildJunkHotdog(parent) {
+    const bun = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1) });
+    const sausage = MAT.toon(PAL.rust);
+    const mustard = MAT.toon(PAL.jays);
+    PRIM.cyl(0.055, 0.055, 0.26, 8, bun, { rot: [0, 0, Math.PI / 2], parent: parent, warp: 0.01, outline: 0.01, ray: false });
+    PRIM.cyl(0.035, 0.035, 0.24, 8, sausage, { pos: [0, 0.025, 0], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.008, ray: false });
+    PRIM.cyl(0.01, 0.01, 0.22, 6, mustard, { pos: [0, 0.05, 0], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.004, ray: false });
+  }
+  function buildJunkChicken(parent) {
+    const white = MAT.toon(PAL.cream);
+    const skin = MAT.toon(PAL.mustardDk);
+    PRIM.sph(0.09, white, { scale: [1, 0.85, 1.2], parent: parent, outline: 0.012, ray: false });
+    PRIM.sph(0.04, white, { pos: [0, 0.04, 0.11], parent: parent, outline: 0.008, ray: false });
+    PRIM.cyl(0.012, 0.012, 0.05, 6, skin, { pos: [0, 0.02, 0.16], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.004, ray: false });
+    [-1, 1].forEach(s => PRIM.cyl(0.015, 0.015, 0.08, 6, skin, {
+      pos: [s * 0.06, -0.08, 0.02], rot: [0.3, 0, s * 0.3], parent: parent, outline: 0.005, ray: false
+    }));
+  }
+  const JUNK_BUILDERS = { trophy: buildJunkTrophy, hotdog: buildJunkHotdog, chicken: buildJunkChicken };
 
   function init(mainScene, vScene) {
     scene = mainScene; viewScene = vScene;
@@ -4442,6 +4556,42 @@ const FX = (() => {
     muzzleLight = new THREE.PointLight(0xFFE9A8, 0, 12, 2);
     muzzleLight.visible = false;
     scene.add(muzzleLight);
+
+    // --- Scrap Railgun junk-projectile pool: each slot pre-builds every
+    // comic variant once and just toggles which one is visible per launch,
+    // instead of rebuilding geometry on every shot. ---
+    const junkKinds = Object.keys(JUNK_BUILDERS);
+    for (let i = 0; i < CONFIG.fx.maxJunkProjectiles; i++) {
+      const root = new THREE.Group();
+      root.visible = false;
+      scene.add(root);
+      const variants = {};
+      junkKinds.forEach(kind => {
+        const vg = new THREE.Group();
+        vg.visible = false;
+        root.add(vg);
+        JUNK_BUILDERS[kind](vg);
+        variants[kind] = vg;
+      });
+      junkProjectiles.push({
+        root: root, variants: variants, life: 0,
+        from: new THREE.Vector3(), to: new THREE.Vector3(), spin: new THREE.Vector3()
+      });
+    }
+
+    // --- Spray Torch decal pool -- a separate pool from the bullet-splat
+    // decals above since it needs its own (possibly swapped-in-later)
+    // texture rather than sharing the ink-splat material. ---
+    for (let i = 0; i < CONFIG.fx.maxSprayDecals; i++) {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({
+        transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false
+      }));
+      m.visible = false;
+      m.renderOrder = 2;
+      m.raycast = function () {};
+      scene.add(m);
+      sprayDecals.push(m);
+    }
   }
 
   function spawnParticle(pos, vel, opts) {
@@ -4571,6 +4721,47 @@ const FX = (() => {
     muzzleLight.visible = true;
   }
 
+  /* Scrap Railgun's flying junk -- purely cosmetic, plays alongside the
+     instant hitscan resolution (see WEAPON.fireGun's projectileVisual
+     hook), never gates or delays the actual damage. */
+  function launchJunk(from, to) {
+    const kinds = Object.keys(JUNK_BUILDERS);
+    const kind = kinds[Math.floor(UTIL.rng(0, kinds.length - 0.001))];
+    const j = junkProjectiles[junkIdx = (junkIdx + 1) % junkProjectiles.length];
+    Object.keys(j.variants).forEach(k => { j.variants[k].visible = k === kind; });
+    j.root.position.copy(from);
+    j.root.rotation.set(UTIL.rng(0, 6.28), UTIL.rng(0, 6.28), UTIL.rng(0, 6.28));
+    j.root.visible = true;
+    j.from.copy(from);
+    j.to.copy(to);
+    j.life = CONFIG.fx.junkFlightTime;
+    j.spin.set(UTIL.rng(-16, 16), UTIL.rng(-16, 16), UTIL.rng(-16, 16));
+  }
+
+  /* Spray Torch decal foundation. Loads CONFIG.fx.sprayImage once it's a
+     real path (fires exactly once; a missing/broken asset just leaves the
+     procedural placeholder in permanent use, no retry loop). */
+  function loadSprayTexture() {
+    if (sprayTexture || sprayTextureRequested || !CONFIG.fx.sprayImage) return;
+    sprayTextureRequested = true;
+    if (!THREE.TextureLoader) return;
+    new THREE.TextureLoader().load(CONFIG.fx.sprayImage, tex => { sprayTexture = tex; }, undefined, () => {});
+  }
+  function sprayDecal(point, normal, scale) {
+    loadSprayTexture();
+    const m = sprayDecals[sprayIdx = (sprayIdx + 1) % sprayDecals.length];
+    m.position.copy(point).addScaledVector(normal, 0.026);
+    _v.copy(point).add(normal);
+    m.lookAt(_v);
+    m.rotation.z = UTIL.rng(0, 6.28);
+    const sc = scale || UTIL.rng(0.62, 0.86);
+    m.scale.set(sc, sc, sc);
+    m.material.map = sprayTexture || TEX.spray();
+    m.material.needsUpdate = true;
+    m.material.opacity = 1;
+    m.visible = true;
+  }
+
   function update(dt, t) {
     // --- stepped "boil": props twitch on a 12fps clock, camera stays smooth ---
     boilAcc += dt;
@@ -4653,6 +4844,21 @@ const FX = (() => {
       muzzleLight.intensity -= dt * 42;
       if (muzzleLight.intensity <= 0) { muzzleLight.intensity = 0; muzzleLight.visible = false; }
     }
+
+    // --- Scrap Railgun's flying junk: a short lerp with a little comic
+    // arc and a lively tumble, purely visual. ---
+    for (let i = 0; i < junkProjectiles.length; i++) {
+      const j = junkProjectiles[i];
+      if (j.life <= 0) continue;
+      j.life -= dt;
+      if (j.life <= 0) { j.root.visible = false; continue; }
+      const k = 1 - j.life / CONFIG.fx.junkFlightTime;
+      j.root.position.lerpVectors(j.from, j.to, k);
+      j.root.position.y += Math.sin(k * Math.PI) * 0.35;
+      j.root.rotation.x += j.spin.x * dt;
+      j.root.rotation.y += j.spin.y * dt;
+      j.root.rotation.z += j.spin.z * dt;
+    }
   }
 
   /* Bullet resolution. Returns the hit point or null. */
@@ -4683,7 +4889,10 @@ const FX = (() => {
     return false;
   }
 
-  return { init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler };
+  return {
+    init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler,
+    launchJunk, sprayDecal
+  };
 })();
 
 /* ============================== [AUDIO] ============================== */
@@ -4955,6 +5164,17 @@ const AUDIO = (() => {
       f.frequency.exponentialRampToValueAtTime(310, t0 + 0.065);
       tone(t0, 620, 105, 0.085, 0.18, 'square');
       tone(t0, 145, 70, 0.1, 0.08, 'triangle');
+      return;
+    }
+    if (kind === 'scrapRailgun') {
+      const f = noiseBurst(t0, 0.14, 3200, 1.8, 0.5);
+      f.frequency.exponentialRampToValueAtTime(600, t0 + 0.12);
+      tone(t0, 1800, 220, 0.22, 0.3, 'sawtooth');
+      tone(t0 + 0.02, 90, 45, 0.3, 0.22, 'triangle');
+      return;
+    }
+    if (kind === 'sprayTorch') {
+      noiseBurst(t0, 0.11, 3400, 2.2, 0.22, 'bandpass');
       return;
     }
     const f = noiseBurst(t0, 0.26, 1500, 0.8, 0.55);
@@ -6239,6 +6459,10 @@ const WEAPON = (() => {
   let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0, bobPhase = 0;
   let flashTimer = 0;
   let damageMult = 1, damageMultTimer = 0;
+  // Scrap Railgun charge-up.
+  let charging = false, chargeTimer = 0;
+  // Spray Torch continuous stream.
+  let flameTickTimer = 0, flameDry = false;
   const reloadMarks = [0.18, 0.5, 0.82];
 
   const _o = new THREE.Vector3();
@@ -6475,6 +6699,75 @@ const WEAPON = (() => {
     };
   }
 
+  function buildScrapRailgun() {
+    const g = new THREE.Group();
+    rig.add(g);
+    // "Looks like a junk drawer taped together": a scavenged rail frame,
+    // duct-tape bands, loose tubing, and a magnifying glass doing double
+    // duty as the focusing lens. Nothing here is a clean manufactured
+    // part -- everything reads as scrap held together on purpose.
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const scrapMetal = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const tape = MAT.toon(PAL.creamDim);
+    const wire = MAT.toon(PAL.charcoal);
+    const glass = MAT.toon(PAL.blue);
+    const battery = MAT.toon(PAL.oliveDeep);
+
+    // Receiver / battery block -- chunky, mismatched panels.
+    PRIM.box(0.2, 0.22, 0.32, steel, { pos: [0, 0, -0.02], parent: g, warp: 0.01, outline: 0.014, ray: false });
+    PRIM.box(0.14, 0.1, 0.16, battery, { pos: [0, -0.02, 0.14], rot: [0, 0, 0.03], parent: g, outline: 0.012, ray: false });
+    PRIM.box(0.05, 0.11, 0.17, MAT.toon(PAL.mustardDk), { pos: [0.095, -0.02, 0.14], parent: g, outline: 0.011, ray: false });
+
+    // Twin scrap rails running the barrel's length -- not a clean bore,
+    // just two mismatched tubes taped side by side.
+    [-0.055, 0.055].forEach((x, i) => {
+      PRIM.cyl(i ? 0.032 : 0.038, i ? 0.028 : 0.033, 1.02, 8, scrapMetal, {
+        pos: [x, 0.02, -0.72], rot: [Math.PI / 2, 0, 0.01 * (i ? 1 : -1)], parent: g, outline: 0.011, ray: false
+      });
+    });
+    [-0.28, -0.58, -0.9].forEach(z =>
+      PRIM.torus(0.078, 0.02, tape, { pos: [0, 0.02, z], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false })
+    );
+
+    // Magnifying glass, mounted mid-barrel like a scope -- also the
+    // charge-up glow (see WEAPON's charging state, model.chargeGlow).
+    const lensMount = new THREE.Group();
+    lensMount.position.set(0, 0.1, -0.42);
+    g.add(lensMount);
+    PRIM.torus(0.09, 0.014, MAT.toon(PAL.mustardDk), { rot: [0, Math.PI / 2, 0], parent: lensMount, outline: 0.01, ray: false });
+    PRIM.box(0.02, 0.02, 0.16, MAT.toon(PAL.rustDeep), { pos: [0, -0.1, 0], parent: lensMount, outline: 0.007, ray: false });
+    const lens = PRIM.cyl(0.08, 0.08, 0.018, 12, glass, {
+      rot: [0, Math.PI / 2, 0], parent: lensMount, outline: 0.011, ray: false
+    });
+
+    // A loose snarl of tubes and wire -- pure junk-drawer texture, no
+    // function, just makes the silhouette read as scavenged rather than
+    // manufactured.
+    const junk = new THREE.Group();
+    junk.position.set(0.075, -0.03, -0.2);
+    g.add(junk);
+    [[0, 0, 0.3, -0.4], [0.05, -0.02, -0.2, 0.5], [-0.02, 0.04, 0.15, -0.6]].forEach(t => {
+      PRIM.cyl(0.014, 0.014, 0.34, 6, wire, {
+        pos: [t[0], t[1], 0], rot: [t[2], t[3], 0], parent: junk, outline: 0.005, ray: false
+      });
+    });
+
+    // Grip + trigger.
+    PRIM.box(0.1, 0.2, 0.12, MAT.toon(PAL.rustDeep), { pos: [0, -0.19, 0.06], rot: [0.26, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.05, 0.011, MAT.toon(PAL.charcoal), { pos: [0, -0.08, -0.01], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+
+    const forend = new THREE.Group();
+    forend.position.set(0, -0.01, -0.5);
+    g.add(forend);
+    PRIM.box(0.15, 0.09, 0.2, tape, { parent: forend, warp: 0.01, outline: 0.011, ray: false });
+
+    const fx = flashes(g, 0.02, -1.28, 0.9);
+    models.scrapRailgun = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2, chargeGlow: lens,
+      base: [0.28, -0.28, -0.5], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
   function buildChainsaw() {
     const g = new THREE.Group();
     rig.add(g);
@@ -6503,6 +6796,47 @@ const WEAPON = (() => {
     models.chainsaw = {
       root: g, forend: null, flash: null, flash2: null,
       base: [0.3, -0.18, -0.5], rot: [0.06, -0.12, 0.08]
+    };
+  }
+
+  /* Spray Torch: not a gun-shaped weapon at all -- a spray can held out in
+     front (doubles as `forend`, since that's already the part the reload
+     animation nudges) with a lighter prop held up beside its nozzle. The
+     flame itself is emitted separately as particles (see FX/fireFlame),
+     not modeled here. */
+  function buildSprayTorch() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal() });
+    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const flint = MAT.toon(PAL.mustardDk);
+
+    const can = new THREE.Group();
+    can.position.set(0, -0.02, -0.28);
+    g.add(can);
+    PRIM.cyl(0.11, 0.11, 0.46, 12, canBody, { parent: can, warp: 0.008, outline: 0.016, ray: false });
+    PRIM.cyl(0.09, 0.11, 0.05, 12, canCap, { pos: [0, 0.255, 0], parent: can, outline: 0.012, ray: false });
+    PRIM.cyl(0.045, 0.045, 0.08, 10, canCap, { pos: [0, 0.32, 0], parent: can, outline: 0.01, ray: false });
+    PRIM.box(0.16, 0.1, 0.02, MAT.toon(PAL.cream), { pos: [0, -0.02, 0.111], parent: can, ray: false, outline: 0.012 });
+    PRIM.cyl(0.09, 0.11, 0.06, 12, canCap, { pos: [0, -0.26, 0], parent: can, outline: 0.012, ray: false });
+    // Nozzle -- angled forward so the emission point (and muzzle flash)
+    // reads as coming from the can, not the player's fist.
+    PRIM.cyl(0.018, 0.018, 0.14, 8, canCap, {
+      pos: [0, 0.34, -0.06], rot: [Math.PI * 0.38, 0, 0], parent: can, outline: 0.007, ray: false
+    });
+
+    const lighter = new THREE.Group();
+    lighter.position.set(0.14, 0.05, -0.42);
+    lighter.rotation.set(0.15, -0.3, 0.1);
+    g.add(lighter);
+    PRIM.box(0.06, 0.1, 0.03, lighterBody, { parent: lighter, warp: 0.01, outline: 0.011, ray: false });
+    PRIM.cyl(0.014, 0.014, 0.03, 8, flint, { pos: [0.015, 0.06, 0], parent: lighter, outline: 0.006, ray: false });
+
+    const fx = flashes(g, 0.36, -0.34, 0.7);
+    models.sprayTorch = {
+      root: g, forend: can, flash: fx.flash, flash2: fx.flash2,
+      base: [0.27, -0.27, -0.46], rot: [0.04, -0.1, 0.02]
     };
   }
 
@@ -6549,10 +6883,11 @@ const WEAPON = (() => {
   function initInventory() {
     Object.keys(DEFS).forEach(id => {
       const d = DEFS[id];
+      const ammoKind = d.kind === 'gun' || d.kind === 'flame';
       inventory[id] = {
         owned: id === 'unarmed' || id === 'pipePopper',
-        mag: d.kind === 'gun' ? (d.startMag || 0) : 0,
-        reserve: d.kind === 'gun' ? (d.startReserve || 0) : 0
+        mag: ammoKind ? (d.startMag || 0) : 0,
+        reserve: ammoKind ? (d.startReserve || 0) : 0
       };
     });
   }
@@ -6566,7 +6901,9 @@ const WEAPON = (() => {
     buildTinSixer();
     buildFieldhand();
     buildCarrotCannon();
+    buildScrapRailgun();
     buildChainsaw();
+    buildSprayTorch();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -6596,7 +6933,7 @@ const WEAPON = (() => {
   function syncHUD() {
     const d = defFor(), s = stateFor();
     UI.setWeapon(d.name, d.kind, s.mag, s.reserve, d.magSize || 0);
-    if (d.kind !== 'gun' || d.specialOnly) UI.showReloadHint(false);
+    if ((d.kind !== 'gun' && d.kind !== 'flame') || d.specialOnly) UI.showReloadHint(false);
     else if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
     else UI.showReloadHint(false);
   }
@@ -6614,9 +6951,13 @@ const WEAPON = (() => {
     reloading = false;
     reloadTimer = 0;
     meleeTimer = 0;
+    charging = false;
+    chargeTimer = 0;
+    flameTickTimer = 0;
+    flameDry = false;
     setMuzzleVisible(false);
     Object.keys(models).forEach(k => { models[k].root.visible = k === id; });
-    armedHands.visible = d.kind === 'gun';
+    armedHands.visible = d.kind === 'gun' || d.kind === 'flame';
     syncHUD();
     if (!silent) UI.toast(d.name, 0.75);
     return true;
@@ -6654,7 +6995,7 @@ const WEAPON = (() => {
 
   function startReload() {
     const d = defFor(), s = stateFor();
-    if (d.kind !== 'gun' || reloading || s.mag >= d.magSize) return false;
+    if ((d.kind !== 'gun' && d.kind !== 'flame') || reloading || charging || s.mag >= d.magSize) return false;
     if (s.reserve <= 0) {
       AUDIO.dryFire();
       UI.showReloadHint(true, 'Out of ammo');
@@ -6678,6 +7019,24 @@ const WEAPON = (() => {
     reloadTimer = 0;
     squashVel += 6;
     syncHUD();
+  }
+
+  /* Scrap Railgun only -- a press starts the charge (see update()'s
+     charging block for the automatic fire-on-complete), rather than firing
+     immediately like every other gun. */
+  function beginCharge() {
+    const s = stateFor();
+    if (charging || reloading || fireTimer > 0 || meleeTimer > 0) return false;
+    if (s.mag <= 0) {
+      AUDIO.dryFire();
+      UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+      if (s.reserve > 0) startReload();
+      return false;
+    }
+    charging = true;
+    chargeTimer = 0;
+    AUDIO.reloadClick('open');
+    return true;
   }
 
   function fireGun(camera) {
@@ -6741,12 +7100,14 @@ const WEAPON = (() => {
         if (d.pellets === 1 || i === 0) {
           _end.copy(_o).addScaledVector(_t, d.range);
           FX.tracer(_muzzleWorld, _end);
+          if (d.projectileVisual) FX.launchJunk(_muzzleWorld, _end);
         }
         continue;
       }
       const hit = FX.trace(_o, _t, d.range);
       if (hit) {
         if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
+        if (d.projectileVisual) FX.launchJunk(_muzzleWorld, hit.point);
         // Only reachable for the host's own shots — a join never gets here
         // (see the relayRemote branch above), and single-player never has a
         // playerHit proxy to find in the first place.
@@ -6767,10 +7128,67 @@ const WEAPON = (() => {
         // overwrote _t with _d and pointed the miss tracer the wrong way.
         _end.copy(_o).addScaledVector(_t, d.range);
         FX.tracer(_muzzleWorld, _end);
+        if (d.projectileVisual) FX.launchJunk(_muzzleWorld, _end);
       }
     }
     if (currentId === 'doubleBarrel') HERO.onDoubleBarrelShot();
     if (currentId === d.id && s.mag === 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+  }
+
+  /* Spray Torch: held fire, continuous. Visual flame particles play every
+     frame it's held; the actual fuel/damage tick (ENEMY.coneDamage,
+     PvE-only for now -- see the module doc comment at the top of ENEMY)
+     only lands every tickInterval seconds, independent of frame rate. Any
+     tick that lines up with a wall rather than an enemy leaves a spray
+     decal there too -- it's still paint, lit or not (see FX.sprayDecal,
+     the foundation for a future custom tag image). */
+  function fireFlame(camera, dt) {
+    const d = defFor(), s = stateFor(), model = models[currentId];
+    if (reloading) return;
+    if (s.mag <= 0) {
+      if (!flameDry) { AUDIO.dryFire(); flameDry = true; }
+      UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+      if (s.reserve > 0) startReload();
+      return;
+    }
+    flameDry = false;
+
+    model.root.updateMatrixWorld(true);
+    model.flash.getWorldPosition(_muzzleWorld);
+    _muzzleWorld.applyMatrix4(camera.matrixWorld);
+    FX.muzzleFlashLight(_muzzleWorld);
+    model.flash.visible = model.flash2.visible = true;
+
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    for (let i = 0; i < 2; i++) {
+      _t.copy(_d);
+      _t.x += UTIL.rng(-0.09, 0.09);
+      _t.y += UTIL.rng(-0.05, 0.11);
+      _t.z += UTIL.rng(-0.09, 0.09);
+      FX.spawnParticle(_muzzleWorld, _t.multiplyScalar(UTIL.rng(5, 9)), {
+        map: i % 2 ? TEX.puff(PAL.hotSauce) : TEX.star(PAL.mustard),
+        s0: UTIL.rng(0.16, 0.3), s1: UTIL.rng(0.34, 0.52),
+        life: UTIL.rng(0.16, 0.28), grav: -1.4, spin: UTIL.rng(-3, 3)
+      });
+    }
+
+    flameTickTimer -= dt;
+    if (flameTickTimer > 0) return;
+    flameTickTimer = d.tickInterval;
+    s.mag--;
+    syncHUD();
+    AUDIO.gunshot(currentId);
+    ENEMY.coneDamage(_o, _d, {
+      range: d.range, arc: d.arc, damage: d.damage * damageMult, minDamage: d.minDamage, force: 0.6
+    });
+    const wallHit = FX.trace(_o, _d, d.range);
+    if (wallHit && !(wallHit.object.userData && (wallHit.object.userData.enemyHit || wallHit.object.userData.playerHit))) {
+      const n = wallHit.face ? wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld)
+                              : _d.clone().negate();
+      FX.sprayDecal(wallHit.point, n);
+    }
+    if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
   }
 
   function beginMelee(camera) {
@@ -6824,7 +7242,7 @@ const WEAPON = (() => {
 
   function grantWeapon(id, reserveBonus) {
     const d = DEFS[id], s = inventory[id];
-    if (!d || d.kind !== 'gun') return { consumed: false, newlyOwned: false, ammoAdded: 0 };
+    if (!d || (d.kind !== 'gun' && d.kind !== 'flame')) return { consumed: false, newlyOwned: false, ammoAdded: 0 };
     const newlyOwned = !s.owned;
     s.owned = true;
     if (newlyOwned && s.mag <= 0) s.mag = d.magSize;
@@ -6880,7 +7298,13 @@ const WEAPON = (() => {
       // can be tapped or held just like a normal weapon. Keeping the held
       // state here also makes it usable with the mobile fire/aim drag.
       else if (d.kind === 'melee' && (INPUT.actions.fire || pressedFire)) beginMelee(camera);
+      // Charge-up guns (Scrap Railgun): a press starts the charge; the
+      // actual shot fires itself once it fills, see the charging block
+      // below. Never falls through to a normal instant fireGun() call.
+      else if (d.kind === 'gun' && d.chargeTime && pressedFire) beginCharge();
       else if (d.kind === 'gun' && (d.automatic ? (INPUT.actions.fire || pressedFire) : pressedFire)) fireGun(camera);
+      else if (d.kind === 'flame' && INPUT.actions.fire) fireFlame(camera, dt);
+      else if (d.kind === 'flame') flameDry = false;
       if (INPUT.consumePress('reload')) startReload();
     }
 
@@ -6901,6 +7325,14 @@ const WEAPON = (() => {
         reloadStage++;
       }
       if (k >= 1) finishReload();
+    }
+    if (charging) {
+      const d = defFor();
+      chargeTimer += dt;
+      if (chargeTimer >= d.chargeTime) {
+        charging = false;
+        fireGun(camera);
+      }
     }
 
     recoilVel += (-recoil * 260 - recoilVel * 22) * dt;
@@ -6929,7 +7361,7 @@ const WEAPON = (() => {
     const meleeK = meleeTimer > 0 ? 1 - meleeTimer / meleeTotal : 0;
     const swing = meleeTimer > 0 ? Math.sin(UTIL.clamp(meleeK, 0, 1) * Math.PI) : 0;
 
-    if (d.kind === 'gun') {
+    if (d.kind === 'gun' || d.kind === 'flame') {
       model.root.position.set(
         model.base[0] + swayX + bx + ix - swing * 0.23,
         model.base[1] + swayY + by + iy - reloadDrop + recoil * 0.28 + swing * 0.1,
@@ -6941,9 +7373,18 @@ const WEAPON = (() => {
         model.rot[2] + reloadRoll + swayY * 0.9 - recoil * 0.4 + swing * 0.38 * meleeSide
       );
       model.root.scale.set(1 - squash * 0.35, 1 - squash * 0.35, 1 + squash * 0.55);
-      if (model.forend) model.forend.position.z = (currentId === 'pipePopper' ? -0.44 : -0.52) + forendZ + recoil * 0.5;
+      if (model.forend) {
+        const forendBaseZ = currentId === 'pipePopper' ? -0.44 : currentId === 'sprayTorch' ? -0.28 : -0.52;
+        model.forend.position.z = forendBaseZ + forendZ + recoil * 0.5;
+      }
       armedHands.position.set(swayX * 0.35 - swing * 0.12, swayY * 0.35 + by * 0.4 + swing * 0.06, -swing * 0.1);
       armedHands.rotation.z = swayY * 0.25 + swing * 0.28 * meleeSide;
+      // Scrap Railgun's magnifying-glass lens builds a glow as the charge
+      // fills, so the shot always telegraphs itself before it goes off.
+      if (model.chargeGlow) {
+        const k = charging ? UTIL.clamp(chargeTimer / d.chargeTime, 0, 1) : 0;
+        model.chargeGlow.scale.setScalar(1 + k * 0.9);
+      }
     } else {
       const base = model.base || [0, 0, 0];
       const rot = model.rot || [0, 0, 0];
@@ -7004,6 +7445,10 @@ const WEAPON = (() => {
     initInventory();
     fireTimer = reloadTimer = meleeTimer = recoil = recoilVel = squash = squashVel = 0;
     reloading = false;
+    charging = false;
+    chargeTimer = 0;
+    flameTickTimer = 0;
+    flameDry = false;
     setCurrent('pipePopper', true, true);
   }
 
@@ -7606,7 +8051,7 @@ const UI = (() => {
 
   function setWeapon(name, kind, n, reserve, max) {
     el.weaponName.textContent = name;
-    if (kind !== 'gun') {
+    if (kind !== 'gun' && kind !== 'flame') {
       el.shells.innerHTML = '';
       el.ammoNum.textContent = 'FISTS';
       el.ammoNum.className = 'melee';
@@ -8315,7 +8760,15 @@ const PICKUP = (() => {
     { id: 'shieldCell', x: 20.0, y: -4.0, z: -59.0 },   // northeast link -> relay_room
     { id: 'lightAmmo', x: 2.0, y: -4.0, z: -53.0 },     // northeast link -> root_cellar
     { id: 'jaysPack', x: 23.6, z: -13.0 },              // barn stair vestibule
-    { id: 'healthTonic', x: -10.0, y: -4.0, z: 10.0 }   // well shaft hallway
+    { id: 'healthTonic', x: -10.0, y: -4.0, z: 10.0 },  // well shaft hallway
+
+    // v0.16.01: Scrap Railgun (batteries) and Spray Torch (spraycans).
+    { id: 'scrapRailgunWeapon', x: 18.0, y: -4.0, z: -73.0 },  // northeast room: a distant reward
+    { id: 'batteryPack', x: 21.0, y: -4.0, z: -70.0 },         // same room, easy restock right after finding the gun
+    { id: 'batteryPack', x: 9.0, z: 18.0 },                    // house side, for players who'd rather not detour underground
+    { id: 'sprayTorchWeapon', x: 4.0, y: 8.2, z: -65.0 },      // silo deck: exposed, high-value ground
+    { id: 'spraycanBox', x: -3.0, y: 8.2, z: -67.0 },          // same deck
+    { id: 'spraycanBox', x: 19.0, z: -1.0 }                    // field side, convenient restock
   ];
 
   function define(id, def) {
@@ -8335,6 +8788,15 @@ const PICKUP = (() => {
     type: 'weapon', label: 'Fieldhand Carbine', weaponId: 'fieldhand',
     quantity: 48, color: PAL.olive, respawn: 0
   });
+  // v0.16.01
+  define('scrapRailgunWeapon', {
+    type: 'weapon', label: 'Scrap Railgun', weaponId: 'scrapRailgun',
+    quantity: 8, color: PAL.blue, respawn: 0
+  });
+  define('sprayTorchWeapon', {
+    type: 'weapon', label: 'Spray Torch', weaponId: 'sprayTorch',
+    quantity: 120, color: PAL.hotSauce, respawn: 0
+  });
   define('shellBox', {
     type: 'ammo', label: 'Pipe Shells', ammoType: 'shells',
     quantity: 12, color: PAL.rust, respawn: 22
@@ -8346,6 +8808,14 @@ const PICKUP = (() => {
   define('carbineAmmo', {
     type: 'ammo', label: 'Carbine Rounds', ammoType: 'carbine',
     quantity: 36, color: PAL.olive, respawn: 26
+  });
+  define('batteryPack', {
+    type: 'ammo', label: 'Batteries', ammoType: 'battery',
+    quantity: 8, color: PAL.blue, respawn: 26
+  });
+  define('spraycanBox', {
+    type: 'ammo', label: 'Spray Cans', ammoType: 'spraycan',
+    quantity: 120, color: PAL.hotSauce, respawn: 24
   });
   define('healthTonic', {
     type: 'health', label: 'Pep Tonic', quantity: 30,
@@ -8530,6 +9000,34 @@ const PICKUP = (() => {
     }
   }
 
+  /* Scrap Railgun's fuel -- a couple of scavenged D-cell batteries, banded
+     together, echoing the same "taped-together scrap" read as the gun
+     itself. Used for the battery ammo pickup. */
+  function buildBatteryVisual(parent) {
+    const cellBody = MAT.toon(PAL.olive);
+    const cellCap = MAT.toon(PAL.charcoal);
+    [-0.13, 0.13].forEach(x => {
+      PRIM.cyl(0.11, 0.11, 0.42, 10, cellBody, { pos: [x, 0, 0], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.02, ray: false });
+      PRIM.cyl(0.09, 0.11, 0.06, 10, cellCap, { pos: [x - 0.18, 0, 0], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.014, ray: false });
+      PRIM.cyl(0.035, 0.035, 0.05, 8, MAT.toon(PAL.mustard), { pos: [x + 0.22, 0, 0], rot: [0, 0, Math.PI / 2], parent: parent, outline: 0.01, ray: false });
+    });
+    PRIM.box(0.05, 0.24, 0.24, MAT.toon(PAL.creamDim), { parent: parent, warp: 0.02, outline: 0.016, ray: false });
+  }
+
+  /* Shared by the Spray Torch weapon pickup and the spraycan ammo pickup --
+     the same object either becomes your first Spray Torch or tops up an
+     existing one. Mirrors WEAPON's own can prop so the two read as the
+     same item. */
+  function buildSpraycanVisual(parent) {
+    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal() });
+    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    PRIM.cyl(0.17, 0.17, 0.52, 12, canBody, { parent: parent, warp: 0.01, outline: 0.026, ray: false });
+    PRIM.cyl(0.14, 0.17, 0.06, 12, canCap, { pos: [0, 0.29, 0], parent: parent, outline: 0.018, ray: false });
+    PRIM.cyl(0.06, 0.06, 0.08, 10, canCap, { pos: [0, 0.36, 0], parent: parent, outline: 0.014, ray: false });
+    PRIM.cyl(0.14, 0.17, 0.07, 12, canCap, { pos: [0, -0.29, 0], parent: parent, outline: 0.018, ray: false });
+    PRIM.box(0.26, 0.16, 0.02, MAT.toon(PAL.cream), { pos: [0, 0, 0.171], parent: parent, ray: false, outline: 0.018 });
+  }
+
   function buildHealthVisual(parent) {
     PRIM.cyl(0.19, 0.22, 0.55, 10, MAT.toon(PAL.cream), { parent: parent, outline: 0.03, ray: false });
     PRIM.cyl(0.11, 0.11, 0.16, 10, MAT.toon(PAL.rust), { pos: [0, 0.35, 0], parent: parent, outline: 0.02, ray: false });
@@ -8605,8 +9103,11 @@ const PICKUP = (() => {
     root.add(visual);
     if (def.type === 'weapon') {
       if (def.weaponId === 'carrotCannon') buildCarrotCannonVisual(visual);
+      else if (def.weaponId === 'sprayTorch') buildSpraycanVisual(visual);
       else buildWeaponVisual(visual, def);
     }
+    else if (def.type === 'ammo' && def.ammoType === 'battery') buildBatteryVisual(visual);
+    else if (def.type === 'ammo' && def.ammoType === 'spraycan') buildSpraycanVisual(visual);
     else if (def.type === 'ammo') buildAmmoVisual(visual, def);
     else if (def.type === 'health') buildHealthVisual(visual);
     else if (def.type === 'consumable') buildJaysVisual(visual);
@@ -11454,6 +11955,49 @@ const ENEMY = (() => {
     return true;
   }
 
+  /* Spray Torch's stream: like melee() above (same arc/LOS cone test) but
+     damages every enemy caught in the cone each tick, not just the
+     closest -- a flame stream should be able to catch a cluster, not pick
+     a single target. Routes through the same applyDamage() every other
+     source uses, so it's already coop-relay-correct for free. */
+  function coneDamage(origin, dir, opts) {
+    opts = opts || {};
+    const range = opts.range || 6;
+    const arc = opts.arc === undefined ? 0.75 : opts.arc;
+    const maxDamage = opts.damage || 8;
+    const minDamage = opts.minDamage === undefined ? maxDamage * 0.4 : opts.minDamage;
+    const force = opts.force === undefined ? 0.6 : opts.force;
+    let hitCount = 0;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e.alive || e.layerId !== PLAYER.layerId) continue;
+      _v.set(e.pos.x, e.pos.y + 0.9, e.pos.z).sub(origin);
+      const distance = _v.length();
+      if (distance > range || distance < 0.001) continue;
+      _v.multiplyScalar(1 / distance);
+      const facing = _v.dot(dir);
+      if (facing < arc) continue;
+
+      raycaster.far = distance;
+      raycaster.set(origin, _v);
+      const blocks = raycaster.intersectObjects(LOS_TARGETS, true);
+      let blocked = false;
+      for (let j = 0; j < blocks.length; j++) {
+        if (blocks[j].object.userData.outline) continue;
+        if (blocks[j].distance < distance - 0.25) blocked = true;
+        break;
+      }
+      if (blocked) continue;
+
+      const falloff = 1 - UTIL.clamp(distance / range, 0, 1);
+      const dmg = UTIL.lerp(minDamage, maxDamage, falloff);
+      _v2.set(e.pos.x, e.pos.y + 0.9, e.pos.z);
+      applyDamage(e, dmg, _v2, dir, 'body', force);
+      hitCount++;
+    }
+    return hitCount;
+  }
+
   /* Obstruction-aware radial damage for grenades and future explosives. */
   function blast(center, opts) {
     opts = opts || {};
@@ -12378,7 +12922,7 @@ const ENEMY = (() => {
   }
 
   return {
-    init, prepareAssets, update, hit, melee, blast, reset, applyDamage, spawnBoss,
+    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss,
     get list() { return list; },
