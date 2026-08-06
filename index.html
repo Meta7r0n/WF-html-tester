@@ -3012,7 +3012,17 @@ const LEVEL = (() => {
       wb.box(0.55, 0.95, 0.34, 3 + Math.cos(a) * R, 0.48, 10 + Math.sin(a) * R, 0, -a, UTIL.rng(-.07, .07), 0.03);
     }
     wb.build(parent);
-    WORLD.addFloor(3, 0, 10, 2.9, 1.0, 2.9, 'well');
+    // v0.15.01-UGEX-FIX: the well is now a real drop shaft instead of a
+    // solid boulder -- a low curb (below PLAYER.stepHeight, so it doesn't
+    // even need a jump) rings a genuine 1.9x1.9 hole in the middle. Anyone
+    // who deliberately steps into the ring (or lobs a grenade over it)
+    // falls straight through to the new hallway below (see buildBasement's
+    // well shaft tunnel); nothing about the fall itself is special-cased,
+    // it's just an absence of floor the same way any other pit would be.
+    WORLD.addFloor(3, 0, 8.8, 2.9, 0.5, 0.5, 'well');   // north curb
+    WORLD.addFloor(3, 0, 11.2, 2.9, 0.5, 0.5, 'well');  // south curb
+    WORLD.addFloor(1.8, 0, 10, 0.5, 0.5, 1.9, 'well');  // west curb
+    WORLD.addFloor(4.2, 0, 10, 0.5, 0.5, 1.9, 'well');  // east curb
     const wr = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.04);
     wr.box(0.16, 2.0, 0.16, 1.95, 1.0, 10);
     wr.box(0.16, 2.0, 0.16, 4.05, 1.0, 10);
@@ -3761,6 +3771,24 @@ const LEVEL = (() => {
           const hi = Math.min(end, horizontal ? other.maxX : other.maxZ);
           if (hi - lo > 0.08) out.push([lo, hi]);
         }
+        // A hand-placed wall already sitting on this exact edge line covers
+        // whatever span it spans, same as a neighboring area would. Without
+        // this, every simple wall with nothing registered on its far side
+        // (the overwhelming common case -- most rooms are mostly solid
+        // walls with one or two doorways) got a full-length duplicate
+        // dropped directly on top of it: the source of the reported
+        // z-fighting/glitching walls and the near-boundary collision
+        // slivers that read as "blocked passageways."
+        const wallCenter = w => horizontal ? (w.minZ + w.maxZ) * 0.5 : (w.minX + w.maxX) * 0.5;
+        WORLD.solids.forEach(w => {
+          if (!w.tag || w.tag.indexOf('_wall') === -1) return;
+          if (w.tag.indexOf('basement_seal') === 0) return; // never treat an earlier seal as coverage
+          if (w.minY > FLOOR_Y + 0.15 || w.maxY < CEIL_Y - 0.15) return; // must span full basement height
+          if (Math.abs(wallCenter(w) - edge) > 0.35) return;
+          const lo = Math.max(start, horizontal ? w.minX : w.minZ);
+          const hi = Math.min(end, horizontal ? w.maxX : w.maxZ);
+          if (hi - lo > 0.08) out.push([lo, hi]);
+        });
         out.sort((a, b) => a[0] - b[0]);
         const merged = [];
         out.forEach(interval => {
@@ -3877,7 +3905,10 @@ const LEVEL = (() => {
        basement, preserving ambushes, navigation choices and occlusion. */
     addSlab(-18.5, 2.55, 3.6, 14.9, 'south_tunnel');
     addWall(-20.25, 2.55, 0.30, 15.2, 'south_tunnel');
-    addWall(-16.75, 2.55, 0.30, 15.2, 'south_tunnel');
+    // East wall shortened at its north end for a doorway (z 6.7 to 10.15,
+    // the tunnel's own natural end) -- the v0.15.01-UGEX-FIX well shaft
+    // hallway connects the whole network here (see below).
+    addWall(-16.75, 0.825, 0.30, 11.75, 'south_tunnel');
 
     addSlab(-17.5, 17.5, 15.0, 15.0, 'generator_hall');
     addWall(-25.15, 17.5, 0.30, 15.3, 'generator_hall');
@@ -3950,6 +3981,52 @@ const LEVEL = (() => {
     PROPS.lantern(parent, 8, -0.78, -71, 0);
     PROPS.lantern(parent, 2, -0.78, -52.8, 0);
 
+    /* ---- v0.15.01-UGEX-FIX well shaft ----
+       The front-yard well (see buildYard) is a real drop shaft now, not a
+       solid boulder. Built by hand instead of addSlab() specifically so
+       the ceiling can open around the well's own footprint -- a natural
+       fall-through (no ladder, no HATCHES entry), so a lobbed grenade
+       falls the same way a player does. A simple dead-end run west into
+       south_tunnel's newly shortened east wall -- drop at the east end,
+       run west to reach the rest of the network. */
+    const wellX0 = -18.9, wellX1 = 4.2, wellZ0 = 8.2, wellZ1 = 11.8;
+    const hallCX = (wellX0 + wellX1) * 0.5, hallCZ = (wellZ0 + wellZ1) * 0.5;
+    const wellW = wellX1 - wellX0, wellD = wellZ1 - wellZ0;
+    shell.box(wellW, 0.22, wellD, hallCX, FLOOR_Y - 0.11, hallCZ);
+    WORLD.addFloor(hallCX, FLOOR_Y - 0.22, hallCZ, wellW, 0.22, wellD, 'well_shaft_floor');
+    WORLD.addArea('basement', wellX0, wellX1, wellZ0, wellZ1, 'well_shaft_area');
+    // Matches the well's own curb opening in buildYard exactly (cx=3, cz=10).
+    const wellShaftHole = { minX: 2.05, maxX: 3.95, minZ: 9.05, maxZ: 10.95 };
+    const shaftCX = (wellShaftHole.minX + wellShaftHole.maxX) * 0.5;
+    const shaftCZ = (wellShaftHole.minZ + wellShaftHole.maxZ) * 0.5;
+    splitCeiling(wellX0, wellX1, wellZ0, wellZ1,
+      [wellShaftHole].concat(openingsInside(wellX0, wellX1, wellZ0, wellZ1)))
+      .forEach(p => {
+        shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
+        WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, 'well_shaft_ceiling');
+      });
+    addWall(hallCX, wellZ0, wellW + 0.3, 0.30, 'well_shaft');
+    addWall(hallCX, wellZ1, wellW + 0.3, 0.30, 'well_shaft');
+    // Dead end, directly under the well -- fully closed except for the
+    // ceiling hole above.
+    addWall(wellX1, hallCZ, 0.30, wellD, 'well_shaft');
+    PROPS.lantern(parent, -10, -0.78, 10, 0);
+    // The open shaft (no solid across it) is real, so a lobbed grenade
+    // already falls straight through on plain projectile physics -- but
+    // the player's own ground resolution always defaults to the flat
+    // surface plane when nothing else claims a spot (see
+    // WORLD.defaultGroundAt), so without a ladder trigger walking into the
+    // opening would just stand on empty air at y=0. The ladder is what
+    // actually carries the player down; the hole is what lets a grenade
+    // follow the same way down.
+    WORLD.addLadder(shaftCX, FLOOR_Y, shaftCZ, wellShaftHole.maxX - wellShaftHole.minX, -FLOOR_Y,
+      wellShaftHole.maxZ - wellShaftHole.minZ, {
+        topY: 0, topExitX: shaftCX, topExitZ: shaftCZ,
+        bottomExitX: shaftCX, bottomExitZ: shaftCZ,
+        normalZ: 1, topLayer: 'surface', bottomLayer: 'basement',
+        tag: 'well_shaft_ladder'
+      });
+
     sealFloorEdges();
     shell.build(parent);
 
@@ -3983,6 +4060,7 @@ const LEVEL = (() => {
     doorwayFrame(14.85, -71, false);
     doorwayFrame(20, -50.65, true);
     doorwayFrame(2, -36.15, true);
+    doorwayFrame(-16.75, 9.2, false);
     // Wall-side braces add rhythm without narrowing any walkable lane.
     [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
     [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
@@ -6868,7 +6946,12 @@ const THROWABLE = (() => {
     root.position.copy(pos);
     root.rotation.set(UTIL.rng(-0.4, 0.4), UTIL.rng(0, Math.PI * 2), UTIL.rng(-0.4, 0.4));
     scene.add(root);
-    buildGrenadeVisual(root, 1);
+    // This was always buildGrenadeVisual() regardless of currentId, so a
+    // thrown stick of dynamite still read as a grenade mid-flight even
+    // though the pickup icon (buildPickupVisual above) already got this
+    // right. Same per-type branch, just for the live projectile.
+    if (currentId === 'dynamite') buildDynamiteStickVisual(root, 1);
+    else buildGrenadeVisual(root, 1);
     active.push({
       id: currentId, def: def, root: root, pos: pos, vel: vel,
       timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius
@@ -7951,7 +8034,16 @@ const PICKUP = (() => {
     { id: 'ironHidePack', x: -1.5, y: 8.2, z: -68.0 },  // silo deck: the exposed high fight
     { id: 'hotSauceJar', x: 13.0, z: -58.0 },           // orchard: rewards pushing forward
     { id: 'jackrabbitPack', x: 17.0, z: 11.0 },         // field: helps cross the bigger farm
-    { id: 'rallyHornPack', x: 0.0, z: -64.0 }           // orchard/silo midpoint: a rally point
+    { id: 'rallyHornPack', x: 0.0, z: -64.0 },          // orchard/silo midpoint: a rally point
+
+    // v0.15.01-UGEX-FIX: the northeast underground branch and barn stair
+    // vestibule were entirely pickup-free -- new ground worth exploring
+    // needs its own reward, not just a longer walk to an existing one.
+    { id: 'shellBox', x: 24.0, y: -4.0, z: -76.0 },     // northeast room
+    { id: 'shieldCell', x: 20.0, y: -4.0, z: -59.0 },   // northeast link -> relay_room
+    { id: 'lightAmmo', x: 2.0, y: -4.0, z: -53.0 },     // northeast link -> root_cellar
+    { id: 'jaysPack', x: 23.6, z: -13.0 },              // barn stair vestibule
+    { id: 'healthTonic', x: -10.0, y: -4.0, z: 10.0 }   // well shaft hallway
   ];
 
   function define(id, def) {
