@@ -267,6 +267,51 @@
   }
   #killFeed .line.on{opacity:1;transform:translateX(0);}
 
+  /* ---------- Local chat ---------- */
+  #chatLog{
+    position:fixed;left:26px;bottom:172px;z-index:30;width:min(360px,44vw);
+    display:flex;flex-direction:column;gap:4px;pointer-events:none;
+  }
+  #chatLog .line{
+    font:700 12px/1.3 "Rockwell",Georgia,serif;
+    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    background:rgba(18,15,13,.42);padding:3px 8px;border-radius:6px;word-break:break-word;
+    opacity:0;transform:translateY(6px);transition:opacity .18s ease,transform .18s ease;
+  }
+  #chatLog .line.on{opacity:1;transform:translateY(0);}
+  #chatLog .line b{color:var(--mustard);margin-right:5px;}
+  #chatLog .line.self b{color:var(--rust);}
+  #chatInputBar{
+    position:fixed;left:26px;bottom:132px;z-index:31;width:min(360px,44vw);
+    display:none;align-items:center;gap:6px;
+    font:700 13px/1.3 "Rockwell",Georgia,serif;color:var(--cream);
+    background:rgba(18,15,13,.78);border:2px solid var(--ink);border-radius:6px;padding:5px 9px;
+  }
+  #chatInputBar.on{display:flex;}
+  #chatInputBar b{color:var(--mustard);white-space:nowrap;}
+  #chatInputBar span{flex:1;word-break:break-word;}
+  #chatInputBar span::after{
+    content:'';display:inline-block;width:2px;height:12px;background:var(--cream);
+    margin-left:2px;vertical-align:middle;animation:chatCaret 1s steps(1) infinite;
+  }
+  @keyframes chatCaret{50%{opacity:0;}}
+
+  /* ---------- Voice chat indicator ---------- */
+  #voiceChip{
+    display:flex;align-items:center;gap:8px;margin-top:8px;
+    color:var(--cream);font:900 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    opacity:0;transition:opacity .18s ease;transform:rotate(1deg);
+  }
+  #voiceChip.on{opacity:.55;}
+  #voiceChip.talking{opacity:1;}
+  #voiceChip b{
+    display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;
+    border:3px solid var(--ink);border-radius:50%;background:#6C7E88;
+    color:var(--cream);font-size:11px;letter-spacing:0;text-shadow:none;box-shadow:3px 4px 0 rgba(22,18,15,.4);
+  }
+  #voiceChip.talking b{background:var(--jays,#8EAD4B);}
+
   /* ---------- Deathmatch announcer banner ---------- */
   #announcerBanner{
     position:fixed;left:50%;top:26%;z-index:34;transform:translate(-50%,-10px) rotate(-1.5deg);
@@ -372,7 +417,7 @@
   #mobileActions{
     position:absolute;right:max(12px,env(safe-area-inset-right));
     bottom:max(12px,env(safe-area-inset-bottom));
-    width:clamp(225px,36vw,292px);height:clamp(190px,30vw,238px);
+    width:clamp(225px,36vw,292px);height:clamp(235px,36vw,290px);
     z-index:3;pointer-events:none;
   }
   .mobile-btn{
@@ -413,6 +458,12 @@
     background:rgba(110,122,66,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
     font-size:clamp(10px,1.5vw,13px);
   }
+  #mobileTalk{
+    right:clamp(151px,23vw,194px);bottom:clamp(196px,30vw,230px);
+    background:rgba(143,110,60,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+    font-size:clamp(10px,1.5vw,13px);
+  }
+  #mobileTalk.active{background:var(--jays,#8EAD4B);}
   #mobileCrouch{
     right:2px;bottom:clamp(145px,22vw,178px);
     background:rgba(92,126,153,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
@@ -422,6 +473,10 @@
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
+  }
+  #mobileChat{
+    left:max(12px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));
+    z-index:4;width:44px;border-radius:9px;font-size:11px;letter-spacing:0;
   }
 
   .touch-help{
@@ -601,7 +656,7 @@
   #startFarmBtn{margin-top:14px;}
   #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   #matchModeToggle.hidden{display:none;}
-  #ultraModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
+  #ultraModeToggle, #voiceModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   .mode-toggle-label{font:800 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--rust-deep);width:100%;}
   .mode-toggle-btn{
     flex:1 1 200px;padding:9px 12px;text-align:center;cursor:pointer;
@@ -647,6 +702,7 @@
     padding-bottom:6px;
   }
   .opt-row{display:flex;align-items:center;gap:12px;margin:10px 0;font-size:13.5px;color:var(--ink-soft);}
+  .opt-hint{margin:2px 0 4px;font-size:12px;line-height:1.4;color:var(--ink-soft);}
   .opt-row span{flex:0 0 84px;font-weight:700;}
   .opt-row input[type="range"]{flex:1 1 auto;accent-color:var(--rust);}
   .opt-row b{flex:0 0 42px;text-align:right;font:800 12px/1 "Rockwell",Georgia,serif;color:var(--ink);}
@@ -705,11 +761,14 @@
       <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><span>Hot Sauce</span><b>0</b></div>
       <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
     </div>
+    <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
   </div>
   <div id="pickupToast"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
   <ul id="ffaScoreboard" aria-live="polite"></ul>
   <div id="killFeed" aria-live="polite"></div>
+  <div id="chatLog" aria-live="polite"></div>
+  <div id="chatInputBar"><b>Chat</b><span id="chatComposing"></span></div>
   <div id="announcerBanner" aria-live="polite"></div>
   <div id="bossHud" aria-live="polite">
     <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
@@ -744,8 +803,10 @@
       <button type="button" class="mobile-btn" id="mobileThrowSwap" aria-label="Switch throwable type">Swap ↺</button>
       <button type="button" class="mobile-btn" id="mobileJays" aria-label="Use Jays health pack">Jays</button>
       <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
+      <button type="button" class="mobile-btn" id="mobileTalk" aria-label="Hold to talk">Talk</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
+    <button type="button" class="mobile-btn" id="mobileChat" aria-label="Send a chat message">Chat</button>
   </div>
 
   <div id="grain"></div>
@@ -882,6 +943,15 @@
         <label class="opt-row"><span>Effects</span><input type="range" id="optSfx" min="0" max="100" step="1" /><b id="optSfxVal"></b></label>
         <label class="opt-row"><span>Music</span><input type="range" id="optMusic" min="0" max="100" step="1" /><b id="optMusicVal"></b></label>
         <label class="opt-row"><span>Wind</span><input type="range" id="optWind" min="0" max="100" step="1" /><b id="optWindVal"></b></label>
+      </div>
+      <div class="opt-section">
+        <p class="opt-heading">Voice Chat</p>
+        <div id="voiceModeToggle">
+          <button class="mode-toggle-btn active" id="voiceOffBtn" data-voice="off">Off</button>
+          <button class="mode-toggle-btn" id="voiceOnBtn" data-voice="on">On — hold B to talk</button>
+        </div>
+        <label class="opt-row"><span>Voice Volume</span><input type="range" id="optVoice" min="0" max="100" step="1" /><b id="optVoiceVal"></b></label>
+        <p class="opt-hint" id="voiceHint">Party chat in Co-op, proximity mic in Deathmatch/Teams.</p>
       </div>
       <div class="opt-section">
         <p class="opt-heading">Display</p>
@@ -1094,7 +1164,18 @@ const CONFIG = {
     // Team Deathmatch: aggregated across up to two players per side, so
     // this sits well above ffaKillTarget rather than simply doubling it.
     teamKillTarget: 25,
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    // Local chat (goal 10): text log cap + how long a line lingers before
+    // fading, mirroring the kill feed's own stacking-list conventions.
+    chatMaxLen: 140,
+    chatLogLines: 6,
+    chatLogDuration: 9,
+    // Voice: coop is always "party" (every teammate at full volume, no
+    // falloff -- see VOICE.gainFor); FFA/Teams switch automatically to a
+    // proximity mic using these two radii (full volume inside near, silence
+    // beyond far, linear falloff between).
+    voiceProximityNear: 10,
+    voiceProximityFar: 30
   },
   // Coop-only hero specials that catch a lethal hit before it becomes a real
   // death. Off in FFA and single-player (except Scarf/Masked, which stay on
@@ -1263,7 +1344,7 @@ const CONFIG = {
     // procedural placeholder blob -- no other code needs to change.
     maxSprayDecals: 18, sprayImage: null
   },
-  audio: { master: 0.5, wind: 0.35, sfx: 0.85, music: 0.6 },
+  audio: { master: 0.5, wind: 0.35, sfx: 0.85, music: 0.6, voice: 0.9 },
   // v0.16: Ultra Mode -- a single switch (see start screen) that harshens
   // both sides of the fight at once. `active` is live-mutated at runtime by
   // UI.setUltraMode, same convention as CONFIG.audio's sliders above; every
@@ -1323,7 +1404,8 @@ const SETTINGS = (() => {
   const STORAGE_KEY = 'wf-settings-v1';
   const DEFAULTS = {
     master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music,
-    wind: CONFIG.audio.wind, brightness: 100, ultra: CONFIG.ultra.active, keymap: {}
+    wind: CONFIG.audio.wind, voice: CONFIG.audio.voice,
+    brightness: 100, ultra: CONFIG.ultra.active, keymap: {}
   };
   let current = Object.assign({}, DEFAULTS);
 
@@ -1350,6 +1432,7 @@ const SETTINGS = (() => {
       AUDIO.setSfxVolume(current.sfx);
       AUDIO.setMusicVolume(current.music);
       AUDIO.setWindVolume(current.wind);
+      AUDIO.setVoiceVolume(current.voice);
     }
     if (typeof INPUT !== 'undefined') INPUT.applyBindings(current.keymap);
     applyBrightness();
@@ -1359,6 +1442,10 @@ const SETTINGS = (() => {
   function setSfx(v) { current.sfx = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setSfxVolume(v); }
   function setMusic(v) { current.music = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setMusicVolume(v); }
   function setWind(v) { current.wind = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setWindVolume(v); }
+  // Whether the mic is ON is never persisted (see VOICE) -- reloading the
+  // page should never silently re-request microphone permission. Only how
+  // loud incoming voice plays back once it's on is a saved preference.
+  function setVoice(v) { current.voice = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setVoiceVolume(v); }
   // Applied by GAME.setUltraMode, which also owns CONFIG.ultra.active and
   // the start-screen toggle buttons -- this just persists the choice.
   function setUltra(v) { current.ultra = !!v; save(); }
@@ -1386,8 +1473,9 @@ const SETTINGS = (() => {
   load();
 
   return {
-    applyAll, setMaster, setSfx, setMusic, setWind, setUltra, setBrightness, setBinding, resetBindings,
+    applyAll, setMaster, setSfx, setMusic, setWind, setVoice, setUltra, setBrightness, setBinding, resetBindings,
     get master() { return current.master; },
+    get voice() { return current.voice; },
     get sfx() { return current.sfx; },
     get music() { return current.music; },
     get wind() { return current.wind; },
@@ -4898,7 +4986,14 @@ const FX = (() => {
 /* ============================== [AUDIO] ============================== */
 /* Everything is synthesised. No files, no external assets, no licences. */
 const AUDIO = (() => {
-  let ctx = null, master = null, sfxBus = null, windBus = null, musicBus = null;
+  let ctx = null, master = null, sfxBus = null, windBus = null, musicBus = null, voiceBus = null;
+  // peerId -> { el, source, gain } -- one small graph per connected remote's
+  // mic stream, so proximity/party mode (see COOP.update) can drive each
+  // one's gain independently. `el` is a hidden, muted <audio> pinned to the
+  // same MediaStream purely to keep it flowing in browsers that otherwise
+  // stall a remote WebRTC stream with nothing pulling from it -- the actual
+  // audible path is source -> gain -> voiceBus, never the element itself.
+  const voiceRemotes = new Map();
   let noiseBuf = null;
   let started = false;
   let ambientTimer = 0, ambientNext = 3;
@@ -4938,6 +5033,7 @@ const AUDIO = (() => {
     sfxBus = ctx.createGain(); sfxBus.gain.value = CONFIG.audio.sfx; sfxBus.connect(master);
     windBus = ctx.createGain(); windBus.gain.value = 0; windBus.connect(master);
     musicBus = ctx.createGain(); musicBus.gain.value = CONFIG.audio.music; musicBus.connect(master);
+    voiceBus = ctx.createGain(); voiceBus.gain.value = CONFIG.audio.voice; voiceBus.connect(master);
     noiseBuf = makeNoise();
 
     // --- menu/intro theme and the locked-in gameplay theme, both streamed
@@ -5112,6 +5208,45 @@ const AUDIO = (() => {
     if (!windMuted) return;
     windMuted = false;
     fadeGain(windBus, CONFIG.audio.wind * WIND_BASE_GAIN, DUCK_FADE);
+  }
+
+  function setVoiceVolume(v) {
+    const clamped = UTIL.clamp(v, 0, 1);
+    CONFIG.audio.voice = clamped;
+    if (voiceBus) voiceBus.gain.value = clamped;
+  }
+  /* One remote's mic stream, wired into its own gain node so proximity/party
+     mode (COOP.update) can move it independently of every other remote and
+     of the Voice volume slider (voiceBus) both. See voiceRemotes above for
+     why there's also a muted <audio> element alongside the Web Audio graph. */
+  function attachVoiceRemote(peerId, stream) {
+    if (!ctx) return;
+    detachVoiceRemote(peerId);
+    let el = null;
+    try {
+      el = new Audio();
+      el.srcObject = stream;
+      el.muted = true;
+      el.play().catch(() => {});
+    } catch (err) {}
+    const source = ctx.createMediaStreamSource(stream);
+    const gain = ctx.createGain();
+    gain.gain.value = 1;
+    source.connect(gain);
+    gain.connect(voiceBus);
+    voiceRemotes.set(peerId, { el, source, gain });
+  }
+  function detachVoiceRemote(peerId) {
+    const v = voiceRemotes.get(peerId);
+    if (!v) return;
+    try { v.source.disconnect(); } catch (err) {}
+    try { v.gain.disconnect(); } catch (err) {}
+    try { if (v.el) { v.el.pause(); v.el.srcObject = null; } } catch (err) {}
+    voiceRemotes.delete(peerId);
+  }
+  function setVoiceRemoteGain(peerId, g) {
+    const v = voiceRemotes.get(peerId);
+    if (v) v.gain.gain.value = UTIL.clamp(g, 0, 1);
   }
 
   function env(node, t0, a, d, peak) {
@@ -5444,6 +5579,7 @@ const AUDIO = (() => {
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie, announcerStinger,
     playMenuMusic, stopMenuMusic, playGameMusic, stopGameMusic, duckGameMusic, unduckGameMusic,
     setMusicVolume, setMasterVolume, setSfxVolume, setWindVolume, muteWind, unmuteWind,
+    setVoiceVolume, attachVoiceRemote, detachVoiceRemote, setVoiceRemoteGain,
     get running() { return started; },
     get menuMusicPlaying() { return !!(musicEl && !musicEl.paused); },
     get gameMusicPlaying() { return !!(gameMusicEl && !gameMusicEl.paused); },
@@ -5469,7 +5605,7 @@ const INPUT = (() => {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
     melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
-    crouch: false,
+    crouch: false, voiceTalk: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -5508,6 +5644,7 @@ const INPUT = (() => {
     'KeyG': 'throwable',
     'KeyT': 'switchThrowable',
     'KeyJ': 'useJays',
+    'KeyB': 'voiceTalk',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
@@ -5524,7 +5661,7 @@ const INPUT = (() => {
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
-    'reload', 'lantern', 'melee', 'throwable', 'useJays',
+    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'voiceTalk',
     'slot1', 'slot2', 'slot3', 'slot4'
   ];
 
@@ -5655,11 +5792,24 @@ const INPUT = (() => {
   }
 
   function onKey(e, down) {
+    // Text chat owns the keyboard outright while composing -- every key goes
+    // to CHAT's own buffer instead of the normal action map, so typing "sad"
+    // never also strafes the player. See CHAT.handleKeyDown.
+    if (typeof CHAT !== 'undefined' && CHAT.isOpen()) {
+      if (down) CHAT.handleKeyDown(e);
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
     // In free mode the browser will not hand Escape back to us via pointer
     // lock, so we own it. This is the guaranteed way out.
     if (down && e.code === 'Escape' && mode === 'free' && engaged) {
       if (e.preventDefault) e.preventDefault();
       setEngaged(false);
+      return;
+    }
+    if (down && e.code === 'Enter' && typeof CHAT !== 'undefined' && CHAT.canOpen()) {
+      CHAT.open();
+      if (e.preventDefault) e.preventDefault();
       return;
     }
     const action = KEYMAP[e.code];
@@ -5817,6 +5967,7 @@ const INPUT = (() => {
     bindTouchButton('mobileThrowSwap', 'switchThrowable');
     bindTouchButton('mobileJays', 'useJays');
     bindTouchButton('mobileCrouch', 'crouch');
+    bindTouchButton('mobileTalk', 'voiceTalk');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -5923,7 +6074,7 @@ const INPUT = (() => {
 
   return {
     init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
-    edgeTurn, forceFree: goFree, tryLockAgain,
+    edgeTurn, forceFree: goFree, tryLockAgain, clearActions,
     rebind, resetKeymap, getBindings, applyBindings, codeLabel,
     get locked() { return locked; },
     get engaged() { return engaged; },
@@ -7978,6 +8129,11 @@ const UI = (() => {
     el.optMusicVal = document.getElementById('optMusicVal');
     el.optWind = document.getElementById('optWind');
     el.optWindVal = document.getElementById('optWindVal');
+    el.optVoice = document.getElementById('optVoice');
+    el.optVoiceVal = document.getElementById('optVoiceVal');
+    el.voiceOffBtn = document.getElementById('voiceOffBtn');
+    el.voiceOnBtn = document.getElementById('voiceOnBtn');
+    el.voiceHint = document.getElementById('voiceHint');
     el.optBrightness = document.getElementById('optBrightness');
     el.optBrightnessVal = document.getElementById('optBrightnessVal');
     el.optControlsList = document.getElementById('optControlsList');
@@ -8008,6 +8164,10 @@ const UI = (() => {
     el.tally = document.getElementById('tally');
     el.ffaScoreboard = document.getElementById('ffaScoreboard');
     el.killFeed = document.getElementById('killFeed');
+    el.chatLog = document.getElementById('chatLog');
+    el.chatInputBar = document.getElementById('chatInputBar');
+    el.chatComposing = document.getElementById('chatComposing');
+    el.voiceChip = document.getElementById('voiceChip');
     el.announcerBanner = document.getElementById('announcerBanner');
     el.matchOver = document.getElementById('matchOver');
     el.matchOverEyebrow = document.getElementById('matchOverEyebrow');
@@ -8167,6 +8327,34 @@ const UI = (() => {
     }, KILL_FEED_LIFE * 1000);
   }
   function hideKillFeed() { if (el.killFeed) el.killFeed.innerHTML = ''; }
+
+  /* Chat text is untrusted (anyone in the room can send it), so this builds
+     the line with real DOM nodes/textContent rather than innerHTML -- no
+     amount of HTML in a message can break out of its own line. */
+  function pushChat(name, text, isSelf) {
+    if (!el.chatLog || !text) return;
+    const line = document.createElement('div');
+    line.className = 'line' + (isSelf ? ' self' : '');
+    const b = document.createElement('b');
+    b.textContent = name + ':';
+    line.appendChild(b);
+    line.appendChild(document.createTextNode(text));
+    el.chatLog.appendChild(line);
+    requestAnimationFrame(() => line.classList.add('on'));
+    const cap = CONFIG.multiplayer.chatLogLines;
+    while (el.chatLog.children.length > cap) el.chatLog.removeChild(el.chatLog.firstChild);
+    setTimeout(() => {
+      line.classList.remove('on');
+      setTimeout(() => { if (line.parentNode) line.parentNode.removeChild(line); }, 200);
+    }, CONFIG.multiplayer.chatLogDuration * 1000);
+  }
+  function showChatInput(on) { if (el.chatInputBar) el.chatInputBar.classList.toggle('on', !!on); }
+  function setChatComposing(text) { if (el.chatComposing) el.chatComposing.textContent = text || ''; }
+  function setVoiceChip(enabled, talking) {
+    if (!el.voiceChip) return;
+    el.voiceChip.classList.toggle('on', !!enabled);
+    el.voiceChip.classList.toggle('talking', !!talking);
+  }
 
   function showAnnouncerBanner(text) {
     if (!el.announcerBanner) return;
@@ -8595,6 +8783,7 @@ const UI = (() => {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
     jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays',
+    voiceTalk: 'Push to Talk',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4'
   };
   let rebindingAction = null;
@@ -8617,7 +8806,15 @@ const UI = (() => {
     if (el.optSfx) { const v = Math.round(SETTINGS.sfx * 100); el.optSfx.value = v; el.optSfxVal.textContent = v + '%'; }
     if (el.optMusic) { const v = Math.round(SETTINGS.music * 100); el.optMusic.value = v; el.optMusicVal.textContent = v + '%'; }
     if (el.optWind) { const v = Math.round(SETTINGS.wind * 100); el.optWind.value = v; el.optWindVal.textContent = v + '%'; }
+    if (el.optVoice) { const v = Math.round(SETTINGS.voice * 100); el.optVoice.value = v; el.optVoiceVal.textContent = v + '%'; }
     if (el.optBrightness) { el.optBrightness.value = SETTINGS.brightness; el.optBrightnessVal.textContent = SETTINGS.brightness + '%'; }
+    const voiceOn = typeof VOICE !== 'undefined' && VOICE.enabled;
+    if (el.voiceOffBtn) el.voiceOffBtn.classList.toggle('active', !voiceOn);
+    if (el.voiceOnBtn) el.voiceOnBtn.classList.toggle('active', voiceOn);
+    if (el.voiceHint) {
+      el.voiceHint.textContent = (typeof VOICE !== 'undefined' && VOICE.lastError) ? VOICE.lastError
+        : 'Party chat in Co-op, proximity mic in Deathmatch/Teams.';
+    }
     rebindingAction = null;
     renderControlsList();
   }
@@ -8679,6 +8876,7 @@ const UI = (() => {
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showCrewLeft, hideCrewLeft,
+    pushChat, showChatInput, setChatComposing, setVoiceChip,
     get rebindingAction() { return rebindingAction; },
     showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
@@ -9337,7 +9535,15 @@ const GAME = (() => {
     document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optMusic').addEventListener('input', e => { SETTINGS.setMusic(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optWind').addEventListener('input', e => { SETTINGS.setWind(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('optVoice').addEventListener('input', e => { SETTINGS.setVoice(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('voiceOffBtn').addEventListener('click', e => { e.stopPropagation(); VOICE.disable(); UI.syncOptionsUI(); });
+    document.getElementById('voiceOnBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      VOICE.enable().then(() => UI.syncOptionsUI());
+      UI.syncOptionsUI(); // reflect the pending state immediately too
+    });
     document.getElementById('optBrightness').addEventListener('input', e => { SETTINGS.setBrightness(Number(e.target.value)); UI.syncOptionsUI(); });
+    document.getElementById('mobileChat').addEventListener('click', e => { e.stopPropagation(); CHAT.promptSend(); });
     document.getElementById('optControlsList').addEventListener('click', e => {
       const btn = e.target.closest('[data-rebind]');
       if (btn) UI.setRebinding(btn.getAttribute('data-rebind'));
@@ -9439,6 +9645,10 @@ const GAME = (() => {
       UI.pushKillFeed(line);
       ANNOUNCER.trigger(ev);
     });
+    // Local text chat -- always someone else's line (the sender's own copy
+    // already went through CHAT.send()'s local echo), works in every match
+    // mode, not just deathmatch.
+    COOP.on('chat', message => { if (mode === 'coop') CHAT.receive(message); });
     // A crew member disconnecting mid-match interrupts whoever's left (host
     // and any other joins alike -- COOP emits this identically for both,
     // see hostLosePeer/receiveOnJoin) to ask whether to carry on without
@@ -9804,6 +10014,8 @@ const GAME = (() => {
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
     COOP.update(dt, simRunning && !PLAYER.isDead);
+    VOICE.update();
+    UI.setVoiceChip(VOICE.enabled, VOICE.talking);
     FX.update(dt, time);
     AUDIO.update(dt);
     UI.update(dt);
@@ -12943,7 +13155,7 @@ const ENEMY = (() => {
    ===================================================================== */
 const COOP = (() => {
   const C = CONFIG.multiplayer;
-  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [], killFeed: [] };
+  const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [], killFeed: [], chat: [], voiceStream: [], voiceGone: [] };
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
@@ -13027,6 +13239,11 @@ const COOP = (() => {
     channels.forEach(ch => { try { ch.close(); } catch (err) {} });
     channels.clear();
     slotAssignments.clear();
+    // The PeerJS calls are tied to this connection and have to go with it,
+    // but NOT localVoiceStream itself -- that's VOICE's mic track, which
+    // outlives any one match so rejoining never re-prompts for permission.
+    voiceCalls.forEach(call => { try { call.close(); } catch (err) {} });
+    voiceCalls.clear();
     if (peer) { try { peer.destroy(); } catch (err) {} }
     peer = null;
     peerReady = false;
@@ -13161,6 +13378,58 @@ const COOP = (() => {
       if (closing || connected) return;
       emit('error', 'The lobby service closed before the room opened.');
     });
+    // Voice: whichever side has a mic stream ready first calls the other,
+    // symmetric on both host and join (unlike the data channel, there's no
+    // fixed hub direction here) -- see setLocalVoiceStream/callVoice. A call
+    // that arrives with no local stream yet is still answered so it can
+    // receive; that side's own outgoing call follows later once VOICE
+    // acquires a stream (setLocalVoiceStream retries every open channel).
+    instance.on('call', call => {
+      call.answer(localVoiceStream || undefined);
+      bindVoiceCall(call.peer, call);
+    });
+  }
+
+  /* ---- voice: one MediaConnection per remote peer, parallel to the data
+     channel in `channels` above. PeerJS's call() always needs a real stream
+     to offer, so a side with no mic enabled yet can only answer (receive-
+     only) until it acquires one itself and calls out in turn. ---- */
+  const voiceCalls = new Map();
+  let localVoiceStream = null;
+
+  function callVoice(peerId) {
+    if (!peer || !localVoiceStream) return;
+    try {
+      const call = peer.call(peerId, localVoiceStream);
+      if (call) bindVoiceCall(peerId, call);
+    } catch (err) {}
+  }
+  function bindVoiceCall(peerId, call) {
+    const existing = voiceCalls.get(peerId);
+    if (existing && existing !== call) { try { existing.close(); } catch (err) {} }
+    voiceCalls.set(peerId, call);
+    call.on('stream', remoteStream => emit('voiceStream', peerId, remoteStream));
+    call.on('close', () => { if (voiceCalls.get(peerId) === call) voiceCalls.delete(peerId); emit('voiceGone', peerId); });
+    call.on('error', () => {});
+  }
+  function loseVoiceCall(peerId) {
+    const call = voiceCalls.get(peerId);
+    if (!call) return;
+    try { call.close(); } catch (err) {}
+    voiceCalls.delete(peerId);
+  }
+  /* Called by VOICE once getUserMedia resolves (or with null when voice is
+     turned back off). Deliberately NOT cleared by stop()/closeTransport --
+     the mic stream itself outlives any one match/lobby so re-joining a room
+     never has to re-prompt for permission. */
+  function setLocalVoiceStream(stream) {
+    localVoiceStream = stream || null;
+    if (localVoiceStream) {
+      channels.forEach((ch, peerId) => { if (ch.open && !voiceCalls.has(peerId)) callVoice(peerId); });
+    } else {
+      voiceCalls.forEach(call => { try { call.close(); } catch (err) {} });
+      voiceCalls.clear();
+    }
   }
 
   function openPeer(id) {
@@ -13323,6 +13592,7 @@ const COOP = (() => {
       UI.setCoopLobbyStep('host', phase);
       emit('connected', peerId);
       status(roster.length + ' of ' + C.maxPlayers + ' farmhands connected.', 'good');
+      if (localVoiceStream) callVoice(peerId);
     };
     next.on('open', onOpen);
     next.on('data', data => {
@@ -13342,6 +13612,7 @@ const COOP = (() => {
     if (!channels.has(peerId) && !remotes.has(peerId)) return;
     channels.delete(peerId);
     slotAssignments.delete(peerId);
+    loseVoiceCall(peerId);
     const remote = remotes.get(peerId);
     if (remote && scene && remote.group) scene.remove(remote.group);
     remotes.delete(peerId);
@@ -13373,6 +13644,7 @@ const COOP = (() => {
       phase = 'connected';
       UI.setCoopLobbyStep(role, phase);
       status('Connected. Waiting for the host to start the farm…', 'good');
+      if (localVoiceStream) callVoice('host');
     };
     next.on('open', onOpen);
     next.on('data', data => {
@@ -13514,6 +13786,12 @@ const COOP = (() => {
       registerKill(message.killerId, message.victimId);
     } else if (message.type === 'teamHealUse') {
       resolveTeamHeal(fromId, message.heal, message.shield, message.radius);
+    } else if (message.type === 'chat' && message.text) {
+      // Relay to every OTHER joiner (never back to the sender -- their own
+      // CHAT module already echoed it locally the instant they hit Enter)
+      // and surface it in the host's own log too, same as killFeed.
+      broadcast(message, fromId);
+      emit('chat', message);
     }
   }
 
@@ -13576,6 +13854,8 @@ const COOP = (() => {
       UI.toast('Rally Horn · +' + Math.round(message.heal || 0) + ' Pep, +' + Math.round(message.shield || 0) + ' Guard', 1.4);
     } else if (message.type === 'killFeed') {
       emit('killFeed', message);
+    } else if (message.type === 'chat' && message.text) {
+      emit('chat', message);
     }
   }
 
@@ -13672,6 +13952,24 @@ const COOP = (() => {
     PLAYER.addShield(shieldAmount);
     if (role === 'host') resolveTeamHeal(localId, healAmount, shieldAmount, radius);
     else if (role === 'join' && connected) send({ type: 'teamHealUse', heal: healAmount, shield: shieldAmount, radius: radius });
+  }
+
+  /* Same name the kill feed already uses for this player, so a chat line and
+     "X eliminated Y" both call the same person the same thing. */
+  function displayNameFor(characterId) {
+    return (typeof CAST !== 'undefined' && CAST.ROSTER[characterId]) ? CAST.ROSTER[characterId].label : 'Farmhand';
+  }
+
+  /* Text chat: host broadcasts straight out (its own CHAT module already
+     echoed the line locally the instant it was sent, same as a join's own
+     line -- see CHAT.send); a join has only the one upstream hop to the
+     host, which relays it onward (see receiveOnHost's 'chat' case). */
+  function sendChat(text) {
+    if (!connected) return false;
+    const message = { type: 'chat', id: localId, name: displayNameFor(myCharacterId), text: text };
+    if (role === 'host') broadcast(message);
+    else send(message);
+    return true;
   }
   /* Called once by GAME when this client's own player just died — reports
      who killed them (if known) so the host can credit the right scoreboard
@@ -13871,6 +14169,17 @@ const COOP = (() => {
       remote.group.rotation.y = UTIL.damp(remote.group.rotation.y, target.yaw || 0, 14, dt);
       poseRemote(remote, dt);
       contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
+      // Voice: coop is party mode (every teammate full volume, no falloff);
+      // FFA/Teams switches to a proximity mic, linear falloff between the
+      // near/far radii. Reuses target.x/y/z since that's the same networked
+      // position everything else here already trusts, no extra bookkeeping.
+      if (typeof VOICE !== 'undefined') {
+        const vdx = PLAYER.position.x - target.x, vdy = PLAYER.position.y - target.y, vdz = PLAYER.position.z - target.z;
+        const dist = Math.sqrt(vdx * vdx + vdy * vdy + vdz * vdz);
+        const gain = matchMode === 'coop' ? 1 :
+          UTIL.clamp(1 - (dist - C.voiceProximityNear) / Math.max(1, C.voiceProximityFar - C.voiceProximityNear), 0, 1);
+        VOICE.setRemoteGain(remote.id, gain);
+      }
     });
     UI.setRadarContacts(contacts);
   }
@@ -13879,6 +14188,7 @@ const COOP = (() => {
     init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
     broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
+    sendChat, displayNameFor, setLocalVoiceStream,
     get role() { return role; },
     get connected() { return connected; },
     get active() { return connected; },
@@ -13896,6 +14206,162 @@ const COOP = (() => {
     teamOf: teamOfId,
     get localTeam() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)) % 2; }
   };
+})();
+
+/* ============================== [VOICE] ===============================
+   Proximity/party voice chat. All the actual transport lives in COOP
+   (voiceCalls/setLocalVoiceStream -- symmetric PeerJS media calls riding
+   the same connection the data channel uses) and AUDIO (attachVoiceRemote/
+   setVoiceRemoteGain -- one gain node per remote so proximity falloff can
+   move each independently). This module owns just the local mic lifecycle
+   and push-to-talk, plus forwarding COOP's remote-stream events into AUDIO.
+   getUserMedia is never called until the player opts in via Options -- the
+   permission prompt has no business firing before that.
+   ===================================================================== */
+const VOICE = (() => {
+  let localStream = null, enabled = false, talking = false, pending = false;
+  let lastError = '';
+
+  function supported() {
+    return !!(typeof navigator !== 'undefined' && navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  }
+
+  function enable() {
+    if (enabled || pending) return Promise.resolve(enabled);
+    if (!supported()) { lastError = 'This browser has no microphone access.'; return Promise.resolve(false); }
+    pending = true;
+    return navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      .then(stream => {
+        localStream = stream;
+        // Starts silent -- push-to-talk (see update()) is what actually
+        // opens the mic, not just having it granted.
+        localStream.getAudioTracks().forEach(t => { t.enabled = false; });
+        enabled = true;
+        pending = false;
+        lastError = '';
+        if (typeof COOP !== 'undefined') COOP.setLocalVoiceStream(localStream);
+        return true;
+      })
+      .catch(err => {
+        pending = false;
+        enabled = false;
+        lastError = (err && err.name === 'NotAllowedError') ? 'Microphone permission denied.' : 'Could not open the microphone.';
+        return false;
+      });
+  }
+
+  function disable() {
+    if (localStream) { try { localStream.getTracks().forEach(t => t.stop()); } catch (err) {} }
+    localStream = null;
+    enabled = false;
+    talking = false;
+    if (typeof COOP !== 'undefined') COOP.setLocalVoiceStream(null);
+  }
+
+  /* Called every frame from GAME's loop, mirroring how INPUT/PLAYER are
+     driven -- push-to-talk just gates the track's own `enabled` flag, so
+     silence between holds costs nothing beyond it being present at all. */
+  function update() {
+    if (!enabled || !localStream) { talking = false; return; }
+    const holding = typeof INPUT !== 'undefined' && !!INPUT.actions.voiceTalk;
+    talking = holding;
+    localStream.getAudioTracks().forEach(t => { t.enabled = holding; });
+  }
+
+  // COOP.update()'s per-remote proximity/party loop calls this every frame
+  // for every connected peer -- see COOP.update.
+  function setRemoteGain(peerId, gain) {
+    if (typeof AUDIO !== 'undefined') AUDIO.setVoiceRemoteGain(peerId, gain);
+  }
+
+  if (typeof COOP !== 'undefined') {
+    COOP.on('voiceStream', (peerId, stream) => { if (typeof AUDIO !== 'undefined') AUDIO.attachVoiceRemote(peerId, stream); });
+    COOP.on('voiceGone', peerId => { if (typeof AUDIO !== 'undefined') AUDIO.detachVoiceRemote(peerId); });
+  }
+
+  return {
+    enable, disable, update, setRemoteGain,
+    get supported() { return supported(); },
+    get enabled() { return enabled; },
+    get talking() { return talking; },
+    get pending() { return pending; },
+    get lastError() { return lastError; }
+  };
+})();
+
+/* ============================== [CHAT] ================================
+   Local text chat, riding COOP's existing star-topology relay (see
+   COOP.sendChat / the 'chat' cases in receiveOnHost/receiveOnJoin). Owns
+   the keyboard outright while composing -- see INPUT.onKey's isOpen() gate
+   -- via a hand-rolled buffer instead of a focused DOM <input>, so there's
+   no focus-vs-pointer-lock interaction to reason about. Enter opens it;
+   Enter again sends (or just closes, if the buffer's empty) -- deliberately
+   not wired to Escape, since browsers force pointer lock to release on
+   Escape no matter what a page's JS does, and that's a worse cancel gesture
+   than just clearing the line and hitting Enter. ===================================================================== */
+const CHAT = (() => {
+  const C = CONFIG.multiplayer;
+  let openFlag = false, buffer = '';
+
+  function isOpen() { return openFlag; }
+  function canOpen() {
+    return !openFlag && typeof COOP !== 'undefined' && COOP.connected &&
+      typeof INPUT !== 'undefined' && INPUT.engaged;
+  }
+  function open() {
+    if (openFlag) return;
+    openFlag = true;
+    buffer = '';
+    if (typeof INPUT !== 'undefined') INPUT.clearActions();
+    if (typeof UI !== 'undefined') { UI.showChatInput(true); UI.setChatComposing(''); }
+  }
+  function close() {
+    openFlag = false;
+    if (typeof UI !== 'undefined') UI.showChatInput(false);
+  }
+
+  function send(text) {
+    text = (text || '').trim().slice(0, C.chatMaxLen);
+    if (!text || typeof COOP === 'undefined' || !COOP.connected) return;
+    const name = COOP.displayNameFor(COOP.localCharacterId);
+    if (typeof UI !== 'undefined') UI.pushChat(name, text, true);
+    COOP.sendChat(text);
+  }
+  // Wired from GAME via COOP.on('chat', ...) -- always someone else's line;
+  // the sender's own copy already went through send()'s local echo above,
+  // and the relay never bounces a message back to whoever sent it.
+  function receive(message) {
+    if (!message || !message.text) return;
+    if (typeof UI !== 'undefined') UI.pushChat(message.name || 'Farmhand', message.text, false);
+  }
+
+  function handleKeyDown(e) {
+    if (e.code === 'Enter') {
+      const text = buffer;
+      close();
+      if (text.trim()) send(text);
+      return;
+    }
+    if (e.code === 'Backspace') {
+      buffer = buffer.slice(0, -1);
+    } else if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && buffer.length < C.chatMaxLen) {
+      buffer += e.key;
+    } else {
+      return;
+    }
+    if (typeof UI !== 'undefined') UI.setChatComposing(buffer);
+  }
+
+  // Mobile's hand-rolled key composer above depends on real keydown events,
+  // which on-screen keyboards don't reliably deliver -- the native prompt()
+  // dialog handles IME/autocomplete/predictive text for free instead.
+  function promptSend() {
+    if (typeof COOP === 'undefined' || !COOP.connected) return;
+    const text = window.prompt('Chat message:', '');
+    if (text) send(text);
+  }
+
+  return { isOpen, canOpen, open, close, send, receive, handleKeyDown, promptSend };
 })();
 
 /* ============================== [BOOT] ===============================
