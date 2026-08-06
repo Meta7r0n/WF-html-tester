@@ -168,10 +168,12 @@
   #buffHotSauce b{background:#9C2F12;}
   #buffJackrabbit b{background:#B08A2E;}
   #stunChip b{background:#8A2F2F;}
+  #slowChip b{background:#3A5F73;}
   #buffIronHide.on{color:#9FB4BE;}
   #buffHotSauce.on{color:#D1481F;}
   #buffJackrabbit.on{color:#E0B84A;}
   #stunChip.on{color:#D46A6A;}
+  #slowChip.on{color:#7FB8D4;}
 
   #downedHud{
     position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
@@ -390,6 +392,21 @@
   #boss2HudFill{display:block;width:100%;height:100%;background:var(--blue-deep);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
   #boss2HudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);}
 
+  /* Third mini-boss slot -- stacks below #boss2Hud, same shape again but a
+     gold identity matching his golden boombox drop. */
+  #boss3Hud{
+    position:fixed;left:50%;top:134px;z-index:31;width:min(390px,48vw);
+    transform:translateX(-50%) rotate(.5deg);opacity:0;pointer-events:none;
+    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
+    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #boss3Hud.on{opacity:.96;}
+  #boss3HudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
+  #boss3HudName b{color:var(--mustard);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
+  #boss3HudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
+  #boss3HudFill{display:block;width:100%;height:100%;background:var(--mustard);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
+  #boss3HudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--mustard);}
+
   /* ---------- Proximity radar ---------- */
   #radar{
     position:fixed;left:26px;top:52px;width:116px;height:142px;z-index:30;
@@ -570,6 +587,7 @@
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
+  body.touch-device #boss3Hud{top:max(92px,calc(env(safe-area-inset-top) + 80px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.5deg);transform-origin:top center;}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -897,6 +915,7 @@
       <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><span>Hot Sauce</span><b>0</b></div>
       <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
       <div class="buffChip" id="stunChip"><span>Stunned</span><b>0</b></div>
+      <div class="buffChip" id="slowChip"><span>Slowed</span><b>0</b></div>
     </div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
   </div>
@@ -918,6 +937,11 @@
     <div id="boss2HudName">Bear Claw <b id="boss2HudState">Prowling</b></div>
     <div id="boss2HudBar"><i id="boss2HudFill"></i></div>
     <small id="boss2HudHint">Watch for the smoke cloud</small>
+  </div>
+  <div id="boss3Hud" aria-live="polite">
+    <div id="boss3HudName">Beat Slayer <b id="boss3HudState">Circling</b></div>
+    <div id="boss3HudBar"><i id="boss3HudFill"></i></div>
+    <small id="boss3HudHint">Keeps his distance -- watch for the boombox</small>
   </div>
   <div id="radar" aria-label="Proximity radar">
     <div id="radarTitle">Radar <b id="radarLayer">Surface</b></div>
@@ -1303,7 +1327,10 @@ const CONFIG = {
     // ENEMY.spawnBoss2) that drops "The Claw" weapon instead of a second
     // Pack of Smokes -- see ENEMY.die's isBoss2 branch.
     bearClawThreshold: 66,
-    bearClawThreshold2: 99
+    bearClawThreshold2: 99,
+    // Beat Slayer: third mini-boss slot, same "not a win condition" rule --
+    // see ENEMY.spawnBoss3. Drops the golden boombox throwable on defeat.
+    beatSlayerThreshold: 132
   },
   boss: {
     id: 'carrotWarden', name: 'Carrot Warden',
@@ -1349,6 +1376,33 @@ const CONFIG = {
     // authoring a whole new tier by hand.
     secondHpMult: 1.45, secondDamageMult: 1.2, secondSpeedMult: 1.1,
     secondStunChance: 0.03
+  },
+  // Third mini-boss (beatSlayerThreshold, see progress). Evasive rather than
+  // a chaser -- kites at a distance and lobs a boombox rather than closing
+  // in, only rushing to melee once a player is actually caught in the
+  // resulting blast (see ENEMY.updateBeatSlayer). The blast itself is the
+  // same "sonic boom" hazard zone the dropped golden boombox throwable uses
+  // (see CONFIG.throwables.boomboxThrowable / THROWABLE.spawnBoomboxZone).
+  beatSlayer: {
+    id: 'beatSlayer', name: 'Beat Slayer',
+    asset: 'assets/beat_slayer_character.glb',
+    assetForwardCorrection: Math.PI,
+    assetScale: 1.0,
+    spawn: { x: 20.0, y: 0, z: -25.0 },
+    hp: 420, radius: 0.5, height: 1.9, eyeHeight: 1.45,
+    stepHeight: 0.5, gravity: 27,
+    // Kiting band: flees once the player closes inside evadeRange, holds
+    // and throws once there's real distance, drifts back in if the player
+    // gets too far away to hit at all (throwRange).
+    speed: 4.4, evadeRange: 8.5, throwRange: 18,
+    throwCooldown: 3.5, throwWindup: 0.5, throwRecover: 0.45,
+    // Rush-and-punch, only entered once THROWABLE.playerInBoomboxZone is
+    // true -- faster than the kiting speed above, since it's chasing someone
+    // who's slowed by the very blast that triggered the rush.
+    rushSpeedMult: 1.3, rushTimeout: 6,
+    reach: 1.85, damage: 18, windup: 0.35, recover: 0.45, weight: 3.4,
+    headMultiplier: 1.4, visualScale: 1.0,
+    boomboxDefId: 'boomboxThrowable'
   },
   radar: {
     range: 32,
@@ -1451,6 +1505,11 @@ const CONFIG = {
       fireInterval: 0.44, reloadTime: 1.45, automatic: false,
       pellets: 8, damage: 15, spread: 0.05, range: 95,
       recoilBack: 0.19, meleeDamage: 42, meleeRange: 2.35, meleeArc: 0.58,
+      // Beat Slayer's specific weakness -- a headshot from this gun always
+      // briefly stuns him (see ENEMY.hit's isBoss3 branch). Every other
+      // weapon/enemy combination reads its stun chance off enemyStunChance
+      // instead (see theClaw) -- this is a headshot-only, shotgun-only rule.
+      headshotStunChance: 1, headshotStunDuration: 1.4,
       adsSpreadMult: 0.6
     },
     doubleBarrel: {
@@ -1577,6 +1636,37 @@ const CONFIG = {
       blastRadius: 0, damage: 0, minDamage: 0,
       playerDamage: 0, playerMinDamage: 0, force: 0,
       smokeRadius: 4.2, smokeDuration: 7
+    },
+    // Beat Slayer's drop -- the same golden boombox he throws at players
+    // himself, now carryable and throwable. detonate() skips this one's own
+    // flight-physics fields (radius/gravity/bounce/friction/throwSpeed/
+    // throwLift still apply to a PLAYER's own throw, exactly like every
+    // other throwable) but branches into spawnBoomboxZone instead of a
+    // normal blast -- a lingering "sonic boom" hazard rather than an
+    // instant explosion. ENEMY calls spawnBoomboxZone directly (skipping
+    // the flight arc entirely) for Beat Slayer's own thrown copy, so both
+    // the boss's attack and this dropped pickup share one hazard
+    // implementation instead of two.
+    boomboxThrowable: {
+      id: 'boomboxThrowable', name: 'Golden Boombox', plural: 'Golden Boomboxes',
+      boombox: true,
+      maxCarry: 1, fuse: 1.2, throwSpeed: 11, throwLift: 4.0,
+      radius: 0.22, gravity: 18, bounce: 0.3, friction: 0.8,
+      // The hazard zone itself: lasts `duration` seconds ("five seconds of
+      // damage"). Anyone standing inside hazardRadius takes dotTotalDamage
+      // split across ticks every dotTickInterval seconds, and has their
+      // speed cut to slowMult with sprinting blocked -- both effects only
+      // while actually inside, refreshed every frame they are (see
+      // PLAYER.grantSlow, same continuous-top-up convention as the
+      // anti-ladder-camping invuln). Nearby ENEMY grunts get pulled toward
+      // the center the whole time (attractRadius/attractSpeed) -- Call of
+      // Duty Zombies' Monkey Bomb, basically -- then take a real blast hit
+      // when the zone's timer finally runs out.
+      hazardRadius: 4.6, duration: 5,
+      dotTotalDamage: 45, dotTickInterval: 1,
+      slowMult: 0.45,
+      attractRadius: 11, attractSpeed: 5.5,
+      blastRadius: 5.5, damage: 130, minDamage: 40, force: 3.4
     }
   },
   weaponView: {
@@ -6380,6 +6470,15 @@ const PLAYER = (() => {
   // death needs (the shot that actually landed the kill).
   let lastAttacker = null;
   let speedMult = 1, speedMultTimer = 0;
+  // Beat Slayer's boombox blast (see THROWABLE.spawnBoomboxZone). A
+  // separate debuff rather than reusing speedMult/speedMultTimer above --
+  // that one's a buff (Jackrabbit Feet et al) and the two would otherwise
+  // silently fight over the same multiplier if a player got caught in a
+  // blast while boosted. Continuously topped up every frame the player is
+  // actually standing in a zone (see grantSlow), same convention as the
+  // anti-ladder-camping invuln, so it decays on its own within a beat of
+  // stepping out rather than lingering as a separate timer to manage.
+  let slowMult = 1, slowTimer = 0;
   let ironHideTimer = 0;
   // Bear Claw's stun-chance melee hit (see ENEMY.updateBearClaw). Freezes
   // input the same way `downed` already does -- look is still free, but
@@ -6545,6 +6644,16 @@ const PLAYER = (() => {
     speedMultTimer = Math.max(speedMultTimer, duration || 0);
   }
 
+  /* Beat Slayer's boombox blast. Called every frame the player is standing
+     in an active zone (see THROWABLE.update) rather than granted once on
+     entry -- seconds is deliberately small (a quarter-second top-up), so
+     stepping out lets it decay almost immediately instead of a stale timer
+     outliving the zone. The stronger of any two overlapping slows wins. */
+  function grantSlow(seconds, multiplier) {
+    slowMult = Math.min(slowMult, multiplier === undefined ? 1 : multiplier);
+    slowTimer = Math.max(slowTimer, seconds || 0);
+  }
+
   function revive() {
     if (typeof HERO !== 'undefined') HERO.resetRun();
     reviveAt(100);
@@ -6590,6 +6699,10 @@ const PLAYER = (() => {
     if (speedMultTimer > 0) {
       speedMultTimer -= dt;
       if (speedMultTimer <= 0) { speedMultTimer = 0; speedMult = 1; }
+    }
+    if (slowTimer > 0) {
+      slowTimer -= dt;
+      if (slowTimer <= 0) { slowTimer = 0; slowMult = 1; }
     }
 
     // ---- slow self-repair once nothing has hit you for a while ----
@@ -6703,10 +6816,11 @@ const PLAYER = (() => {
     aiming = active && !locked && !climbing && INPUT.actions.ads &&
       !!currentWeaponDef && (currentWeaponDef.kind === 'gun' || currentWeaponDef.kind === 'flame');
 
-    sprinting = !climbing && !crouching && active && !locked && !aiming && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    sprinting = !climbing && !crouching && active && !locked && !aiming &&
+      slowTimer <= 0 && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
     const aimSpeedFactor = aiming ? C.adsSpeedMult : 1;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * crouchSpeedFactor * aimSpeedFactor;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * slowMult * crouchSpeedFactor * aimSpeedFactor;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
@@ -6881,11 +6995,13 @@ const PLAYER = (() => {
 
   return {
     init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
-    applyIronHide, applySpeedBoost, grantStun,
+    applyIronHide, applySpeedBoost, grantStun, grantSlow,
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
     get stunned() { return stunTimer > 0; },
     get stunRemaining() { return stunTimer; },
+    get slowed() { return slowTimer > 0; },
+    get slowRemaining() { return slowTimer; },
     get lastAttacker() { return lastAttacker; },
     get health() { return health; },
     get shield() { return shield; },
@@ -7599,7 +7715,8 @@ const WEAPON = (() => {
     const relayHost = COOP.shouldHostRelayShots();
     const shotMeta = {
       damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
-      critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1
+      critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
+      headshotStunChance: d.headshotStunChance || 0, headshotStunDuration: d.headshotStunDuration || 0
     };
     // Aim (RMB): tighter spread on any gun that defines adsSpreadMult.
     const spread = (PLAYER.aiming && d.adsSpreadMult) ? d.spread * d.adsSpreadMult : d.spread;
@@ -7613,7 +7730,8 @@ const WEAPON = (() => {
         const payload = {
           origin: _o.toArray(), dir: _t.toArray(),
           damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
-          critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1
+          critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
+          headshotStunChance: d.headshotStunChance || 0, headshotStunDuration: d.headshotStunDuration || 0
         };
         if (relayRemote) COOP.sendShot(payload); else COOP.relayHostShot(payload);
       }
@@ -8129,7 +8247,34 @@ const THROWABLE = (() => {
     return root;
   }
 
+  /* Beat Slayer's drop -- a boxy portable stereo, gold to read as a trophy
+     item at a glance. Used for the pickup icon, the player's own thrown
+     visual, and the boss's own lobbed copy (see lobEnemyProjectile). */
+  function buildBoomboxVisual(parent, scale) {
+    const root = new THREE.Group();
+    root.scale.setScalar(scale || 1);
+    parent.add(root);
+    const body = MAT.toon(PAL.mustard, { map: TEX.metal() });
+    const dark = MAT.toon(PAL.mustardDk);
+    const speaker = MAT.toon(PAL.charcoal);
+    PRIM.box(0.42, 0.24, 0.14, body, { parent: root, outline: 0.02, ray: false });
+    [-1, 1].forEach(s => {
+      PRIM.cyl(0.075, 0.075, 0.03, 12, speaker, {
+        pos: [s * 0.12, 0, 0.075], rot: [Math.PI / 2, 0, 0], parent: root, outline: 0.012, ray: false
+      });
+    });
+    PRIM.hose(
+      new THREE.Vector3(-0.16, 0.14, 0), new THREE.Vector3(0.16, 0.14, 0),
+      0.018, 0.018, dark, { parent: root, outline: 0.008, ray: false }
+    );
+    return root;
+  }
+
   function buildPickupVisual(parent, id) {
+    if (id === 'boomboxThrowable') {
+      buildBoomboxVisual(parent, 1.3);
+      return parent;
+    }
     if (id === 'smokeGrenade') {
       const a = buildSmokeCanVisual(parent, 1.2);
       const b = buildSmokeCanVisual(parent, 1.05);
@@ -8249,6 +8394,7 @@ const THROWABLE = (() => {
     // though the pickup icon (buildPickupVisual above) already got this
     // right. Same per-type branch, just for the live projectile.
     if (currentId === 'dynamite') buildDynamiteStickVisual(root, 1);
+    else if (currentId === 'boomboxThrowable') buildBoomboxVisual(root, 1);
     else buildGrenadeVisual(root, 1);
     active.push({
       id: currentId, def: def, root: root, pos: pos, vel: vel,
@@ -8362,12 +8508,65 @@ const THROWABLE = (() => {
     activeSmoke.length = 0;
   }
 
+  // Beat Slayer's boombox: a lingering "sonic boom" hazard instead of an
+  // instant blast, shared between his own thrown copy (see
+  // ENEMY.updateBeatSlayer / lobEnemyProjectile below) and the golden
+  // boombox he drops on defeat. Whoever's local player stands inside takes
+  // dotTotalDamage split into ticks and gets slowed/sprint-blocked for as
+  // long as they're actually inside (PLAYER.grantSlow, refreshed every
+  // frame -- same continuous-top-up convention as the anti-ladder-camping
+  // invuln), while nearby regular grunts get pulled toward the center the
+  // whole time (ENEMY.attractTo) -- Call of Duty Zombies' Monkey Bomb,
+  // basically. A real blast against whatever's still nearby fires once the
+  // zone's timer finally runs out.
+  const activeBoombox = [];
+  function spawnBoomboxZone(point, def) {
+    const root = new THREE.Group();
+    root.position.copy(point);
+    if (scene) scene.add(root);
+    buildBoomboxVisual(root, 1.5);
+    AUDIO.throwable('throw');
+    activeBoombox.push({
+      point: point.clone(), def: def, timer: def.duration, tickTimer: def.dotTickInterval, root: root
+    });
+  }
+  function clearBoombox() {
+    activeBoombox.forEach(zone => { if (scene) scene.remove(zone.root); disposeVisual(zone.root); });
+    activeBoombox.length = 0;
+  }
+
+  /* Beat Slayer's own throw -- a short lightweight lob tween rather than a
+     real physics projectile: the target point (the player's position at
+     release) is fixed and known in advance, unlike a player's free-aimed
+     throw, so there's no need for physicsStep's bounce/friction arc. Ends
+     by calling spawnBoomboxZone directly at the target, same hazard the
+     dropped golden boombox pickup creates. */
+  const enemyLobs = [];
+  function lobEnemyProjectile(start, target, defId) {
+    const def = DEFS[defId];
+    if (!def || !scene) return;
+    const root = new THREE.Group();
+    root.position.copy(start);
+    scene.add(root);
+    buildBoomboxVisual(root, 1);
+    enemyLobs.push({ root: root, start: start.clone(), target: target.clone(), t: 0, duration: 0.55, def: def });
+    AUDIO.throwable('throw');
+  }
+  function clearEnemyLobs() {
+    enemyLobs.forEach(lob => { if (scene) scene.remove(lob.root); disposeVisual(lob.root); });
+    enemyLobs.length = 0;
+  }
+
   function detonate(projectile) {
     const point = projectile.pos.clone();
     if (scene) scene.remove(projectile.root);
     disposeVisual(projectile.root);
     if (projectile.def.smoke) {
       spawnSmokeCloud(point, projectile.def);
+      return;
+    }
+    if (projectile.def.boombox) {
+      spawnBoomboxZone(point, projectile.def);
       return;
     }
     FX.explosion(point, projectile.def.blastRadius);
@@ -8421,6 +8620,54 @@ const THROWABLE = (() => {
         activeSmoke.splice(i, 1);
       }
     }
+    for (let i = enemyLobs.length - 1; i >= 0; i--) {
+      const lob = enemyLobs[i];
+      lob.t += dt;
+      const k = UTIL.clamp(lob.t / lob.duration, 0, 1);
+      lob.root.position.lerpVectors(lob.start, lob.target, k);
+      lob.root.position.y += Math.sin(k * Math.PI) * 2.2;
+      lob.root.rotation.x += dt * 7;
+      lob.root.rotation.z += dt * 4;
+      if (k >= 1) {
+        scene.remove(lob.root);
+        disposeVisual(lob.root);
+        spawnBoomboxZone(lob.target, lob.def);
+        enemyLobs.splice(i, 1);
+      }
+    }
+    for (let i = activeBoombox.length - 1; i >= 0; i--) {
+      const zone = activeBoombox[i];
+      const def = zone.def;
+      zone.timer -= dt;
+      zone.root.rotation.y += dt * 2.2;
+
+      if (typeof ENEMY !== 'undefined' && ENEMY.attractTo) {
+        ENEMY.attractTo(zone.point, def.attractRadius, def.attractSpeed, dt);
+      }
+
+      const dx = PLAYER.position.x - zone.point.x, dz = PLAYER.position.z - zone.point.z;
+      const inside = !PLAYER.isDead && Math.hypot(dx, dz) <= def.hazardRadius;
+      if (inside) {
+        if (typeof PLAYER.grantSlow === 'function') PLAYER.grantSlow(0.25, def.slowMult);
+        zone.tickTimer -= dt;
+        if (zone.tickTimer <= 0) {
+          zone.tickTimer = def.dotTickInterval;
+          const ticks = Math.max(1, Math.round(def.duration / def.dotTickInterval));
+          PLAYER.damage(def.dotTotalDamage / ticks, zone.point);
+        }
+      }
+
+      if (zone.timer <= 0) {
+        FX.explosion(zone.point, def.blastRadius);
+        AUDIO.blast();
+        if (typeof ENEMY !== 'undefined' && ENEMY.blast) {
+          ENEMY.blast(zone.point, { radius: def.blastRadius, damage: def.damage, minDamage: def.minDamage, force: def.force });
+        }
+        scene.remove(zone.root);
+        disposeVisual(zone.root);
+        activeBoombox.splice(i, 1);
+      }
+    }
   }
 
   function clearActive() {
@@ -8430,6 +8677,8 @@ const THROWABLE = (() => {
     }
     active.length = 0;
     clearSmoke();
+    clearBoombox();
+    clearEnemyLobs();
   }
 
   function reset() {
@@ -8445,12 +8694,24 @@ const THROWABLE = (() => {
 
   return {
     init, update, reset, define, select, cycleType, add, throwCurrent, buildPickupVisual,
+    lobEnemyProjectile, spawnBoomboxZone,
     get definitions() { return DEFS; },
     get inventory() { return inventory; },
     get active() { return active; },
     get currentId() { return currentId; },
     get count() { return inventory[currentId] ? inventory[currentId].count : 0; },
-    get owned() { return !!(inventory[currentId] && inventory[currentId].owned); }
+    get owned() { return !!(inventory[currentId] && inventory[currentId].owned); },
+    // Beat Slayer's rush trigger (see ENEMY.updateBeatSlayer) -- true
+    // whenever the LOCAL player is standing inside any active boombox zone,
+    // boss-thrown or dropped-and-thrown alike.
+    get playerInBoomboxZone() {
+      for (let i = 0; i < activeBoombox.length; i++) {
+        const zone = activeBoombox[i];
+        const dx = PLAYER.position.x - zone.point.x, dz = PLAYER.position.z - zone.point.z;
+        if (Math.hypot(dx, dz) <= zone.def.hazardRadius) return true;
+      }
+      return false;
+    }
   };
 })();
 
@@ -8679,7 +8940,13 @@ const UI = (() => {
     el.boss2HudState = document.getElementById('boss2HudState');
     el.boss2HudFill = document.getElementById('boss2HudFill');
     el.boss2HudHint = document.getElementById('boss2HudHint');
+    el.boss3Hud = document.getElementById('boss3Hud');
+    el.boss3HudName = document.getElementById('boss3HudName');
+    el.boss3HudState = document.getElementById('boss3HudState');
+    el.boss3HudFill = document.getElementById('boss3HudFill');
+    el.boss3HudHint = document.getElementById('boss3HudHint');
     el.stunChip = document.getElementById('stunChip');
+    el.slowChip = document.getElementById('slowChip');
     el.endGame = document.getElementById('endGame');
     el.endGameSummary = document.getElementById('endGameSummary');
     el.radar = document.getElementById('radar');
@@ -8915,6 +9182,7 @@ const UI = (() => {
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
+    if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     showMobileControls(false);
   }
   function hideMatchOver() {
@@ -8954,6 +9222,17 @@ const UI = (() => {
     el.boss2HudHint.textContent = state === 'active' ? 'Watch for the smoke cloud' : 'Something is watching the tree line';
   }
 
+  function setBoss3(active, hp, maxHp, state) {
+    if (!el.boss3Hud) return;
+    el.boss3Hud.classList.toggle('on', !!active);
+    if (!active) return;
+    const max = Math.max(1, maxHp || 1);
+    const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
+    el.boss3HudFill.style.width = (pct * 100).toFixed(1) + '%';
+    el.boss3HudState.textContent = state === 'defeated' ? 'Fled' : (state === 'active' ? 'Circling' : 'Incoming');
+    el.boss3HudHint.textContent = state === 'active' ? 'Keeps his distance -- watch for the boombox' : 'A beat is coming from somewhere out there';
+  }
+
   // Bear Claw's stun-chance claw swipe (see PLAYER.grantStun). Same
   // countdown-chip convention as the power-up buffs, just a standalone
   // function rather than folded into setBuffs -- this one is driven by
@@ -8963,6 +9242,15 @@ const UI = (() => {
     const on = remaining > 0.05;
     el.stunChip.classList.toggle('on', on);
     if (on) el.stunChip.querySelector('b').textContent = Math.ceil(remaining);
+  }
+
+  // Beat Slayer's boombox blast (see PLAYER.grantSlow). Same
+  // countdown-chip convention as setStun above.
+  function setSlow(remaining) {
+    if (!el.slowChip) return;
+    const on = remaining > 0.05;
+    el.slowChip.classList.toggle('on', on);
+    if (on) el.slowChip.querySelector('b').textContent = Math.ceil(remaining);
   }
 
   // Multiplayer can feed additional contacts later without changing the
@@ -9085,6 +9373,7 @@ const UI = (() => {
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
+    if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     showMobileControls(false);
   }
   /* Coop death isn't a run-ending "You Wilted" card — it's a short wait
@@ -9256,6 +9545,7 @@ const UI = (() => {
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
+    if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
@@ -9288,6 +9578,7 @@ const UI = (() => {
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
+    if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
@@ -9381,6 +9672,7 @@ const UI = (() => {
     }
     setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
     setStun(PLAYER.stunRemaining);
+    setSlow(PLAYER.slowRemaining);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
@@ -9415,7 +9707,7 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setStun, hurtFlash, specialFlash, showDead, hideDead,
+    setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showFallback, hideFallback,
@@ -9616,6 +9908,13 @@ const PICKUP = (() => {
   define('theClawWeapon', {
     type: 'weapon', label: 'The Claw', weaponId: 'theClaw',
     quantity: 1, color: PAL.rust, respawn: 0
+  });
+  // Beat Slayer's drop -- not part of the static spawns list either; see
+  // ENEMY.die's isBoss3 branch. A single-carry throwable rather than a
+  // weapon-slot grant, since throwing it is the whole point.
+  define('goldenBoomboxThrowable', {
+    type: 'throwable', label: 'Golden Boombox', throwableId: 'boomboxThrowable',
+    quantity: 1, color: PAL.mustard, respawn: 0
   });
 
   registerHandler('weapon', def => {
@@ -11521,6 +11820,15 @@ const CAST = (() => {
       label: 'Bear Claw',
       stats: { hp: 100, speed: 3, damage: 10, reach: 2, windup: 0.4, recover: 0.5, weight: 4 },
       voice: { pitch: 0.5 }
+    },
+    // Beat Slayer is always shown via its GLB asset too (see ENEMY.create's
+    // isAssetBoss gate) -- same reasoning as bearClaw above: this entry only
+    // exists so a GLB load failure/timeout falls back to a procedural visual
+    // instead of create() throwing "unknown character".
+    beatSlayer: {
+      label: 'Beat Slayer',
+      stats: { hp: 100, speed: 4.4, damage: 18, reach: 1.85, windup: 0.35, recover: 0.45, weight: 3.4 },
+      voice: { pitch: 0.7 }
     }
   };
 
@@ -12457,6 +12765,7 @@ const ENEMY = (() => {
   const C = CONFIG.enemy;
   const B = CONFIG.boss;
   const B2 = CONFIG.bearClaw;
+  const B3 = CONFIG.beatSlayer;
   // Playable farmhands live in CAST for shared rendering, but never belong in
   // the hostile spawn pool. Keep this allow-list explicit as the cast grows.
   const ENEMY_ROSTER = ['reaper', 'howler', 'gaper', 'grinner'];
@@ -12471,6 +12780,8 @@ const ENEMY = (() => {
   // 0 = hasn't fought yet, 1 = first fight done/in progress, 2 = both
   // fights done. Caps spawnBoss2() at exactly two appearances per match.
   let bearClawAppearances = 0;
+  let boss3 = null;
+  let bossState3 = 'inactive';
   let markTex = null;
   // v0.16: escalating difficulty for players who keep going after wilting
   // the Carrot Warden. currentTarget tracks whatever roster size init()/
@@ -12493,6 +12804,10 @@ const ENEMY = (() => {
   // is whole-transform only, see poseBearClaw.
   let bearClawAsset = null;
   let bearClawAssetAnimations = [];
+  // Beat Slayer: third GLB slot, same static-mesh-no-rig shape as Bear
+  // Claw's -- whole-transform posing only, see poseBeatSlayer.
+  let beatSlayerAsset = null;
+  let beatSlayerAssetAnimations = [];
 
   function markTexture() {
     if (markTex) return markTex;
@@ -12572,6 +12887,16 @@ const ENEMY = (() => {
           obj.castShadow = false;
           obj.receiveShadow = false;
         });
+      }),
+      loadBossAsset(CONFIG.beatSlayer.asset, 'Beat Slayer', gltf => {
+        beatSlayerAsset = gltf.scene;
+        beatSlayerAssetAnimations = gltf.animations || [];
+        beatSlayerAsset.traverse(obj => {
+          if (!obj.isMesh) return;
+          obj.raycast = NO_RAY;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        });
       })
     ]);
     return bossAssetPromise;
@@ -12610,6 +12935,17 @@ const ENEMY = (() => {
     if (!bearClawAsset) return null;
     const root = bearClawAsset;
     root.name = 'BearClawGLB';
+    return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
+  }
+
+  /* Beat Slayer: same bare-mesh shape as Bear Claw's rig above -- no joints,
+     no clips, whole-transform posing only (see poseBeatSlayer). No
+     procedural attachments needed either; punches/throws read through the
+     existing squash/lean/windup-timer language every boss already uses. */
+  function buildBeatSlayerAssetRig() {
+    if (!beatSlayerAsset) return null;
+    const root = beatSlayerAsset;
+    root.name = 'BeatSlayerGLB';
     return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
   }
 
@@ -12672,9 +13008,10 @@ const ENEMY = (() => {
     options = options || {};
     const isBoss = !!options.isBoss;
     const isBoss2 = !!options.isBoss2;
-    const anyBoss = isBoss || isBoss2;
-    const bc = isBoss ? B : (isBoss2 ? B2 : null);
-    const assetRig = isBoss ? buildBossAssetRig() : (isBoss2 ? buildBearClawAssetRig() : null);
+    const isBoss3 = !!options.isBoss3;
+    const anyBoss = isBoss || isBoss2 || isBoss3;
+    const bc = isBoss ? B : (isBoss2 ? B2 : (isBoss3 ? B3 : null));
+    const assetRig = isBoss ? buildBossAssetRig() : (isBoss2 ? buildBearClawAssetRig() : (isBoss3 ? buildBeatSlayerAssetRig() : null));
     const baseDef = CAST.ROSTER[id];
     const built = assetRig ? {
       def: baseDef,
@@ -12704,6 +13041,7 @@ const ENEMY = (() => {
       group: built.rig.root,
       isBoss: isBoss,
       isBoss2: isBoss2,
+      isBoss3: isBoss3,
       asset: isAssetBoss,
       visualScale: isAssetBoss ? bc.assetScale : (anyBoss ? bc.visualScale : 1),
       assetMixer: built.rig.mixer || null,
@@ -12753,6 +13091,12 @@ const ENEMY = (() => {
       smokeBlocker: null,
       appearanceIndex: 0,
       effDamage: 0, effSpeed: 0, effStunChance: 0,
+      // Beat Slayer only -- see updateBeatSlayer. beatSlayerThrowCooldown
+      // gates the boombox toss the same way bossSeedCooldown gates Carrot
+      // Warden's seed volley; beatSlayerRushTimer is the safety exit on the
+      // post-blast rush (mirrors Bear Claw's retreat safety exit).
+      beatSlayerThrowCooldown: 0,
+      beatSlayerRushTimer: 0,
       // The Claw (v0.17.02): a freeze with no attack/movement decisions,
       // applied by ENEMY.stunEntity -- see updateBoss/updateBearClaw's
       // gate at the top of each. Harmless on entity types nothing reads it
@@ -12787,6 +13131,7 @@ const ENEMY = (() => {
     list.push(e);
     if (isBoss) boss = e;
     if (isBoss2) boss2 = e;
+    if (isBoss3) boss3 = e;
     return e;
   }
 
@@ -12859,6 +13204,36 @@ const ENEMY = (() => {
     return boss2;
   }
 
+  /* Beat Slayer: third, independent mini-boss slot -- parallel to both
+     Carrot Warden and Bear Claw, same "not a win condition" rule. Only ever
+     one appearance (unlike Bear Claw's rematch), so no appearance-index
+     stat scaling to worry about. */
+  function spawnBoss3() {
+    if (bossState3 !== 'inactive') return boss3;
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss_3',
+      position: new THREE.Vector3(B3.spawn.x, B3.spawn.y, B3.spawn.z)
+    };
+    if (!boss3) create(B3.id, marker, { isBoss3: true });
+    boss3.home.copy(marker.position);
+    boss3.home.y = WORLD.groundAt(boss3.home.x, boss3.home.z, boss3.home.y + 0.8, boss3.homeLayerId);
+    revive(boss3);
+    boss3.visualScale = boss3.asset ? B3.assetScale : B3.visualScale;
+    boss3.state = 'boss3_kite';
+    boss3.timer = 0;
+    boss3.sawPlayer = true;
+    boss3.lastSeen = 0;
+    boss3.beatSlayerThrowCooldown = 1.6;
+    boss3.beatSlayerRushTimer = 0;
+    boss3.stunTimer = 0;
+    boss3.group.visible = true;
+    bossState3 = 'active';
+    UI.setBoss3(true, boss3.hp, boss3.maxHp, bossState3);
+    UI.toast('132 WILTED — BEAT SLAYER DROPS IN', 3.2);
+    AUDIO.enemyAlert(boss3.def.voice.pitch);
+    return boss3;
+  }
+
   // Tracks which spawn-marker kinds have already been used, so a coop
   // rescale (see rescaleForCoop) continues from the next unused markers
   // instead of re-picking ones init() already filled.
@@ -12891,6 +13266,8 @@ const ENEMY = (() => {
     boss2 = null;
     bossState2 = 'inactive';
     bearClawAppearances = 0;
+    boss3 = null;
+    bossState3 = 'inactive';
     // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
@@ -12902,6 +13279,7 @@ const ENEMY = (() => {
     spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
     UI.setBoss2(false, 0, B2.hp, bossState2);
+    UI.setBoss3(false, 0, B3.hp, bossState3);
     return list.length;
   }
 
@@ -12967,7 +13345,7 @@ const ENEMY = (() => {
       const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
       if (fx * _v.x + fz * _v.z < Math.cos(C.sightFov)) return false;
     }
-    _v.set(e.pos.x, e.pos.y + (e.isBoss2 ? B2.eyeHeight : (e.isBoss ? B.eyeHeight : C.eyeHeight)), e.pos.z);
+    _v.set(e.pos.x, e.pos.y + (e.isBoss2 ? B2.eyeHeight : (e.isBoss ? B.eyeHeight : (e.isBoss3 ? B3.eyeHeight : C.eyeHeight))), e.pos.z);
     _v2.set(p.x - _v.x, (p.y + CONFIG.player.eyeHeight) - _v.y, p.z - _v.z);
     const straight = _v2.length();
     _v2.normalize();
@@ -12992,7 +13370,7 @@ const ENEMY = (() => {
     // anyway — that overwrite-fighting-prediction is exactly the kind of
     // divergence this rewrite exists to remove.
     if (typeof COOP !== 'undefined' && COOP.role === 'join') {
-      const key = e.isBoss ? 'boss' : (e.isBoss2 ? 'boss2' : nonBossList().indexOf(e));
+      const key = e.isBoss ? 'boss' : (e.isBoss2 ? 'boss2' : (e.isBoss3 ? 'boss3' : nonBossList().indexOf(e)));
       COOP.sendEnemyDamage(key, amount,
         [point.x, point.y, point.z], [dir.x, dir.y, dir.z], zone, force);
       return;
@@ -13103,6 +13481,25 @@ const ENEMY = (() => {
       // Bear Claw is a mid-match mini-boss, not a win condition -- no
       // GAME.complete() here, and defeating it does not increment `kills`
       // (same convention as the Carrot Warden above).
+    } else if (e.isBoss3) {
+      bossState3 = 'defeated';
+      e.respawnAt = 0;
+      UI.setBoss3(false, 0, e.maxHp, bossState3);
+      UI.toast('BEAT SLAYER DROPS THE BOOMBOX', 2.4);
+      _v2.set(0, 1.3, 0);
+      for (let i = 0; i < 8; i++) {
+        _v.set(UTIL.rng(-1.6, 1.6), UTIL.rng(1, 2.6), UTIL.rng(-1.6, 1.6));
+        FX.spawnParticle(new THREE.Vector3(e.pos.x, e.pos.y + 1.3, e.pos.z), _v, {
+          map: TEX.puff(PAL.mustard), s0: 0.4, s1: 1.1, life: 0.9, grav: -0.6
+        });
+      }
+      const dropPos3 = [e.pos.x, e.pos.y, e.pos.z];
+      if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('goldenBoomboxThrowable', { x: dropPos3[0], y: dropPos3[1], z: dropPos3[2] }, { respawn: 0 });
+      }
+      if (typeof COOP !== 'undefined') COOP.broadcastBoss3Defeated(dropPos3);
+      // Beat Slayer is also a mid-match mini-boss, not a win condition --
+      // no GAME.complete(), no `kills` increment, same as Bear Claw above.
     } else {
       kills++;
       // Faster respawns each time bossEscalation grows -- the "spawn rate"
@@ -13124,12 +13521,19 @@ const ENEMY = (() => {
     const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
     const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
     const head = e.isBoss ? B.headMultiplier : (e.isBoss2 ? B2.headMultiplier :
-      (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier));
+      (e.isBoss3 ? B3.headMultiplier : (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier)));
     // Per-pellet crit roll (Carrot Cannon): each connecting pellet gets its
     // own independent chance, not one roll for the whole shot.
     const isCrit = !!shot.critChance && Math.random() < shot.critChance;
     const dmg = base * falloff * (info.zone === 'head' ? head : 1) * (isCrit ? (shot.critMultiplier || 1) : 1);
     applyDamage(e, dmg, point, dir, info.zone);
+    // Pipe Popper's headshot-only weakness against Beat Slayer -- every
+    // other stun source (theClaw etc.) is melee-only and already generic
+    // via melee()'s opts.stunChance, so this is the one ranged exception.
+    if (e.alive && e.isBoss3 && info.zone === 'head' && shot.headshotStunChance &&
+        Math.random() < shot.headshotStunChance) {
+      stunEntity(e, shot.headshotStunDuration || 0);
+    }
     FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' || isCrit });
     return true;
   }
@@ -13281,6 +13685,7 @@ const ENEMY = (() => {
     bossState = 'inactive';
     bossState2 = 'inactive';
     bearClawAppearances = 0;
+    bossState3 = 'inactive';
     bossEscalation = 1;
     // A restart is the only point a toggled Ultra Mode can actually take
     // effect -- the enemies here already exist from the one-time ENEMY.init
@@ -13292,7 +13697,7 @@ const ENEMY = (() => {
     const ultraHealthMult = CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1;
     list.forEach(e => {
       e.respawnAt = 0;
-      if (e.isBoss || e.isBoss2) {
+      if (e.isBoss || e.isBoss2 || e.isBoss3) {
         e.alive = false;
         e.timer = 0;
         e.hp = e.maxHp;
@@ -13311,6 +13716,8 @@ const ENEMY = (() => {
         e.bearClawHitGapTimer = 0;
         e.appearanceIndex = 0;
         e.stunTimer = 0;
+        e.beatSlayerThrowCooldown = 0;
+        e.beatSlayerRushTimer = 0;
       } else {
         e.maxHp = e.def.stats.hp * ultraHealthMult;
         revive(e);
@@ -13321,6 +13728,7 @@ const ENEMY = (() => {
     spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
     UI.setBoss2(false, 0, B2.hp, bossState2);
+    UI.setBoss3(false, 0, B3.hp, bossState3);
   }
 
   /* ---------------- state machine ---------------- */
@@ -13334,7 +13742,8 @@ const ENEMY = (() => {
     } else {
       e.mark.visible = false;
     }
-    if (s === 'attack' || s === 'boss_melee' || s === 'boss_seed' || s === 'boss2_melee') {
+    if (s === 'attack' || s === 'boss_melee' || s === 'boss_seed' || s === 'boss2_melee' ||
+        s === 'boss3_melee' || s === 'boss3_throw') {
       e.didStrike = false;
       AUDIO.enemySwing(e.def.voice.pitch);
     }
@@ -13475,10 +13884,10 @@ const ENEMY = (() => {
     AUDIO.enemySwing(e.def.voice.pitch * 0.78);
   }
 
-  function bossRadius(e) { return e.isBoss2 ? B2.radius : (e.isBoss ? B.radius : C.radius); }
+  function bossRadius(e) { return e.isBoss2 ? B2.radius : (e.isBoss ? B.radius : (e.isBoss3 ? B3.radius : C.radius)); }
 
   function integrateBoss(e, dt, t) {
-    const bc = e.isBoss2 ? B2 : B;
+    const bc = e.isBoss2 ? B2 : (e.isBoss3 ? B3 : B);
     for (let i = 0; i < list.length; i++) {
       const o = list[i];
       if (o === e || !o.alive || o.layerId !== e.layerId) continue;
@@ -13521,6 +13930,7 @@ const ENEMY = (() => {
     e.group.rotation.y = e.yaw;
     pose(e, t);
     if (e.isBoss2) UI.setBoss2(true, e.hp, e.maxHp, bossState2);
+    else if (e.isBoss3) UI.setBoss3(true, e.hp, e.maxHp, bossState3);
     else UI.setBoss(true, e.hp, e.maxHp, bossState);
   }
 
@@ -13781,6 +14191,138 @@ const ENEMY = (() => {
     integrateBoss(e, dt, t);
   }
 
+  /* Fires once, at the release point of the boss3_throw windup. */
+  function throwBoombox(e) {
+    if (typeof THROWABLE === 'undefined' || !THROWABLE.lobEnemyProjectile) return;
+    const start = new THREE.Vector3(e.pos.x, e.pos.y + 1.3, e.pos.z);
+    const target = new THREE.Vector3(PLAYER.position.x, PLAYER.position.y, PLAYER.position.z);
+    THROWABLE.lobEnemyProjectile(start, target, B3.boomboxDefId);
+    AUDIO.enemySwing(e.def.voice.pitch * 0.8);
+  }
+
+  /* Beat Slayer: evasive rather than a chaser. Defaults to kiting -- flees
+     once the player closes inside evadeRange, holds and throws a boombox
+     once there's real distance, drifts back in if the player gets too far
+     to hit at all. Only ever closes to melee range once THROWABLE reports
+     the player caught in the blast the boombox itself creates (see
+     CONFIG.throwables.boomboxThrowable) -- boss3_rush -- committing to
+     landing at least one punch before falling back to kiting, with a
+     safety-exit timeout in case the player escapes the chase first. */
+  function updateBeatSlayer(e, dt, t) {
+    e.assetDelta = dt;
+    e.timer += dt;
+    if (!e.alive) {
+      if (e.timer > C.corpseTime) e.group.visible = false;
+      pose(e, t);
+      return;
+    }
+
+    if (e.stunTimer > 0) {
+      e.stunTimer = Math.max(0, e.stunTimer - dt);
+      idleBrake(e, dt);
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
+    e.beatSlayerThrowCooldown = Math.max(0, e.beatSlayerThrowCooldown - dt);
+    if (e.climbing) {
+      updateLadderClimb(e, dt, t);
+      UI.setBoss3(true, e.hp, e.maxHp, bossState3);
+      return;
+    }
+
+    const p = PLAYER.position;
+    const sameLayer = e.layerId === PLAYER.layerId;
+    const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
+    const playerInBlast = typeof THROWABLE !== 'undefined' && THROWABLE.playerInBoomboxZone;
+    const route = !sameLayer && !PLAYER.isDead ? findLadderRoute(e) : null;
+    if (route) {
+      e.ladderGoal = route;
+      if (e.state !== 'travel') setState(e, 'travel');
+    } else if (e.state === 'travel') {
+      e.ladderGoal = null;
+      setState(e, sameLayer ? 'boss3_kite' : 'idle');
+    }
+
+    if (e.state === 'boss3_melee') {
+      idleBrake(e, dt);
+      faceTowards(e, p.x, p.z, dt, 6);
+      if (!e.didStrike && e.timer >= B3.windup) {
+        e.didStrike = true;
+        e.squashVel += 8;
+        if (sameLayer && distToPlayer < B3.reach + 0.55 && !PLAYER.isDead) PLAYER.damage(B3.damage, e.pos, e);
+      }
+      if (e.timer >= B3.windup + B3.recover) setState(e, playerInBlast ? 'boss3_rush' : 'boss3_kite');
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'boss3_throw') {
+      idleBrake(e, dt);
+      faceTowards(e, p.x, p.z, dt, 5);
+      if (!e.didStrike && e.timer >= B3.throwWindup) {
+        e.didStrike = true;
+        e.beatSlayerThrowCooldown = B3.throwCooldown;
+        throwBoombox(e);
+      }
+      if (e.timer >= B3.throwWindup + B3.throwRecover) setState(e, 'boss3_kite');
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'boss3_rush') {
+      e.beatSlayerRushTimer += dt;
+      if (!sameLayer || PLAYER.isDead || e.beatSlayerRushTimer > B3.rushTimeout) {
+        e.beatSlayerRushTimer = 0;
+        setState(e, 'boss3_kite');
+        integrateBoss(e, dt, t);
+        return;
+      }
+      faceTowards(e, p.x, p.z, dt, 7);
+      if (distToPlayer <= B3.reach + 0.18) {
+        e.beatSlayerRushTimer = 0;
+        setState(e, 'boss3_melee');
+      } else {
+        const spd = B3.speed * B3.rushSpeedMult;
+        steer(e, p.x, p.z, spd, dt);
+        if (e.body.blocked) {
+          const s = e.stepFlip ? 1 : -1;
+          e.vel.x += -Math.cos(e.yaw) * s * spd * 0.82 * dt * 6;
+          e.vel.z += Math.sin(e.yaw) * s * spd * 0.82 * dt * 6;
+          if (Math.random() < 0.02) e.stepFlip = !e.stepFlip;
+        }
+      }
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    // Default: boss3_kite. Every explicit state above returns before
+    // reaching here, so e.state is already this by the time we do.
+    if (!PLAYER.isDead && sameLayer) {
+      if (playerInBlast) {
+        setState(e, 'boss3_rush');
+        integrateBoss(e, dt, t);
+        return;
+      }
+      faceTowards(e, p.x, p.z, dt, 6);
+      if (distToPlayer < B3.evadeRange) {
+        const awayX = e.pos.x - p.x, awayZ = e.pos.z - p.z;
+        const awayLen = Math.hypot(awayX, awayZ) || 1;
+        steer(e, e.pos.x + awayX / awayLen * 6, e.pos.z + awayZ / awayLen * 6, B3.speed, dt);
+      } else if (e.beatSlayerThrowCooldown <= 0 && distToPlayer <= B3.throwRange && canSee(e)) {
+        setState(e, 'boss3_throw');
+      } else if (distToPlayer > B3.throwRange) {
+        steer(e, p.x, p.z, B3.speed * 0.7, dt);
+      } else {
+        idleBrake(e, dt);
+      }
+    } else {
+      idleBrake(e, dt);
+    }
+    integrateBoss(e, dt, t);
+  }
+
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
@@ -13879,9 +14421,46 @@ const ENEMY = (() => {
     }
   }
 
+  /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
+     function -- whole-transform only. No claw props, so the only readable
+     attack cues are a lean-back-then-snap-forward on the boombox throw and
+     a forward lunge on the punch. */
+  function poseBeatSlayer(e, t) {
+    const correction = e.asset ? B3.assetForwardCorrection : 0;
+    const scale = e.visualScale || 1;
+    if (e.state === 'dead') {
+      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const s = 1 + Math.sin(k * Math.PI) * 0.22;
+      e.group.scale.set(scale * (1 - k) * (2 - s), scale * (1 - k) * s, scale * (1 - k) * (2 - s));
+      e.group.rotation.set(-k * 1.05, e.yaw + correction, k * 0.18);
+      return;
+    }
+
+    const sq = 1 + e.squash;
+    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+
+    let pitch = 0;
+    if (e.state === 'boss3_throw') {
+      const total = B3.throwWindup + B3.throwRecover;
+      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const wk = B3.throwWindup / total;
+      pitch = k < wk ? -0.3 * (k / wk) : 0.18 * Math.max(0, 1 - (k - wk) / (1 - wk) * 2);
+    } else if (e.state === 'boss3_melee') {
+      const total = B3.windup + B3.recover;
+      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const wk = B3.windup / total;
+      pitch = (k < wk ? (k / wk) : Math.max(0, 1 - (k - wk) / (1 - wk) * 1.6)) * 0.3;
+    }
+    e.group.rotation.set(pitch, e.yaw + correction, 0);
+  }
+
   function pose(e, t) {
     if (e.isBoss2) {
       poseBearClaw(e, t);
+      return;
+    }
+    if (e.isBoss3) {
+      poseBeatSlayer(e, t);
       return;
     }
     if (e.asset) {
@@ -14015,6 +14594,10 @@ const ENEMY = (() => {
     }
     if (e.isBoss2) {
       updateBearClaw(e, dt, t);
+      return;
+    }
+    if (e.isBoss3) {
+      updateBeatSlayer(e, dt, t);
       return;
     }
     e.timer += dt;
@@ -14204,12 +14787,12 @@ const ENEMY = (() => {
      kill count in lockstep instead of each running its own independent
      simulation (which is what caused the coop desync this system replaces:
      enemies used to chase and take damage separately on every peer). */
-  let netSnapshot = null, netBoss = null, netBoss2 = null, remoteKills = 0;
+  let netSnapshot = null, netBoss = null, netBoss2 = null, netBoss3 = null, remoteKills = 0;
 
   // The same boss-exclusion filter is used both when the host packages a
   // snapshot and when it resolves a join's melee/blast index, so the two
   // stay index-compatible no matter when spawnBoss() happened to run.
-  function nonBossList() { return list.filter(e => !e.isBoss && !e.isBoss2); }
+  function nonBossList() { return list.filter(e => !e.isBoss && !e.isBoss2 && !e.isBoss3); }
 
   /* Host/single-player only: a plain-data read of the current authoritative
      state, cheap enough to call every network tick. No side effects. */
@@ -14232,6 +14815,12 @@ const ENEMY = (() => {
         hp: Math.round(boss2.hp), maxHp: boss2.maxHp, alive: boss2.alive,
         state: boss2.state, layerId: boss2.layerId
       } : null,
+      boss3: boss3 ? {
+        x: Math.round(boss3.pos.x * 100) / 100, y: Math.round(boss3.pos.y * 100) / 100,
+        z: Math.round(boss3.pos.z * 100) / 100, yaw: Math.round(boss3.yaw * 1000) / 1000,
+        hp: Math.round(boss3.hp), maxHp: boss3.maxHp, alive: boss3.alive,
+        state: boss3.state, layerId: boss3.layerId
+      } : null,
       kills: kills
     };
   }
@@ -14239,10 +14828,11 @@ const ENEMY = (() => {
   /* Join-only: stash the latest snapshot; applied on the next update() tick
      rather than mutated immediately, so it stays in step with dt-based
      interpolation instead of snapping. */
-  function applyRemoteState(enemies, bossSnap, killsValue, boss2Snap) {
+  function applyRemoteState(enemies, bossSnap, killsValue, boss2Snap, boss3Snap) {
     netSnapshot = enemies || [];
     netBoss = bossSnap || null;
     netBoss2 = boss2Snap || null;
+    netBoss3 = boss3Snap || null;
     remoteKills = killsValue || 0;
   }
 
@@ -14253,6 +14843,7 @@ const ENEMY = (() => {
     netSnapshot = null;
     netBoss = null;
     netBoss2 = null;
+    netBoss3 = null;
   }
 
   function applyGhostSnapshot(e, snap, dt, t) {
@@ -14284,16 +14875,17 @@ const ENEMY = (() => {
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     e.yaw += yawDiff * UTIL.clamp(10 * dt, 0, 1);
     if (e.hitFlash > 0) e.hitFlash -= dt;
-    if (e.isBoss || e.isBoss2) e.assetDelta = dt;
+    if (e.isBoss || e.isBoss2 || e.isBoss3) e.assetDelta = dt;
     e.group.visible = snap.alive && e.layerId === PLAYER.layerId;
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
-    // The join's own bossState/bossState2 never transitions (only the host
-    // runs the real state machines), so derive the HUD text from the
-    // synced fields directly rather than those stale local variables.
+    // The join's own bossState/bossState2/bossState3 never transitions (only
+    // the host runs the real state machines), so derive the HUD text from
+    // the synced fields directly rather than those stale local variables.
     if (e.isBoss) UI.setBoss(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
     else if (e.isBoss2) UI.setBoss2(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
+    else if (e.isBoss3) UI.setBoss3(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
   }
 
   function createBossGhost() {
@@ -14312,6 +14904,15 @@ const ENEMY = (() => {
     };
     create(B2.id, marker, { isBoss2: true });
     bossState2 = 'active';
+  }
+
+  function createBoss3Ghost() {
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss_3',
+      position: new THREE.Vector3(B3.spawn.x, B3.spawn.y, B3.spawn.z)
+    };
+    create(B3.id, marker, { isBoss3: true });
+    bossState3 = 'active';
   }
 
   function updateGhosts(dt, t) {
@@ -14336,6 +14937,12 @@ const ENEMY = (() => {
     } else if (boss2 && bossState2 === 'active') {
       boss2.group.visible = false;
     }
+    if (netBoss3) {
+      if (!boss3) createBoss3Ghost();
+      applyGhostSnapshot(boss3, netBoss3, dt, t);
+    } else if (boss3 && bossState3 === 'active') {
+      boss3.group.visible = false;
+    }
   }
 
   function update(dt, t) {
@@ -14349,6 +14956,7 @@ const ENEMY = (() => {
     if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
     if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
     else if (bossState2 === 'defeated' && bearClawAppearances < 2 && kills >= CONFIG.progress.bearClawThreshold2) spawnBoss2();
+    if (bossState3 === 'inactive' && kills >= CONFIG.progress.beatSlayerThreshold) spawnBoss3();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
   }
 
@@ -14371,7 +14979,7 @@ const ENEMY = (() => {
      is built from. Called only on the host, from COOP's 'enemyDamage'
      handler — a join never calls applyDamage for real (see below). */
   function applyDamageByKey(key, amount, pointArr, dirArr, zone, force) {
-    const target = key === 'boss' ? boss : (key === 'boss2' ? boss2 : nonBossList()[key]);
+    const target = key === 'boss' ? boss : (key === 'boss2' ? boss2 : (key === 'boss3' ? boss3 : nonBossList()[key]));
     if (!target) return;
     const point = new THREE.Vector3().fromArray(pointArr || [target.pos.x, target.pos.y, target.pos.z]);
     const dir = new THREE.Vector3().fromArray(dirArr || [0, 0, -1]);
@@ -14382,6 +14990,31 @@ const ENEMY = (() => {
     let n = 0;
     for (let i = 0; i < list.length; i++) if (list[i].alive) n++;
     return n;
+  }
+
+  /* Golden Boombox's "Monkey Bomb" pull (see THROWABLE.spawnBoomboxZone) --
+     nudges nearby regular grunts' positions toward `point`, called every
+     frame the zone's attraction phase is active. Position, not velocity:
+     THROWABLE.update() runs before ENEMY.update() in GAME.loop()'s own
+     ordering, so a grunt's own steer() call later this same frame computes
+     fresh off wherever this already moved it, rather than this getting
+     immediately overwritten by that call. Deliberately scoped to plain
+     grunts only (nonBossList) -- bosses keep their own established state
+     machines untouched rather than getting a hijacked-movement special case. */
+  function attractTo(point, radius, speed, dt) {
+    const targets = nonBossList();
+    for (let i = 0; i < targets.length; i++) {
+      const e = targets[i];
+      if (!e.alive || e.layerId !== PLAYER.layerId || e.climbing) continue;
+      const dx = point.x - e.pos.x, dz = point.z - e.pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist > radius || dist < 0.4) continue;
+      const step = Math.min(dist - 0.35, speed * dt);
+      e.pos.x += (dx / dist) * step;
+      e.pos.z += (dz / dist) * step;
+      e.yaw = Math.atan2(-dx, -dz);
+      e.sawPlayer = true;
+    }
   }
 
   // Lightweight read-only feed for the HUD radar and future multiplayer
@@ -14395,22 +15028,24 @@ const ENEMY = (() => {
       if (!e.alive) continue;
       contacts.push({
         type: 'enemy', x: e.pos.x, z: e.pos.z,
-        layerId: e.layerId, spawnKind: e.spawnKind, boss: !!e.isBoss || !!e.isBoss2
+        layerId: e.layerId, spawnKind: e.spawnKind, boss: !!e.isBoss || !!e.isBoss2 || !!e.isBoss3
       });
     }
     return contacts;
   }
 
   return {
-    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2,
+    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
-    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity,
+    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
     get boss() { return boss; },
     get bossState2() { return bossState2; },
     get boss2() { return boss2; },
+    get bossState3() { return bossState3; },
+    get boss3() { return boss3; },
     aliveCount, radarContacts
   };
 })();
@@ -14974,7 +15609,7 @@ const COOP = (() => {
       // tick — one host-only network hook, no separate timer to keep in sync.
       if (typeof ENEMY !== 'undefined') {
         const snap = ENEMY.snapshot();
-        broadcast({ type: 'enemyState', enemies: snap.enemies, boss: snap.boss, boss2: snap.boss2, kills: snap.kills });
+        broadcast({ type: 'enemyState', enemies: snap.enemies, boss: snap.boss, boss2: snap.boss2, boss3: snap.boss3, kills: snap.kills });
       }
     } else {
       send(payload);
@@ -15095,7 +15730,7 @@ const COOP = (() => {
     } else if (message.type === 'shotResolved' && message.shot) {
       drawShotTracer(message.shot, message.endPoint);
     } else if (message.type === 'enemyState') {
-      ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0, message.boss2);
+      ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0, message.boss2, message.boss3);
     } else if (message.type === 'bossDefeated') {
       // Mirrors what the host's own ENEMY.die() does locally -- a join never
       // runs die() itself, so this is its only chance to drop the pickup.
@@ -15111,6 +15746,12 @@ const COOP = (() => {
       // rematch's The Claw -- default covers old hosts on an older build.
       if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
         PICKUP.spawn(message.dropId || 'packOfSmokesThrowable',
+          { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
+      }
+    } else if (message.type === 'boss3Defeated') {
+      // Beat Slayer, same "not a win condition, just drop the pickup" rule.
+      if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('goldenBoomboxThrowable',
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
     } else if (message.type === 'worldReset') {
@@ -15379,6 +16020,9 @@ const COOP = (() => {
   function broadcastBoss2Defeated(point, dropId) {
     if (role === 'host' && connected) broadcast({ type: 'boss2Defeated', point: point, dropId: dropId });
   }
+  function broadcastBoss3Defeated(point) {
+    if (role === 'host' && connected) broadcast({ type: 'boss3Defeated', point: point });
+  }
   function broadcastWorldReset() {
     if (role === 'host' && connected) broadcast({ type: 'worldReset' });
   }
@@ -15469,7 +16113,7 @@ const COOP = (() => {
   return {
     init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
-    broadcastBossDefeated, broadcastBoss2Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
+    broadcastBossDefeated, broadcastBoss2Defeated, broadcastBoss3Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     sendChat, displayNameFor, setLocalVoiceStream,
     get role() { return role; },
     get connected() { return connected; },
