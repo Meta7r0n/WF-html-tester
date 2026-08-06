@@ -413,6 +413,12 @@
     background:rgba(110,122,66,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
     font-size:clamp(10px,1.5vw,13px);
   }
+  #mobileCrouch{
+    right:2px;bottom:clamp(145px,22vw,178px);
+    background:rgba(92,126,153,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+    font-size:clamp(10px,1.5vw,13px);
+  }
+  #mobileCrouch.active{background:var(--blue);color:var(--ink);text-shadow:none;}
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
@@ -572,6 +578,7 @@
   .hero-choice.runner{background:var(--blue);}
   .hero-choice.stoner{background:var(--jays);}
   .hero-choice.pyro{background:var(--rust);}
+  .hero-choice.jeff{background:var(--blue-deep);}
   @media (max-width:540px){#heroChoices{grid-template-columns:1fr;} .hero-choice{min-height:88px;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
@@ -594,6 +601,7 @@
   #startFarmBtn{margin-top:14px;}
   #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   #matchModeToggle.hidden{display:none;}
+  #ultraModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   .mode-toggle-label{font:800 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--rust-deep);width:100%;}
   .mode-toggle-btn{
     flex:1 1 200px;padding:9px 12px;text-align:center;cursor:pointer;
@@ -735,6 +743,7 @@
       <button type="button" class="mobile-btn" id="mobileThrowable" aria-label="Throw selected throwable">Throw</button>
       <button type="button" class="mobile-btn" id="mobileThrowSwap" aria-label="Switch throwable type">Swap ↺</button>
       <button type="button" class="mobile-btn" id="mobileJays" aria-label="Use Jays health pack">Jays</button>
+      <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
   </div>
@@ -761,6 +770,7 @@
         <li><kbd>Mouse</kbd> Look</li>
         <li><kbd>Space</kbd> Jump</li>
         <li><kbd>Shift</kbd> Sprint</li>
+        <li><kbd>Ctrl</kbd> Crouch / slide while sprinting</li>
         <li><kbd>W / S</kbd> Climb ladders</li>
         <li><kbd>Click</kbd> Fire / punch</li>
         <li><kbd>V / RMB</kbd> Quick melee</li>
@@ -771,6 +781,11 @@
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
       <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
+      <div id="ultraModeToggle">
+        <span class="mode-toggle-label">Difficulty</span>
+        <button class="mode-toggle-btn active" id="ultraOffBtn" data-ultra="off">Normal</button>
+        <button class="mode-toggle-btn" id="ultraOnBtn" data-ultra="on">Ultra — more enemies, faster spawns, tougher fights, scarcer supplies</button>
+      </div>
       <div id="modeChoices">
         <button class="go" id="enterBtn">Single-player →</button>
         <button class="go mode-coop" id="coopBtn">Online multiplayer →</button>
@@ -845,6 +860,13 @@
             <small>The instant your health hits zero, three sticks go off around you, clearing the area and healing you for what they take out.</small>
           </span>
         </button>
+        <button class="go hero-choice jeff" id="jeffHeroBtn">
+          <img class="hero-portrait" id="jeffPortrait" alt="" />
+          <span class="hero-choice-text">
+            <b>Jeff · Knife Storm</b>
+            <small>The pilot. At 10% health, 5 knives burst out and clear the area — every kill from the storm heals you 15%.</small>
+          </span>
+        </button>
       </div>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
     </div>
@@ -859,6 +881,7 @@
         <label class="opt-row"><span>Master</span><input type="range" id="optMaster" min="0" max="100" step="1" /><b id="optMasterVal"></b></label>
         <label class="opt-row"><span>Effects</span><input type="range" id="optSfx" min="0" max="100" step="1" /><b id="optSfxVal"></b></label>
         <label class="opt-row"><span>Music</span><input type="range" id="optMusic" min="0" max="100" step="1" /><b id="optMusicVal"></b></label>
+        <label class="opt-row"><span>Wind</span><input type="range" id="optWind" min="0" max="100" step="1" /><b id="optWindVal"></b></label>
       </div>
       <div class="opt-section">
         <p class="opt-heading">Display</p>
@@ -981,6 +1004,17 @@ const CONFIG = {
     coopSpawnRing: 1.4,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
     invulnAfterHit: 0.45, reviveDelay: 2.2,
+    // Knockback from a hit (gunfire or explosion). maxKnockbackSpeed is kept
+    // just above sprintSpeed so a hit can only ever nudge a player about as
+    // hard as they could move themselves -- never launch them, which is what
+    // was sending players flying into (and getting stuck inside) walls.
+    hitKnockback: 4.2, maxKnockbackSpeed: 9, airKnockbackDrag: 2.4,
+    // Crouch (held) shrinks the collision height, drops the camera and
+    // slows movement. Tapping crouch while actually sprinting instead
+    // triggers a brief slide -- a burst of speed in the current direction
+    // that eases down into crouch-walk speed over slideDuration.
+    crouchHeightMult: 0.62, crouchEyeDrop: 0.5, crouchSpeedMult: 0.48, crouchLerpRate: 9,
+    slideSpeed: 10.5, slideDuration: 0.5,
     // Anti-ladder-camping: continuously topped up while climbing so nobody
     // can be sniped mid-rung; decays on its own within this window of
     // stepping off, so it never lingers into a real firefight.
@@ -1070,7 +1104,11 @@ const CONFIG = {
     stonedHealPct: 50,
     pyroBaseHealPct: 15,
     pyroKillHealPct: 15,
-    pyroStickOffset: 1.8
+    pyroStickOffset: 1.8,
+    // Jeff's Knife Storm: proactive, not a death-save -- fires once per life
+    // the moment a hit brings health down through this fraction of max,
+    // while he's still alive.
+    knivesLowHealthPct: 10, knivesRadius: 6.5, knivesKillHealPct: 15
   },
   // Insertion cutscene played once at the start of every run/match (not on
   // a mid-match respawn) — helicopter flies the crew in over the farm and
@@ -1131,6 +1169,27 @@ const CONFIG = {
     chainsaw: {
       id: 'chainsaw', name: 'Emergency Chainsaw', slot: 91, kind: 'melee', specialOnly: true,
       meleeDamage: 92, meleeRange: 2.45, meleeArc: 0.76, fireInterval: 0.34
+    },
+    // v0.16: Carrot Warden's boss drop -- a special shotgun. More pellets and
+    // damage than the Pipe Popper, a much tighter spread that turns into a
+    // real range boost, plus a per-pellet chance to critically hit (see
+    // ENEMY.hit). Shares the 'shells' ammo pool so shellBox pickups already
+    // scattered on the map keep it fed rather than needing a new ammo type.
+    carrotCannon: {
+      id: 'carrotCannon', name: 'Carrot Cannon', slot: 5, kind: 'gun', ammoType: 'shells',
+      magSize: 6, startMag: 0, startReserve: 0, maxReserve: 36,
+      fireInterval: 0.58, reloadTime: 1.7, automatic: false,
+      pellets: 12, damage: 20, spread: 0.024, range: 140,
+      recoilBack: 0.27, meleeDamage: 46, meleeRange: 2.35, meleeArc: 0.58,
+      critChance: 0.05, critMultiplier: 1.5
+    },
+    // Jeff's Knife Storm identity -- not wielded through the normal fire/
+    // reload loop (the special fires all 5 as an automatic instant burst,
+    // see HERO.beginJeffKnives), and not a world pickup yet. specialOnly
+    // keeps it out of slot cycling/selection like doubleBarrel/chainsaw.
+    knives: {
+      id: 'knives', name: 'Throwing Knives', slot: 92, kind: 'melee', specialOnly: true,
+      meleeDamage: 99999, meleeRange: 3.2, meleeArc: 6.28, fireInterval: 0.5
     }
   },
   throwables: {
@@ -1168,7 +1227,17 @@ const CONFIG = {
     boilFPS: 12, weaponStepFPS: 15,
     boilAmount: 0.014
   },
-  audio: { master: 0.5, wind: 0.5, sfx: 0.85, music: 0.6 },
+  audio: { master: 0.5, wind: 0.35, sfx: 0.85, music: 0.6 },
+  // v0.16: Ultra Mode -- a single switch (see start screen) that harshens
+  // both sides of the fight at once. `active` is live-mutated at runtime by
+  // UI.setUltraMode, same convention as CONFIG.audio's sliders above; every
+  // module that cares just reads CONFIG.ultra.active synchronously rather
+  // than needing its own plumbing.
+  ultra: {
+    active: false,
+    enemyCountMult: 1.33, spawnRateMult: 1.25, enemyHealthMult: 1.25,
+    pickupRateMult: 0.75, healEffectMult: 0.75
+  },
   input: {
     // free-look fallback: how close to the window edge starts a steady turn,
     // as a fraction of the viewport, and how fast that turn goes
@@ -1216,7 +1285,10 @@ const PAL = CONFIG.palette;
    GAME.init() calls it once everything is ready). */
 const SETTINGS = (() => {
   const STORAGE_KEY = 'wf-settings-v1';
-  const DEFAULTS = { master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music, brightness: 100, keymap: {} };
+  const DEFAULTS = {
+    master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music,
+    wind: CONFIG.audio.wind, brightness: 100, ultra: CONFIG.ultra.active, keymap: {}
+  };
   let current = Object.assign({}, DEFAULTS);
 
   function load() {
@@ -1241,6 +1313,7 @@ const SETTINGS = (() => {
       AUDIO.setMasterVolume(current.master);
       AUDIO.setSfxVolume(current.sfx);
       AUDIO.setMusicVolume(current.music);
+      AUDIO.setWindVolume(current.wind);
     }
     if (typeof INPUT !== 'undefined') INPUT.applyBindings(current.keymap);
     applyBrightness();
@@ -1249,6 +1322,10 @@ const SETTINGS = (() => {
   function setMaster(v) { current.master = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setMasterVolume(v); }
   function setSfx(v) { current.sfx = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setSfxVolume(v); }
   function setMusic(v) { current.music = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setMusicVolume(v); }
+  function setWind(v) { current.wind = v; save(); if (typeof AUDIO !== 'undefined') AUDIO.setWindVolume(v); }
+  // Applied by GAME.setUltraMode, which also owns CONFIG.ultra.active and
+  // the start-screen toggle buttons -- this just persists the choice.
+  function setUltra(v) { current.ultra = !!v; save(); }
   function setBrightness(v) { current.brightness = v; save(); applyBrightness(); }
 
   /* current.keymap is just a cached snapshot of INPUT's live bindings for
@@ -1273,10 +1350,12 @@ const SETTINGS = (() => {
   load();
 
   return {
-    applyAll, setMaster, setSfx, setMusic, setBrightness, setBinding, resetBindings,
+    applyAll, setMaster, setSfx, setMusic, setWind, setUltra, setBrightness, setBinding, resetBindings,
     get master() { return current.master; },
     get sfx() { return current.sfx; },
     get music() { return current.music; },
+    get wind() { return current.wind; },
+    get ultra() { return current.ultra; },
     get brightness() { return current.brightness; }
   };
 })();
@@ -1955,7 +2034,12 @@ const WORLD = {
       normalZ: options.normalZ || 0,
       topLayer: options.topLayer || 'surface',
       bottomLayer: options.bottomLayer || 'surface',
-      tag: options.tag || 'ladder'
+      tag: options.tag || 'ladder',
+      // A pit-drop like the well shaft: only ever descends (no climbing
+      // back up), and ENEMY's cross-layer pathing (findLadderRoute) skips
+      // it entirely -- players and grenades only.
+      oneWayDown: !!options.oneWayDown,
+      playerOnly: !!options.playerOnly
     };
     this.ladders.push(ladder);
     return ladder;
@@ -4005,7 +4089,14 @@ const LEVEL = (() => {
         shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
         WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, 'well_shaft_ceiling');
       });
-    addWall(hallCX, wellZ0, wellW + 0.3, 0.30, 'well_shaft');
+    // South wall is split at the west end: the doc comment above promises a
+    // walkable connection into south_tunnel, but this used to run the wall
+    // the full hallway width with no gap at all, sealing the shaft off from
+    // the rest of the network entirely -- the one-way drop ladder (see
+    // below) made that a real dead end with no way back out. The gap lines
+    // up with south_tunnel's own east-wall doorway (x -16.75, open for
+    // z 6.7-10.15) so the two openings actually meet.
+    addWall(-6.275, wellZ0, 21.25, 0.30, 'well_shaft');
     addWall(hallCX, wellZ1, wellW + 0.3, 0.30, 'well_shaft');
     // Dead end, directly under the well -- fully closed except for the
     // ceiling hole above.
@@ -4024,6 +4115,7 @@ const LEVEL = (() => {
         topY: 0, topExitX: shaftCX, topExitZ: shaftCZ,
         bottomExitX: shaftCX, bottomExitZ: shaftCZ,
         normalZ: 1, topLayer: 'surface', bottomLayer: 'basement',
+        oneWayDown: true, playerOnly: true,
         tag: 'well_shaft_ladder'
       });
 
@@ -4033,15 +4125,16 @@ const LEVEL = (() => {
     // Repeated timber portals make junctions obvious at sprint speed. They are
     // visual-only so no tiny trim collider can catch a shoulder or foot.
     const frames = new PRIM.Batch(trim, 0.022);
-    function doorwayFrame(cx, cz, alongX) {
+    function doorwayFrame(cx, cz, alongX, halfSpan) {
+      const s = halfSpan || 1.72;
       if (alongX) {
-        frames.box(0.22, 3.20, 0.22, cx - 1.72, FLOOR_Y + 1.60, cz);
-        frames.box(0.22, 3.20, 0.22, cx + 1.72, FLOOR_Y + 1.60, cz);
-        frames.box(3.66, 0.22, 0.22, cx, CEIL_Y - 0.20, cz);
+        frames.box(0.22, 3.20, 0.22, cx - s, FLOOR_Y + 1.60, cz);
+        frames.box(0.22, 3.20, 0.22, cx + s, FLOOR_Y + 1.60, cz);
+        frames.box(s * 2 + 0.22, 0.22, 0.22, cx, CEIL_Y - 0.20, cz);
       } else {
-        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz - 1.72);
-        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz + 1.72);
-        frames.box(0.22, 0.22, 3.66, cx, CEIL_Y - 0.20, cz);
+        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz - s);
+        frames.box(0.22, 3.20, 0.22, cx, FLOOR_Y + 1.60, cz + s);
+        frames.box(0.22, 0.22, s * 2 + 0.22, cx, CEIL_Y - 0.20, cz);
       }
     }
     doorwayFrame(7.78, -11.5, false);
@@ -4053,14 +4146,22 @@ const LEVEL = (() => {
     doorwayFrame(2.12, -30.0, false);
     doorwayFrame(17.0, -31.72, true);
     doorwayFrame(17.0, -37.32, true);
-    doorwayFrame(-10.12, -33.0, false);
-    doorwayFrame(-18.50, -34.72, true);
+    // Wider half-span: this doorway (root_cellar <-> northwest_link) is a
+    // genuine 3.5 m-wide opening, half a meter wider than every other
+    // doorway here -- the default 1.72 spacing left both posts standing a
+    // few centimeters inside the open gap instead of anchored in the wall.
+    doorwayFrame(-10.12, -33.0, false, 1.85);
+    // No frame at (-18.5, -34.72): northwest_link <-> northwest_bend meets
+    // at an L-shaped corner, not a straight doorway, so a single rectangular
+    // frame can't sit flush against both sides no matter how it's sized.
     doorwayFrame(-18.50, -38.32, true);
     doorwayFrame(20, -66.85, true);
     doorwayFrame(14.85, -71, false);
     doorwayFrame(20, -50.65, true);
     doorwayFrame(2, -36.15, true);
-    doorwayFrame(-16.75, 9.2, false);
+    // No frame at (-16.75, 9.2) either: well_shaft <-> south_tunnel is now
+    // a wide, wall-less corridor mouth (see the south wall split above),
+    // not a discrete doorway -- same reasoning as the northwest corner.
     // Wall-side braces add rhythm without narrowing any walkable lane.
     [-8, -2, 4].forEach(x => frames.box(0.16, 0.16, 3.25, x, CEIL_Y - 0.25, -11.5));
     [-17, -13].forEach(z => frames.box(3.25, 0.16, 0.16, -4, CEIL_Y - 0.25, z));
@@ -4664,8 +4765,12 @@ const AUDIO = (() => {
     windLfo.frequency.value = 0.07; lfoGain.gain.value = 0.16;
     windLfo.connect(lfoGain); lfoGain.connect(windBus.gain);
     windLfo.start();
-    windBus.gain.setValueAtTime(0, ctx.currentTime);
-    windBus.gain.linearRampToValueAtTime(CONFIG.audio.wind * 0.5, ctx.currentTime + 2.5);
+    // Stays silent (windBus.gain already inits to 0 above) until the first
+    // real 'lock' event -- see unmuteWind/muteWind, wired to pointer lock
+    // gained/lost in GAME.init. Every menu (including the intro/insertion
+    // cutscene, before the player has ever actually locked in) releases or
+    // never acquires pointer lock, so this keeps wind off there for free
+    // rather than needing to special-case each menu individually.
 
     started = true;
   }
@@ -4769,13 +4874,35 @@ const AUDIO = (() => {
   function setSfxVolume(v) {
     const clamped = UTIL.clamp(v, 0, 1);
     CONFIG.audio.sfx = clamped;
-    CONFIG.audio.wind = clamped;
     if (sfxBus) sfxBus.gain.value = clamped;
-    // Wind ambience shares the SFX slider rather than getting a fourth one.
+  }
+  // Wind ambience gets its own slider (previously piggybacked on Effects
+  // with no way to turn it down independently) and a much quieter ceiling
+  // than before -- WIND_BASE_GAIN caps it well under SFX/music even at
+  // 100%, since it's meant to be a quiet backdrop, not compete with gunfire.
+  const WIND_BASE_GAIN = 0.35;
+  // Starts muted (see start()) and only ever unmuted while actually
+  // pointer-locked into gameplay -- see unmuteWind/muteWind.
+  let windMuted = true;
+  function setWindVolume(v) {
+    const clamped = UTIL.clamp(v, 0, 1);
+    CONFIG.audio.wind = clamped;
     // windBus.gain is also driven by a continuous gust-swell LFO (see
-    // start()); setting .value here just moves the base the LFO modulates
-    // around, so this doesn't fight that modulation.
-    if (windBus) windBus.gain.value = clamped * 0.5;
+    // start()); setting the target here just moves the base the LFO
+    // modulates around, so this doesn't fight that modulation. Only takes
+    // effect immediately if currently unmuted -- otherwise the new target
+    // is picked up next time unmuteWind() fades it in.
+    if (!windMuted) fadeGain(windBus, clamped * WIND_BASE_GAIN, DUCK_FADE);
+  }
+  function muteWind() {
+    if (windMuted) return;
+    windMuted = true;
+    fadeGain(windBus, 0, DUCK_FADE);
+  }
+  function unmuteWind() {
+    if (!windMuted) return;
+    windMuted = false;
+    fadeGain(windBus, CONFIG.audio.wind * WIND_BASE_GAIN, DUCK_FADE);
   }
 
   function env(node, t0, a, d, peak) {
@@ -5096,12 +5223,14 @@ const AUDIO = (() => {
     gunshot, dryFire, melee, throwable, blast, pickup, shieldHit, reloadClick, footstep, land, jump, creak, bird,
     enemyAlert, enemyStep, enemySwing, enemyHurt, enemyDie, playerHurt, playerDie, announcerStinger,
     playMenuMusic, stopMenuMusic, playGameMusic, stopGameMusic, duckGameMusic, unduckGameMusic,
-    setMusicVolume, setMasterVolume, setSfxVolume,
+    setMusicVolume, setMasterVolume, setSfxVolume, setWindVolume, muteWind, unmuteWind,
     get running() { return started; },
     get menuMusicPlaying() { return !!(musicEl && !musicEl.paused); },
     get gameMusicPlaying() { return !!(gameMusicEl && !gameMusicEl.paused); },
     get gameMusicGainValue() { return gameMusicGain ? gameMusicGain.gain.value : null; },
-    get gameMusicDucked() { return gameMusicDucked; }
+    get gameMusicDucked() { return gameMusicDucked; },
+    get windMuted() { return windMuted; },
+    get windGainValue() { return windBus ? windBus.gain.value : null; }
   };
 })();
 
@@ -5120,6 +5249,7 @@ const INPUT = (() => {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
     melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
+    crouch: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -5151,6 +5281,7 @@ const INPUT = (() => {
     'KeyD': 'right', 'ArrowRight': 'right',
     'Space': 'jump',
     'ShiftLeft': 'sprint', 'ShiftRight': 'sprint',
+    'ControlLeft': 'crouch', 'ControlRight': 'crouch',
     'KeyR': 'reload',
     'KeyF': 'lantern',
     'KeyV': 'melee',
@@ -5172,7 +5303,7 @@ const INPUT = (() => {
     'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'
   ]);
   const REBINDABLE_ACTIONS = [
-    'forward', 'back', 'left', 'right', 'jump', 'sprint',
+    'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
     'reload', 'lantern', 'melee', 'throwable', 'useJays',
     'slot1', 'slot2', 'slot3', 'slot4'
   ];
@@ -5465,6 +5596,7 @@ const INPUT = (() => {
     bindTouchButton('mobileThrowable', 'throwable');
     bindTouchButton('mobileThrowSwap', 'switchThrowable');
     bindTouchButton('mobileJays', 'useJays');
+    bindTouchButton('mobileCrouch', 'crouch');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -5602,6 +5734,9 @@ const PLAYER = (() => {
   let camera = null;
   let sprinting = false;
   let speedRatio = 0;
+  let crouching = false, crouchAmount = 0, currentHeight = C.height;
+  let sliding = false, slideTimer = 0;
+  const slideDir = new THREE.Vector3();
   let climbing = false, activeLadder = null, ladderCooldown = 0;
   let climbPolarity = 1;
   let ladderNeedsRelease = false;
@@ -5624,11 +5759,30 @@ const PLAYER = (() => {
     ladderNeedsRelease = false;
     layerId = 'surface';
     grounded = true; wasGrounded = true;
+    crouching = false; crouchAmount = 0; currentHeight = C.height;
+    sliding = false; slideTimer = 0;
+  }
+
+  /* Static overlap check at full standing height, used to keep a player
+     crouched if something is directly overhead rather than let them pop up
+     into it (same per-solid AABB test moveAxis already uses for movement). */
+  function canStandAt(x, y, z) {
+    const r = C.radius;
+    const solids = WORLD.solids;
+    for (let i = 0; i < solids.length; i++) {
+      const s = solids[i];
+      if (y + C.height <= s.minY || y + 0.06 >= s.maxY) continue;
+      if (x + r <= s.minX || x - r >= s.maxX) continue;
+      if (z + r <= s.minZ || z - r >= s.maxZ) continue;
+      return false;
+    }
+    return true;
   }
 
   /* ---- vitality ---- */
   function damage(amount, fromPos) {
     if (dead || invuln > 0) return;
+    const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
     if (absorbed > 0) {
       shield -= absorbed;
@@ -5637,6 +5791,10 @@ const PLAYER = (() => {
       AUDIO.shieldHit();
     }
     health = Math.max(0, health - amount);
+    // Jeff's Knife Storm: proactive, so it needs a look at this hit even
+    // when it isn't lethal -- every other hero special only ever reacts to
+    // health actually reaching zero, further down.
+    if (typeof HERO !== 'undefined') HERO.checkLowHealthTrigger(healthBeforeHit, health, C.maxHealth);
     invuln = C.invulnAfterHit;
     regenTimer = 0;
     shake = C.hurtShake;
@@ -5645,8 +5803,17 @@ const PLAYER = (() => {
     if (fromPos) {
       const dx = pos.x - fromPos.x, dz = pos.z - fromPos.z;
       const d = Math.hypot(dx, dz) || 1;
-      vel.x += dx / d * 4.2;
-      vel.z += dz / d * 4.2;
+      vel.x += dx / d * C.hitKnockback;
+      vel.z += dz / d * C.hitKnockback;
+      // Cap the resulting speed rather than the raw impulse -- several hits
+      // landing close together (or one landing on top of existing movement
+      // speed) must still never add up to more than a player could reach by
+      // sprinting, so a shove can never turn into an uncontrolled launch.
+      const spd = Math.hypot(vel.x, vel.z);
+      if (spd > C.maxKnockbackSpeed) {
+        const scale = C.maxKnockbackSpeed / spd;
+        vel.x *= scale; vel.z *= scale;
+      }
     }
     if (health <= 0) {
       dead = true;
@@ -5721,7 +5888,7 @@ const PLAYER = (() => {
       return;
     }
     pos[axis] += amount;
-    const r = C.radius, h = C.height;
+    const r = C.radius, h = currentHeight;
     const solids = WORLD.solids;
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
@@ -5804,13 +5971,18 @@ const PLAYER = (() => {
     if (ladderNeedsRelease && (Math.abs(moveInput.y) <= 0.10 || !ladderCandidate)) ladderNeedsRelease = false;
     const ladderHere = ladderCooldown <= 0 && !ladderNeedsRelease ? ladderCandidate : null;
     if (!climbing && active && !downed && ladderHere && Math.abs(moveInput.y) > 0.10) {
-      climbing = true;
-      activeLadder = ladderHere;
       const enteringFromTop = pos.y > (ladderHere.bottomY + ladderHere.topY) * 0.5;
-      const heldSign = moveInput.y < 0 ? -1 : 1;
-      climbPolarity = (enteringFromTop ? -1 : 1) * heldSign;
-      vel.set(0, 0, 0);
-      grounded = false;
+      // A one-way drop (the well shaft) only ever accepts entry from the
+      // top -- standing at the bottom and pressing a direction never
+      // starts a climb, so there's simply no way back up.
+      if (!(ladderHere.oneWayDown && !enteringFromTop)) {
+        climbing = true;
+        activeLadder = ladderHere;
+        const heldSign = moveInput.y < 0 ? -1 : 1;
+        climbPolarity = (enteringFromTop ? -1 : 1) * heldSign;
+        vel.set(0, 0, 0);
+        grounded = false;
+      }
     }
 
     const jumpPressed = active && INPUT.consumePress('jump');
@@ -5825,12 +5997,41 @@ const PLAYER = (() => {
       AUDIO.jump();
     }
 
-    sprinting = !climbing && active && !downed && INPUT.sprinting && moveInput.y > 0.25 && grounded;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult;
+    // ---- crouch + sprint-slide ----
+    // A slide only triggers off an actual sprint (the same forward-press
+    // gate sprinting itself uses below), so tapping crouch while standing
+    // still or walking just crouches, same as any other shooter.
+    const crouchHeld = active && !downed && !climbing && INPUT.actions.crouch;
+    const crouchPressed = active && !downed && !climbing && INPUT.consumePress('crouch');
+    if (!sliding && crouchPressed && grounded && sprinting && moveInput.y > 0.25) {
+      sliding = true;
+      slideTimer = C.slideDuration;
+      slideDir.set(wish.x, 0, wish.z);
+      if (slideDir.lengthSq() < 0.0001) slideDir.set(fwd.x, 0, fwd.z);
+      slideDir.normalize();
+    }
+    if (sliding) {
+      slideTimer -= dt;
+      if (slideTimer <= 0 || !grounded || climbing || dead) sliding = false;
+    }
+    crouching = sliding || crouchHeld;
+    // Don't let a crouched player pop up into whatever they ducked under.
+    if (!crouching && crouchAmount > 0.5 && !canStandAt(pos.x, pos.y, pos.z)) crouching = true;
+    crouchAmount = UTIL.damp(crouchAmount, crouching ? 1 : 0, C.crouchLerpRate, dt);
+    currentHeight = UTIL.lerp(C.height, C.height * C.crouchHeightMult, crouchAmount);
+
+    sprinting = !climbing && !crouching && active && !downed && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * crouchSpeedFactor;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
-      if (moving) {
+      if (sliding) {
+        const k = UTIL.clamp(slideTimer / C.slideDuration, 0, 1);
+        const speed = UTIL.lerp(C.walkSpeed * C.crouchSpeedMult, C.slideSpeed, k);
+        vel.x = slideDir.x * speed;
+        vel.z = slideDir.z * speed;
+      } else if (moving) {
         vel.x = UTIL.damp(vel.x, wish.x * target, grounded ? 14 : 4.5, dt);
         vel.z = UTIL.damp(vel.z, wish.z * target, grounded ? 14 : 4.5, dt);
       } else if (grounded) {
@@ -5838,6 +6039,14 @@ const PLAYER = (() => {
         vel.x *= f; vel.z *= f;
         if (Math.abs(vel.x) < 0.02) vel.x = 0;
         if (Math.abs(vel.z) < 0.02) vel.z = 0;
+      } else {
+        // Airborne and not steering: still bleed off sideways momentum
+        // (knockback, mostly) instead of carrying it unchanged for the
+        // whole fall -- a hit taken mid-air used to keep its full shove for
+        // as long as the player stayed off the ground, which is how a
+        // single gunshot turned into flying across the map.
+        const f = Math.max(0, 1 - C.airKnockbackDrag * dt);
+        vel.x *= f; vel.z *= f;
       }
     }
 
@@ -5863,7 +6072,11 @@ const PLAYER = (() => {
       pos.x = UTIL.damp(pos.x, ladder.snapX, C.ladderSnap, dt);
       pos.z = UTIL.damp(pos.z, ladder.snapZ, C.ladderSnap, dt);
       vel.x = 0; vel.z = 0;
-      vel.y = (active ? moveInput.y * climbPolarity : 0) * C.ladderSpeed;
+      // A drop, not a climb: descends on its own regardless of held input,
+      // faster than a normal ladder, and input can never reverse it back
+      // toward the top.
+      vel.y = ladder.oneWayDown ? -C.ladderSpeed * 1.8
+        : (active ? moveInput.y * climbPolarity : 0) * C.ladderSpeed;
       pos.y += vel.y * dt;
       grounded = false;
       wasGrounded = false;
@@ -5893,7 +6106,7 @@ const PLAYER = (() => {
       wasGrounded = grounded;
       grounded = false;
       let groundY = WORLD.defaultGroundAt(pos.x, pos.z, layerId);
-      const r = C.radius, h = C.height;
+      const r = C.radius, h = currentHeight;
       const solids = WORLD.solids;
       for (let i = 0; i < solids.length; i++) {
         const s = solids[i];
@@ -5955,7 +6168,7 @@ const PLAYER = (() => {
 
     camera.position.set(
       pos.x + bobX + sx,
-      pos.y + C.eyeHeight + bobY + landOffset + sy - deadTilt * 0.95,
+      pos.y + C.eyeHeight + bobY + landOffset + sy - deadTilt * 0.95 - crouchAmount * C.crouchEyeDrop,
       pos.z
     );
     camera.rotation.set(
@@ -5996,6 +6209,9 @@ const PLAYER = (() => {
     get velocity() { return vel; },
     get grounded() { return grounded; },
     get isClimbing() { return climbing; },
+    get isCrouching() { return crouching; },
+    get isSliding() { return sliding; },
+    get crouchAmount() { return crouchAmount; },
     get sprinting() { return sprinting; },
     get speedRatio() { return speedRatio; },
     get layerId() { return layerId; },
@@ -6211,6 +6427,54 @@ const WEAPON = (() => {
     };
   }
 
+  function buildCarrotCannon() {
+    const g = new THREE.Group();
+    rig.add(g);
+    // Boss drop: a shotgun literally shaped like an oversized carrot -- the
+    // "barrel" is one long tapered cone with root-ridge rings, capped by a
+    // leafy green tuft standing in for a buttstock. A small steel receiver
+    // and grip keep the silhouette readable as a held gun.
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const carrotSkin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1) });
+    const carrotDeep = MAT.toon(PAL.mustardDk);
+    const leaf = MAT.toon(PAL.jays);
+    const leafDeep = MAT.toon(PAL.jaysDeep);
+
+    PRIM.box(0.19, 0.21, 0.3, steel, { pos: [0, 0, -0.02], parent: g, warp: 0.008, outline: 0.014, ray: false });
+    PRIM.cone(0.14, 1.15, 10, carrotSkin, {
+      pos: [0, 0.02, -0.75], rot: [-Math.PI / 2, 0, 0], parent: g, warp: 0.01, outline: 0.016, ray: false
+    });
+    for (let i = 0; i < 5; i++) {
+      const z = -0.3 - i * 0.16;
+      const r = 0.13 - i * 0.02;
+      PRIM.torus(r, 0.01, carrotDeep, { pos: [0, 0.02, z], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.006, ray: false });
+    }
+    PRIM.cyl(0.035, 0.05, 0.05, 10, MAT.toon(PAL.charcoal), { pos: [0, 0.02, -1.33], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+
+    const greens = new THREE.Group();
+    greens.position.set(0, 0.07, 0.32);
+    g.add(greens);
+    [-1, -0.4, 0.4, 1].forEach((s, i) => {
+      PRIM.cone(0.045, 0.34, 6, i % 2 ? leaf : leafDeep, {
+        pos: [s * 0.05, 0.15, s * 0.02], rot: [0.35, 0, s * 0.5], parent: greens, warp: 0.01, outline: 0.012, ray: false
+      });
+    });
+
+    PRIM.box(0.1, 0.2, 0.12, MAT.toon(PAL.rustDeep), { pos: [0, -0.19, 0.06], rot: [0.28, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.052, 0.011, MAT.toon(PAL.charcoal), { pos: [0, -0.08, -0.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+
+    const forend = new THREE.Group();
+    forend.position.set(0, -0.01, -0.5);
+    g.add(forend);
+    PRIM.box(0.16, 0.1, 0.24, carrotDeep, { parent: forend, warp: 0.008, outline: 0.012, ray: false });
+
+    const fx = flashes(g, 0.02, -1.36, 0.85);
+    models.carrotCannon = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2,
+      base: [0.28, -0.28, -0.5], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
   function buildChainsaw() {
     const g = new THREE.Group();
     rig.add(g);
@@ -6301,6 +6565,7 @@ const WEAPON = (() => {
     buildDoubleBarrel();
     buildTinSixer();
     buildFieldhand();
+    buildCarrotCannon();
     buildChainsaw();
     buildHandsAndBoots();
 
@@ -6455,7 +6720,8 @@ const WEAPON = (() => {
     const relayRemote = COOP.shouldRemoteRelayShots();
     const relayHost = COOP.shouldHostRelayShots();
     const shotMeta = {
-      damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+      damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
+      critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1
     };
     for (let i = 0; i < d.pellets; i++) {
       _t.copy(_d);
@@ -6466,7 +6732,8 @@ const WEAPON = (() => {
       if (relayRemote || relayHost) {
         const payload = {
           origin: _o.toArray(), dir: _t.toArray(),
-          damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier
+          damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
+          critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1
         };
         if (relayRemote) COOP.sendShot(payload); else COOP.relayHostShot(payload);
       }
@@ -7253,6 +7520,8 @@ const UI = (() => {
     el.modeCoopBtn = document.getElementById('modeCoopBtn');
     el.modeFfaBtn = document.getElementById('modeFfaBtn');
     el.modeTeamsBtn = document.getElementById('modeTeamsBtn');
+    el.ultraOffBtn = document.getElementById('ultraOffBtn');
+    el.ultraOnBtn = document.getElementById('ultraOnBtn');
     el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
     el.options = document.getElementById('options');
@@ -7262,6 +7531,8 @@ const UI = (() => {
     el.optSfxVal = document.getElementById('optSfxVal');
     el.optMusic = document.getElementById('optMusic');
     el.optMusicVal = document.getElementById('optMusicVal');
+    el.optWind = document.getElementById('optWind');
+    el.optWindVal = document.getElementById('optWindVal');
     el.optBrightness = document.getElementById('optBrightness');
     el.optBrightnessVal = document.getElementById('optBrightnessVal');
     el.optControlsList = document.getElementById('optControlsList');
@@ -7877,7 +8148,7 @@ const UI = (() => {
      once options closes. No "return to X" state to track. */
   const CONTROL_LABELS = {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
-    jump: 'Jump', sprint: 'Sprint', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
+    jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4'
   };
@@ -7900,6 +8171,7 @@ const UI = (() => {
     if (el.optMaster) { const v = Math.round(SETTINGS.master * 100); el.optMaster.value = v; el.optMasterVal.textContent = v + '%'; }
     if (el.optSfx) { const v = Math.round(SETTINGS.sfx * 100); el.optSfx.value = v; el.optSfxVal.textContent = v + '%'; }
     if (el.optMusic) { const v = Math.round(SETTINGS.music * 100); el.optMusic.value = v; el.optMusicVal.textContent = v + '%'; }
+    if (el.optWind) { const v = Math.round(SETTINGS.wind * 100); el.optWind.value = v; el.optWindVal.textContent = v + '%'; }
     if (el.optBrightness) { el.optBrightness.value = SETTINGS.brightness; el.optBrightnessVal.textContent = SETTINGS.brightness + '%'; }
     rebindingAction = null;
     renderControlsList();
@@ -8111,6 +8383,12 @@ const PICKUP = (() => {
     type: 'buff', buffId: 'rallyHorn', label: 'Rally Horn', quantity: 1,
     color: PAL.mustard, respawn: 32
   });
+  // v0.16: not part of the static spawns list -- ENEMY.die() spawns this at
+  // the Carrot Warden's death spot the moment the boss wilts.
+  define('carrotCannonWeapon', {
+    type: 'weapon', label: 'Carrot Cannon', weaponId: 'carrotCannon',
+    quantity: 24, color: PAL.mustard, respawn: 0
+  });
 
   registerHandler('weapon', def => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity);
@@ -8127,7 +8405,7 @@ const PICKUP = (() => {
     return amount > 0 ? { message: '+' + amount + ' ' + def.label } : null;
   });
   registerHandler('health', def => {
-    const amount = PLAYER.heal(def.quantity);
+    const amount = PLAYER.heal(def.quantity * (CONFIG.ultra.active ? CONFIG.ultra.healEffectMult : 1));
     return amount > 0 ? { message: '+' + Math.round(amount) + ' Pep' } : null;
   });
   registerHandler('consumable', def => {
@@ -8136,7 +8414,7 @@ const PICKUP = (() => {
     return { message: '+' + result.added + ' Jays · ' + (INPUT.mobile ? 'tap Jays' : 'press J') + ' to use' };
   });
   registerHandler('shield', def => {
-    const amount = PLAYER.addShield(def.quantity);
+    const amount = PLAYER.addShield(def.quantity * (CONFIG.ultra.active ? CONFIG.ultra.healEffectMult : 1));
     return amount > 0 ? { message: '+' + Math.round(amount) + ' Guard' } : null;
   });
   registerHandler('throwable', def => {
@@ -8213,6 +8491,32 @@ const PICKUP = (() => {
       PRIM.box(0.17, 0.34, 0.16, MAT.toon(PAL.mustardDk), { pos: [0, -0.24, -0.2], rot: [-0.16, 0, 0], parent: parent, outline: 0.023, ray: false });
       PRIM.box(0.18, 0.24, 0.52, MAT.toon(PAL.rust), { pos: [0, -0.02, 0.5], rot: [-0.1, 0, 0], parent: parent, outline: 0.024, ray: false });
     }
+  }
+
+  /* Boss drop only -- a large carrot lying on the ground, echoing the first-
+     person model's tapered-cone-plus-leafy-tuft build so the pickup reads as
+     the same object the player then carries. */
+  function buildCarrotCannonVisual(parent) {
+    const skin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1) });
+    const deep = MAT.toon(PAL.mustardDk);
+    const leaf = MAT.toon(PAL.jays);
+    const leafDeep = MAT.toon(PAL.jaysDeep);
+    PRIM.cone(0.22, 1.15, 10, skin, {
+      pos: [0, 0, -0.1], rot: [-Math.PI / 2, 0, 0], parent: parent, warp: 0.012, outline: 0.03, ray: false
+    });
+    for (let i = 0; i < 5; i++) {
+      const z = -0.4 + i * 0.16;
+      const r = 0.2 - i * 0.03;
+      PRIM.torus(r, 0.014, deep, { pos: [0, 0, z], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.01, ray: false });
+    }
+    const greens = new THREE.Group();
+    greens.position.set(0, 0.02, 0.48);
+    parent.add(greens);
+    [-1, -0.4, 0.4, 1].forEach((s, i) => {
+      PRIM.cone(0.07, 0.5, 6, i % 2 ? leaf : leafDeep, {
+        pos: [s * 0.08, 0.06, s * 0.03], rot: [0.3, 0, s * 0.5], parent: greens, warp: 0.015, outline: 0.018, ray: false
+      });
+    });
   }
 
   function buildAmmoVisual(parent, def) {
@@ -8299,7 +8603,10 @@ const PICKUP = (() => {
     const visual = new THREE.Group();
     visual.position.y = 0.72;
     root.add(visual);
-    if (def.type === 'weapon') buildWeaponVisual(visual, def);
+    if (def.type === 'weapon') {
+      if (def.weaponId === 'carrotCannon') buildCarrotCannonVisual(visual);
+      else buildWeaponVisual(visual, def);
+    }
     else if (def.type === 'ammo') buildAmmoVisual(visual, def);
     else if (def.type === 'health') buildHealthVisual(visual);
     else if (def.type === 'consumable') buildJaysVisual(visual);
@@ -8334,7 +8641,10 @@ const PICKUP = (() => {
     // Coop pulls from the same fixed pool with up to 4x the consumers --
     // trim the wait rather than cluttering the map with duplicate pickups.
     const coop = typeof GAME !== 'undefined' && GAME.mode === 'coop';
-    p.timer = (p.respawn || 0) * (coop ? C.coopRespawnMultiplier : 1);
+    // Ultra Mode's -25% pickup spawn rate means a longer wait, so it divides
+    // rather than multiplies (pickupRateMult < 1).
+    const ultraPickupMult = CONFIG.ultra.active ? (1 / CONFIG.ultra.pickupRateMult) : 1;
+    p.timer = (p.respawn || 0) * (coop ? C.coopRespawnMultiplier : 1) * ultraPickupMult;
     AUDIO.pickup(p.def.type);
     UI.toast(result.message || p.def.label, 1.55);
     return true;
@@ -8461,6 +8771,7 @@ const GAME = (() => {
       UI.hidePause();
       AUDIO.resume();
       AUDIO.unduckGameMusic();
+      AUDIO.unmuteWind();
       // The gameplay theme's first play() often lands with no recent user
       // gesture (e.g. right as the multi-second insertion cutscene ends,
       // not from a click), which browsers silently reject -- unlike
@@ -8479,15 +8790,20 @@ const GAME = (() => {
       if (crewLeftPending) { crewLeftPending = false; UI.showCrewLeft(); }
       else UI.showPause();
       AUDIO.duckGameMusic();
+      AUDIO.muteWind();
     });
 
     INPUT.on('fallback', why => UI.showFallback(why));
 
+    document.getElementById('ultraOffBtn').addEventListener('click', e => { e.stopPropagation(); setUltraMode(false); });
+    document.getElementById('ultraOnBtn').addEventListener('click', e => { e.stopPropagation(); setUltraMode(true); });
+    setUltraMode(SETTINGS.ultra);
     document.getElementById('enterBtn').addEventListener('click', startSingle);
     document.getElementById('scarfHeroBtn').addEventListener('click', () => startSingleHero('scarf'));
     document.getElementById('chainsawHeroBtn').addEventListener('click', () => startSingleHero('chainsaw'));
     document.getElementById('stonedHeroBtn').addEventListener('click', () => startSingleHero('stoned'));
     document.getElementById('pyroHeroBtn').addEventListener('click', () => startSingleHero('pyro'));
+    document.getElementById('jeffHeroBtn').addEventListener('click', () => startSingleHero('jeff'));
     buildHeroPortraits();
     document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
@@ -8519,6 +8835,7 @@ const GAME = (() => {
     document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optMusic').addEventListener('input', e => { SETTINGS.setMusic(e.target.value / 100); UI.syncOptionsUI(); });
+    document.getElementById('optWind').addEventListener('input', e => { SETTINGS.setWind(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optBrightness').addEventListener('input', e => { SETTINGS.setBrightness(Number(e.target.value)); UI.syncOptionsUI(); });
     document.getElementById('optControlsList').addEventListener('click', e => {
       const btn = e.target.closest('[data-rebind]');
@@ -8638,6 +8955,7 @@ const GAME = (() => {
         UI.hidePause();
         UI.showCrewLeft();
         AUDIO.duckGameMusic();
+        AUDIO.muteWind();
       }
       // else: currently on the dead screen -- leave crewLeftPending set;
       // the next unlock (after getting back up) surfaces it instead.
@@ -8760,6 +9078,16 @@ const GAME = (() => {
     if (UI.el.modeCoopBtn) UI.el.modeCoopBtn.classList.toggle('active', chosen === 'coop');
     if (UI.el.modeFfaBtn) UI.el.modeFfaBtn.classList.toggle('active', chosen === 'ffa');
     if (UI.el.modeTeamsBtn) UI.el.modeTeamsBtn.classList.toggle('active', chosen === 'teams');
+  }
+
+  /* A single persisted switch (see CONFIG.ultra) rather than a per-match
+     choice -- every module that scales off it just reads CONFIG.ultra.active
+     directly, so flipping this before a run is all that's needed. */
+  function setUltraMode(active) {
+    CONFIG.ultra.active = !!active;
+    SETTINGS.setUltra(CONFIG.ultra.active);
+    if (UI.el.ultraOffBtn) UI.el.ultraOffBtn.classList.toggle('active', !CONFIG.ultra.active);
+    if (UI.el.ultraOnBtn) UI.el.ultraOnBtn.classList.toggle('active', CONFIG.ultra.active);
   }
 
   function openCoopLobby() {
@@ -8887,6 +9215,9 @@ const GAME = (() => {
   function continueAfterEnd() {
     if (!endShown) return;
     endShown = false;
+    // Only the player choosing to keep going escalates things -- the boss
+    // defeat itself (GAME.complete) doesn't touch difficulty at all.
+    ENEMY.escalateAfterBoss();
     enter(false);
   }
 
@@ -9847,9 +10178,10 @@ const CAST = (() => {
       stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
       voice: { pitch: 1.18 }
     },
-    // Not a HERO.DEFINITIONS entry yet -- appears only in the intro
-    // cutscene's cockpit seat. No hand prop -- the reference photo holds a
-    // knife, which the brief explicitly asked to leave out.
+    // v0.16: also Jeff's playable body (HERO.DEFINITIONS.jeff), not just the
+    // intro cutscene's cockpit seat. No hand prop -- the reference photo
+    // holds a knife, which the original intro brief asked to leave out, and
+    // Jeff's knives are an automatic burst rather than a held item anyway.
     pilot: {
       label: 'Pilot',
       head: 'pilot',
@@ -10370,6 +10702,14 @@ const HERO = (() => {
     pyro: {
       id: 'pyro', label: 'Pyro', castId: 'playerPyro',
       special: 'dynamite', specialLabel: 'Dy-No-Mite'
+    },
+    // v0.16: reuses the intro cutscene's pilot body/head. Single-player
+    // only for now -- coop's fixed 4-slot CHARACTER_POOL (see below) has no
+    // 'pilot' entry, so activeHeroId() naturally never resolves to 'jeff'
+    // there without any extra gating.
+    jeff: {
+      id: 'jeff', label: 'Jeff', castId: 'pilot',
+      special: 'knives', specialLabel: 'Knife Storm'
     }
   };
   // Coop's four slots are filled in a fixed order (see COOP.CHARACTER_POOL),
@@ -10385,7 +10725,7 @@ const HERO = (() => {
   // Scarf's downed window just from the castId mapping above resolving to a
   // real hero id.
   const COOP_SPECIAL_HEROES = { stoned: true, pyro: true };
-  const SOLO_SPECIAL_HEROES = { scarf: true, chainsaw: true, stoned: true, pyro: true };
+  const SOLO_SPECIAL_HEROES = { scarf: true, chainsaw: true, stoned: true, pyro: true, jeff: true };
   let selected = 'scarf';
   let downedActive = false;
   let downedShots = 0;
@@ -10393,6 +10733,11 @@ const HERO = (() => {
   let downedRestoreWeapon = null;
   let chainsawActive = false;
   let restoreWeapon = null;
+  // Once per life (reset alongside everything else in resetRun) -- Jeff's
+  // storm is a proactive low-health save, not a death-triggered one, so it
+  // needs its own guard against firing again on every subsequent hit while
+  // health stays under the threshold.
+  let knifeStormUsed = false;
   const _pyroPoint = new THREE.Vector3();
   const _pyroFx = new THREE.Vector3();
 
@@ -10429,6 +10774,7 @@ const HERO = (() => {
     downedRestoreWeapon = null;
     chainsawActive = false;
     restoreWeapon = null;
+    knifeStormUsed = false;
   }
 
   function beginScarfDowned() {
@@ -10491,6 +10837,46 @@ const HERO = (() => {
     PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
     UI.toast('DY-NO-MITE — ' + hits + ' down · +' + Math.round(healPct) + '% Pep', 2.2);
     return true;
+  }
+
+  /* Jeff's Knife Storm: unlike the other three, this never waits for a
+     lethal hit -- see checkLowHealthTrigger below, called from PLAYER.damage
+     the instant a hit brings health down through the threshold while still
+     alive. A guaranteed-lethal radial query (same pattern as Pyro's blast
+     above) stands in for 5 individually-aimed knives; the 5 tracer streaks
+     are just the visual read of that same burst. */
+  function beginJeffKnives() {
+    knifeStormUsed = true;
+    const origin = PLAYER.position;
+    const C2 = CONFIG.heroSpecial;
+    _pyroPoint.set(origin.x, origin.y + 1.0, origin.z);
+    const hits = (typeof ENEMY !== 'undefined')
+      ? ENEMY.blast(_pyroPoint, { radius: C2.knivesRadius, damage: 99999, minDamage: 99999, force: 2.4 })
+      : 0;
+    const knifeCount = 5;
+    for (let i = 0; i < knifeCount; i++) {
+      const angle = (i / knifeCount) * Math.PI * 2 + UTIL.rng(-0.15, 0.15);
+      _pyroFx.set(
+        origin.x + Math.cos(angle) * C2.knivesRadius,
+        origin.y + 1.0,
+        origin.z + Math.sin(angle) * C2.knivesRadius
+      );
+      FX.tracer(_pyroPoint, _pyroFx);
+    }
+    const healPct = Math.min(100, hits * C2.knivesKillHealPct);
+    if (healPct > 0) PLAYER.heal(CONFIG.player.maxHealth * healPct / 100);
+    PLAYER.grantInvuln(CONFIG.heroSpecial.invulnDuration);
+    AUDIO.blast();
+    UI.specialFlash();
+    UI.toast('KNIFE STORM — ' + hits + ' down' + (healPct > 0 ? ' · +' + Math.round(healPct) + '% Pep' : ''), 2.2);
+  }
+
+  /* Called from PLAYER.damage() on every hit, not just lethal ones -- the
+     only special here that can trigger while the player stays alive. */
+  function checkLowHealthTrigger(healthBefore, healthAfter, maxHealth) {
+    if (knifeStormUsed || healthAfter <= 0 || activeHeroId() !== 'jeff') return;
+    const threshold = maxHealth * (CONFIG.heroSpecial.knivesLowHealthPct / 100);
+    if (healthBefore > threshold && healthAfter <= threshold) beginJeffKnives();
   }
 
   function beginDowned() {
@@ -10560,6 +10946,7 @@ const HERO = (() => {
 
   return {
     definitions: DEFINITIONS, select, resetRun, beginDowned, endDowned, onDoubleBarrelShot, update,
+    checkLowHealthTrigger,
     get id() { return selected; },
     get castId() { return DEFINITIONS[selected].castId; },
     get label() { return DEFINITIONS[selected].label; },
@@ -10587,6 +10974,11 @@ const ENEMY = (() => {
   let boss = null;
   let bossState = 'inactive';
   let markTex = null;
+  // v0.16: escalating difficulty for players who keep going after wilting
+  // the Carrot Warden. currentTarget tracks whatever roster size init()/
+  // rescaleForCoop() last established, so each continue compounds off the
+  // real baseline (solo or coop) rather than a hardcoded constant.
+  let bossEscalation = 1, currentTarget = C.count;
 
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
@@ -10741,8 +11133,8 @@ const ENEMY = (() => {
       body: { grounded: true, blocked: false, landed: false, fallSpeed: 0 },
       state: 'idle',
       timer: 0,
-      hp: isBoss ? B.hp : def.stats.hp,
-      maxHp: isBoss ? B.hp : def.stats.hp,
+      hp: isBoss ? B.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
+      maxHp: isBoss ? B.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
       alive: true,
       yaw: UTIL.rng(0, 6.28),
       targetYaw: 0,
@@ -10853,8 +11245,10 @@ const ENEMY = (() => {
     LOS_TARGETS = RAY_TARGETS.slice();
     usedMarkerKinds.clear();
 
+    bossEscalation = 1;
+    currentTarget = C.count * (CONFIG.ultra.active ? CONFIG.ultra.enemyCountMult : 1);
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
-    spawnAdditional(C.count, roster);
+    spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
     return list.length;
   }
@@ -10869,10 +11263,23 @@ const ENEMY = (() => {
      enemy counts (live rescale / shrink-on-leave are both out of scope). */
   function rescaleForCoop(playerCount) {
     const n = Math.max(1, Math.floor(playerCount) || 1);
-    const target = Math.min(C.coopMax, C.count + C.coopPerExtraPlayer * (n - 1));
+    const base = Math.min(C.coopMax, C.count + C.coopPerExtraPlayer * (n - 1));
+    const target = base * (CONFIG.ultra.active ? CONFIG.ultra.enemyCountMult : 1);
+    currentTarget = target;
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
-    spawnAdditional(target, roster);
+    spawnAdditional(Math.round(target), roster);
     return list.length;
+  }
+
+  /* Called by GAME.continueAfterEnd() each time a player keeps going past a
+     Carrot Warden defeat -- a real, compounding escalation (5% on top of
+     the last continue, not the original baseline) rather than a one-time
+     bump, since the boss can wilt again on a later kill-count threshold. */
+  function escalateAfterBoss() {
+    bossEscalation *= 1.05;
+    currentTarget = currentTarget * 1.05;
+    const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
+    spawnAdditional(Math.round(currentTarget), roster);
   }
 
   /* ---------------- perception ---------------- */
@@ -10966,14 +11373,27 @@ const ENEMY = (() => {
       e.respawnAt = 0;
       UI.setBoss(false, 0, e.maxHp, bossState);
       UI.toast('CARROT WARDEN WILTED', 2.4);
+      // Boss drop: the Carrot Cannon, spawned right where the boss fell.
+      // Each client (host and every join) spawns its own local pickup
+      // entity at the same broadcast position -- pickups were never synced
+      // across peers to begin with (every static spawn works the same way),
+      // so this just follows that existing convention.
+      const dropPos = [e.pos.x, e.pos.y, e.pos.z];
+      if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('carrotCannonWeapon', { x: dropPos[0], y: dropPos[1], z: dropPos[2] }, { respawn: 0 });
+      }
       // die() only ever runs on the host or in single-player (a join never
       // reaches this point — its applyDamage relays out instead), so this is
       // the one authoritative place a boss kill can happen. Tell any joiners.
-      if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills);
+      if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills, dropPos);
       if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
     } else {
       kills++;
-      if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay;
+      // Faster respawns each time bossEscalation grows -- the "spawn rate"
+      // half of the post-continue +5% (currentTarget covers the "qty" half).
+      // Ultra Mode's own +25% spawn rate stacks on top of that the same way.
+      const ultraSpawnMult = CONFIG.ultra.active ? CONFIG.ultra.spawnRateMult : 1;
+      if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay / bossEscalation / ultraSpawnMult;
     }
   }
 
@@ -10989,9 +11409,12 @@ const ENEMY = (() => {
     const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
     const head = e.isBoss ? B.headMultiplier :
       (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier);
-    const dmg = base * falloff * (info.zone === 'head' ? head : 1);
+    // Per-pellet crit roll (Carrot Cannon): each connecting pellet gets its
+    // own independent chance, not one roll for the whole shot.
+    const isCrit = !!shot.critChance && Math.random() < shot.critChance;
+    const dmg = base * falloff * (info.zone === 'head' ? head : 1) * (isCrit ? (shot.critMultiplier || 1) : 1);
     applyDamage(e, dmg, point, dir, info.zone);
-    FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' });
+    FX.impact(point, _v.copy(dir).negate(), { big: info.zone === 'head' || isCrit });
     return true;
   }
 
@@ -11092,6 +11515,15 @@ const ENEMY = (() => {
   function reset() {
     kills = 0;
     bossState = 'inactive';
+    bossEscalation = 1;
+    // A restart is the only point a toggled Ultra Mode can actually take
+    // effect -- the enemies here already exist from the one-time ENEMY.init
+    // at page boot, so re-derive maxHp from each one's own def instead of
+    // leaving whatever it was assigned before the switch was flipped, and
+    // top the roster up toward the ultra-scaled target the same way a coop
+    // rescale would (spawnAdditional only ever grows the roster, same
+    // one-directional constraint escalateAfterBoss already lives with).
+    const ultraHealthMult = CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1;
     list.forEach(e => {
       e.respawnAt = 0;
       if (e.isBoss) {
@@ -11105,9 +11537,13 @@ const ENEMY = (() => {
         e.group.visible = false;
         e.climbing = false;
       } else {
+        e.maxHp = e.def.stats.hp * ultraHealthMult;
         revive(e);
       }
     });
+    currentTarget = Math.max(currentTarget, C.count * (CONFIG.ultra.active ? CONFIG.ultra.enemyCountMult : 1));
+    const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
+    spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
   }
 
@@ -11161,6 +11597,7 @@ const ENEMY = (() => {
     let best = null;
     for (let i = 0; i < WORLD.ladders.length; i++) {
       const ladder = WORLD.ladders[i];
+      if (ladder.playerOnly) continue;
       let direction = 0, targetX = ladder.snapX, targetZ = ladder.snapZ;
       if (ladder.topLayer === e.layerId && ladder.bottomLayer === PLAYER.layerId) {
         direction = -1;
@@ -11943,7 +12380,7 @@ const ENEMY = (() => {
   return {
     init, prepareAssets, update, hit, melee, blast, reset, applyDamage, spawnBoss,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
-    rescaleForCoop,
+    rescaleForCoop, escalateAfterBoss,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -12568,6 +13005,12 @@ const COOP = (() => {
     } else if (message.type === 'enemyState') {
       ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0);
     } else if (message.type === 'bossDefeated') {
+      // Mirrors what the host's own ENEMY.die() does locally -- a join never
+      // runs die() itself, so this is its only chance to drop the pickup.
+      if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('carrotCannonWeapon',
+          { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
+      }
       GAME.complete(message.kills || 0);
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
@@ -12809,8 +13252,8 @@ const COOP = (() => {
   /* Host-only network hooks used by ENEMY/GAME once per tick or on a
      one-off event — every one is a no-op for single-player and for join,
      since only the host ever runs the authoritative simulation. */
-  function broadcastBossDefeated(kills) {
-    if (role === 'host' && connected) broadcast({ type: 'bossDefeated', kills: kills });
+  function broadcastBossDefeated(kills, point) {
+    if (role === 'host' && connected) broadcast({ type: 'bossDefeated', kills: kills, point: point });
   }
   function broadcastWorldReset() {
     if (role === 'host' && connected) broadcast({ type: 'worldReset' });
