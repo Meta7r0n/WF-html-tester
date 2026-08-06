@@ -269,6 +269,42 @@
   }
   #killFeed .line.on{opacity:1;transform:translateX(0);}
 
+  /* ---------- Kill cam ---------- */
+  #killcamCaption{
+    position:fixed;left:50%;bottom:9%;z-index:34;transform:translate(-50%,8px);
+    display:none;pointer-events:none;text-align:center;
+    font:900 22px/1 "Rockwell",Georgia,serif;letter-spacing:2px;text-transform:uppercase;
+    color:var(--cream);text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink);
+    opacity:0;transition:opacity .25s ease,transform .25s ease;
+  }
+  #killcamCaption.on{display:block;opacity:1;transform:translate(-50%,0);}
+  #killcamBars{position:fixed;inset:0;z-index:33;pointer-events:none;}
+  #killcamBars .bar{
+    position:absolute;left:0;right:0;height:9vh;background:var(--ink);
+    transform:scaleY(0);transition:transform .35s ease;
+  }
+  #killcamBars .bar.top{top:0;transform-origin:top;}
+  #killcamBars .bar.bottom{bottom:0;transform-origin:bottom;}
+  #killcamBars.on .bar{transform:scaleY(1);}
+  /* Clears the regular play HUD out of the shot -- these all drive their own
+     visibility with a plain, low-specificity ".on" class (see UI.showHud),
+     so !important is the simplest reliable way to force them off for the
+     cutaway without touching that unrelated toggle logic. */
+  body.killcam-active #crosshair,
+  body.killcam-active #weaponName,
+  body.killcam-active #ammo,
+  body.killcam-active #vitals,
+  body.killcam-active #tally,
+  body.killcam-active #radar,
+  body.killcam-active #jaysHud,
+  body.killcam-active #buffHud,
+  body.killcam-active #voiceChip{
+    opacity:0 !important;pointer-events:none;
+  }
+  @media (prefers-reduced-motion: reduce){
+    #killcamCaption,#killcamBars .bar{transition:none;}
+  }
+
   /* ---------- Local chat ---------- */
   #chatLog{
     position:fixed;left:26px;bottom:172px;z-index:30;width:min(360px,44vw);
@@ -644,22 +680,51 @@
   .go:focus-visible{outline:4px solid var(--blue-deep);outline-offset:4px;}
   #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
   #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
-  #playerSelect .card{max-width:760px;}
-  #heroChoices{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:16px 0 4px;}
-  .hero-choice{display:flex;flex-direction:row;align-items:center;gap:12px;text-align:left;min-height:104px;padding:14px 16px;background:var(--peach);}
-  .hero-choice-text{display:flex;flex-direction:column;gap:6px;min-width:0;}
-  .hero-choice b{font-size:16px;letter-spacing:1px;}
-  .hero-choice small{font:700 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:.3px;text-transform:none;color:var(--ink-soft);}
-  .hero-portrait{
-    flex:0 0 auto;width:62px;height:74px;object-fit:contain;
-    background:rgba(22,18,15,.1);border:2px solid var(--ink);border-radius:10px;
+  #playerSelect .card{max-width:900px;}
+  #heroChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:16px 0 4px;}
+  .hero-choice{
+    display:flex;flex-direction:column;align-items:stretch;text-align:left;
+    padding:0;overflow:hidden;background:var(--peach);
+  }
+  .hero-choice-text{display:flex;flex-direction:column;gap:5px;min-width:0;padding:11px 13px 13px;}
+  .hero-choice b{font-size:14.5px;letter-spacing:.6px;}
+  .hero-choice small{font:700 11px/1.3 "Rockwell",Georgia,serif;letter-spacing:.2px;text-transform:none;color:var(--ink-soft);}
+  /* The art panel: a plain square that centers the procedural portrait for
+     heroes with no reference photo, or hosts the photo + its "in-engine"
+     portrait badge for heroes that have one -- see .hero-ref below. */
+  .hero-art{
+    position:relative;display:block;width:100%;aspect-ratio:1/1;
+    background:rgba(22,18,15,.12);border-bottom:3px solid var(--ink);overflow:hidden;
+  }
+  .hero-choice:not(.has-ref) .hero-art{display:grid;place-items:center;}
+  .hero-choice:not(.has-ref) .hero-art .hero-portrait{
+    position:static;width:68%;height:68%;object-fit:contain;background:none;border:0;
+  }
+  /* Reference photo: starts deliberately "half rendered" -- blurred,
+     desaturated, dim -- and sharpens into full color on hover/focus, as if
+     it finishes rendering the moment you consider that hero. */
+  .hero-ref{
+    position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center;
+    filter:blur(7px) grayscale(.85) brightness(.65);opacity:.8;transform:scale(1.06);
+    transition:filter .55s ease, opacity .55s ease, transform .55s ease;
+  }
+  .hero-choice.has-ref:hover .hero-ref,
+  .hero-choice.has-ref:focus-visible .hero-ref{
+    filter:blur(0) grayscale(0) brightness(1);opacity:1;transform:scale(1);
+  }
+  .hero-portrait-inset{
+    position:absolute;right:7px;bottom:7px;width:38px;height:46px;object-fit:contain;
+    background:var(--cream);border:2px solid var(--ink);border-radius:8px;
+    box-shadow:2px 3px 0 rgba(22,18,15,.45);
   }
   .hero-choice.scout{background:var(--mustard);}
   .hero-choice.runner{background:var(--blue);}
   .hero-choice.stoner{background:var(--jays);}
   .hero-choice.pyro{background:var(--rust);}
   .hero-choice.jeff{background:var(--blue-deep);}
-  @media (max-width:540px){#heroChoices{grid-template-columns:1fr;} .hero-choice{min-height:88px;}}
+  @media (max-width:720px){#heroChoices{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width:460px){#heroChoices{grid-template-columns:1fr;} .hero-art{aspect-ratio:16/9;}}
+  @media (prefers-reduced-motion: reduce){.hero-ref{transition:none;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
   .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
@@ -695,13 +760,59 @@
   .foot{margin:16px 0 0;font-size:11.5px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(22,18,15,.45);}
 
   #pause .card{max-width:420px;}
-  #splash .splash-card{max-width:440px;text-align:center;animation:splashIn .5s ease both;}
+  /* Grid instead of the .veil's default flex -- studio-bumper and
+     splash-card both sit in the same single cell so the bumper-to-card
+     cross-fade reads as one continuous scene rather than a layout jump. */
+  #splash{display:grid;place-items:center;}
+  #splash.hidden{display:none;}
+  #splash .studio-bumper,#splash .splash-card{grid-area:1/1;}
+  #splash .splash-card{max-width:440px;text-align:center;animation:splashIn .5s ease 1.6s both;}
   #splash .eyebrow{text-align:center;}
   #splash h1{margin-bottom:10px;}
   #splash .foot{margin-top:22px;}
   @keyframes splashIn{
     from{opacity:0;transform:rotate(-.6deg) translateY(10px) scale(.97);}
     to{opacity:1;transform:rotate(-.6deg) translateY(0) scale(1);}
+  }
+
+  /* Lobster Labz studio bumper -- plays once, ahead of the game's own
+     splash card (see the 1.6s delay on .splash-card above). A short snap-in
+     bounce, a beat to read it, then a quick fade so the game's own splash
+     card can cross-fade into the same spot. */
+  .studio-bumper{
+    display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;
+    animation:bumperIn .5s cubic-bezier(.34,1.56,.64,1) both, bumperOut .4s ease 1.5s forwards;
+  }
+  .studio-claw{
+    font-size:64px;line-height:1;filter:drop-shadow(4px 5px 0 var(--ink));
+    animation:clawSnap 1.5s ease .5s both;
+  }
+  .studio-word{
+    margin:0;font:900 25px/1 "Rockwell",Georgia,serif;letter-spacing:5px;color:var(--rust);
+    text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink);
+    text-transform:uppercase;
+  }
+  .studio-word span{display:block;font-size:.56em;color:var(--blue-deep);letter-spacing:8px;margin-top:3px;}
+  @keyframes bumperIn{
+    0%{opacity:0;transform:scale(.4) rotate(-10deg);}
+    65%{opacity:1;transform:scale(1.1) rotate(3deg);}
+    100%{opacity:1;transform:scale(1) rotate(0deg);}
+  }
+  @keyframes bumperOut{
+    from{opacity:1;transform:scale(1);}
+    to{opacity:0;transform:scale(.94);}
+  }
+  @keyframes clawSnap{
+    0%,100%{transform:rotate(0deg);}
+    15%{transform:rotate(-14deg);}
+    30%{transform:rotate(10deg);}
+    45%{transform:rotate(-6deg);}
+    60%{transform:rotate(0deg);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .studio-bumper,.studio-claw,#splash .splash-card{animation:none !important;}
+    .studio-bumper{opacity:0;}
+    #splash .splash-card{opacity:1;}
   }
   #endGame .alt{display:block;}
   #matchOverScores{list-style:none;margin:6px 0 22px;padding:0;display:grid;gap:8px;}
@@ -793,6 +904,8 @@
   <div id="tally">Wilted <b id="killNum">0</b></div>
   <ul id="ffaScoreboard" aria-live="polite"></ul>
   <div id="killFeed" aria-live="polite"></div>
+  <div id="killcamCaption" aria-live="polite"></div>
+  <div id="killcamBars" aria-hidden="true"><i class="bar top"></i><i class="bar bottom"></i></div>
   <div id="chatLog" aria-live="polite"></div>
   <div id="chatInputBar"><b>Chat</b><span id="chatComposing"></span></div>
   <div id="announcerBanner" aria-live="polite"></div>
@@ -846,6 +959,10 @@
   <div id="vignette"></div>
 
   <div id="splash" class="veil">
+    <div class="studio-bumper" aria-hidden="true">
+      <span class="studio-claw">🦞</span>
+      <p class="studio-word">Lobster<span>Labz</span></p>
+    </div>
     <div class="card splash-card">
       <p class="eyebrow">Lobster Labz presents</p>
       <h1>The Withered<br/>Farm<span>A pitchfork, a flashlight, and the corn</span></h1>
@@ -927,35 +1044,44 @@
       <p class="sub">Your choice changes your low-health special. All four heroes keep the normal weapon and pickup inventory.</p>
       <div id="heroChoices">
         <button class="go hero-choice scout" id="scarfHeroBtn">
-          <img class="hero-portrait" id="scarfPortrait" alt="" />
+          <span class="hero-art"><img class="hero-portrait" id="scarfPortrait" alt="" /></span>
           <span class="hero-choice-text">
             <b>Larry · Double Barrel</b>
             <small>Shotgun farmhand. When downed, fire two wide-spread blasts, then stand back up with 25% health.</small>
           </span>
         </button>
         <button class="go hero-choice runner" id="chainsawHeroBtn">
-          <img class="hero-portrait" id="chainsawPortrait" alt="" />
+          <span class="hero-art"><img class="hero-portrait" id="chainsawPortrait" alt="" /></span>
           <span class="hero-choice-text">
             <b>Smoke · Chainsaw Hand</b>
             <small>At 25% health the chainsaw auto-equips for heavy melee. It returns to inventory once you recover above 55%.</small>
           </span>
         </button>
-        <button class="go hero-choice stoner" id="stonedHeroBtn">
-          <img class="hero-portrait" id="stonedPortrait" alt="" />
+        <button class="go hero-choice stoner has-ref" id="stonedHeroBtn">
+          <span class="hero-art">
+            <img class="hero-ref" src="assets/hero_stoned_ref.jpg" alt="" />
+            <img class="hero-portrait hero-portrait-inset" id="stonedPortrait" alt="" />
+          </span>
           <span class="hero-choice-text">
             <b>Stoned · Secret Stash</b>
             <small>The instant your health hits zero, a hidden stash saves you — back up with 50% health.</small>
           </span>
         </button>
-        <button class="go hero-choice pyro" id="pyroHeroBtn">
-          <img class="hero-portrait" id="pyroPortrait" alt="" />
+        <button class="go hero-choice pyro has-ref" id="pyroHeroBtn">
+          <span class="hero-art">
+            <img class="hero-ref" src="assets/hero_pyro_ref.jpg" alt="" />
+            <img class="hero-portrait hero-portrait-inset" id="pyroPortrait" alt="" />
+          </span>
           <span class="hero-choice-text">
             <b>Pyro · Dy-No-Mite</b>
             <small>The instant your health hits zero, three sticks go off around you, clearing the area and healing you for what they take out.</small>
           </span>
         </button>
-        <button class="go hero-choice jeff" id="jeffHeroBtn">
-          <img class="hero-portrait" id="jeffPortrait" alt="" />
+        <button class="go hero-choice jeff has-ref" id="jeffHeroBtn">
+          <span class="hero-art">
+            <img class="hero-ref" src="assets/hero_jeff_ref.jpg" alt="" />
+            <img class="hero-portrait hero-portrait-inset" id="jeffPortrait" alt="" />
+          </span>
           <span class="hero-choice-text">
             <b>Jeff · Knife Storm</b>
             <small>The pilot. At 10% health, 5 knives burst out and clear the area — every kill from the storm heals you 15%.</small>
@@ -1292,6 +1418,21 @@ const CONFIG = {
     startPos: { x: -54, y: 25, z: 18 },
     hoverPos: { x: 3, y: 14, z: 24 },
     endPos: { x: 50, y: 23, z: -16 }
+  },
+  // A short cinematic cutaway on every death (PvE or PvP) -- pulls out from
+  // first-person into a slow orbit around the fallen local player's ragdoll,
+  // gated in ahead of the dead screen (see GAME.loop). duration is deliberately
+  // allowed to run longer than player.reviveDelay; the two windows just run in
+  // parallel (see UI.showDead's extra KILLCAM.active gate).
+  killcam: {
+    duration: 3.0,
+    pullbackTime: 0.55,     // first-person -> orbit transition
+    orbitDistance: 3.6,
+    orbitHeight: 1.7,
+    orbitSpeed: 0.55,       // radians/sec around the death point
+    lookHeight: 1.15,       // ragdoll aim point, roughly chest height
+    toppleTime: 0.9,        // ragdoll fall-over duration, independent of the cam
+    fov: 52
   },
   weapons: {
     unarmed: {
@@ -6223,6 +6364,15 @@ const PLAYER = (() => {
   let stepDist = 0;
   let health = C.maxHealth, shield = 0, dead = false, deadTime = 0, deadTilt = 0;
   let invuln = 0, regenTimer = 0, shake = 0;
+  // KILLCAM-only: whichever attacker most recently damaged the player, so a
+  // fatal hit can be traced back to who/what threw it. Either a real ENEMY
+  // entity (PvE) or a small { pvp: true, id } marker (PvP -- COOP.getRemote
+  // resolves the visible model, since a remote player isn't a local object
+  // this can hold a direct reference to). Overwritten on every hit, cleared
+  // to null on one with no attributable source (blast splash) -- always
+  // reflects the source of the MOST RECENT hit, which is exactly what a
+  // death needs (the shot that actually landed the kill).
+  let lastAttacker = null;
   let speedMult = 1, speedMultTimer = 0;
   let ironHideTimer = 0;
   // Bear Claw's stun-chance melee hit (see ENEMY.updateBearClaw). Freezes
@@ -6279,8 +6429,16 @@ const PLAYER = (() => {
   }
 
   /* ---- vitality ---- */
-  function damage(amount, fromPos) {
+  /* attacker (optional) is an ENEMY entity for PvE hits or a
+     { pvp: true, id } marker for PvP hits -- see lastAttacker above.
+     Always overwritten, including with the omitted/undefined case (blast
+     splash, self-inflicted) -- lastAttacker needs to track the source of
+     the MOST RECENT hit, whatever that was, or a death with no attacker of
+     its own could inherit a stale one left over from an earlier, unrelated
+     hit that never actually killed anyone. */
+  function damage(amount, fromPos, attacker) {
     if (dead || invuln > 0) return;
+    lastAttacker = attacker || null;
     const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
     if (absorbed > 0) {
@@ -6722,6 +6880,7 @@ const PLAYER = (() => {
     get speedBoostRemaining() { return speedMultTimer; },
     get stunned() { return stunTimer > 0; },
     get stunRemaining() { return stunTimer; },
+    get lastAttacker() { return lastAttacker; },
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -8491,6 +8650,8 @@ const UI = (() => {
     el.tally = document.getElementById('tally');
     el.ffaScoreboard = document.getElementById('ffaScoreboard');
     el.killFeed = document.getElementById('killFeed');
+    el.killcamCaption = document.getElementById('killcamCaption');
+    el.killcamBars = document.getElementById('killcamBars');
     el.chatLog = document.getElementById('chatLog');
     el.chatInputBar = document.getElementById('chatInputBar');
     el.chatComposing = document.getElementById('chatComposing');
@@ -8664,6 +8825,22 @@ const UI = (() => {
     }, KILL_FEED_LIFE * 1000);
   }
   function hideKillFeed() { if (el.killFeed) el.killFeed.innerHTML = ''; }
+
+  /* Kill cam: letterbox bars plus an optional "who got you" caption, up for
+     exactly as long as KILLCAM.active. */
+  function showKillcam(caption) {
+    document.body.classList.add('killcam-active');
+    if (el.killcamBars) el.killcamBars.classList.add('on');
+    if (el.killcamCaption) {
+      if (caption) { el.killcamCaption.textContent = caption; el.killcamCaption.classList.add('on'); }
+      else el.killcamCaption.classList.remove('on');
+    }
+  }
+  function hideKillcam() {
+    document.body.classList.remove('killcam-active');
+    if (el.killcamBars) el.killcamBars.classList.remove('on');
+    if (el.killcamCaption) el.killcamCaption.classList.remove('on');
+  }
 
   /* Chat text is untrusted (anyone in the room can send it), so this builds
      the line with real DOM nodes/textContent rather than innerHTML -- no
@@ -9239,6 +9416,7 @@ const UI = (() => {
     showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
+    showKillcam, hideKillcam,
     showCrewLeft, hideCrewLeft,
     pushChat, showChatInput, setChatComposing, setVoiceChip,
     get rebindingAction() { return rebindingAction; },
@@ -9839,6 +10017,7 @@ const GAME = (() => {
     INPUT.init(renderer.domElement);
     COOP.init(scene);
     INTRO.init(scene, camera);
+    KILLCAM.init(scene);
 
     // shared mouse/touch engagement wiring
     INPUT.on('lock', () => {
@@ -9861,7 +10040,9 @@ const GAME = (() => {
       if (!entered) return;
       // A downed player must still get a clickable way back in. Showing only
       // the downed HUD here left the game with no overlay and no input at all.
-      if (PLAYER.isDead && !PLAYER.isDowned) { UI.showDead(); return; }
+      // Escape mid-kill-cam reads as "skip it" rather than leaving the
+      // cutaway's ragdoll/letterbox stranded under the dead screen.
+      if (PLAYER.isDead && !PLAYER.isDowned) { KILLCAM.skip(); UI.showDead(); return; }
       if (crewLeftPending) { crewLeftPending = false; UI.showCrewLeft(); }
       else UI.showPause();
       AUDIO.duckGameMusic();
@@ -10062,10 +10243,18 @@ const GAME = (() => {
     if (UI.el.loading) UI.el.loading.textContent = 'Inking the farm…';
     UI.hideLoading();
     armSplash();
-    // The splash can auto-advance on its own timer with no click/keypress
-    // yet, so the menu music's first play() attempt may land before any
-    // user gesture and get silently blocked. Catch the player's actual
-    // first interaction, whenever it comes, and retry once.
+    // Attempt the menu theme right here, at the earliest possible moment --
+    // before this, showStart() was the first thing to ever call
+    // playMenuMusic(), which meant total silence through the whole splash
+    // screen even on a fast auto-advance. This first call almost always
+    // gets rejected by the browser's autoplay policy (no user gesture yet
+    // this early), so the splash can auto-advance on its own timer with no
+    // click/keypress yet, so the menu music's first play() attempt may land
+    // before any user gesture and get silently blocked. Catch the player's
+    // actual first interaction, whenever it comes, and retry once -- in
+    // practice that's usually the very same click/keypress that dismisses
+    // the splash, so the music starts right as the menu appears.
+    AUDIO.playMenuMusic();
     const retryMenuMusic = () => {
       document.removeEventListener('pointerdown', retryMenuMusic);
       document.removeEventListener('keydown', retryMenuMusic);
@@ -10093,7 +10282,11 @@ const GAME = (() => {
       document.removeEventListener('pointerdown', advance);
       UI.showStart();
     };
-    const timer = setTimeout(advance, 1800);
+    // Long enough for the studio-bumper-into-splash-card cross-fade (see
+    // the CSS animation timings on .studio-bumper/.splash-card) to actually
+    // finish reading before an auto-advance would cut it off mid-fade. A
+    // click or keypress still skips past all of it immediately.
+    const timer = setTimeout(advance, 2800);
     document.addEventListener('keydown', advance);
     document.addEventListener('pointerdown', advance);
   }
@@ -10389,6 +10582,10 @@ const GAME = (() => {
       camera.fov = UTIL.damp(camera.fov, targetFov, CONFIG.render.adsFovLerp, dt);
       camera.updateProjectionMatrix();
     }
+    // Overrides camera position/rotation/fov on top of everything above,
+    // exactly like the ADS block just did, whenever a death cutaway is
+    // (or should start) playing.
+    KILLCAM.update(dt, camera);
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead && !PLAYER.stunned);
     CONSUMABLE.update(dt, running && !PLAYER.isDead && !PLAYER.stunned);
@@ -10411,12 +10608,13 @@ const GAME = (() => {
     if (!PLAYER.isDead) deathPending = false;
     if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) {
       deathPending = true;
+      KILLCAM.trigger(camera);
       // Reported once, right as the death happens — reportDeath() reads
       // whichever attacker last damaged this client, so it has to fire
       // before anything else has a chance to land another hit first.
       if (mode === 'coop' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')) COOP.reportDeath();
     }
-    if (deathPending && !PLAYER.isDowned && !UI.deadShown && PLAYER.deadTime > CONFIG.player.reviveDelay) {
+    if (deathPending && !PLAYER.isDowned && !UI.deadShown && !KILLCAM.active && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
       UI.setDeadCoopMode(mode === 'coop');
       UI.showDead();
@@ -10432,8 +10630,12 @@ const GAME = (() => {
 
     renderer.clear();
     renderer.render(scene, camera);
-    renderer.clearDepth();
-    renderer.render(viewScene, viewCamera);
+    // The floating first-person weapon has no business in a third-person
+    // cutaway shot -- skip the overlay pass entirely while one's playing.
+    if (!KILLCAM.active) {
+      renderer.clearDepth();
+      renderer.render(viewScene, viewCamera);
+    }
   }
 
   return {
@@ -12062,6 +12264,185 @@ const HERO = (() => {
   };
 })();
 
+/* ============================== [KILLCAM] =============================
+   A short cinematic cutaway on every death, PvE or PvP -- pulls the camera
+   out of first-person into a slow orbit around a one-off ragdoll built for
+   the local player (who otherwise has no third-person body at all), reusing
+   CAST.build() the same way COOP's remotes and CAST-based enemy mobs already
+   do. Purely local/cosmetic, like INTRO -- nothing here needs to agree
+   between peers. */
+const KILLCAM = (() => {
+  const C = CONFIG.killcam;
+  let scene = null;
+  let active = false, t = 0;
+  let ragdoll = null;
+  let camRef = null;
+  let savedFov = 0;
+  let orbitAngle0 = 0;
+  const deathPos = new THREE.Vector3();
+  const camStart = new THREE.Vector3();
+  const camStartQuat = new THREE.Quaternion();
+  const _tmp = new THREE.Vector3();
+  const _camPos = new THREE.Vector3();
+  const _lookAt = new THREE.Vector3();
+  const _endQuat = new THREE.Quaternion();
+
+  function init(mainScene) { scene = mainScene; }
+
+  function ease(x) { return x * x * (3 - 2 * x); }
+
+  function resolveCastId() {
+    if (typeof GAME !== 'undefined' && GAME.isCoop && typeof COOP !== 'undefined' && COOP.localCharacterId) {
+      return COOP.localCharacterId;
+    }
+    return (typeof HERO !== 'undefined') ? HERO.castId : 'playerBluecap';
+  }
+
+  /* Re-read live every frame rather than snapshotted once at trigger time --
+     the PvE enemy or PvP remote that landed the fatal hit may still be
+     moving during the cutaway. */
+  function resolveAttackerPos(out) {
+    const a = PLAYER.lastAttacker;
+    if (!a) return null;
+    if (a.pvp) {
+      const remote = (typeof COOP !== 'undefined' && COOP.getRemote) ? COOP.getRemote(a.id) : null;
+      return (remote && remote.group) ? out.copy(remote.group.position) : null;
+    }
+    return (a.alive && a.pos) ? out.copy(a.pos) : null;
+  }
+
+  function attackerLabel() {
+    const a = PLAYER.lastAttacker;
+    if (!a) return '';
+    if (a.pvp) {
+      const remote = (typeof COOP !== 'undefined' && COOP.getRemote) ? COOP.getRemote(a.id) : null;
+      return remote ? COOP.displayNameFor(remote.characterId) : 'Another Farmhand';
+    }
+    if (a.isBoss) return CONFIG.boss.name;
+    if (a.isBoss2) return CONFIG.bearClaw.name;
+    return '';
+  }
+
+  /* Toon-wilt, same limb-rotation language ENEMY.pose's dead state already
+     uses -- fits "You Wilted" on the dead card right after this plays. No
+     scale-to-zero here, unlike that one, since this needs to stay on screen
+     for the whole cutaway rather than shrink away in ~1s. */
+  function poseRagdoll() {
+    if (!ragdoll) return;
+    const k = UTIL.clamp(t / C.toppleTime, 0, 1);
+    ragdoll.torso.rotation.x = -k * 1.3;
+    ragdoll.head.rotation.x = k * 0.4;
+    ragdoll.head.rotation.z = k * 0.9;
+    ragdoll.armL.rotation.x = -k * 1.8;
+    ragdoll.armR.rotation.x = -k * 1.6;
+    ragdoll.legL.rotation.x = k * 0.3;
+    ragdoll.legR.rotation.x = -k * 0.25;
+    ragdoll.bob.position.y = -k * 0.12;
+  }
+
+  function beginCam(camera) {
+    if (!scene || !camera) return;
+    active = true; t = 0;
+    camRef = camera;
+    deathPos.copy(PLAYER.position);
+    camStart.copy(camera.position);
+    camStartQuat.copy(camera.quaternion);
+    savedFov = camera.fov;
+
+    const built = CAST.build(resolveCastId());
+    ragdoll = built.rig;
+    ragdoll.root.scale.setScalar(1.08);
+    ragdoll.root.position.copy(deathPos);
+    ragdoll.root.rotation.y = PLAYER.yaw;
+    scene.add(ragdoll.root);
+    PROPS.blobShadow(ragdoll.root, 0, 0, 0.62, 0.5);
+
+    // Open on the far side of the ragdoll from whoever threw the fatal hit,
+    // so the pull-back naturally reveals both in the same shot. Falls back
+    // to "behind where the player was facing" when no attacker resolved
+    // (explosion, fall, an enemy that's since despawned).
+    const apos = resolveAttackerPos(_tmp);
+    if (apos) {
+      const dx = apos.x - deathPos.x, dz = apos.z - deathPos.z;
+      const d = Math.hypot(dx, dz);
+      orbitAngle0 = d > 0.05 ? Math.atan2(-dx / d, -dz / d) : PLAYER.yaw;
+    } else {
+      orbitAngle0 = PLAYER.yaw;
+    }
+
+    const label = attackerLabel();
+    UI.showKillcam(label ? 'Downed by ' + label : '');
+  }
+
+  function advanceCam(dt, camera) {
+    const angle = orbitAngle0 + t * C.orbitSpeed;
+    _camPos.set(
+      deathPos.x + Math.sin(angle) * C.orbitDistance,
+      deathPos.y + C.orbitHeight,
+      deathPos.z + Math.cos(angle) * C.orbitDistance
+    );
+    _lookAt.copy(deathPos);
+    _lookAt.y += C.lookHeight;
+    const apos = resolveAttackerPos(_tmp);
+    if (apos) _lookAt.lerp(apos, 0.3);
+
+    // Compute the orbit's "end" orientation with a throwaway lookAt, then
+    // blend both position and rotation in from the first-person start --
+    // simpler and more robust than hand-rolling the equivalent quaternion.
+    camera.position.copy(_camPos);
+    camera.lookAt(_lookAt);
+    _endQuat.copy(camera.quaternion);
+
+    const blend = t < C.pullbackTime ? ease(t / C.pullbackTime) : 1;
+    camera.position.lerpVectors(camStart, _camPos, blend);
+    camera.quaternion.slerpQuaternions(camStartQuat, _endQuat, blend);
+    camera.fov = UTIL.damp(camera.fov, C.fov, 6, dt);
+    camera.updateProjectionMatrix();
+    camera.updateMatrixWorld(true);
+
+    poseRagdoll();
+  }
+
+  function endCam() {
+    active = false; t = 0;
+    if (ragdoll && scene) {
+      scene.remove(ragdoll.root);
+      // Geometry is per-build and needs disposing; materials come from MAT's
+      // cache and are shared with every other user of that key, so they must
+      // never be disposed here (same rule CAST.renderPortrait follows).
+      ragdoll.root.traverse(obj => {
+        if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+      });
+    }
+    ragdoll = null;
+    if (camRef) { camRef.fov = savedFov || camRef.fov; camRef.updateProjectionMatrix(); }
+    if (typeof UI !== 'undefined') UI.hideKillcam();
+  }
+
+  /* Lets a player who hits Escape mid-cutaway cut straight to the dead
+     screen instead of leaving a dangling ragdoll/letterbox behind it. */
+  function skip() { if (active) endCam(); }
+
+  /* Called once, right where GAME.loop() already edge-detects the death
+     transition for deathPending -- reusing that instead of re-deriving the
+     same edge here keeps this correct by construction: it fires exactly
+     once per death, with no risk of a stale flag if a future code path
+     ever skipped a frame of update(). */
+  function trigger(camera) { beginCam(camera); }
+
+  function update(dt, camera) {
+    if (!active) return;
+    t += dt;
+    if (!(PLAYER.isDead && !PLAYER.isDowned) || t >= C.duration) { endCam(); return; }
+    advanceCam(dt, camera);
+  }
+
+  return {
+    init, trigger, update, skip,
+    get active() { return active; }
+  };
+})();
+
 /* ============================== [ENEMY] ==============================
    Pooled entities driven off WORLD.spawnMarkers. Visual meshes are kept out
    of the bullet raycast entirely; each enemy carries two invisible hit
@@ -13083,7 +13464,7 @@ const ENEMY = (() => {
         if (Math.abs(angle) <= B.seedHitCone) hits++;
       }
     }
-    if (hits > 0) PLAYER.damage(B.seedDamage * hits, e.pos);
+    if (hits > 0) PLAYER.damage(B.seedDamage * hits, e.pos, e);
     FX.impact(origin, new THREE.Vector3(0, 1, 0), { big: true, scale: 0.5 });
     AUDIO.enemySwing(e.def.voice.pitch * 0.78);
   }
@@ -13184,7 +13565,7 @@ const ENEMY = (() => {
       if (!e.didStrike && e.timer >= B.windup) {
         e.didStrike = true;
         e.squashVel += 8;
-        if (sameLayer && distToPlayer < B.reach + 0.55 && !PLAYER.isDead) PLAYER.damage(B.damage, e.pos);
+        if (sameLayer && distToPlayer < B.reach + 0.55 && !PLAYER.isDead) PLAYER.damage(B.damage, e.pos, e);
       }
       if (e.timer >= B.windup + B.recover) setState(e, 'boss_chase');
       integrateBoss(e, dt, t);
@@ -13294,7 +13675,7 @@ const ENEMY = (() => {
         e.didStrike = true;
         e.squashVel += 8;
         if (sameLayer && distToPlayer < B2.reach + 0.55 && !PLAYER.isDead) {
-          PLAYER.damage(e.effDamage || B2.damage, e.pos);
+          PLAYER.damage(e.effDamage || B2.damage, e.pos, e);
           if (Math.random() < (e.effStunChance || B2.stunChance) && typeof PLAYER.grantStun === 'function') {
             PLAYER.grantStun(B2.stunDuration);
           }
@@ -13726,7 +14107,7 @@ const ENEMY = (() => {
           e.didStrike = true;
           e.squashVel += 5;
           if (distToPlayer < st.reach + 0.55 && Math.abs(p.y - e.pos.y) < 1.8 && !PLAYER.isDead) {
-            PLAYER.damage(st.damage, e.pos);
+            PLAYER.damage(st.damage, e.pos, e);
           } else {
             AUDIO.enemySwing(e.def.voice.pitch * 0.9);
           }
@@ -14730,7 +15111,7 @@ const COOP = (() => {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
       lastAttackerId = message.attackerId || lastAttackerId;
-      PLAYER.damage(message.amount, message.source);
+      PLAYER.damage(message.amount, message.source, message.attackerId ? { pvp: true, id: message.attackerId } : null);
     } else if (message.type === 'matchStart') {
       matchRunning = true;
       emit('matchStart', message.playerCount || 1);
@@ -14787,7 +15168,7 @@ const COOP = (() => {
     if (matchMode === 'teams' && sameTeam(attackerId, targetId)) return;
     if (targetId === localId) {
       lastAttackerId = attackerId;
-      PLAYER.damage(amount, source);
+      PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
     } else {
       sendPlayerDamage(targetId, amount, source, attackerId);
     }
@@ -15099,7 +15480,10 @@ const COOP = (() => {
     get localCharacterId() { return myCharacterId; },
     get roster() { return rosterList(); },
     teamOf: teamOfId,
-    get localTeam() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)) % 2; }
+    get localTeam() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)) % 2; },
+    // KILLCAM-only: resolves the {pvp:true,id} marker PLAYER.lastAttacker
+    // carries back to that peer's visible remote model.
+    getRemote(id) { return remotes.get(id); }
   };
 })();
 
