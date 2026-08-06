@@ -167,9 +167,11 @@
   #buffIronHide b{background:#6C7E88;}
   #buffHotSauce b{background:#9C2F12;}
   #buffJackrabbit b{background:#B08A2E;}
+  #stunChip b{background:#8A2F2F;}
   #buffIronHide.on{color:#9FB4BE;}
   #buffHotSauce.on{color:#D1481F;}
   #buffJackrabbit.on{color:#E0B84A;}
+  #stunChip.on{color:#D46A6A;}
 
   #downedHud{
     position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
@@ -335,6 +337,22 @@
   #bossHudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
   #bossHudFill{display:block;width:100%;height:100%;background:var(--rust);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
   #bossHudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--mustard);}
+
+  /* Second mini-boss slot -- stacks below #bossHud (both can be visible at
+     once, since the two fights aren't mutually exclusive) with the same
+     shape but a blue-gray identity instead of Carrot Warden's rust. */
+  #boss2Hud{
+    position:fixed;left:50%;top:78px;z-index:31;width:min(390px,48vw);
+    transform:translateX(-50%) rotate(-.6deg);opacity:0;pointer-events:none;
+    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
+    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  }
+  #boss2Hud.on{opacity:.96;}
+  #boss2HudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
+  #boss2HudName b{color:var(--blue);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
+  #boss2HudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
+  #boss2HudFill{display:block;width:100%;height:100%;background:var(--blue-deep);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
+  #boss2HudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);}
 
   /* ---------- Proximity radar ---------- */
   #radar{
@@ -515,6 +533,7 @@
   body.touch-device #downedHud{bottom:27%;font-size:13px;}
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
+  body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -766,6 +785,7 @@
       <div class="buffChip" id="buffIronHide" data-buff="ironHide"><span>Iron Hide</span><b>0</b></div>
       <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><span>Hot Sauce</span><b>0</b></div>
       <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
+      <div class="buffChip" id="stunChip"><span>Stunned</span><b>0</b></div>
     </div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
   </div>
@@ -780,6 +800,11 @@
     <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar"><i id="bossHudFill"></i></div>
     <small id="bossHudHint">The barn has a new problem</small>
+  </div>
+  <div id="boss2Hud" aria-live="polite">
+    <div id="boss2HudName">Bear Claw <b id="boss2HudState">Prowling</b></div>
+    <div id="boss2HudBar"><i id="boss2HudFill"></i></div>
+    <small id="boss2HudHint">Watch for the smoke cloud</small>
   </div>
   <div id="radar" aria-label="Proximity radar">
     <div id="radarTitle">Radar <b id="radarLayer">Surface</b></div>
@@ -1138,7 +1163,12 @@ const CONFIG = {
   },
   progress: {
     bossWiltThreshold: 33,
-    endOnBossDefeat: true
+    endOnBossDefeat: true,
+    // Bear Claw: a mid-match mini-boss, not a win condition -- see
+    // ENEMY.spawnBoss2, which never calls GAME.complete(). The second
+    // appearance (higher threshold, upgraded loadout, "The Claw" weapon
+    // drop) is deliberately not implemented yet -- goal for the next branch.
+    bearClawThreshold: 66
   },
   boss: {
     id: 'carrotWarden', name: 'Carrot Warden',
@@ -1154,6 +1184,30 @@ const CONFIG = {
     seedSpread: 0.22, seedHitCone: 0.115,
     seedWindup: 0.72, seedRecover: 0.78, seedCooldown: 4.8,
     seedInterval: 6.5
+  },
+  // Second mini-boss. Stretchy claw melee (long reach, small stun chance)
+  // instead of the Carrot Warden's ranged seed volley; after taking enough
+  // hits in a row it exhales a smoke cloud and retreats to reposition
+  // before pressing the attack again (see ENEMY.updateBearClaw). The GLB
+  // is a static Meshy AI mesh with no rig/animations, unlike the Carrot
+  // Warden's -- posing is whole-transform (see ENEMY.poseBearClaw), and
+  // the claws themselves are procedural props, not part of the mesh.
+  bearClaw: {
+    id: 'bearClaw', name: 'Bear Claw',
+    asset: 'assets/bear_claw_character.glb',
+    assetForwardCorrection: Math.PI,
+    assetScale: 1.55,
+    spawn: { x: 8.0, y: 0, z: -56.0 },
+    hp: 520, radius: 0.58, height: 2.0, eyeHeight: 1.5,
+    stepHeight: 0.5, gravity: 27, speed: 3.6, reach: 3.1,
+    damage: 20, windup: 0.5, recover: 0.62, weight: 4.2,
+    stunChance: 0.02, stunDuration: 2,
+    headMultiplier: 1.4, visualScale: 1.0,
+    // Smoke-and-reposition: after this many hits land without a long-enough
+    // gap between them (hitGapReset), the fight pauses for a defensive beat.
+    smokeHitStreak: 5, smokeHitGapReset: 2.2,
+    smokeVentTime: 0.9, smokeRetreatDistance: 9, smokeRetreatSpeed: 4.3,
+    smokeRepositionRadius: 6
   },
   radar: {
     range: 32,
@@ -1340,6 +1394,21 @@ const CONFIG = {
       radius: 0.2, gravity: 18, bounce: 0.4, friction: 0.78,
       blastRadius: 7.2, damage: 130, minDamage: 30,
       playerDamage: 78, playerMinDamage: 18, force: 4.2
+    },
+    // Bear Claw's drop. A pure utility throwable -- zero damage (blastRadius/
+    // damage/minDamage/playerDamage/playerMinDamage/force all stay at 0, see
+    // detonate()'s smoke branch, which skips the ENEMY.blast/player-damage
+    // path entirely for smoke:true) that instead blocks line of sight
+    // through the cloud for smokeDuration seconds (see ENEMY.addLOSBlocker,
+    // wired up from THROWABLE.detonate).
+    smokeGrenade: {
+      id: 'smokeGrenade', name: 'Pack of Smokes', plural: 'Packs of Smokes',
+      smoke: true,
+      maxCarry: 3, fuse: 1.1, throwSpeed: 10, throwLift: 3.6,
+      radius: 0.16, gravity: 18, bounce: 0.5, friction: 0.8,
+      blastRadius: 0, damage: 0, minDamage: 0,
+      playerDamage: 0, playerMinDamage: 0, force: 0,
+      smokeRadius: 4.2, smokeDuration: 7
     }
   },
   weaponView: {
@@ -4155,9 +4224,13 @@ const LEVEL = (() => {
        A compact L-shaped branch reaches beneath the northwest corner of the
        north pasture. The bend blocks a root-cellar-to-room firing lane and
        keeps the underground network room-and-tunnel based rather than open. */
-    addSlab(-14.40, -33.0, 8.5, 3.6, 'northwest_link');
-    addWall(-14.40, -31.25, 8.5, 0.30, 'northwest_link');
-    addWall(-13.425, -34.75, 6.55, 0.30, 'northwest_link');
+    // East edge pinned to -10.0 so the slab's floor meets root_cellar's west
+    // edge exactly -- a stale -10.15 edge here (root_cellar's doorway wall
+    // centerline, not its floor edge) left a 0.15 m floor-crack gap that
+    // read as a bottomless sliver at the doorway threshold.
+    addSlab(-14.325, -33.0, 8.65, 3.6, 'northwest_link');
+    addWall(-14.325, -31.25, 8.65, 0.30, 'northwest_link');
+    addWall(-13.35, -34.75, 6.70, 0.30, 'northwest_link');
 
     addSlab(-18.50, -36.55, 3.6, 7.6, 'northwest_bend');
     addWall(-20.25, -36.55, 0.30, 3.60, 'northwest_bend');
@@ -6131,6 +6204,10 @@ const PLAYER = (() => {
   let invuln = 0, regenTimer = 0, shake = 0;
   let speedMult = 1, speedMultTimer = 0;
   let ironHideTimer = 0;
+  // Bear Claw's stun-chance melee hit (see ENEMY.updateBearClaw). Freezes
+  // input the same way `downed` already does -- look is still free, but
+  // movement/sprint/crouch/jump/aim/ladders/firing/throwing all lock out.
+  let stunTimer = 0;
   let camera = null;
   let sprinting = false;
   let aiming = false;
@@ -6260,6 +6337,13 @@ const PLAYER = (() => {
     invuln = Math.max(invuln, seconds || 0);
   }
 
+  /* Bear Claw's stun-chance claw swipe. Only ever extends an already-running
+     stun (same convention as grantInvuln/applySpeedBoost above), so a
+     second unlucky hit mid-stun can't get shortchanged by a smaller roll. */
+  function grantStun(seconds) {
+    stunTimer = Math.max(stunTimer, seconds || 0);
+  }
+
   /* Iron Hide power-up. Rides the same invuln timer grantInvuln already
      backs damage() with, but tracks its own HUD-facing countdown separately
      -- invuln alone is shared with post-hit i-frames/hero specials/revive,
@@ -6313,6 +6397,10 @@ const PLAYER = (() => {
       if (!downed) active = false;
     }
     if (invuln > 0) invuln -= dt;
+    if (stunTimer > 0) stunTimer = Math.max(0, stunTimer - dt);
+    // Stunned locks out the same set of actions `downed` already does --
+    // look stays free, movement/sprint/crouch/jump/aim/ladders don't.
+    const locked = downed || stunTimer > 0;
     if (ironHideTimer > 0) ironHideTimer = Math.max(0, ironHideTimer - dt);
     if (speedMultTimer > 0) {
       speedMultTimer -= dt;
@@ -6340,8 +6428,8 @@ const PLAYER = (() => {
     right.set(Math.cos(yaw), 0, -Math.sin(yaw));
     wish.set(0, 0, 0);
     const moveInput = INPUT.moveAxes();
-    // Look yes, walk no: a downed farmhand turns on the spot.
-    if (active && !downed) {
+    // Look yes, walk no: a downed (or stunned) farmhand turns on the spot.
+    if (active && !locked) {
       wish.addScaledVector(fwd, moveInput.y);
       wish.addScaledVector(right, moveInput.x);
     }
@@ -6371,7 +6459,7 @@ const PLAYER = (() => {
     const ladderCandidate = WORLD.ladderAt(pos.x, pos.y, pos.z, C.radius, C.height, layerId);
     if (ladderNeedsRelease && (Math.abs(moveInput.y) <= 0.10 || !ladderCandidate)) ladderNeedsRelease = false;
     const ladderHere = ladderCooldown <= 0 && !ladderNeedsRelease ? ladderCandidate : null;
-    if (!climbing && active && !downed && ladderHere && Math.abs(moveInput.y) > 0.10) {
+    if (!climbing && active && !locked && ladderHere && Math.abs(moveInput.y) > 0.10) {
       const enteringFromTop = pos.y > (ladderHere.bottomY + ladderHere.topY) * 0.5;
       // A one-way drop (the well shaft) only ever accepts entry from the
       // top -- standing at the bottom and pressing a direction never
@@ -6402,8 +6490,8 @@ const PLAYER = (() => {
     // A slide only triggers off an actual sprint (the same forward-press
     // gate sprinting itself uses below), so tapping crouch while standing
     // still or walking just crouches, same as any other shooter.
-    const crouchHeld = active && !downed && !climbing && INPUT.actions.crouch;
-    const crouchPressed = active && !downed && !climbing && INPUT.consumePress('crouch');
+    const crouchHeld = active && !locked && !climbing && INPUT.actions.crouch;
+    const crouchPressed = active && !locked && !climbing && INPUT.consumePress('crouch');
     if (!sliding && crouchPressed && grounded && sprinting && moveInput.y > 0.25) {
       sliding = true;
       slideTimer = C.slideDuration;
@@ -6427,10 +6515,10 @@ const PLAYER = (() => {
     // below and WEAPON/GAME's own aim-driven visuals, which run right after
     // this in the frame loop.
     const currentWeaponDef = typeof WEAPON !== 'undefined' ? CONFIG.weapons[WEAPON.currentId] : null;
-    aiming = active && !downed && !climbing && INPUT.actions.ads &&
+    aiming = active && !locked && !climbing && INPUT.actions.ads &&
       !!currentWeaponDef && (currentWeaponDef.kind === 'gun' || currentWeaponDef.kind === 'flame');
 
-    sprinting = !climbing && !crouching && active && !downed && !aiming && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    sprinting = !climbing && !crouching && active && !locked && !aiming && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
     const aimSpeedFactor = aiming ? C.adsSpeedMult : 1;
     const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * crouchSpeedFactor * aimSpeedFactor;
@@ -6462,7 +6550,7 @@ const PLAYER = (() => {
     }
 
     // ---- jump ----
-    if (!climbing && !downed && jumpPressed && grounded) {
+    if (!climbing && !locked && jumpPressed && grounded) {
       vel.y = C.jumpForce;
       grounded = false;
       AUDIO.jump();
@@ -6608,9 +6696,11 @@ const PLAYER = (() => {
 
   return {
     init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
-    applyIronHide, applySpeedBoost,
+    applyIronHide, applySpeedBoost, grantStun,
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
+    get stunned() { return stunTimer > 0; },
+    get stunRemaining() { return stunTimer; },
     get health() { return health; },
     get shield() { return shield; },
     get isDead() { return dead; },
@@ -7024,7 +7114,7 @@ const WEAPON = (() => {
     PRIM.cyl(0.018, 0.018, 0.14, 8, canCap, {
       pos: [0, 0.34, -0.06], rot: [Math.PI * 0.38, 0, 0], parent: can, outline: 0.007, ray: false
     });
-    glove(can, 0.1, -0.07, 0.16, -0.2, 1.05);
+    glove(can, -0.15, 0.06, 0.19, 0.35, 1.25);
 
     // Left hand + lighter, on its own pivot.
     const lighterPivot = new THREE.Group();
@@ -7792,7 +7882,30 @@ const THROWABLE = (() => {
     return root;
   }
 
+  /* Bear Claw's drop -- a stubby aerosol canister, same cylinder-plus-cap
+     shape the Spray Torch's can uses, just smaller and in a cooler gray. */
+  function buildSmokeCanVisual(parent, scale) {
+    const root = new THREE.Group();
+    root.scale.setScalar(scale || 1);
+    parent.add(root);
+    const body = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const cap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    PRIM.cyl(0.09, 0.09, 0.28, 10, body, { parent: root, outline: 0.014, ray: false });
+    PRIM.cyl(0.07, 0.09, 0.04, 10, cap, { pos: [0, 0.16, 0], parent: root, outline: 0.01, ray: false });
+    PRIM.cyl(0.03, 0.03, 0.06, 8, cap, { pos: [0, 0.21, 0], parent: root, outline: 0.008, ray: false });
+    return root;
+  }
+
   function buildPickupVisual(parent, id) {
+    if (id === 'smokeGrenade') {
+      const a = buildSmokeCanVisual(parent, 1.2);
+      const b = buildSmokeCanVisual(parent, 1.05);
+      a.position.set(-0.13, 0, 0);
+      a.rotation.z = -0.14;
+      b.position.set(0.14, -0.03, 0.03);
+      b.rotation.z = 0.18;
+      return parent;
+    }
     if (id === 'grenade') {
       const a = buildGrenadeVisual(parent, 1.35);
       const b = buildGrenadeVisual(parent, 1.18);
@@ -7978,10 +8091,52 @@ const THROWABLE = (() => {
     });
   }
 
+  // Pack of Smokes: a lingering cloud instead of a blast. Zero damage --
+  // the mechanical payoff is blocking line of sight, reusing ENEMY's own
+  // canSee() raycast (see ENEMY.addLOSBlocker) rather than inventing a
+  // second visibility system, so escaping into a cloud "just works" for
+  // every enemy (and the boss) with no special-casing on their side.
+  const activeSmoke = [];
+  function emitSmokePuffs(point, radius, count) {
+    for (let i = 0; i < count; i++) {
+      _target.set(
+        point.x + UTIL.rng(-radius, radius) * 0.6,
+        point.y + UTIL.rng(0, radius * 0.7),
+        point.z + UTIL.rng(-radius, radius) * 0.6
+      );
+      FX.spawnParticle(_target, new THREE.Vector3(UTIL.rng(-0.3, 0.3), UTIL.rng(0.2, 0.6), UTIL.rng(-0.3, 0.3)), {
+        map: TEX.puff(PAL.blueGray), s0: UTIL.rng(0.5, 0.9), s1: UTIL.rng(1.4, 2),
+        life: UTIL.rng(2.2, 3.2), grav: -0.15, spin: UTIL.rng(-1, 1)
+      });
+    }
+  }
+  function spawnSmokeCloud(point, def) {
+    const blocker = new THREE.Mesh(
+      new THREE.SphereGeometry(def.smokeRadius, 8, 6),
+      new THREE.MeshBasicMaterial({ visible: false })
+    );
+    blocker.position.copy(point);
+    if (scene) scene.add(blocker);
+    if (typeof ENEMY !== 'undefined' && ENEMY.addLOSBlocker) ENEMY.addLOSBlocker(blocker);
+    activeSmoke.push({ point: point.clone(), radius: def.smokeRadius, timer: def.smokeDuration, puffTimer: 0, blocker });
+    emitSmokePuffs(point, def.smokeRadius, 10);
+  }
+  function clearSmoke() {
+    activeSmoke.forEach(cloud => {
+      if (typeof ENEMY !== 'undefined' && ENEMY.removeLOSBlocker) ENEMY.removeLOSBlocker(cloud.blocker);
+      if (scene) scene.remove(cloud.blocker);
+    });
+    activeSmoke.length = 0;
+  }
+
   function detonate(projectile) {
     const point = projectile.pos.clone();
     if (scene) scene.remove(projectile.root);
     disposeVisual(projectile.root);
+    if (projectile.def.smoke) {
+      spawnSmokeCloud(point, projectile.def);
+      return;
+    }
     FX.explosion(point, projectile.def.blastRadius);
     AUDIO.blast();
     ENEMY.blast(point, {
@@ -8019,6 +8174,20 @@ const THROWABLE = (() => {
         active.splice(i, 1);
       }
     }
+    for (let i = activeSmoke.length - 1; i >= 0; i--) {
+      const cloud = activeSmoke[i];
+      cloud.timer -= dt;
+      cloud.puffTimer -= dt;
+      if (cloud.puffTimer <= 0) {
+        cloud.puffTimer = 0.35;
+        emitSmokePuffs(cloud.point, cloud.radius, 3);
+      }
+      if (cloud.timer <= 0) {
+        if (typeof ENEMY !== 'undefined' && ENEMY.removeLOSBlocker) ENEMY.removeLOSBlocker(cloud.blocker);
+        if (scene) scene.remove(cloud.blocker);
+        activeSmoke.splice(i, 1);
+      }
+    }
   }
 
   function clearActive() {
@@ -8027,6 +8196,7 @@ const THROWABLE = (() => {
       disposeVisual(active[i].root);
     }
     active.length = 0;
+    clearSmoke();
   }
 
   function reset() {
@@ -8269,6 +8439,12 @@ const UI = (() => {
     el.bossHudState = document.getElementById('bossHudState');
     el.bossHudFill = document.getElementById('bossHudFill');
     el.bossHudHint = document.getElementById('bossHudHint');
+    el.boss2Hud = document.getElementById('boss2Hud');
+    el.boss2HudName = document.getElementById('boss2HudName');
+    el.boss2HudState = document.getElementById('boss2HudState');
+    el.boss2HudFill = document.getElementById('boss2HudFill');
+    el.boss2HudHint = document.getElementById('boss2HudHint');
+    el.stunChip = document.getElementById('stunChip');
     el.endGame = document.getElementById('endGame');
     el.endGameSummary = document.getElementById('endGameSummary');
     el.radar = document.getElementById('radar');
@@ -8483,6 +8659,7 @@ const UI = (() => {
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
+    if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     showMobileControls(false);
   }
   function hideMatchOver() {
@@ -8509,6 +8686,28 @@ const UI = (() => {
     el.bossHudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.bossHudState.textContent = state === 'defeated' ? 'Wilted' : (state === 'active' ? 'Awake' : 'Incoming');
     el.bossHudHint.textContent = state === 'active' ? 'Head shots hit for 1.5×' : 'The barn has a new problem';
+  }
+
+  function setBoss2(active, hp, maxHp, state) {
+    if (!el.boss2Hud) return;
+    el.boss2Hud.classList.toggle('on', !!active);
+    if (!active) return;
+    const max = Math.max(1, maxHp || 1);
+    const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
+    el.boss2HudFill.style.width = (pct * 100).toFixed(1) + '%';
+    el.boss2HudState.textContent = state === 'defeated' ? 'Retreated' : (state === 'active' ? 'Prowling' : 'Incoming');
+    el.boss2HudHint.textContent = state === 'active' ? 'Watch for the smoke cloud' : 'Something is watching the tree line';
+  }
+
+  // Bear Claw's stun-chance claw swipe (see PLAYER.grantStun). Same
+  // countdown-chip convention as the power-up buffs, just a standalone
+  // function rather than folded into setBuffs -- this one is driven by
+  // PLAYER, not by a picked-up power-up.
+  function setStun(remaining) {
+    if (!el.stunChip) return;
+    const on = remaining > 0.05;
+    el.stunChip.classList.toggle('on', on);
+    if (on) el.stunChip.querySelector('b').textContent = Math.ceil(remaining);
   }
 
   // Multiplayer can feed additional contacts later without changing the
@@ -8630,6 +8829,7 @@ const UI = (() => {
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
+    if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     showMobileControls(false);
   }
   /* Coop death isn't a run-ending "You Wilted" card — it's a short wait
@@ -8800,6 +9000,7 @@ const UI = (() => {
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
+    if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
@@ -8831,6 +9032,7 @@ const UI = (() => {
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
+    if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
@@ -8923,6 +9125,7 @@ const UI = (() => {
       if (kickTimer <= 0) el.crosshair.classList.remove('kick');
     }
     setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
+    setStun(PLAYER.stunRemaining);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
@@ -8957,7 +9160,7 @@ const UI = (() => {
     init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setBuffs, setKills, setBoss, hurtFlash, specialFlash, showDead, hideDead,
+    setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setStun, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showFallback, hideFallback,
@@ -9145,6 +9348,12 @@ const PICKUP = (() => {
   define('carrotCannonWeapon', {
     type: 'weapon', label: 'Carrot Cannon', weaponId: 'carrotCannon',
     quantity: 24, color: PAL.mustard, respawn: 0
+  });
+  // v0.17.01: not part of the static spawns list either -- ENEMY.die()
+  // (bearClaw branch) spawns this at Bear Claw's death spot.
+  define('packOfSmokesThrowable', {
+    type: 'throwable', label: 'Pack of Smokes', throwableId: 'smokeGrenade',
+    quantity: 3, color: PAL.blueGray, respawn: 0
   });
 
   registerHandler('weapon', def => {
@@ -10102,9 +10311,9 @@ const GAME = (() => {
       camera.fov = UTIL.damp(camera.fov, targetFov, CONFIG.render.adsFovLerp, dt);
       camera.updateProjectionMatrix();
     }
-    WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned));
-    THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
-    CONSUMABLE.update(dt, running && !PLAYER.isDead);
+    WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
+    THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead && !PLAYER.stunned);
+    CONSUMABLE.update(dt, running && !PLAYER.isDead && !PLAYER.stunned);
     HERO.update(dt, running);
     if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
@@ -11017,6 +11226,15 @@ const CAST = (() => {
       },
       stats: { hp: 130, speed: 3.35, damage: 24, reach: 2.72, windup: 0.64, recover: 0.78, weight: 4.5 },
       voice: { pitch: 0.62 }
+    },
+    // Bear Claw is always shown via its GLB asset (see ENEMY.create's
+    // isAssetBoss gate), so head/collar/hand/skin here are never actually
+    // built -- this entry exists only to give applyDamage/AUDIO something
+    // to read (voice.pitch, stats.weight before the boss2 stat override).
+    bearClaw: {
+      label: 'Bear Claw',
+      stats: { hp: 100, speed: 3, damage: 10, reach: 2, windup: 0.4, recover: 0.5, weight: 4 },
+      voice: { pitch: 0.5 }
     }
   };
 
@@ -11773,6 +11991,7 @@ const HERO = (() => {
 const ENEMY = (() => {
   const C = CONFIG.enemy;
   const B = CONFIG.boss;
+  const B2 = CONFIG.bearClaw;
   // Playable farmhands live in CAST for shared rendering, but never belong in
   // the hostile spawn pool. Keep this allow-list explicit as the cast grows.
   const ENEMY_ROSTER = ['reaper', 'howler', 'gaper', 'grinner'];
@@ -11782,6 +12001,8 @@ const ENEMY = (() => {
   let kills = 0;
   let boss = null;
   let bossState = 'inactive';
+  let boss2 = null;
+  let bossState2 = 'inactive';
   let markTex = null;
   // v0.16: escalating difficulty for players who keep going after wilting
   // the Carrot Warden. currentTarget tracks whatever roster size init()/
@@ -11797,6 +12018,13 @@ const ENEMY = (() => {
   let bossAsset = null;
   let bossAssetAnimations = [];
   let bossAssetPromise = null;
+  // Bear Claw: a second, independent GLB slot alongside the Carrot Warden's
+  // above. Its source mesh has no rig or animation clips at all (a static
+  // Meshy AI export), so bearClawAssetAnimations always stays empty and
+  // buildBearClawAssetRig's mixer/idle/run fields just stay null -- posing
+  // is whole-transform only, see poseBearClaw.
+  let bearClawAsset = null;
+  let bearClawAssetAnimations = [];
 
   function markTexture() {
     if (markTex) return markTex;
@@ -11813,19 +12041,19 @@ const ENEMY = (() => {
     return markTex;
   }
 
-  /* Load the supplied GLB before enemies are created. The procedural boss
-     remains a safe fallback if a static host, CDN, or local file blocks the
-     optional visual asset. */
-  function prepareAssets() {
-    if (bossAssetPromise) return bossAssetPromise;
-    bossAssetPromise = new Promise(resolve => {
+  /* Shared by both boss GLB slots -- loads `url`, calls onLoaded(gltf) on
+     success, and always resolves (never rejects) so Promise.all in
+     prepareAssets() can't have one boss's failure/timeout hold up the
+     other. The procedural boss visual remains the fallback either way. */
+  function loadBossAsset(url, label, onLoaded) {
+    return new Promise(resolve => {
       if (!THREE.GLTFLoader) {
-        console.warn('Carrot Rogue GLB loader unavailable; using the procedural boss visual.');
+        console.warn(label + ' GLB loader unavailable; using the procedural boss visual.');
         resolve(false);
         return;
       }
       const base = typeof document !== 'undefined' && document.baseURI ? document.baseURI : '';
-      const url = base ? new URL(CONFIG.boss.asset, base).toString() : CONFIG.boss.asset;
+      const fullUrl = base ? new URL(url, base).toString() : url;
       // GAME.init awaits this promise, so a request that never calls back
       // would leave the loading card up forever. Time it out and fall back.
       let settled = false;
@@ -11837,11 +12065,27 @@ const ENEMY = (() => {
         resolve(ok);
       };
       timer = setTimeout(() => {
-        console.warn('Carrot Rogue GLB timed out; using the procedural boss visual.');
+        console.warn(label + ' GLB timed out; using the procedural boss visual.');
         finish(false);
       }, 8000);
       const loader = new THREE.GLTFLoader();
-      loader.load(url, gltf => {
+      loader.load(fullUrl, gltf => {
+        onLoaded(gltf);
+        finish(true);
+      }, undefined, error => {
+        console.warn(label + ' GLB failed to load; using the procedural boss visual.', error);
+        finish(false);
+      });
+    });
+  }
+
+  /* Load both supplied GLBs before enemies are created. Either one missing,
+     blocked, or slow just falls back to that boss's own procedural visual
+     -- never blocks the other, and never blocks the match from starting. */
+  function prepareAssets() {
+    if (bossAssetPromise) return bossAssetPromise;
+    bossAssetPromise = Promise.all([
+      loadBossAsset(CONFIG.boss.asset, 'Carrot Rogue', gltf => {
         bossAsset = gltf.scene;
         bossAssetAnimations = gltf.animations || [];
         bossAsset.traverse(obj => {
@@ -11850,12 +12094,18 @@ const ENEMY = (() => {
           obj.castShadow = false;
           obj.receiveShadow = false;
         });
-        finish(true);
-      }, undefined, error => {
-        console.warn('Carrot Rogue GLB failed to load; using the procedural boss visual.', error);
-        finish(false);
-      });
-    });
+      }),
+      loadBossAsset(CONFIG.bearClaw.asset, 'Bear Claw', gltf => {
+        bearClawAsset = gltf.scene;
+        bearClawAssetAnimations = gltf.animations || [];
+        bearClawAsset.traverse(obj => {
+          if (!obj.isMesh) return;
+          obj.raycast = NO_RAY;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        });
+      })
+    ]);
     return bossAssetPromise;
   }
 
@@ -11884,6 +12134,63 @@ const ENEMY = (() => {
     };
   }
 
+  /* Bear Claw's rig is just the bare mesh -- no joints, no clips, so this
+     is a much smaller version of buildBossAssetRig above. The procedural
+     claw props (see buildBearClawClaws) get attached separately, in
+     create(), once the entity group actually exists. */
+  function buildBearClawAssetRig() {
+    if (!bearClawAsset) return null;
+    const root = bearClawAsset;
+    root.name = 'BearClawGLB';
+    return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
+  }
+
+  /* One stretchy claw arm: a fixed shoulder pivot plus a "stretch" group
+     whose local +Z position animates outward for the swipe (poseBearClaw
+     drives it, see B2's reach-based claw pose). +Z, not -Z: these are
+     parented directly under the entity's own group, which -- being an
+     asset boss -- already carries B2.assetForwardCorrection (a 180°
+     spin fixing the GLB's authored +Z-forward mesh), so the group's true
+     world-forward direction is local +Z, not the -Z every non-asset prop
+     in this file otherwise uses. Pincer built from two curved halves so
+     it still reads as a claw even at a distance. */
+  function buildClawArm(mirror) {
+    const pivot = new THREE.Group();
+    const stretch = new THREE.Group();
+    pivot.add(stretch);
+    const shell = MAT.toon(PAL.rust);
+    const shellDeep = MAT.toon(PAL.rustDeep);
+    PRIM.cyl(0.1, 0.08, 0.46, 8, shell, { pos: [0, 0, 0.23], parent: stretch, outline: 0.022, ray: false });
+    const claw = new THREE.Group();
+    claw.position.set(0, 0, 0.46);
+    stretch.add(claw);
+    PRIM.sph(0.11, shell, { pos: [0, 0, 0.04], scale: [1.1, 0.85, 1.25], parent: claw, outline: 0.022, ray: false });
+    PRIM.cyl(0.06, 0.018, 0.24, 6, shellDeep, {
+      pos: [mirror * 0.055, 0.03, 0.2], rot: [0.32, mirror * 0.4, 0], parent: claw, outline: 0.016, ray: false
+    });
+    PRIM.cyl(0.06, 0.018, 0.24, 6, shellDeep, {
+      pos: [mirror * -0.02, -0.03, 0.2], rot: [-0.32, mirror * -0.12, 0], parent: claw, outline: 0.016, ray: false
+    });
+    // Shoulder height, not head height -- the previous 1.32 sat inside the
+    // head/petal geometry's own inflated toon-outline shell and rendered
+    // invisible (same occlusion pattern the flamethrower's glove hit
+    // earlier). 1.0 clears the torso's top (0.78-0.98 on the procedural
+    // fallback rig) with room below the head.
+    pivot.position.set(mirror * 0.4, 1.0, 0.08);
+    return { pivot: pivot, stretch: stretch };
+  }
+
+  /* Attaches both claw arms to a freshly-created Bear Claw entity's group.
+     Called once from create() -- the static GLB mesh has no articulated
+     claws of its own, so these are the only moving parts of the model. */
+  function buildBearClawClaws(parent) {
+    const left = buildClawArm(-1);
+    const right = buildClawArm(1);
+    parent.add(left.pivot);
+    parent.add(right.pivot);
+    return { left: left, right: right };
+  }
+
   function makeProxy(parent, geo, y, tag, enemy, zone) {
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
     m.position.y = y;
@@ -11896,18 +12203,21 @@ const ENEMY = (() => {
   function create(id, marker, options) {
     options = options || {};
     const isBoss = !!options.isBoss;
-    const assetRig = isBoss ? buildBossAssetRig() : null;
+    const isBoss2 = !!options.isBoss2;
+    const anyBoss = isBoss || isBoss2;
+    const bc = isBoss ? B : (isBoss2 ? B2 : null);
+    const assetRig = isBoss ? buildBossAssetRig() : (isBoss2 ? buildBearClawAssetRig() : null);
     const baseDef = CAST.ROSTER[id];
     const built = assetRig ? {
       def: baseDef,
       skin: Object.assign({}, CAST.DEFAULT_SKIN, baseDef.skin || {}),
       rig: assetRig
     } : CAST.build(id);
-    const isAssetBoss = isBoss && !!assetRig;
-    const def = isBoss ? Object.assign({}, built.def, {
+    const isAssetBoss = anyBoss && !!assetRig;
+    const def = anyBoss ? Object.assign({}, built.def, {
       stats: Object.assign({}, built.def.stats, {
-        hp: B.hp, speed: B.speed, damage: B.damage, reach: B.reach,
-        windup: B.windup, recover: B.recover, weight: B.weight
+        hp: bc.hp, speed: bc.speed, damage: bc.damage, reach: bc.reach,
+        windup: bc.windup, recover: bc.recover, weight: bc.weight
       })
     }) : built.def;
     // Snap to whatever surface is actually under the marker, so markers can be
@@ -11925,8 +12235,9 @@ const ENEMY = (() => {
       rig: built.rig,
       group: built.rig.root,
       isBoss: isBoss,
+      isBoss2: isBoss2,
       asset: isAssetBoss,
-      visualScale: isAssetBoss ? B.assetScale : (isBoss ? B.visualScale : 1),
+      visualScale: isAssetBoss ? bc.assetScale : (anyBoss ? bc.visualScale : 1),
       assetMixer: built.rig.mixer || null,
       assetIdleAction: built.rig.idleAction || null,
       assetRunAction: built.rig.runAction || null,
@@ -11942,8 +12253,8 @@ const ENEMY = (() => {
       body: { grounded: true, blocked: false, landed: false, fallSpeed: 0 },
       state: 'idle',
       timer: 0,
-      hp: isBoss ? B.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
-      maxHp: isBoss ? B.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
+      hp: anyBoss ? bc.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
+      maxHp: anyBoss ? bc.hp : def.stats.hp * (CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1),
       alive: true,
       yaw: UTIL.rng(0, 6.28),
       targetYaw: 0,
@@ -11965,26 +12276,34 @@ const ENEMY = (() => {
       respawnAt: 0,
       hitFlash: 0,
       bossSeedCooldown: 0,
-      bossSeedTimer: B.seedInterval
+      bossSeedTimer: B.seedInterval,
+      // Bear Claw only -- see applyDamage/updateBearClaw.
+      clawArms: null,
+      bearClawHitStreak: 0,
+      bearClawHitGapTimer: 0,
+      bearClawRetreatTarget: null,
+      smokeBlocker: null
     };
 
     scene.add(e.group);
     e.group.position.copy(e.pos);
 
     // hit proxies
-    const headY = isAssetBoss ? 1.56 : (isBoss ? 1.32 : 1.28);
-    const bodyY = isAssetBoss ? 0.84 : (isBoss ? 0.82 : 0.68);
-    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(isBoss ? 0.43 : 0.34, 8, 6),
+    const headY = isAssetBoss ? 1.56 : (anyBoss ? 1.32 : 1.28);
+    const bodyY = isAssetBoss ? 0.84 : (anyBoss ? 0.82 : 0.68);
+    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(anyBoss ? 0.43 : 0.34, 8, 6),
       headY, 'head', e, 'head');
-    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(isBoss ? 0.82 : 0.62,
-      isBoss ? 1.2 : 0.98, isBoss ? 0.66 : 0.5), bodyY, 'body', e, 'body');
+    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(anyBoss ? 0.82 : 0.62,
+      anyBoss ? 1.2 : 0.98, anyBoss ? 0.66 : 0.5), bodyY, 'body', e, 'body');
+
+    if (isBoss2) e.clawArms = buildBearClawClaws(e.group);
 
     // alert "!" billboard
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
       map: markTexture(), transparent: true, depthWrite: false, fog: false
     }));
-    mk.scale.setScalar(isBoss ? 0.42 : 0.34);
-    mk.position.set(0, isBoss ? 2.42 : 2.06, 0);
+    mk.scale.setScalar(anyBoss ? 0.42 : 0.34);
+    mk.position.set(0, anyBoss ? 2.42 : 2.06, 0);
     mk.visible = false;
     e.group.add(mk);
     e.mark = mk;
@@ -11992,6 +12311,7 @@ const ENEMY = (() => {
     PROPS.blobShadow(e.group, 0, 0, 0.62, 0.5);
     list.push(e);
     if (isBoss) boss = e;
+    if (isBoss2) boss2 = e;
     return e;
   }
 
@@ -12018,6 +12338,36 @@ const ENEMY = (() => {
     UI.toast('33 WILTED — CARROT WARDEN AWAKES', 3.2);
     AUDIO.enemyAlert(boss.def.voice.pitch);
     return boss;
+  }
+
+  /* Bear Claw: a second, independent mini-boss slot. Deliberately does not
+     touch bossState/boss -- the two fights are fully parallel and can be
+     active at the same time (33-kill Carrot Warden doesn't gate 66-kill
+     Bear Claw). Never calls GAME.complete(); see die()'s isBoss2 branch. */
+  function spawnBoss2() {
+    if (bossState2 !== 'inactive') return boss2;
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss_2',
+      position: new THREE.Vector3(B2.spawn.x, B2.spawn.y, B2.spawn.z)
+    };
+    if (!boss2) create(B2.id, marker, { isBoss2: true });
+    boss2.home.copy(marker.position);
+    boss2.home.y = WORLD.groundAt(boss2.home.x, boss2.home.z, boss2.home.y + 0.8, boss2.homeLayerId);
+    revive(boss2);
+    boss2.visualScale = boss2.asset ? B2.assetScale : B2.visualScale;
+    boss2.state = 'boss2_chase';
+    boss2.timer = 0;
+    boss2.sawPlayer = true;
+    boss2.lastSeen = 0;
+    boss2.bearClawHitStreak = 0;
+    boss2.bearClawHitGapTimer = 0;
+    boss2.bearClawRetreatTarget = null;
+    boss2.group.visible = true;
+    bossState2 = 'active';
+    UI.setBoss2(true, boss2.hp, boss2.maxHp, bossState2);
+    UI.toast('66 WILTED — BEAR CLAW EMERGES', 3.2);
+    AUDIO.enemyAlert(boss2.def.voice.pitch);
+    return boss2;
   }
 
   // Tracks which spawn-marker kinds have already been used, so a coop
@@ -12049,6 +12399,8 @@ const ENEMY = (() => {
     scene = mainScene;
     boss = null;
     bossState = 'inactive';
+    boss2 = null;
+    bossState2 = 'inactive';
     // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
@@ -12059,6 +12411,7 @@ const ENEMY = (() => {
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
     spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
+    UI.setBoss2(false, 0, B2.hp, bossState2);
     return list.length;
   }
 
@@ -12092,6 +12445,16 @@ const ENEMY = (() => {
   }
 
   /* ---------------- perception ---------------- */
+  // Lets other modules (THROWABLE's smoke grenade, Bear Claw's own vent
+  // cloud) drop a raycast-solid-but-invisible obstruction into the exact
+  // same target list canSee() already queries -- no special-casing needed
+  // on the enemy/boss side, a cloud just reads as "something's in the way."
+  function addLOSBlocker(mesh) { LOS_TARGETS.push(mesh); }
+  function removeLOSBlocker(mesh) {
+    const i = LOS_TARGETS.indexOf(mesh);
+    if (i !== -1) LOS_TARGETS.splice(i, 1);
+  }
+
   function canSee(e) {
     if (e.layerId !== PLAYER.layerId) return false;
     const p = PLAYER.position;
@@ -12104,7 +12467,7 @@ const ENEMY = (() => {
       const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
       if (fx * _v.x + fz * _v.z < Math.cos(C.sightFov)) return false;
     }
-    _v.set(e.pos.x, e.pos.y + (e.isBoss ? B.eyeHeight : C.eyeHeight), e.pos.z);
+    _v.set(e.pos.x, e.pos.y + (e.isBoss2 ? B2.eyeHeight : (e.isBoss ? B.eyeHeight : C.eyeHeight)), e.pos.z);
     _v2.set(p.x - _v.x, (p.y + CONFIG.player.eyeHeight) - _v.y, p.z - _v.z);
     const straight = _v2.length();
     _v2.normalize();
@@ -12129,7 +12492,7 @@ const ENEMY = (() => {
     // anyway — that overwrite-fighting-prediction is exactly the kind of
     // divergence this rewrite exists to remove.
     if (typeof COOP !== 'undefined' && COOP.role === 'join') {
-      const key = e.isBoss ? 'boss' : nonBossList().indexOf(e);
+      const key = e.isBoss ? 'boss' : (e.isBoss2 ? 'boss2' : nonBossList().indexOf(e));
       COOP.sendEnemyDamage(key, amount,
         [point.x, point.y, point.z], [dir.x, dir.y, dir.z], zone, force);
       return;
@@ -12147,8 +12510,22 @@ const ENEMY = (() => {
       die(e, dir);
       return;
     }
-    if (e.state === 'idle') setState(e, 'alert');
-    else if (zone === 'head' || amount > 22) setState(e, 'stagger');
+    if (e.isBoss2) {
+      // Smoke-and-reposition: enough hits landing close enough together
+      // (no gap longer than smokeHitGapReset) interrupts whatever Bear Claw
+      // is doing and forces the defensive beat, same idea as a real fight
+      // where getting hit repeatedly breaks an attacker's rhythm.
+      if (e.bearClawHitGapTimer > B2.smokeHitGapReset) e.bearClawHitStreak = 0;
+      e.bearClawHitStreak++;
+      e.bearClawHitGapTimer = 0;
+      if (e.bearClawHitStreak >= B2.smokeHitStreak && e.state !== 'boss2_smoke' && e.state !== 'boss2_retreat') {
+        e.bearClawHitStreak = 0;
+        setState(e, 'boss2_smoke');
+      }
+    } else {
+      if (e.state === 'idle') setState(e, 'alert');
+      else if (zone === 'head' || amount > 22) setState(e, 'stagger');
+    }
     AUDIO.enemyHurt(e.def.voice.pitch);
   }
 
@@ -12196,6 +12573,33 @@ const ENEMY = (() => {
       // the one authoritative place a boss kill can happen. Tell any joiners.
       if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills, dropPos);
       if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
+    } else if (e.isBoss2) {
+      bossState2 = 'defeated';
+      e.respawnAt = 0;
+      if (e.smokeBlocker) {
+        removeLOSBlocker(e.smokeBlocker);
+        if (scene) scene.remove(e.smokeBlocker);
+        e.smokeBlocker = null;
+      }
+      UI.setBoss2(false, 0, e.maxHp, bossState2);
+      UI.toast('BEAR CLAW RETREATS FOR GOOD', 2.4);
+      _v2.set(0, 1.4, 0);
+      for (let i = 0; i < 8; i++) {
+        _v.set(UTIL.rng(-1.6, 1.6), UTIL.rng(1, 2.6), UTIL.rng(-1.6, 1.6));
+        FX.spawnParticle(new THREE.Vector3(e.pos.x, e.pos.y + 1.4, e.pos.z), _v, {
+          map: TEX.puff(PAL.blueGray), s0: 0.4, s1: 1.1, life: 0.9, grav: -0.6
+        });
+      }
+      // Bear Claw drop: a Pack of Smokes throwable, same broadcast-position
+      // convention as the Carrot Cannon above -- see COOP.broadcastBoss2Defeated.
+      const dropPos2 = [e.pos.x, e.pos.y, e.pos.z];
+      if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('packOfSmokesThrowable', { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, { respawn: 0 });
+      }
+      if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2);
+      // Bear Claw is a mid-match mini-boss, not a win condition -- no
+      // GAME.complete() here, and defeating it does not increment `kills`
+      // (same convention as the Carrot Warden above).
     } else {
       kills++;
       // Faster respawns each time bossEscalation grows -- the "spawn rate"
@@ -12216,8 +12620,8 @@ const ENEMY = (() => {
     const range = shot.range || 95;
     const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
     const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
-    const head = e.isBoss ? B.headMultiplier :
-      (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier);
+    const head = e.isBoss ? B.headMultiplier : (e.isBoss2 ? B2.headMultiplier :
+      (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier));
     // Per-pellet crit roll (Carrot Cannon): each connecting pellet gets its
     // own independent chance, not one roll for the whole shot.
     const isCrit = !!shot.critChance && Math.random() < shot.critChance;
@@ -12367,6 +12771,7 @@ const ENEMY = (() => {
   function reset() {
     kills = 0;
     bossState = 'inactive';
+    bossState2 = 'inactive';
     bossEscalation = 1;
     // A restart is the only point a toggled Ultra Mode can actually take
     // effect -- the enemies here already exist from the one-time ENEMY.init
@@ -12378,7 +12783,7 @@ const ENEMY = (() => {
     const ultraHealthMult = CONFIG.ultra.active ? CONFIG.ultra.enemyHealthMult : 1;
     list.forEach(e => {
       e.respawnAt = 0;
-      if (e.isBoss) {
+      if (e.isBoss || e.isBoss2) {
         e.alive = false;
         e.timer = 0;
         e.hp = e.maxHp;
@@ -12388,6 +12793,13 @@ const ENEMY = (() => {
         e.bodyProxy.raycast = NO_RAY;
         e.group.visible = false;
         e.climbing = false;
+        if (e.smokeBlocker) {
+          removeLOSBlocker(e.smokeBlocker);
+          if (scene) scene.remove(e.smokeBlocker);
+          e.smokeBlocker = null;
+        }
+        e.bearClawHitStreak = 0;
+        e.bearClawHitGapTimer = 0;
       } else {
         e.maxHp = e.def.stats.hp * ultraHealthMult;
         revive(e);
@@ -12397,6 +12809,7 @@ const ENEMY = (() => {
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
     spawnAdditional(Math.round(currentTarget), roster);
     UI.setBoss(false, 0, B.hp, bossState);
+    UI.setBoss2(false, 0, B2.hp, bossState2);
   }
 
   /* ---------------- state machine ---------------- */
@@ -12410,7 +12823,7 @@ const ENEMY = (() => {
     } else {
       e.mark.visible = false;
     }
-    if (s === 'attack' || s === 'boss_melee' || s === 'boss_seed') {
+    if (s === 'attack' || s === 'boss_melee' || s === 'boss_seed' || s === 'boss2_melee') {
       e.didStrike = false;
       AUDIO.enemySwing(e.def.voice.pitch);
     }
@@ -12551,13 +12964,16 @@ const ENEMY = (() => {
     AUDIO.enemySwing(e.def.voice.pitch * 0.78);
   }
 
+  function bossRadius(e) { return e.isBoss2 ? B2.radius : (e.isBoss ? B.radius : C.radius); }
+
   function integrateBoss(e, dt, t) {
+    const bc = e.isBoss2 ? B2 : B;
     for (let i = 0; i < list.length; i++) {
       const o = list[i];
       if (o === e || !o.alive || o.layerId !== e.layerId) continue;
       const dx = e.pos.x - o.pos.x, dz = e.pos.z - o.pos.z;
       const d2 = dx * dx + dz * dz;
-      const min = (e.isBoss ? B.radius : C.radius) + (o.isBoss ? B.radius : C.radius);
+      const min = bossRadius(e) + bossRadius(o);
       if (d2 > 0.0001 && d2 < min * min) {
         const d = Math.sqrt(d2);
         const push = (min - d) / min * 5;
@@ -12567,7 +12983,7 @@ const ENEMY = (() => {
     }
 
     WORLD.moveActor(e.pos, e.vel, dt, {
-      radius: B.radius, height: B.height, stepHeight: B.stepHeight, gravity: B.gravity,
+      radius: bc.radius, height: bc.height, stepHeight: bc.stepHeight, gravity: bc.gravity,
       layerId: e.layerId
     }, e.body);
     if (e.pos.y < -6) { e.pos.copy(e.home); e.vel.set(0, 0, 0); }
@@ -12593,7 +13009,8 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
-    UI.setBoss(true, e.hp, e.maxHp, bossState);
+    if (e.isBoss2) UI.setBoss2(true, e.hp, e.maxHp, bossState2);
+    else UI.setBoss(true, e.hp, e.maxHp, bossState);
   }
 
   function updateBoss(e, dt, t) {
@@ -12691,6 +13108,147 @@ const ENEMY = (() => {
     integrateBoss(e, dt, t);
   }
 
+  /* Bear Claw's own state machine -- chase / claw melee (with a small
+     player-stun chance on hit) / smoke-vent-and-reposition (triggered by
+     applyDamage's hit-streak tracking, not by a timer) / travel across
+     ladders. Deliberately not merged into updateBoss: the states, timings
+     and reactions are different enough that sharing one function would
+     mean threading isBoss2 branches through nearly every line of it. */
+  function updateBearClaw(e, dt, t) {
+    e.assetDelta = dt;
+    e.timer += dt;
+    if (!e.alive) {
+      if (e.timer > C.corpseTime) e.group.visible = false;
+      pose(e, t);
+      return;
+    }
+
+    e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
+    e.bearClawHitGapTimer += dt;
+    if (e.climbing) {
+      updateLadderClimb(e, dt, t);
+      UI.setBoss2(true, e.hp, e.maxHp, bossState2);
+      return;
+    }
+
+    const p = PLAYER.position;
+    const sameLayer = e.layerId === PLAYER.layerId;
+    const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
+    const route = !sameLayer && !PLAYER.isDead ? findLadderRoute(e) : null;
+    if (route) {
+      e.ladderGoal = route;
+      if (e.state !== 'travel') setState(e, 'travel');
+    } else if (e.state === 'travel') {
+      e.ladderGoal = null;
+      setState(e, sameLayer ? 'boss2_chase' : 'idle');
+    }
+
+    if (e.state === 'boss2_melee') {
+      idleBrake(e, dt);
+      faceTowards(e, p.x, p.z, dt, 5);
+      if (!e.didStrike && e.timer >= B2.windup) {
+        e.didStrike = true;
+        e.squashVel += 8;
+        if (sameLayer && distToPlayer < B2.reach + 0.55 && !PLAYER.isDead) {
+          PLAYER.damage(B2.damage, e.pos);
+          if (Math.random() < B2.stunChance && typeof PLAYER.grantStun === 'function') {
+            PLAYER.grantStun(B2.stunDuration);
+          }
+        }
+      }
+      if (e.timer >= B2.windup + B2.recover) setState(e, 'boss2_chase');
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'boss2_smoke') {
+      idleBrake(e, dt);
+      if (!e.smokeBlocker) {
+        const blocker = new THREE.Mesh(
+          new THREE.SphereGeometry(3.2, 8, 6), new THREE.MeshBasicMaterial({ visible: false }));
+        blocker.position.set(e.pos.x, e.pos.y + 1.2, e.pos.z);
+        if (scene) scene.add(blocker);
+        addLOSBlocker(blocker);
+        e.smokeBlocker = blocker;
+        _v.set(e.pos.x, e.pos.y + 1.3, e.pos.z);
+        for (let i = 0; i < 10; i++) {
+          _v2.set(UTIL.rng(-1.4, 1.4), UTIL.rng(0.6, 2.2), UTIL.rng(-1.4, 1.4));
+          FX.spawnParticle(_v, _v2, { map: TEX.puff(PAL.blueGray), s0: 0.5, s1: 1.6, life: 1.1, grav: -0.5 });
+        }
+        AUDIO.enemySwing(e.def.voice.pitch * 0.7);
+      }
+      if (e.timer >= B2.smokeVentTime) {
+        if (e.smokeBlocker) {
+          removeLOSBlocker(e.smokeBlocker);
+          if (scene) scene.remove(e.smokeBlocker);
+          e.smokeBlocker = null;
+        }
+        // Retreat straight away from the player, then jitter sideways by up
+        // to smokeRepositionRadius -- reads as "falling back to a better
+        // spot" rather than fleeing in a dead-straight line.
+        const awayX = e.pos.x - p.x, awayZ = e.pos.z - p.z;
+        const awayLen = Math.hypot(awayX, awayZ) || 1;
+        const ax = awayX / awayLen, az = awayZ / awayLen;
+        const lateral = UTIL.rng(-B2.smokeRepositionRadius, B2.smokeRepositionRadius);
+        e.bearClawRetreatTarget = {
+          x: e.pos.x + ax * B2.smokeRetreatDistance + -az * lateral,
+          z: e.pos.z + az * B2.smokeRetreatDistance + ax * lateral
+        };
+        setState(e, 'boss2_retreat');
+      }
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'boss2_retreat') {
+      const target = e.bearClawRetreatTarget || e.pos;
+      const d = steer(e, target.x, target.z, B2.smokeRetreatSpeed, dt);
+      faceTowards(e, target.x, target.z, dt, 6);
+      // Safety exit in case the target point is unreachable (blocked by
+      // geometry) -- never stuck fleeing forever.
+      if (d < 0.8 || e.timer > (B2.smokeRetreatDistance / B2.smokeRetreatSpeed) * 1.6) {
+        e.bearClawRetreatTarget = null;
+        setState(e, 'boss2_chase');
+      }
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (e.state === 'travel') {
+      const ladder = e.ladderGoal && e.ladderGoal.ladder;
+      if (!ladder || sameLayer) {
+        e.ladderGoal = null;
+        setState(e, sameLayer ? 'boss2_chase' : 'idle');
+      } else {
+        const d = steer(e, ladder.snapX, ladder.snapZ, B2.speed * 0.84, dt);
+        faceTowards(e, ladder.snapX, ladder.snapZ, dt, 7);
+        const endpointY = e.ladderGoal.direction > 0 ? ladder.bottomY : ladder.topY;
+        if (d <= C.ladderApproach && Math.abs(e.pos.y - endpointY) < 0.9) startLadderClimb(e, e.ladderGoal);
+      }
+      integrateBoss(e, dt, t);
+      return;
+    }
+
+    if (!PLAYER.isDead && sameLayer) {
+      faceTowards(e, p.x, p.z, dt, 7);
+      if (distToPlayer <= B2.reach + 0.18) {
+        setState(e, 'boss2_melee');
+      } else {
+        if (e.state !== 'boss2_chase') setState(e, 'boss2_chase');
+        steer(e, p.x, p.z, B2.speed, dt);
+        if (e.body.blocked) {
+          const s = e.stepFlip ? 1 : -1;
+          e.vel.x += -Math.cos(e.yaw) * s * B2.speed * 0.82 * dt * 6;
+          e.vel.z += Math.sin(e.yaw) * s * B2.speed * 0.82 * dt * 6;
+          if (Math.random() < 0.02) e.stepFlip = !e.stepFlip;
+        }
+      }
+    } else {
+      idleBrake(e, dt);
+    }
+    integrateBoss(e, dt, t);
+  }
+
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
@@ -12741,7 +13299,59 @@ const ENEMY = (() => {
     }
   }
 
+  /* Whole-transform posing only -- the GLB has no rig at all to animate,
+     so every readable "pose" here comes from either the group transform
+     (squash/stretch, corpse wilt) or the procedural claw arms built by
+     buildBearClawClaws, not from anything inside the mesh itself. */
+  function poseBearClaw(e, t) {
+    // The forward correction only fixes the GLB's own authored-forward
+    // mismatch (see B2.assetForwardCorrection). When the asset fails to
+    // load and create() fell back to CAST.build()'s procedural rig
+    // instead, that mismatch doesn't exist -- applying the correction
+    // anyway would face the whole group (claw arms included) 180° away
+    // from the way the character is actually walking.
+    const correction = e.asset ? B2.assetForwardCorrection : 0;
+    const scale = e.visualScale || 1;
+    if (e.state === 'dead') {
+      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const s = 1 + Math.sin(k * Math.PI) * 0.22;
+      e.group.scale.set(scale * (1 - k) * (2 - s), scale * (1 - k) * s, scale * (1 - k) * (2 - s));
+      e.group.rotation.set(-k * 1.05, e.yaw + correction, k * 0.18);
+      return;
+    }
+
+    const sq = 1 + e.squash;
+    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    e.group.rotation.set(0, e.yaw + correction, 0);
+
+    // Claw reach: 0 at rest, peaks partway through the melee windup and
+    // eases back out through the recover half -- the "stretchy" part of
+    // "stretchy lobster claws." A light agitated twitch during smoke-vent
+    // keeps the claws reading as alive even while the body holds still.
+    let reach = 0;
+    if (e.state === 'boss2_melee') {
+      const total = B2.windup + B2.recover;
+      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const wk = B2.windup / total;
+      reach = k < wk ? (k / wk) : Math.max(0, 1 - (k - wk) / (1 - wk) * 1.6);
+    } else if (e.state === 'boss2_smoke') {
+      reach = 0.15 + Math.sin(t * 14) * 0.08;
+    }
+    if (e.clawArms) {
+      const extend = 0.34 * reach;
+      e.clawArms.left.stretch.position.z = extend;
+      e.clawArms.right.stretch.position.z = extend;
+      const spread = reach * 0.35;
+      e.clawArms.left.pivot.rotation.y = spread;
+      e.clawArms.right.pivot.rotation.y = -spread;
+    }
+  }
+
   function pose(e, t) {
+    if (e.isBoss2) {
+      poseBearClaw(e, t);
+      return;
+    }
     if (e.asset) {
       poseAsset(e, t);
       return;
@@ -12869,6 +13479,10 @@ const ENEMY = (() => {
   function updateOne(e, dt, t) {
     if (e.isBoss) {
       updateBoss(e, dt, t);
+      return;
+    }
+    if (e.isBoss2) {
+      updateBearClaw(e, dt, t);
       return;
     }
     e.timer += dt;
@@ -13058,12 +13672,12 @@ const ENEMY = (() => {
      kill count in lockstep instead of each running its own independent
      simulation (which is what caused the coop desync this system replaces:
      enemies used to chase and take damage separately on every peer). */
-  let netSnapshot = null, netBoss = null, remoteKills = 0;
+  let netSnapshot = null, netBoss = null, netBoss2 = null, remoteKills = 0;
 
   // The same boss-exclusion filter is used both when the host packages a
   // snapshot and when it resolves a join's melee/blast index, so the two
   // stay index-compatible no matter when spawnBoss() happened to run.
-  function nonBossList() { return list.filter(e => !e.isBoss); }
+  function nonBossList() { return list.filter(e => !e.isBoss && !e.isBoss2); }
 
   /* Host/single-player only: a plain-data read of the current authoritative
      state, cheap enough to call every network tick. No side effects. */
@@ -13080,6 +13694,12 @@ const ENEMY = (() => {
         hp: Math.round(boss.hp), maxHp: boss.maxHp, alive: boss.alive,
         state: boss.state, layerId: boss.layerId
       } : null,
+      boss2: boss2 ? {
+        x: Math.round(boss2.pos.x * 100) / 100, y: Math.round(boss2.pos.y * 100) / 100,
+        z: Math.round(boss2.pos.z * 100) / 100, yaw: Math.round(boss2.yaw * 1000) / 1000,
+        hp: Math.round(boss2.hp), maxHp: boss2.maxHp, alive: boss2.alive,
+        state: boss2.state, layerId: boss2.layerId
+      } : null,
       kills: kills
     };
   }
@@ -13087,9 +13707,10 @@ const ENEMY = (() => {
   /* Join-only: stash the latest snapshot; applied on the next update() tick
      rather than mutated immediately, so it stays in step with dt-based
      interpolation instead of snapping. */
-  function applyRemoteState(enemies, bossSnap, killsValue) {
+  function applyRemoteState(enemies, bossSnap, killsValue, boss2Snap) {
     netSnapshot = enemies || [];
     netBoss = bossSnap || null;
+    netBoss2 = boss2Snap || null;
     remoteKills = killsValue || 0;
   }
 
@@ -13099,6 +13720,7 @@ const ENEMY = (() => {
   function applyRemoteReset() {
     netSnapshot = null;
     netBoss = null;
+    netBoss2 = null;
   }
 
   function applyGhostSnapshot(e, snap, dt, t) {
@@ -13130,15 +13752,16 @@ const ENEMY = (() => {
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     e.yaw += yawDiff * UTIL.clamp(10 * dt, 0, 1);
     if (e.hitFlash > 0) e.hitFlash -= dt;
-    if (e.isBoss) e.assetDelta = dt;
+    if (e.isBoss || e.isBoss2) e.assetDelta = dt;
     e.group.visible = snap.alive && e.layerId === PLAYER.layerId;
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
-    // The join's own bossState never transitions (only the host runs the
-    // real state machine), so derive the HUD text from the synced fields
-    // directly rather than that stale local variable.
+    // The join's own bossState/bossState2 never transitions (only the host
+    // runs the real state machines), so derive the HUD text from the
+    // synced fields directly rather than those stale local variables.
     if (e.isBoss) UI.setBoss(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
+    else if (e.isBoss2) UI.setBoss2(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
   }
 
   function createBossGhost() {
@@ -13148,6 +13771,15 @@ const ENEMY = (() => {
     };
     create(B.id, marker, { isBoss: true });
     bossState = 'active';
+  }
+
+  function createBoss2Ghost() {
+    const marker = {
+      layerId: 'surface', kind: 'mini_boss_2',
+      position: new THREE.Vector3(B2.spawn.x, B2.spawn.y, B2.spawn.z)
+    };
+    create(B2.id, marker, { isBoss2: true });
+    bossState2 = 'active';
   }
 
   function updateGhosts(dt, t) {
@@ -13166,6 +13798,12 @@ const ENEMY = (() => {
       // fight ended; either way there's nothing authoritative to show.
       boss.group.visible = false;
     }
+    if (netBoss2) {
+      if (!boss2) createBoss2Ghost();
+      applyGhostSnapshot(boss2, netBoss2, dt, t);
+    } else if (boss2 && bossState2 === 'active') {
+      boss2.group.visible = false;
+    }
   }
 
   function update(dt, t) {
@@ -13177,6 +13815,7 @@ const ENEMY = (() => {
       return;
     }
     if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
+    if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
   }
 
@@ -13199,7 +13838,7 @@ const ENEMY = (() => {
      is built from. Called only on the host, from COOP's 'enemyDamage'
      handler — a join never calls applyDamage for real (see below). */
   function applyDamageByKey(key, amount, pointArr, dirArr, zone, force) {
-    const target = key === 'boss' ? boss : nonBossList()[key];
+    const target = key === 'boss' ? boss : (key === 'boss2' ? boss2 : nonBossList()[key]);
     if (!target) return;
     const point = new THREE.Vector3().fromArray(pointArr || [target.pos.x, target.pos.y, target.pos.z]);
     const dir = new THREE.Vector3().fromArray(dirArr || [0, 0, -1]);
@@ -13223,20 +13862,22 @@ const ENEMY = (() => {
       if (!e.alive) continue;
       contacts.push({
         type: 'enemy', x: e.pos.x, z: e.pos.z,
-        layerId: e.layerId, spawnKind: e.spawnKind, boss: !!e.isBoss
+        layerId: e.layerId, spawnKind: e.spawnKind, boss: !!e.isBoss || !!e.isBoss2
       });
     }
     return contacts;
   }
 
   return {
-    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss,
+    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
-    rescaleForCoop, escalateAfterBoss,
+    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
     get boss() { return boss; },
+    get bossState2() { return bossState2; },
+    get boss2() { return boss2; },
     aliveCount, radarContacts
   };
 })();
@@ -13800,7 +14441,7 @@ const COOP = (() => {
       // tick — one host-only network hook, no separate timer to keep in sync.
       if (typeof ENEMY !== 'undefined') {
         const snap = ENEMY.snapshot();
-        broadcast({ type: 'enemyState', enemies: snap.enemies, boss: snap.boss, kills: snap.kills });
+        broadcast({ type: 'enemyState', enemies: snap.enemies, boss: snap.boss, boss2: snap.boss2, kills: snap.kills });
       }
     } else {
       send(payload);
@@ -13921,7 +14562,7 @@ const COOP = (() => {
     } else if (message.type === 'shotResolved' && message.shot) {
       drawShotTracer(message.shot, message.endPoint);
     } else if (message.type === 'enemyState') {
-      ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0);
+      ENEMY.applyRemoteState(message.enemies, message.boss, message.kills || 0, message.boss2);
     } else if (message.type === 'bossDefeated') {
       // Mirrors what the host's own ENEMY.die() does locally -- a join never
       // runs die() itself, so this is its only chance to drop the pickup.
@@ -13930,6 +14571,13 @@ const COOP = (() => {
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
       GAME.complete(message.kills || 0);
+    } else if (message.type === 'boss2Defeated') {
+      // Bear Claw isn't a win condition -- unlike bossDefeated above, this
+      // never calls GAME.complete(). Just drop the pickup, same convention.
+      if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
+        PICKUP.spawn('packOfSmokesThrowable',
+          { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
+      }
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
@@ -14181,8 +14829,8 @@ const COOP = (() => {
   function shouldHostRelayShots() { return role === 'host' && connected; }
 
   /* Join-only: report an attempted melee/blast hit for the host to resolve
-     authoritatively. `key` is either 'boss' or the index applyDamage found
-     the target at in ENEMY's own boss-excluded list. */
+     authoritatively. `key` is 'boss', 'boss2', or the index applyDamage
+     found the target at in ENEMY's own boss-excluded list. */
   function sendEnemyDamage(key, amount, point, dir, zone, force) {
     if (role === 'join' && connected) send({ type: 'enemyDamage', key: key, amount: amount, point: point, dir: dir, zone: zone, force: force });
   }
@@ -14192,6 +14840,9 @@ const COOP = (() => {
      since only the host ever runs the authoritative simulation. */
   function broadcastBossDefeated(kills, point) {
     if (role === 'host' && connected) broadcast({ type: 'bossDefeated', kills: kills, point: point });
+  }
+  function broadcastBoss2Defeated(point) {
+    if (role === 'host' && connected) broadcast({ type: 'boss2Defeated', point: point });
   }
   function broadcastWorldReset() {
     if (role === 'host' && connected) broadcast({ type: 'worldReset' });
@@ -14283,7 +14934,7 @@ const COOP = (() => {
   return {
     init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
-    broadcastBossDefeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
+    broadcastBossDefeated, broadcastBoss2Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     sendChat, displayNameFor, setLocalVoiceStream,
     get role() { return role; },
     get connected() { return connected; },
