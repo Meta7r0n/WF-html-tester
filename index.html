@@ -1165,10 +1165,13 @@ const CONFIG = {
     bossWiltThreshold: 33,
     endOnBossDefeat: true,
     // Bear Claw: a mid-match mini-boss, not a win condition -- see
-    // ENEMY.spawnBoss2, which never calls GAME.complete(). The second
-    // appearance (higher threshold, upgraded loadout, "The Claw" weapon
-    // drop) is deliberately not implemented yet -- goal for the next branch.
-    bearClawThreshold: 66
+    // ENEMY.spawnBoss2, which never calls GAME.complete(). He appears
+    // twice: a first fight at bearClawThreshold, and a tougher rematch at
+    // bearClawThreshold2 (stats scaled by bearClaw2StatMult, see
+    // ENEMY.spawnBoss2) that drops "The Claw" weapon instead of a second
+    // Pack of Smokes -- see ENEMY.die's isBoss2 branch.
+    bearClawThreshold: 66,
+    bearClawThreshold2: 99
   },
   boss: {
     id: 'carrotWarden', name: 'Carrot Warden',
@@ -1207,7 +1210,13 @@ const CONFIG = {
     // gap between them (hitGapReset), the fight pauses for a defensive beat.
     smokeHitStreak: 5, smokeHitGapReset: 2.2,
     smokeVentTime: 0.9, smokeRetreatDistance: 9, smokeRetreatSpeed: 4.3,
-    smokeRepositionRadius: 6
+    smokeRepositionRadius: 6,
+    // Rematch (bearClawThreshold2): same fight, scaled up rather than a
+    // separate stat block -- mirrors how ENEMY.escalateAfterBoss already
+    // compounds Carrot Warden's post-continue difficulty instead of
+    // authoring a whole new tier by hand.
+    secondHpMult: 1.45, secondDamageMult: 1.2, secondSpeedMult: 1.1,
+    secondStunChance: 0.03
   },
   radar: {
     range: 32,
@@ -1378,6 +1387,18 @@ const CONFIG = {
       tickInterval: 0.1, damage: 9, minDamage: 3, range: 7, arc: 0.82,
       recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58,
       adsArcMult: 0.6, adsRangeMult: 1.3, adsDamageMult: 1.3
+    },
+    // Bear Claw's second drop (bearClawThreshold2 rematch). A "ranged
+    // melee" -- fires through the exact same beginMelee()/ENEMY.melee()
+    // path every other weapon's quick-melee already uses, just with a
+    // much longer meleeRange, so it reads as a long claw-on-a-chain swipe
+    // rather than a real projectile. enemyStunChance/enemyStunDuration are
+    // new fields only this weapon reads (see WEAPON.beginMelee) -- a small
+    // chance to freeze whatever it connects with, mini-bosses included.
+    theClaw: {
+      id: 'theClaw', name: 'The Claw', slot: 8, kind: 'melee',
+      meleeDamage: 55, meleeRange: 6.5, meleeArc: 0.72, fireInterval: 0.65,
+      enemyStunChance: 0.05, enemyStunDuration: 2.5
     }
   },
   throwables: {
@@ -7138,6 +7159,37 @@ const WEAPON = (() => {
     };
   }
 
+  /* The Claw (v0.17.02): Bear Claw's own pincer, salvaged onto a chain and
+     handle -- same pincer-building shapes as ENEMY.buildClawArm, just at
+     first-person prop scale. No hands built (same convention as
+     buildChainsaw -- kind:'melee' already hides armedHands, and the prop
+     alone reads fine floating in view, like the chainsaw does). */
+  function buildTheClaw() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const shell = MAT.toon(PAL.rust, { map: TEX.metal() });
+    const shellDeep = MAT.toon(PAL.rustDeep);
+    const chainMat = MAT.toon(PAL.charcoal);
+    const grip = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    PRIM.cyl(0.05, 0.055, 0.34, 8, grip, { pos: [0, -0.05, 0.08], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
+    for (let i = 0; i < 5; i++) {
+      const z = -0.12 - i * 0.14;
+      PRIM.torus(0.045, 0.014, chainMat, {
+        pos: [0, 0.02, z], rot: [0, i % 2 ? 0.4 : -0.4, 0], parent: g, outline: 0.008, ray: false
+      });
+    }
+    const claw = new THREE.Group();
+    claw.position.set(0, 0, -0.86);
+    g.add(claw);
+    PRIM.sph(0.13, shell, { pos: [0, 0, 0], scale: [1.1, 0.85, 1.3], parent: claw, outline: 0.02, ray: false });
+    PRIM.cyl(0.065, 0.02, 0.26, 6, shellDeep, { pos: [0.06, 0.04, -0.16], rot: [0.35, 0.45, 0], parent: claw, outline: 0.016, ray: false });
+    PRIM.cyl(0.065, 0.02, 0.26, 6, shellDeep, { pos: [-0.03, -0.04, -0.16], rot: [-0.35, -0.15, 0], parent: claw, outline: 0.016, ray: false });
+    models.theClaw = {
+      root: g, forend: claw, flash: null, flash2: null,
+      base: [0.28, -0.24, -0.48], rot: [0.05, -0.1, 0.02]
+    };
+  }
+
   function buildHandsAndBoots() {
     const black = MAT.toon(PAL.charcoal);
     armedHands = new THREE.Group();
@@ -7202,6 +7254,7 @@ const WEAPON = (() => {
     buildScrapRailgun();
     buildChainsaw();
     buildSprayTorch();
+    buildTheClaw();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -7516,7 +7569,11 @@ const WEAPON = (() => {
       damage: d.meleeDamage * damageMult,
       range: d.meleeRange,
       arc: d.meleeArc,
-      force: d.kind === 'melee' ? 1.45 : 1.8
+      force: d.kind === 'melee' ? 1.45 : 1.8,
+      // Only The Claw's def sets these -- undefined for every other
+      // weapon, which ENEMY.melee() already treats as "no stun roll."
+      stunChance: d.enemyStunChance,
+      stunDuration: d.enemyStunDuration
     });
     AUDIO.melee(d.kind === 'melee' ? 'unarmed' : 'gun', connected);
     UI.crosshairKick();
@@ -7554,13 +7611,24 @@ const WEAPON = (() => {
 
   function grantWeapon(id, reserveBonus) {
     const d = DEFS[id], s = inventory[id];
-    if (!d || (d.kind !== 'gun' && d.kind !== 'flame')) return { consumed: false, newlyOwned: false, ammoAdded: 0 };
+    // v0.17.02: The Claw is the first pickup-granted (non-specialOnly)
+    // melee-kind weapon -- widened from gun/flame-only. specialOnly stays
+    // excluded regardless of kind (chainsaw/knives/doubleBarrel only ever
+    // come from beginHeroSpecial, never a world pickup).
+    if (!d || d.specialOnly || (d.kind !== 'gun' && d.kind !== 'flame' && d.kind !== 'melee')) {
+      return { consumed: false, newlyOwned: false, ammoAdded: 0 };
+    }
     const newlyOwned = !s.owned;
     s.owned = true;
-    if (newlyOwned && s.mag <= 0) s.mag = d.magSize;
-    const before = s.reserve;
-    s.reserve = Math.min(d.maxReserve, s.reserve + Math.max(0, Math.floor(reserveBonus || 0)));
-    const ammoAdded = s.reserve - before;
+    let ammoAdded = 0;
+    // Melee weapons carry no mag/reserve at all (see initInventory) -- both
+    // always sit at 0, so there's nothing to top up.
+    if (d.kind === 'gun' || d.kind === 'flame') {
+      if (newlyOwned && s.mag <= 0) s.mag = d.magSize;
+      const before = s.reserve;
+      s.reserve = Math.min(d.maxReserve, s.reserve + Math.max(0, Math.floor(reserveBonus || 0)));
+      ammoAdded = s.reserve - before;
+    }
     if (newlyOwned) setCurrent(id, true);
     else syncHUD();
     return { consumed: newlyOwned || ammoAdded > 0, newlyOwned: newlyOwned, ammoAdded: ammoAdded };
@@ -8477,8 +8545,12 @@ const UI = (() => {
   function setWeapon(name, kind, n, reserve, max) {
     el.weaponName.textContent = name;
     if (kind !== 'gun' && kind !== 'flame') {
+      // No mag/reserve to show for any melee-kind weapon (fists, chainsaw,
+      // The Claw) -- the weapon's own name reads better here than a
+      // hardcoded 'FISTS' that used to show even while swinging something
+      // else entirely.
       el.shells.innerHTML = '';
-      el.ammoNum.textContent = 'FISTS';
+      el.ammoNum.textContent = name.toUpperCase();
       el.ammoNum.className = 'melee';
       return;
     }
@@ -9354,6 +9426,12 @@ const PICKUP = (() => {
   define('packOfSmokesThrowable', {
     type: 'throwable', label: 'Pack of Smokes', throwableId: 'smokeGrenade',
     quantity: 3, color: PAL.blueGray, respawn: 0
+  });
+  // v0.17.02: Bear Claw's SECOND defeat (bearClawThreshold2) drops this
+  // instead of another Pack of Smokes -- see ENEMY.die's appearance check.
+  define('theClawWeapon', {
+    type: 'weapon', label: 'The Claw', weaponId: 'theClaw',
+    quantity: 1, color: PAL.rust, respawn: 0
   });
 
   registerHandler('weapon', def => {
@@ -12003,6 +12081,9 @@ const ENEMY = (() => {
   let bossState = 'inactive';
   let boss2 = null;
   let bossState2 = 'inactive';
+  // 0 = hasn't fought yet, 1 = first fight done/in progress, 2 = both
+  // fights done. Caps spawnBoss2() at exactly two appearances per match.
+  let bearClawAppearances = 0;
   let markTex = null;
   // v0.16: escalating difficulty for players who keep going after wilting
   // the Carrot Warden. currentTarget tracks whatever roster size init()/
@@ -12282,7 +12363,14 @@ const ENEMY = (() => {
       bearClawHitStreak: 0,
       bearClawHitGapTimer: 0,
       bearClawRetreatTarget: null,
-      smokeBlocker: null
+      smokeBlocker: null,
+      appearanceIndex: 0,
+      effDamage: 0, effSpeed: 0, effStunChance: 0,
+      // The Claw (v0.17.02): a freeze with no attack/movement decisions,
+      // applied by ENEMY.stunEntity -- see updateBoss/updateBearClaw's
+      // gate at the top of each. Harmless on entity types nothing reads it
+      // for (regular grunts).
+      stunTimer: 0
     };
 
     scene.add(e.group);
@@ -12344,8 +12432,13 @@ const ENEMY = (() => {
      touch bossState/boss -- the two fights are fully parallel and can be
      active at the same time (33-kill Carrot Warden doesn't gate 66-kill
      Bear Claw). Never calls GAME.complete(); see die()'s isBoss2 branch. */
+  /* Called for both Bear Claw appearances -- bearClawAppearances (0/1/2)
+     tracks which. Blocked while he's actively mid-fight, but unlike
+     spawnBoss() a 'defeated' bossState2 doesn't block re-entry, since
+     that's exactly the rematch's own resting state between fights. */
   function spawnBoss2() {
-    if (bossState2 !== 'inactive') return boss2;
+    if (bossState2 === 'active') return boss2;
+    if (bearClawAppearances >= 2) return boss2;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_2',
       position: new THREE.Vector3(B2.spawn.x, B2.spawn.y, B2.spawn.z)
@@ -12354,6 +12447,14 @@ const ENEMY = (() => {
     boss2.home.copy(marker.position);
     boss2.home.y = WORLD.groundAt(boss2.home.x, boss2.home.z, boss2.home.y + 0.8, boss2.homeLayerId);
     revive(boss2);
+    bearClawAppearances++;
+    boss2.appearanceIndex = bearClawAppearances;
+    const isSecond = bearClawAppearances >= 2;
+    boss2.maxHp = B2.hp * (isSecond ? B2.secondHpMult : 1);
+    boss2.hp = boss2.maxHp;
+    boss2.effDamage = B2.damage * (isSecond ? B2.secondDamageMult : 1);
+    boss2.effSpeed = B2.speed * (isSecond ? B2.secondSpeedMult : 1);
+    boss2.effStunChance = isSecond ? B2.secondStunChance : B2.stunChance;
     boss2.visualScale = boss2.asset ? B2.assetScale : B2.visualScale;
     boss2.state = 'boss2_chase';
     boss2.timer = 0;
@@ -12362,10 +12463,11 @@ const ENEMY = (() => {
     boss2.bearClawHitStreak = 0;
     boss2.bearClawHitGapTimer = 0;
     boss2.bearClawRetreatTarget = null;
+    boss2.stunTimer = 0;
     boss2.group.visible = true;
     bossState2 = 'active';
     UI.setBoss2(true, boss2.hp, boss2.maxHp, bossState2);
-    UI.toast('66 WILTED — BEAR CLAW EMERGES', 3.2);
+    UI.toast(isSecond ? '99 WILTED — BEAR CLAW RETURNS, ANGRIER' : '66 WILTED — BEAR CLAW EMERGES', 3.2);
     AUDIO.enemyAlert(boss2.def.voice.pitch);
     return boss2;
   }
@@ -12401,6 +12503,7 @@ const ENEMY = (() => {
     bossState = 'inactive';
     boss2 = null;
     bossState2 = 'inactive';
+    bearClawAppearances = 0;
     // Snapshot the level's raycast targets BEFORE any enemy proxies exist, so
     // line-of-sight tests only ever consider world geometry.
     LOS_TARGETS = RAY_TARGETS.slice();
@@ -12453,6 +12556,16 @@ const ENEMY = (() => {
   function removeLOSBlocker(mesh) {
     const i = LOS_TARGETS.indexOf(mesh);
     if (i !== -1) LOS_TARGETS.splice(i, 1);
+  }
+
+  /* The Claw (v0.17.02): freezes whatever it's given -- only updateBoss and
+     updateBearClaw actually honor stunTimer (see their gates), so this is a
+     no-op tool on a regular grunt beyond just setting an unread field.
+     Only extends an already-running stun, same convention as
+     PLAYER.grantStun/grantInvuln. */
+  function stunEntity(e, seconds) {
+    if (!e || !e.alive) return;
+    e.stunTimer = Math.max(e.stunTimer || 0, seconds || 0);
   }
 
   function canSee(e) {
@@ -12582,7 +12695,8 @@ const ENEMY = (() => {
         e.smokeBlocker = null;
       }
       UI.setBoss2(false, 0, e.maxHp, bossState2);
-      UI.toast('BEAR CLAW RETREATS FOR GOOD', 2.4);
+      const isFinalDefeat = e.appearanceIndex >= 2;
+      UI.toast(isFinalDefeat ? 'BEAR CLAW RETREATS FOR GOOD' : 'BEAR CLAW FALLS BACK', 2.4);
       _v2.set(0, 1.4, 0);
       for (let i = 0; i < 8; i++) {
         _v.set(UTIL.rng(-1.6, 1.6), UTIL.rng(1, 2.6), UTIL.rng(-1.6, 1.6));
@@ -12590,13 +12704,15 @@ const ENEMY = (() => {
           map: TEX.puff(PAL.blueGray), s0: 0.4, s1: 1.1, life: 0.9, grav: -0.6
         });
       }
-      // Bear Claw drop: a Pack of Smokes throwable, same broadcast-position
-      // convention as the Carrot Cannon above -- see COOP.broadcastBoss2Defeated.
+      // First defeat drops a Pack of Smokes; the rematch drops The Claw
+      // instead -- same broadcast-position convention as the Carrot Cannon
+      // above (see COOP.broadcastBoss2Defeated).
+      const dropId = isFinalDefeat ? 'theClawWeapon' : 'packOfSmokesThrowable';
       const dropPos2 = [e.pos.x, e.pos.y, e.pos.z];
       if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
-        PICKUP.spawn('packOfSmokesThrowable', { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, { respawn: 0 });
+        PICKUP.spawn(dropId, { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, { respawn: 0 });
       }
-      if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2);
+      if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2, dropId);
       // Bear Claw is a mid-match mini-boss, not a win condition -- no
       // GAME.complete() here, and defeating it does not increment `kills`
       // (same convention as the Carrot Warden above).
@@ -12663,6 +12779,11 @@ const ENEMY = (() => {
     if (!best) return false;
     _v.set(best.pos.x, best.pos.y + 0.98, best.pos.z);
     applyDamage(best, opts.damage || 30, _v, dir, 'body', opts.force);
+    // The Claw (v0.17.02): opts.stunChance/stunDuration are only ever set
+    // by that one weapon's beginMelee call -- every other melee source
+    // (fists, chainsaw, gun-butt) leaves them undefined and this is a
+    // no-op. stunEntity() itself no-ops on an entity applyDamage just killed.
+    if (opts.stunChance && Math.random() < opts.stunChance) stunEntity(best, opts.stunDuration || 0);
     FX.impact(_v, _v2.copy(dir).negate(), { big: true, scale: 0.82 });
     return true;
   }
@@ -12772,6 +12893,7 @@ const ENEMY = (() => {
     kills = 0;
     bossState = 'inactive';
     bossState2 = 'inactive';
+    bearClawAppearances = 0;
     bossEscalation = 1;
     // A restart is the only point a toggled Ultra Mode can actually take
     // effect -- the enemies here already exist from the one-time ENEMY.init
@@ -12800,6 +12922,8 @@ const ENEMY = (() => {
         }
         e.bearClawHitStreak = 0;
         e.bearClawHitGapTimer = 0;
+        e.appearanceIndex = 0;
+        e.stunTimer = 0;
       } else {
         e.maxHp = e.def.stats.hp * ultraHealthMult;
         revive(e);
@@ -13022,6 +13146,17 @@ const ENEMY = (() => {
       return;
     }
 
+    // The Claw (v0.17.02): frozen -- no perception, no attack, no chase --
+    // for as long as stunTimer runs. Physics/pose still update below via
+    // integrateBoss so a stunned boss still settles under gravity and
+    // reads as staggered rather than literally paused mid-frame.
+    if (e.stunTimer > 0) {
+      e.stunTimer = Math.max(0, e.stunTimer - dt);
+      idleBrake(e, dt);
+      integrateBoss(e, dt, t);
+      return;
+    }
+
     e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
     e.bossSeedCooldown = Math.max(0, e.bossSeedCooldown - dt);
     e.bossSeedTimer += dt;
@@ -13123,6 +13258,15 @@ const ENEMY = (() => {
       return;
     }
 
+    // The Claw (v0.17.02): same freeze as updateBoss above -- no attack,
+    // no chase, no state transitions until stunTimer runs out.
+    if (e.stunTimer > 0) {
+      e.stunTimer = Math.max(0, e.stunTimer - dt);
+      idleBrake(e, dt);
+      integrateBoss(e, dt, t);
+      return;
+    }
+
     e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
     e.bearClawHitGapTimer += dt;
     if (e.climbing) {
@@ -13150,8 +13294,8 @@ const ENEMY = (() => {
         e.didStrike = true;
         e.squashVel += 8;
         if (sameLayer && distToPlayer < B2.reach + 0.55 && !PLAYER.isDead) {
-          PLAYER.damage(B2.damage, e.pos);
-          if (Math.random() < B2.stunChance && typeof PLAYER.grantStun === 'function') {
+          PLAYER.damage(e.effDamage || B2.damage, e.pos);
+          if (Math.random() < (e.effStunChance || B2.stunChance) && typeof PLAYER.grantStun === 'function') {
             PLAYER.grantStun(B2.stunDuration);
           }
         }
@@ -13220,7 +13364,7 @@ const ENEMY = (() => {
         e.ladderGoal = null;
         setState(e, sameLayer ? 'boss2_chase' : 'idle');
       } else {
-        const d = steer(e, ladder.snapX, ladder.snapZ, B2.speed * 0.84, dt);
+        const d = steer(e, ladder.snapX, ladder.snapZ, (e.effSpeed || B2.speed) * 0.84, dt);
         faceTowards(e, ladder.snapX, ladder.snapZ, dt, 7);
         const endpointY = e.ladderGoal.direction > 0 ? ladder.bottomY : ladder.topY;
         if (d <= C.ladderApproach && Math.abs(e.pos.y - endpointY) < 0.9) startLadderClimb(e, e.ladderGoal);
@@ -13235,11 +13379,12 @@ const ENEMY = (() => {
         setState(e, 'boss2_melee');
       } else {
         if (e.state !== 'boss2_chase') setState(e, 'boss2_chase');
-        steer(e, p.x, p.z, B2.speed, dt);
+        const spd = e.effSpeed || B2.speed;
+        steer(e, p.x, p.z, spd, dt);
         if (e.body.blocked) {
           const s = e.stepFlip ? 1 : -1;
-          e.vel.x += -Math.cos(e.yaw) * s * B2.speed * 0.82 * dt * 6;
-          e.vel.z += Math.sin(e.yaw) * s * B2.speed * 0.82 * dt * 6;
+          e.vel.x += -Math.cos(e.yaw) * s * spd * 0.82 * dt * 6;
+          e.vel.z += Math.sin(e.yaw) * s * spd * 0.82 * dt * 6;
           if (Math.random() < 0.02) e.stepFlip = !e.stepFlip;
         }
       }
@@ -13816,6 +13961,7 @@ const ENEMY = (() => {
     }
     if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
     if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
+    else if (bossState2 === 'defeated' && bearClawAppearances < 2 && kills >= CONFIG.progress.bearClawThreshold2) spawnBoss2();
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
   }
 
@@ -13871,7 +14017,7 @@ const ENEMY = (() => {
   return {
     init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
-    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker,
+    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -14574,8 +14720,10 @@ const COOP = (() => {
     } else if (message.type === 'boss2Defeated') {
       // Bear Claw isn't a win condition -- unlike bossDefeated above, this
       // never calls GAME.complete(). Just drop the pickup, same convention.
+      // dropId distinguishes the first defeat's Pack of Smokes from the
+      // rematch's The Claw -- default covers old hosts on an older build.
       if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
-        PICKUP.spawn('packOfSmokesThrowable',
+        PICKUP.spawn(message.dropId || 'packOfSmokesThrowable',
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
     } else if (message.type === 'worldReset') {
@@ -14841,8 +14989,8 @@ const COOP = (() => {
   function broadcastBossDefeated(kills, point) {
     if (role === 'host' && connected) broadcast({ type: 'bossDefeated', kills: kills, point: point });
   }
-  function broadcastBoss2Defeated(point) {
-    if (role === 'host' && connected) broadcast({ type: 'boss2Defeated', point: point });
+  function broadcastBoss2Defeated(point, dropId) {
+    if (role === 'host' && connected) broadcast({ type: 'boss2Defeated', point: point, dropId: dropId });
   }
   function broadcastWorldReset() {
     if (role === 'host' && connected) broadcast({ type: 'worldReset' });
