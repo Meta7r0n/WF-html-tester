@@ -470,6 +470,12 @@
     font-size:clamp(10px,1.5vw,13px);
   }
   #mobileCrouch.active{background:var(--blue);color:var(--ink);text-shadow:none;}
+  #mobileADS{
+    right:2px;bottom:clamp(196px,30vw,230px);
+    background:rgba(74,94,58,.9);color:var(--cream);text-shadow:1px 1px 0 var(--ink);
+    font-size:clamp(10px,1.5vw,13px);
+  }
+  #mobileADS.active{background:var(--mustard);color:var(--ink);text-shadow:none;}
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
@@ -804,6 +810,7 @@
       <button type="button" class="mobile-btn" id="mobileJays" aria-label="Use Jays health pack">Jays</button>
       <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
       <button type="button" class="mobile-btn" id="mobileTalk" aria-label="Hold to talk">Talk</button>
+      <button type="button" class="mobile-btn" id="mobileADS" aria-label="Aim: steadier and more accurate, slower to move">Aim</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
     <button type="button" class="mobile-btn" id="mobileChat" aria-label="Send a chat message">Chat</button>
@@ -834,7 +841,8 @@
         <li><kbd>Ctrl</kbd> Crouch / slide while sprinting</li>
         <li><kbd>W / S</kbd> Climb ladders</li>
         <li><kbd>Click</kbd> Fire / punch</li>
-        <li><kbd>V / RMB</kbd> Quick melee</li>
+        <li><kbd>V</kbd> Quick melee</li>
+        <li><kbd>RMB</kbd> Aim — steadier, slower</li>
         <li><kbd>1–4</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
         <li><kbd>G</kbd> Throw grenade</li>
@@ -1056,7 +1064,10 @@ const CONFIG = {
   render: {
     fov: 74, near: 0.05, far: 300,
     maxPixelRatio: 1.75,
-    fogNear: 40, fogFar: 165
+    fogNear: 40, fogFar: 165,
+    // Aim (RMB): a modest hip-aim zoom rather than a real scope -- there's
+    // no scope model, just a tighter FOV that reads as "steadying up."
+    adsFov: 58, adsFovLerp: 11
   },
   player: {
     height: 1.72, radius: 0.42, eyeHeight: 1.58,
@@ -1089,6 +1100,11 @@ const CONFIG = {
     // can be sniped mid-rung; decays on its own within this window of
     // stepping off, so it never lingers into a real firefight.
     ladderInvulnTopUp: 0.4,
+    // Aim (RMB, "ADS"): trades mobility for accuracy on any gun or the
+    // Spray Torch -- sprinting is blocked outright (see PLAYER.update) and
+    // walking itself slows to this fraction, similar in scale to the
+    // existing crouch penalty above.
+    adsSpeedMult: 0.55,
     // Downed is a second chance, not a safe room. You keep your head and the
     // Double Barrel, but the clock runs and reaching zero here is a real death.
     downedTime: 16, downedTilt: 0.34
@@ -1224,28 +1240,32 @@ const CONFIG = {
       magSize: 6, startMag: 6, startReserve: 18, maxReserve: 42,
       fireInterval: 0.44, reloadTime: 1.45, automatic: false,
       pellets: 8, damage: 15, spread: 0.05, range: 95,
-      recoilBack: 0.19, meleeDamage: 42, meleeRange: 2.35, meleeArc: 0.58
+      recoilBack: 0.19, meleeDamage: 42, meleeRange: 2.35, meleeArc: 0.58,
+      adsSpreadMult: 0.6
     },
     doubleBarrel: {
       id: 'doubleBarrel', name: 'Downed Double Barrel', slot: 90, kind: 'gun', ammoType: 'downedShells',
       magSize: 2, startMag: 0, startReserve: 0, maxReserve: 0,
       fireInterval: 0.62, reloadTime: 0, automatic: false, specialOnly: true,
       pellets: 14, damage: 22.5, spread: 0.105, range: 88,
-      recoilBack: 0.26, meleeDamage: 48, meleeRange: 2.35, meleeArc: 0.58
+      recoilBack: 0.26, meleeDamage: 48, meleeRange: 2.35, meleeArc: 0.58,
+      adsSpreadMult: 0.7
     },
     tinSixer: {
       id: 'tinSixer', name: 'Tin Sixer', slot: 3, kind: 'gun', ammoType: 'light',
       magSize: 6, startMag: 0, startReserve: 0, maxReserve: 60,
       fireInterval: 0.3, reloadTime: 1.2, automatic: false,
       pellets: 1, damage: 44, spread: 0.012, range: 115,
-      recoilBack: 0.13, meleeDamage: 38, meleeRange: 2.25, meleeArc: 0.58
+      recoilBack: 0.13, meleeDamage: 38, meleeRange: 2.25, meleeArc: 0.58,
+      adsSpreadMult: 0.5
     },
     fieldhand: {
       id: 'fieldhand', name: 'Fieldhand Carbine', slot: 4, kind: 'gun', ammoType: 'carbine',
       magSize: 24, startMag: 0, startReserve: 0, maxReserve: 144,
       fireInterval: 0.11, reloadTime: 1.65, automatic: true,
       pellets: 1, damage: 18, spread: 0.021, range: 105,
-      recoilBack: 0.065, meleeDamage: 40, meleeRange: 2.3, meleeArc: 0.58
+      recoilBack: 0.065, meleeDamage: 40, meleeRange: 2.3, meleeArc: 0.58,
+      adsSpreadMult: 0.55
     },
     chainsaw: {
       id: 'chainsaw', name: 'Emergency Chainsaw', slot: 91, kind: 'melee', specialOnly: true,
@@ -1262,7 +1282,7 @@ const CONFIG = {
       fireInterval: 0.58, reloadTime: 1.7, automatic: false,
       pellets: 12, damage: 20, spread: 0.024, range: 140,
       recoilBack: 0.27, meleeDamage: 46, meleeRange: 2.35, meleeArc: 0.58,
-      critChance: 0.05, critMultiplier: 1.5
+      critChance: 0.05, critMultiplier: 1.5, adsSpreadMult: 0.6
     },
     // Jeff's Knife Storm identity -- not wielded through the normal fire/
     // reload loop (the special fires all 5 as an automatic instant burst,
@@ -1285,7 +1305,7 @@ const CONFIG = {
       fireInterval: 0.9, reloadTime: 1.9, automatic: false,
       pellets: 1, damage: 70, spread: 0.006, range: 150,
       recoilBack: 0.32, meleeDamage: 44, meleeRange: 2.3, meleeArc: 0.58,
-      chargeTime: 0.55, projectileVisual: true
+      chargeTime: 0.55, projectileVisual: true, adsSpreadMult: 0.7
     },
     // A lighter in one hand, a can of spray paint in the other -- a whole
     // new weapon class ('flame'), not a reskinned gun: held fire sprays a
@@ -1293,13 +1313,17 @@ const CONFIG = {
     // discrete pellets. magSize/reserve are measured in fuel ticks
     // (tickInterval seconds each) instead of shots, so one can (magSize)
     // is a real ~8 seconds of stream. Reloading throws the spent can and
-    // pulls a fresh one (see WEAPON's reload animation reuse).
+    // pulls a fresh one (see WEAPON's reload animation reuse). Hip-fire
+    // stats below are the loose, sloppy spray; aiming (see fireFlame) is
+    // what actually brings the lighter to the nozzle for a real ignited
+    // cone -- narrower, longer, and hotter, via the ads*Mult fields.
     sprayTorch: {
       id: 'sprayTorch', name: 'Spray Torch', slot: 7, kind: 'flame', ammoType: 'spraycan',
       magSize: 80, startMag: 0, startReserve: 0, maxReserve: 240,
       fireInterval: 0, reloadTime: 1.3, automatic: true,
       tickInterval: 0.1, damage: 9, minDamage: 3, range: 7, arc: 0.82,
-      recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58
+      recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58,
+      adsArcMult: 0.6, adsRangeMult: 1.3, adsDamageMult: 1.3
     }
   },
   throwables: {
@@ -5605,7 +5629,7 @@ const INPUT = (() => {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
     melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
-    crouch: false, voiceTalk: false,
+    crouch: false, voiceTalk: false, ads: false,
     slot1: false, slot2: false, slot3: false, slot4: false
   };
   const pressed = {};
@@ -5968,6 +5992,7 @@ const INPUT = (() => {
     bindTouchButton('mobileJays', 'useJays');
     bindTouchButton('mobileCrouch', 'crouch');
     bindTouchButton('mobileTalk', 'voiceTalk');
+    bindTouchButton('mobileADS', 'ads');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -5989,10 +6014,14 @@ const INPUT = (() => {
     document.addEventListener('mousedown', e => {
       if (!engaged || mode === 'touch') return;
       if (e.button === 0) setAction('fire', true);
-      if (e.button === 2) triggerAction('melee');
+      // RMB used to be a melee shortcut; it's aim (ADS) now -- melee stays
+      // fully reachable on its own key (V by default), never lost.
+      if (e.button === 2) setAction('ads', true);
     });
     document.addEventListener('mouseup', e => {
-      if (e.button === 0 && mode !== 'touch') setAction('fire', false);
+      if (mode === 'touch') return;
+      if (e.button === 0) setAction('fire', false);
+      if (e.button === 2) setAction('ads', false);
     });
     document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
 
@@ -6104,6 +6133,7 @@ const PLAYER = (() => {
   let ironHideTimer = 0;
   let camera = null;
   let sprinting = false;
+  let aiming = false;
   let speedRatio = 0;
   let crouching = false, crouchAmount = 0, currentHeight = C.height;
   let sliding = false, slideTimer = 0;
@@ -6391,9 +6421,19 @@ const PLAYER = (() => {
     crouchAmount = UTIL.damp(crouchAmount, crouching ? 1 : 0, C.crouchLerpRate, dt);
     currentHeight = UTIL.lerp(C.height, C.height * C.crouchHeightMult, crouchAmount);
 
-    sprinting = !climbing && !crouching && active && !downed && INPUT.sprinting && moveInput.y > 0.25 && grounded;
+    // Aim (RMB, "ADS"): only guns and the Spray Torch support it (fists/
+    // chainsaw have nothing to steady), computed here rather than read back
+    // from WEAPON so it's ready this same frame for both the sprint gate
+    // below and WEAPON/GAME's own aim-driven visuals, which run right after
+    // this in the frame loop.
+    const currentWeaponDef = typeof WEAPON !== 'undefined' ? CONFIG.weapons[WEAPON.currentId] : null;
+    aiming = active && !downed && !climbing && INPUT.actions.ads &&
+      !!currentWeaponDef && (currentWeaponDef.kind === 'gun' || currentWeaponDef.kind === 'flame');
+
+    sprinting = !climbing && !crouching && active && !downed && !aiming && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * crouchSpeedFactor;
+    const aimSpeedFactor = aiming ? C.adsSpeedMult : 1;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * crouchSpeedFactor * aimSpeedFactor;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
@@ -6585,6 +6625,7 @@ const PLAYER = (() => {
     get crouchAmount() { return crouchAmount; },
     get sprinting() { return sprinting; },
     get speedRatio() { return speedRatio; },
+    get aiming() { return aiming; },
     get layerId() { return layerId; },
     get pitch() { return pitch; },
     get yaw() { return yaw; }
@@ -6955,6 +6996,12 @@ const WEAPON = (() => {
      animation nudges) with a lighter prop held up beside its nozzle. The
      flame itself is emitted separately as particles (see FX/fireFlame),
      not modeled here. */
+  /* Right hand grips the spray can (stays in place, aside from the reload
+     yank -- see model.forend); left hand carries the lighter on its own
+     pivot that update() lerps in against the nozzle whenever the player
+     fires or aims, and eases back out to a loose hip-carry otherwise (see
+     model.readyK). Two separate hands, not the shared armedHands rifle
+     grip every other gun uses -- see setCurrent's armedHands.visible gate. */
   function buildSprayTorch() {
     const g = new THREE.Group();
     rig.add(g);
@@ -6963,8 +7010,9 @@ const WEAPON = (() => {
     const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal() });
     const flint = MAT.toon(PAL.mustardDk);
 
+    // Right hand + spray can.
     const can = new THREE.Group();
-    can.position.set(0, -0.02, -0.28);
+    can.position.set(0.07, -0.05, -0.28);
     g.add(can);
     PRIM.cyl(0.11, 0.11, 0.46, 12, canBody, { parent: can, warp: 0.008, outline: 0.016, ray: false });
     PRIM.cyl(0.09, 0.11, 0.05, 12, canCap, { pos: [0, 0.255, 0], parent: can, outline: 0.012, ray: false });
@@ -6976,17 +7024,26 @@ const WEAPON = (() => {
     PRIM.cyl(0.018, 0.018, 0.14, 8, canCap, {
       pos: [0, 0.34, -0.06], rot: [Math.PI * 0.38, 0, 0], parent: can, outline: 0.007, ray: false
     });
+    glove(can, 0.1, -0.07, 0.16, -0.2, 1.05);
 
+    // Left hand + lighter, on its own pivot.
+    const lighterPivot = new THREE.Group();
+    const restPos = [-0.26, -0.1, -0.34];
+    lighterPivot.position.set(restPos[0], restPos[1], restPos[2]);
+    g.add(lighterPivot);
     const lighter = new THREE.Group();
-    lighter.position.set(0.14, 0.05, -0.42);
-    lighter.rotation.set(0.15, -0.3, 0.1);
-    g.add(lighter);
+    lighter.rotation.set(0.1, 0.35, -0.1);
+    lighterPivot.add(lighter);
     PRIM.box(0.06, 0.1, 0.03, lighterBody, { parent: lighter, warp: 0.01, outline: 0.011, ray: false });
-    PRIM.cyl(0.014, 0.014, 0.03, 8, flint, { pos: [0.015, 0.06, 0], parent: lighter, outline: 0.006, ray: false });
+    PRIM.cyl(0.014, 0.014, 0.03, 8, flint, { pos: [-0.015, 0.06, 0], parent: lighter, outline: 0.006, ray: false });
+    glove(lighterPivot, 0, -0.08, 0.03, 0.3, 1.0);
 
     const fx = flashes(g, 0.36, -0.34, 0.7);
     models.sprayTorch = {
       root: g, forend: can, flash: fx.flash, flash2: fx.flash2,
+      // The lighter's target spot when firing/aiming, right against the
+      // can's nozzle (see the nozzle's own local position just above).
+      lighterPivot: lighterPivot, lighterRestPos: restPos, lighterFirePos: [0.02, 0.28, -0.32], readyK: 0,
       base: [0.27, -0.27, -0.46], rot: [0.04, -0.1, 0.02]
     };
   }
@@ -7108,7 +7165,10 @@ const WEAPON = (() => {
     flameDry = false;
     setMuzzleVisible(false);
     Object.keys(models).forEach(k => { models[k].root.visible = k === id; });
-    armedHands.visible = d.kind === 'gun' || d.kind === 'flame';
+    // Spray Torch builds its own asymmetric pair of hands (lighter left,
+    // can right, see buildSprayTorch) instead of the generic two-fisted
+    // rifle grip every other gun shares.
+    armedHands.visible = d.kind === 'gun';
     syncHUD();
     if (!silent) UI.toast(d.name, 0.75);
     return true;
@@ -7233,11 +7293,13 @@ const WEAPON = (() => {
       damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
       critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1
     };
+    // Aim (RMB): tighter spread on any gun that defines adsSpreadMult.
+    const spread = (PLAYER.aiming && d.adsSpreadMult) ? d.spread * d.adsSpreadMult : d.spread;
     for (let i = 0; i < d.pellets; i++) {
       _t.copy(_d);
-      _t.x += UTIL.rng(-d.spread, d.spread);
-      _t.y += UTIL.rng(-d.spread, d.spread);
-      _t.z += UTIL.rng(-d.spread, d.spread);
+      _t.x += UTIL.rng(-spread, spread);
+      _t.y += UTIL.rng(-spread, spread);
+      _t.z += UTIL.rng(-spread, spread);
       _t.normalize();
       if (relayRemote || relayHost) {
         const payload = {
@@ -7330,10 +7392,19 @@ const WEAPON = (() => {
     s.mag--;
     syncHUD();
     AUDIO.gunshot(currentId);
+    // Aim (RMB) is the lighter actually meeting the spray -- a narrower,
+    // longer, hotter cone instead of the loose hip-fire spray. See also
+    // update()'s readyK, which brings the hands together the instant either
+    // fire or aim is held, not just once this tick lands.
+    const ads = PLAYER.aiming;
+    const flameRange = ads && d.adsRangeMult ? d.range * d.adsRangeMult : d.range;
+    const flameArc = ads && d.adsArcMult ? d.arc * d.adsArcMult : d.arc;
+    const flameDamage = (ads && d.adsDamageMult ? d.damage * d.adsDamageMult : d.damage) * damageMult;
+    const flameMinDamage = ads && d.adsDamageMult ? d.minDamage * d.adsDamageMult : d.minDamage;
     ENEMY.coneDamage(_o, _d, {
-      range: d.range, arc: d.arc, damage: d.damage * damageMult, minDamage: d.minDamage, force: 0.6
+      range: flameRange, arc: flameArc, damage: flameDamage, minDamage: flameMinDamage, force: 0.6
     });
-    const wallHit = FX.trace(_o, _d, d.range);
+    const wallHit = FX.trace(_o, _d, flameRange);
     if (wallHit && !(wallHit.object.userData && (wallHit.object.userData.enemyHit || wallHit.object.userData.playerHit))) {
       const n = wallHit.face ? wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld)
                               : _d.clone().negate();
@@ -7497,6 +7568,9 @@ const WEAPON = (() => {
     tSwayY = UTIL.damp(tSwayY, 0, 3.2, dt);
     swayX = UTIL.damp(swayX, tSwayX, VIEW.swayLerp, dt);
     swayY = UTIL.damp(swayY, tSwayY, VIEW.swayLerp, dt);
+    // Aim (RMB): only the weapon model's own cosmetic sway steadies up --
+    // never the real mouse-look, which would just feel laggy.
+    if (PLAYER.aiming) { swayX *= 0.35; swayY *= 0.35; }
 
     const sr = PLAYER.speedRatio;
     if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9 * (0.7 + sr * 0.8);
@@ -7535,6 +7609,21 @@ const WEAPON = (() => {
       if (model.chargeGlow) {
         const k = charging ? UTIL.clamp(chargeTimer / d.chargeTime, 0, 1) : 0;
         model.chargeGlow.scale.setScalar(1 + k * 0.9);
+      }
+      // Spray Torch: the left hand's lighter closes in on the can's nozzle
+      // the instant the player is spraying OR just aiming (readying it
+      // before the trigger, per the ADS design), easing back to a loose
+      // hip-carry the moment both let go -- see buildSprayTorch's
+      // lighterRestPos/lighterFirePos for the two ends of that lerp.
+      if (model.lighterPivot) {
+        const torchReady = INPUT.actions.fire || PLAYER.aiming;
+        model.readyK = UTIL.damp(model.readyK || 0, torchReady ? 1 : 0, 8, dt);
+        const rest = model.lighterRestPos, hot = model.lighterFirePos;
+        model.lighterPivot.position.set(
+          UTIL.lerp(rest[0], hot[0], model.readyK),
+          UTIL.lerp(rest[1], hot[1], model.readyK),
+          UTIL.lerp(rest[2], hot[2], model.readyK)
+        );
       }
     } else {
       const base = model.base || [0, 0, 0];
@@ -10006,6 +10095,13 @@ const GAME = (() => {
     const simRunning = running || hostSimActive;
 
     PLAYER.update(dt, running, look);
+    // Aim (RMB): a modest FOV pull-in, not a real scope -- reads as
+    // "steadying up" rather than zooming through glass.
+    const targetFov = (running && PLAYER.aiming) ? CONFIG.render.adsFov : CONFIG.render.fov;
+    if (Math.abs(camera.fov - targetFov) > 0.02) {
+      camera.fov = UTIL.damp(camera.fov, targetFov, CONFIG.render.adsFovLerp, dt);
+      camera.updateProjectionMatrix();
+    }
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned));
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead);
     CONSUMABLE.update(dt, running && !PLAYER.isDead);
