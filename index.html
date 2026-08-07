@@ -899,6 +899,31 @@
   .key-btn:hover{background:var(--cream);}
   .key-btn.listening{background:var(--mustard);animation:keyPulse 1s ease-in-out infinite;}
   @keyframes keyPulse{50%{opacity:.6;}}
+
+  /* ---------- Farm map (see MAPVIEW) ---------- */
+  #mapView .map-card{max-width:96vw;max-height:92vh;overflow-y:auto;}
+  #mapCanvases{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 4px;}
+  .map-panel{flex:0 0 auto;}
+  .map-panel-title{
+    margin:0 0 6px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
+    text-transform:uppercase;color:var(--rust-deep);
+  }
+  .map-panel canvas{
+    display:block;max-width:100%;height:auto;border:3px solid var(--ink);border-radius:8px;
+    box-shadow:3px 4px 0 rgba(22,18,15,.35);
+  }
+  #mapLegend{
+    list-style:none;margin:16px 0 4px;padding:0;display:flex;flex-wrap:wrap;gap:10px 18px;
+  }
+  #mapLegend li{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--ink-soft);}
+  .map-legend-swatch{display:inline-block;width:14px;height:14px;border-radius:3px;border:2px solid var(--ink);}
+  .map-legend-swatch.fence{background:var(--rust-deep);border-radius:1px;height:3px;}
+  .map-legend-swatch.structure{background:var(--mustard);}
+  .map-legend-swatch.room{background:var(--blue);opacity:.55;}
+  .map-legend-swatch.hatch{background:var(--rust);border-radius:50%;}
+  .map-legend-swatch.stairs{background:var(--olive);}
+  .map-legend-swatch.well{background:transparent;border-color:var(--blue-deep);border-radius:50%;}
+  @media (max-width:900px){#mapCanvases{flex-direction:column;}}
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -1055,6 +1080,7 @@
         <button class="go mode-coop" id="coopBtn">Online multiplayer →</button>
       </div>
       <button class="alt" id="startOptionsBtn">Options</button>
+      <button class="alt" id="startMapBtn">Farm Map</button>
       <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Choose a mode to begin</p>
     </div>
@@ -1181,6 +1207,33 @@
         <button class="alt" id="optResetControls">Reset controls to default</button>
       </div>
       <button class="go compact" id="optionsBackBtn">Back →</button>
+    </div>
+  </div>
+
+  <div id="mapView" class="veil hidden">
+    <div class="card map-card">
+      <p class="eyebrow">Farm Map</p>
+      <h1>The Layout<span>Surface and basement, one coordinated grid</span></h1>
+      <p class="sub">Columns run west to east, rows run north to south (row A / column 1 is the northwest corner) -- the same grid on both maps, so a spot called out on one lines up with the other.</p>
+      <div id="mapCanvases">
+        <div class="map-panel">
+          <p class="map-panel-title">Surface</p>
+          <canvas id="mapSurfaceCanvas"></canvas>
+        </div>
+        <div class="map-panel">
+          <p class="map-panel-title">Underground</p>
+          <canvas id="mapUndergroundCanvas"></canvas>
+        </div>
+      </div>
+      <ul id="mapLegend">
+        <li><i class="map-legend-swatch fence"></i>Fence line</li>
+        <li><i class="map-legend-swatch structure"></i>Structure</li>
+        <li><i class="map-legend-swatch room"></i>Basement room</li>
+        <li><i class="map-legend-swatch hatch"></i>Hatch</li>
+        <li><i class="map-legend-swatch stairs"></i>Stairs</li>
+        <li><i class="map-legend-swatch well"></i>Well / point of interest</li>
+      </ul>
+      <button class="go compact" id="mapBackBtn">Back →</button>
     </div>
   </div>
 
@@ -4910,6 +4963,312 @@ const LEVEL = (() => {
   }
 
   return { build, update, animated };
+})();
+
+/* ============================== [MAPVIEW] =============================
+   Main-menu farm map: a schematic top-down reference, not a live render of
+   the scene. Every coordinate below is a hand-maintained mirror of LEVEL's
+   own authored coordinates (buildFences, buildBarn, buildTower, buildSilo,
+   the HATCHES array, buildBasement's addSlab rooms, the stair opening) --
+   whoever edits a fence line, a room, or a hatch in LEVEL should update the
+   matching entry here too, the same discipline CONFIG's own comments ask
+   for elsewhere. Nothing in this module feeds back into collision, spawn
+   or level-building code -- it only ever draws.
+
+   One coordinate grid, shared by both the surface and underground canvases,
+   is what makes the two maps "coordinated": a hatch sits at the same grid
+   cell on both, and a location called out as e.g. "F4" means the same
+   patch of ground whichever map you're looking at. Columns are numbered
+   west->east, rows are lettered north->south (row A / column 1 is the
+   northwest corner) -- the same convention as a Battleship board. */
+const MAPVIEW = (() => {
+  const GRID = { cell: 10, cols: 7, rows: 12, originX: -35, originZ: -85 };
+
+  const THEME_SURFACE = { bg: '#D7C39A', ink: '#16120F', grid: 'rgba(22,18,15,0.22)' };
+  const THEME_UNDERGROUND = { bg: '#3A3530', ink: '#F0E6D2', grid: 'rgba(240,230,210,0.20)' };
+
+  // Straight-line approximations of buildFences' fenceRun() calls -- the
+  // real fences are gently bowed for visual variety, but a reference map
+  // only needs the boundary shape, not the bow.
+  const FENCES = [
+    [-30, 32, -3.6, 31.2], [3.6, 31.2, 30, 32],
+    [30, 32, 30.5, -51.6], [-30, -51.6, -30.5, 32],
+    [30.5, -51.6, 14, -51.6], [8, -51.6, -14, -51.6], [-20, -51.6, -30, -51.6],
+    [30.5, -51.6, 30.5, -80], [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
+    [30.5, -32, 14, -32], [8, -32, -14, -32], [-20, -32, -30, -32],
+    [-8, 24, -12, 14], [9, 25, 13, 20],
+    [4, 4, 4, -1], [11, 9, 24, 9.5], [24, 9.5, 24, 21]
+  ];
+
+  const STRUCTURES = [
+    { shape: 'rect', x: 6, z: -15, x2: 22, z2: -1, label: 'Barn' },
+    { shape: 'rect', x: -22.5, z: 12, x2: -15.5, z2: 18, label: 'Shed' },
+    { shape: 'circle', x: -17, z: -6.75, r: 2.6, label: 'Water Tower' },
+    { shape: 'circle', x: -6, z: -26, r: 2.2, label: 'Windmill' },
+    { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' }
+  ];
+
+  // Named landmarks pulled from the game's own signposts (PROPS.signPost
+  // calls in LEVEL) -- skips purely directional wayfinding signs ("THIS
+  // WAY", "YARD -> SHED") that don't name a place of their own.
+  const POIS = [
+    { x: 25.8, z: -5.2, label: 'The Good Spot' },
+    { x: 9.4, z: -35, label: 'North Pasture' },
+    { x: -21.5, z: -35, label: 'Back Forty' },
+    { x: -25, z: -25, label: 'Condemned Ruin' },
+    { x: 12.4, z: 10.2, label: 'Corn Field' }
+  ];
+
+  // Surface<->basement entrances -- same HATCHES array buildBasement reads,
+  // drawn at matching x/z on both maps since each is a straight vertical
+  // shaft. Labels add "Hatch" for the map; LEVEL's own ids stay terse.
+  const HATCHES = [
+    { x: 24.0, z: -9.5, label: 'Basement Hatch' },
+    { x: -24.0, z: 16.0, label: 'Seed Store Hatch' },
+    { x: -7.6, z: -30.0, label: 'Windmill Hatch' },
+    { x: -18.5, z: -44.8, label: 'Northwest Hatch' },
+    { x: 24.0, z: -72.0, label: 'Northeast Hatch' }
+  ];
+
+  // Real staircase (not a hatch) -- center of buildBasement's stairOpening,
+  // which sits inside the barn's own footprint on the surface map.
+  const STAIRS = [{ x: 17, z: -13, label: 'Barn Stairs' }];
+
+  // One-way drop only (see WORLD.addLadder's well_shaft_ladder) -- surface
+  // curb coordinates, mirrored onto the underground map at the same spot.
+  const WELL = [{ x: 3, z: 10, label: 'Well' }];
+
+  // Underground rooms + tunnels, mirroring every addSlab() call in
+  // buildBasement plus the hand-built initial_basement_room. Labeled
+  // entries are actual destinations; unlabeled entries are narrow
+  // connector tunnels, left unlabeled so the map doesn't get cluttered.
+  const ROOMS = [
+    { x: 8, z: -20, x2: 28, z2: -3, label: 'Basement' },
+    { x: -25, z: -18, x2: -12, z2: -5, label: 'Utility Room' },
+    { x: -10, z: -36, x2: 2, z2: -24, label: 'Root Cellar' },
+    { x: -27, z: -47.5, x2: -16, z2: -38.5, label: 'Grenade Room' },
+    { x: -25, z: 10, x2: -10, z2: 25, label: 'Generator Hall' },
+    { x: 9, z: -50.5, x2: 25, z2: -37.5, label: 'Relay Room' },
+    { x: 25, z: -47, x2: 30, z2: -41, label: 'Secret Cache' },
+    { x: 15, z: -79, x2: 27, z2: -67, label: 'Northeast Room' },
+    { x: 1.8, z: 8.8, x2: 4.2, z2: 11.2, label: 'Well Shaft' },
+    { x: -12.2, z: -13.3, x2: 7.9, z2: -9.7 },
+    { x: -5.8, z: -24, x2: -2.2, z2: -13.1 },
+    { x: -18.65, z: -34.8, x2: -10, z2: -31.2 },
+    { x: -20.3, z: -40.35, x2: -16.7, z2: -32.75 },
+    { x: -20.3, z: -4.9, x2: -16.7, z2: 10 },
+    { x: 2, z: -31.8, x2: 17.1, z2: -28.2 },
+    { x: 15.2, z: -38, x2: 18.8, z2: -31.1 },
+    { x: 18.2, z: -67.5, x2: 21.8, z2: -50 },
+    { x: 0, z: -72.8, x2: 15.5, z2: -69.2 },
+    { x: 0.2, z: -70, x2: 3.8, z2: -35.6 }
+  ];
+
+  function toXY(x, z, m) {
+    return [
+      m.marginLeft + (x - GRID.originX) / GRID.cell * m.cellPx,
+      m.marginTop + (z - GRID.originZ) / GRID.cell * m.cellPx
+    ];
+  }
+
+  function beginCanvas(canvas, theme) {
+    const cellPx = 42, marginTop = 38, marginLeft = 38, marginRight = 22, marginBottom = 22;
+    const w = marginLeft + GRID.cols * cellPx + marginRight;
+    const h = marginTop + GRID.rows * cellPx + marginBottom;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, w, h);
+    return { ctx: ctx, cellPx: cellPx, marginLeft: marginLeft, marginTop: marginTop, theme: theme };
+  }
+
+  function labelAt(ctx, x, y, text, color) {
+    ctx.font = '800 9.5px "Rockwell",Georgia,serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+  }
+
+  // Rooms and structures are anchored top-left rather than dead-center --
+  // several hatches genuinely drop into the middle of a named room (that's
+  // real level geometry, not a bug), so a centered room label would sit
+  // right on top of the hatch's own marker and label every time.
+  function labelAtCorner(ctx, x1, y1, text, color) {
+    ctx.font = '800 9.5px "Rockwell",Georgia,serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = color;
+    ctx.fillText(text, x1 + 5, y1 + 4);
+  }
+
+  function drawGridAndCompass(m) {
+    const ctx = m.ctx, cellPx = m.cellPx, marginLeft = m.marginLeft, marginTop = m.marginTop;
+    const cols = GRID.cols, rows = GRID.rows;
+    ctx.save();
+    ctx.strokeStyle = m.theme.grid;
+    ctx.lineWidth = 1;
+    for (let c = 0; c <= cols; c++) {
+      const x = marginLeft + c * cellPx;
+      ctx.beginPath(); ctx.moveTo(x, marginTop); ctx.lineTo(x, marginTop + rows * cellPx); ctx.stroke();
+    }
+    for (let r = 0; r <= rows; r++) {
+      const y = marginTop + r * cellPx;
+      ctx.beginPath(); ctx.moveTo(marginLeft, y); ctx.lineTo(marginLeft + cols * cellPx, y); ctx.stroke();
+    }
+    ctx.fillStyle = m.theme.ink;
+    ctx.font = '700 11px "Rockwell",Georgia,serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = 0; c < cols; c++) ctx.fillText(String(c + 1), marginLeft + c * cellPx + cellPx / 2, marginTop - 13);
+    for (let r = 0; r < rows; r++) ctx.fillText(String.fromCharCode(65 + r), marginLeft - 13, marginTop + r * cellPx + cellPx / 2);
+    ctx.font = '900 13px "Rockwell",Georgia,serif';
+    ctx.fillText('N', marginLeft + cols * cellPx / 2, 11);
+    ctx.fillText('S', marginLeft + cols * cellPx / 2, marginTop + rows * cellPx + 12);
+    ctx.fillText('W', 12, marginTop + rows * cellPx / 2);
+    ctx.fillText('E', marginLeft + cols * cellPx + 12, marginTop + rows * cellPx / 2);
+    ctx.restore();
+  }
+
+  function drawFences(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    ctx.strokeStyle = '#7E3F2A';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    FENCES.forEach(f => {
+      const p1 = toXY(f[0], f[1], m), p2 = toXY(f[2], f[3], m);
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]); ctx.lineTo(p2[0], p2[1]); ctx.stroke();
+    });
+    ctx.restore();
+  }
+
+  function drawStructures(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    ctx.strokeStyle = m.theme.ink;
+    ctx.lineWidth = 1.5;
+    STRUCTURES.forEach(s => {
+      ctx.fillStyle = '#E8A33D';
+      if (s.shape === 'rect') {
+        const p1 = toXY(s.x, s.z, m), p2 = toXY(s.x2, s.z2, m);
+        ctx.fillRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+        ctx.strokeRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+        labelAtCorner(ctx, p1[0], p1[1], s.label, m.theme.ink);
+      } else {
+        const c = toXY(s.x, s.z, m), rpx = s.r / GRID.cell * m.cellPx;
+        ctx.beginPath(); ctx.arc(c[0], c[1], rpx, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        labelAt(ctx, c[0], c[1] + rpx + 10, s.label, m.theme.ink);
+      }
+    });
+    ctx.restore();
+  }
+
+  function drawRooms(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    ROOMS.forEach(r => {
+      const p1 = toXY(r.x, r.z, m), p2 = toXY(r.x2, r.z2, m);
+      ctx.fillStyle = 'rgba(143,179,204,0.30)';
+      ctx.strokeStyle = m.theme.ink;
+      ctx.lineWidth = 1;
+      ctx.fillRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      ctx.strokeRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      if (r.label) labelAtCorner(ctx, p1[0], p1[1], r.label, m.theme.ink);
+    });
+    ctx.restore();
+  }
+
+  function drawPois(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    POIS.forEach(p => {
+      const c = toXY(p.x, p.z, m);
+      ctx.fillStyle = '#5C7E99';
+      ctx.beginPath(); ctx.arc(c[0], c[1], 3, 0, Math.PI * 2); ctx.fill();
+      labelAt(ctx, c[0], c[1] - 9, p.label, '#5C7E99');
+    });
+    ctx.restore();
+  }
+
+  function drawHatches(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    HATCHES.forEach(h => {
+      const c = toXY(h.x, h.z, m);
+      ctx.fillStyle = '#A85A3C';
+      ctx.beginPath(); ctx.arc(c[0], c[1], 5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = m.theme.ink;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = '#F6E9D2';
+      ctx.font = '900 7px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('H', c[0], c[1] + 0.5);
+      labelAt(ctx, c[0], c[1] - 11, h.label, '#A85A3C');
+    });
+    ctx.restore();
+  }
+
+  function drawStairs(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    STAIRS.forEach(s => {
+      const c = toXY(s.x, s.z, m);
+      ctx.fillStyle = '#6E7A42';
+      ctx.beginPath();
+      ctx.moveTo(c[0] - 5, c[1] + 5); ctx.lineTo(c[0] + 5, c[1] + 5); ctx.lineTo(c[0], c[1] - 5);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = m.theme.ink;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      labelAt(ctx, c[0], c[1] - 11, s.label, '#6E7A42');
+    });
+    ctx.restore();
+  }
+
+  function drawWell(m, label) {
+    const ctx = m.ctx;
+    ctx.save();
+    WELL.forEach(w => {
+      const c = toXY(w.x, w.z, m);
+      ctx.strokeStyle = '#5C7E99';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c[0], c[1], 4, 0, Math.PI * 2); ctx.stroke();
+      if (label) labelAt(ctx, c[0], c[1] - 11, w.label, '#5C7E99');
+    });
+    ctx.restore();
+  }
+
+  function drawSurface(canvas) {
+    if (!canvas) return;
+    const m = beginCanvas(canvas, THEME_SURFACE);
+    drawFences(m);
+    drawStructures(m);
+    drawPois(m);
+    drawWell(m, true);
+    drawStairs(m);
+    drawHatches(m);
+    drawGridAndCompass(m);
+  }
+
+  function drawUnderground(canvas) {
+    if (!canvas) return;
+    const m = beginCanvas(canvas, THEME_UNDERGROUND);
+    drawRooms(m);
+    drawWell(m, false);
+    drawStairs(m);
+    drawHatches(m);
+    drawGridAndCompass(m);
+  }
+
+  return { drawSurface, drawUnderground };
 })();
 
 /* =============================== [FX] ================================ */
@@ -8917,6 +9276,9 @@ const UI = (() => {
     el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
     el.options = document.getElementById('options');
+    el.mapView = document.getElementById('mapView');
+    el.mapSurfaceCanvas = document.getElementById('mapSurfaceCanvas');
+    el.mapUndergroundCanvas = document.getElementById('mapUndergroundCanvas');
     el.optMaster = document.getElementById('optMaster');
     el.optMasterVal = document.getElementById('optMasterVal');
     el.optSfx = document.getElementById('optSfx');
@@ -9728,6 +10090,21 @@ const UI = (() => {
     rebindingAction = null;
   }
 
+  /* Farm map (see MAPVIEW) -- same "veil layered on top" pattern as Options
+     above. Redrawn every time it opens rather than once at boot: canvas
+     sizing depends on devicePixelRatio, which is cheap to just re-read on
+     open instead of caching and hoping it never changes mid-session. */
+  function showMap() {
+    if (el.mapView) el.mapView.classList.remove('hidden');
+    if (typeof MAPVIEW !== 'undefined') {
+      MAPVIEW.drawSurface(el.mapSurfaceCanvas);
+      MAPVIEW.drawUnderground(el.mapUndergroundCanvas);
+    }
+  }
+  function hideMap() {
+    if (el.mapView) el.mapView.classList.add('hidden');
+  }
+
   let grainStep = 0, grainAcc = 0;
   function update(dt) {
     if (kickTimer > 0) {
@@ -9775,7 +10152,7 @@ const UI = (() => {
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showFallback, hideFallback,
-    showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding,
+    showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding, showMap, hideMap,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showKillcam, hideKillcam,
@@ -10458,6 +10835,11 @@ const GAME = (() => {
     document.getElementById('startOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
     document.getElementById('pauseOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
     document.getElementById('optionsBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideOptions(); });
+
+    // Farm map: same "veil layered over the start screen" pattern as
+    // Options above -- main-menu only, no pause-screen entry point.
+    document.getElementById('startMapBtn').addEventListener('click', e => { e.stopPropagation(); UI.showMap(); });
+    document.getElementById('mapBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideMap(); });
     document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optMusic').addEventListener('input', e => { SETTINGS.setMusic(e.target.value / 100); UI.syncOptionsUI(); });
