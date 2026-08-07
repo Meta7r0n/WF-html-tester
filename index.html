@@ -336,6 +336,31 @@
   }
   @keyframes chatCaret{50%{opacity:0;}}
 
+  /* ---------- Dev console (single-player only; see DEVCONSOLE) ---------- */
+  #devConsole{
+    position:fixed;left:0;top:0;right:0;z-index:90;
+    display:none;flex-direction:column;
+    background:rgba(10,9,8,.92);border-bottom:3px solid var(--mustard);
+    font:600 13px/1.5 "Consolas","Menlo",monospace;color:#D9EAD3;
+    max-height:46vh;padding:10px 14px 8px;
+  }
+  #devConsole.on{display:flex;}
+  #devConsoleLog{
+    flex:1;overflow-y:auto;display:flex;flex-direction:column;
+    gap:1px;margin-bottom:6px;max-height:34vh;
+  }
+  #devConsoleLog .line{white-space:pre-wrap;word-break:break-word;}
+  #devConsoleLog .line.cmd{color:#8EC6FF;}
+  #devConsoleLog .line.err{color:#FF8A7A;}
+  #devConsoleLog .line.ok{color:#B7E08C;}
+  #devConsoleInputBar{display:flex;align-items:center;gap:6px;}
+  #devConsoleInputBar b{color:var(--mustard);}
+  #devConsoleInputBar span{flex:1;word-break:break-word;}
+  #devConsoleInputBar span::after{
+    content:'';display:inline-block;width:7px;height:14px;background:#D9EAD3;
+    margin-left:2px;vertical-align:middle;animation:chatCaret 1s steps(1) infinite;
+  }
+
   /* ---------- Voice chat indicator ---------- */
   #voiceChip{
     display:flex;align-items:center;gap:8px;margin-top:8px;
@@ -927,6 +952,10 @@
   <div id="killcamBars" aria-hidden="true"><i class="bar top"></i><i class="bar bottom"></i></div>
   <div id="chatLog" aria-live="polite"></div>
   <div id="chatInputBar"><b>Chat</b><span id="chatComposing"></span></div>
+  <div id="devConsole" aria-live="polite">
+    <div id="devConsoleLog"></div>
+    <div id="devConsoleInputBar"><b>&gt;</b><span id="devConsoleInput"></span></div>
+  </div>
   <div id="announcerBanner" aria-live="polite"></div>
   <div id="bossHud" aria-live="polite">
     <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
@@ -6147,6 +6176,15 @@ const INPUT = (() => {
   }
 
   function onKey(e, down) {
+    // Dev console owns the keyboard outright while open, same reasoning as
+    // CHAT below -- checked first since the two are mutually exclusive and
+    // this one also claims Escape (to close itself) ahead of the pointer-
+    // lock-exit handling further down.
+    if (typeof DEVCONSOLE !== 'undefined' && DEVCONSOLE.isOpen()) {
+      if (down) DEVCONSOLE.handleKeyDown(e);
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
     // Text chat owns the keyboard outright while composing -- every key goes
     // to CHAT's own buffer instead of the normal action map, so typing "sad"
     // never also strafes the player. See CHAT.handleKeyDown.
@@ -6164,6 +6202,11 @@ const INPUT = (() => {
     }
     if (down && e.code === 'Enter' && typeof CHAT !== 'undefined' && CHAT.canOpen()) {
       CHAT.open();
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
+    if (down && e.code === 'Backquote' && typeof DEVCONSOLE !== 'undefined' && DEVCONSOLE.canOpen()) {
+      DEVCONSOLE.open();
       if (e.preventDefault) e.preventDefault();
       return;
     }
@@ -8922,6 +8965,9 @@ const UI = (() => {
     el.chatLog = document.getElementById('chatLog');
     el.chatInputBar = document.getElementById('chatInputBar');
     el.chatComposing = document.getElementById('chatComposing');
+    el.devConsole = document.getElementById('devConsole');
+    el.devConsoleLog = document.getElementById('devConsoleLog');
+    el.devConsoleInput = document.getElementById('devConsoleInput');
     el.voiceChip = document.getElementById('voiceChip');
     el.announcerBanner = document.getElementById('announcerBanner');
     el.matchOver = document.getElementById('matchOver');
@@ -9137,6 +9183,24 @@ const UI = (() => {
   }
   function showChatInput(on) { if (el.chatInputBar) el.chatInputBar.classList.toggle('on', !!on); }
   function setChatComposing(text) { if (el.chatComposing) el.chatComposing.textContent = text || ''; }
+
+  /* Dev console (see DEVCONSOLE) -- a persistent scrollback rather than
+     chat's fading toast lines, since a tester wants to read back what a
+     command actually did. */
+  function showDevConsole(on) {
+    if (el.devConsole) el.devConsole.classList.toggle('on', !!on);
+  }
+  function setDevConsoleInput(text) { if (el.devConsoleInput) el.devConsoleInput.textContent = text || ''; }
+  function pushDevConsoleLog(text, cls) {
+    if (!el.devConsoleLog) return;
+    const line = document.createElement('div');
+    line.className = 'line' + (cls ? ' ' + cls : '');
+    line.textContent = text;
+    el.devConsoleLog.appendChild(line);
+    while (el.devConsoleLog.children.length > 80) el.devConsoleLog.removeChild(el.devConsoleLog.firstChild);
+    el.devConsoleLog.scrollTop = el.devConsoleLog.scrollHeight;
+  }
+  function clearDevConsoleLog() { if (el.devConsoleLog) el.devConsoleLog.textContent = ''; }
   function setVoiceChip(enabled, talking) {
     if (!el.voiceChip) return;
     el.voiceChip.classList.toggle('on', !!enabled);
@@ -9717,6 +9781,7 @@ const UI = (() => {
     showKillcam, hideKillcam,
     showCrewLeft, hideCrewLeft,
     pushChat, showChatInput, setChatComposing, setVoiceChip,
+    showDevConsole, setDevConsoleInput, pushDevConsoleLog, clearDevConsoleLog,
     get rebindingAction() { return rebindingAction; },
     showPlayerSelect, hidePlayerSelect,
     setRadarContacts, drawRadar,
@@ -13259,6 +13324,17 @@ const ENEMY = (() => {
     });
   }
 
+  /* Dev console only (see DEVCONSOLE) -- creates a single grunt at an
+     arbitrary point instead of pulling from the level's fixed spawn-marker
+     pool spawnAdditional above draws from, so a tester can conjure enemies
+     next to themselves on demand without exhausting or fighting over that
+     pool's bookkeeping (usedMarkerKinds). */
+  function spawnGrunt(id, point) {
+    const rosterId = (id && CAST.ROSTER[id]) ? id : ENEMY_ROSTER[Math.floor(Math.random() * ENEMY_ROSTER.length)];
+    const marker = { layerId: PLAYER.layerId, kind: 'dev_console', position: point };
+    return create(rosterId, marker);
+  }
+
   function init(mainScene) {
     scene = mainScene;
     boss = null;
@@ -15037,7 +15113,7 @@ const ENEMY = (() => {
   return {
     init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
-    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo,
+    rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -15046,6 +15122,7 @@ const ENEMY = (() => {
     get boss2() { return boss2; },
     get bossState3() { return bossState3; },
     get boss3() { return boss3; },
+    get roster() { return ENEMY_ROSTER; },
     aliveCount, radarContacts
   };
 })();
@@ -16291,6 +16368,204 @@ const CHAT = (() => {
   }
 
   return { isOpen, canOpen, open, close, send, receive, handleKeyDown, promptSend };
+})();
+
+/* ============================== [DEVCONSOLE] ==========================
+   Backtick-toggled command line for the developer's own single-player
+   testing -- spawn weapons/ammo/pickups/throwables/buffs, conjure grunts
+   or mini bosses next to yourself, reset/clear the roster, all without
+   walking the map or grinding kill thresholds. Single-player only: nothing
+   here is relayed over COOP, so opening it in coop/FFA/teams would silently
+   desync every other client's view of the match.
+
+   Follows the exact same "owns the keyboard while composing" pattern as
+   CHAT above (hand-rolled buffer, INPUT.onKey's isOpen() gate) rather than
+   a focused DOM <input>, for the same reason: no focus-vs-pointer-lock
+   interaction to reason about.
+
+   spawn <id> resolves against PICKUP.definitions -- by def id, or by
+   whatever CONFIG-level id the def wraps (weaponId/ammoType/throwableId/
+   consumableId/buffId) -- so every weapon, pickup and throwable that gets
+   added to the game from here on is automatically spawnable with zero
+   changes to this module. ===================================================================== */
+const DEVCONSOLE = (() => {
+  let openFlag = false, buffer = '';
+
+  function isOpen() { return openFlag; }
+  function canOpen() {
+    return !openFlag && typeof GAME !== 'undefined' && GAME.mode === 'single' &&
+      typeof INPUT !== 'undefined' && INPUT.engaged;
+  }
+  function open() {
+    if (openFlag) return;
+    openFlag = true;
+    buffer = '';
+    if (typeof INPUT !== 'undefined') INPUT.clearActions();
+    if (typeof UI !== 'undefined') { UI.showDevConsole(true); UI.setDevConsoleInput(''); UI.clearDevConsoleLog(); }
+    log('Dev console -- type "help" for commands, backtick or "close" to exit.');
+  }
+  function close() {
+    openFlag = false;
+    if (typeof UI !== 'undefined') UI.showDevConsole(false);
+  }
+
+  function log(text, cls) {
+    if (typeof UI !== 'undefined') UI.pushDevConsoleLog(text, cls || '');
+  }
+
+  // A few meters in front of wherever the player is currently facing,
+  // ground-resolved on their current layer -- same convention ENEMY.create
+  // uses for every other spawn marker (see B3.spawn handling in spawnBoss3).
+  function pointNear(distance) {
+    const p = PLAYER.position;
+    const yaw = PLAYER.yaw;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const x = p.x + fx * distance, z = p.z + fz * distance;
+    const y = WORLD.groundAt(x, z, p.y + 0.8, PLAYER.layerId);
+    return new THREE.Vector3(x, y, z);
+  }
+
+  function resolveSpawnable(key) {
+    const defs = PICKUP.definitions;
+    const raw = (key || '').trim();
+    if (!raw) return null;
+    if (defs[raw]) return raw;
+    const lower = raw.toLowerCase();
+    for (const id in defs) {
+      const d = defs[id];
+      if (id.toLowerCase() === lower) return id;
+      if (d.weaponId && d.weaponId.toLowerCase() === lower) return id;
+      if (d.ammoType && d.ammoType.toLowerCase() === lower) return id;
+      if (d.throwableId && d.throwableId.toLowerCase() === lower) return id;
+      if (d.consumableId && d.consumableId.toLowerCase() === lower) return id;
+      if (d.buffId && d.buffId.toLowerCase() === lower) return id;
+    }
+    return null;
+  }
+
+  const ENEMY_ALIASES = { reaper: 'reaper', howler: 'howler', gaper: 'gaper', grinner: 'grinner' };
+  const BOSS_ALIASES = {
+    warden: 'boss', carrotwarden: 'boss', carrot: 'boss', boss1: 'boss',
+    bearclaw: 'boss2', claw: 'boss2', bear: 'boss2', boss2: 'boss2',
+    beatslayer: 'boss3', slayer: 'boss3', beat: 'boss3', boss3: 'boss3'
+  };
+  const BOSS_META = {
+    boss: { spawn: () => ENEMY.spawnBoss(), state: () => ENEMY.bossState, name: 'Carrot Warden' },
+    boss2: { spawn: () => ENEMY.spawnBoss2(), state: () => ENEMY.bossState2, name: 'Bear Claw' },
+    boss3: { spawn: () => ENEMY.spawnBoss3(), state: () => ENEMY.bossState3, name: 'Beat Slayer' }
+  };
+
+  function cmdHelp() {
+    log('spawn <id>        spawn+grant a weapon/ammo/pickup/throwable/buff near you');
+    log('enemy [type] [n]  spawn n (default 1, max 10) grunts near you');
+    log('boss <name>       spawn a mini boss near you (warden/bearclaw/beatslayer)');
+    log('killenemies       instantly kill every non-boss enemy on the map');
+    log('resetenemies      reset kills + all enemy/boss state for a clean retest');
+    log('list              list every spawnable id, enemy type and boss name');
+    log('clear             clear this log');
+    log('close             close the console (backtick/Escape also work)');
+  }
+
+  function cmdList() {
+    const defs = PICKUP.definitions;
+    const groups = {};
+    Object.keys(defs).forEach(id => {
+      const d = defs[id];
+      const alias = d.weaponId || d.ammoType || d.throwableId || d.consumableId || d.buffId || id;
+      (groups[d.type] || (groups[d.type] = [])).push(alias);
+    });
+    Object.keys(groups).sort().forEach(type => log(type.toUpperCase() + ': ' + groups[type].join(', ')));
+    log('ENEMIES: ' + (ENEMY.roster || []).join(', '));
+    log('BOSSES: warden, bearclaw, beatslayer');
+  }
+
+  function cmdSpawn(args) {
+    const key = args[0];
+    if (!key) { log('Usage: spawn <id> -- try "list" to see spawnable ids', 'err'); return; }
+    const defId = resolveSpawnable(key);
+    if (!defId) { log('Unknown spawnable "' + key + '" -- try "list"', 'err'); return; }
+    const p = PLAYER.position;
+    const y = WORLD.groundAt(p.x, p.z, p.y + 0.8, PLAYER.layerId);
+    PICKUP.spawn(defId, { x: p.x, y: y, z: p.z });
+    log('Spawned ' + PICKUP.definitions[defId].label, 'ok');
+  }
+
+  function cmdEnemy(args) {
+    const typeArg = (args[0] || '').toLowerCase();
+    const id = typeArg ? ENEMY_ALIASES[typeArg] : null;
+    if (typeArg && !id) { log('Unknown enemy type "' + args[0] + '" -- try reaper, howler, gaper, grinner', 'err'); return; }
+    const count = Math.max(1, Math.min(10, parseInt(args[1], 10) || 1));
+    for (let i = 0; i < count; i++) ENEMY.spawnGrunt(id, pointNear(2.4 + i * 0.7));
+    log('Spawned ' + count + ' ' + (id || 'random') + ' enem' + (count === 1 ? 'y' : 'ies'), 'ok');
+  }
+
+  function cmdBoss(args) {
+    const which = BOSS_ALIASES[(args[0] || '').toLowerCase()];
+    if (!which) { log('Usage: boss <warden|bearclaw|beatslayer>', 'err'); return; }
+    const meta = BOSS_META[which];
+    const state = meta.state();
+    if (state !== 'inactive') { log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err'); return; }
+    const boss = meta.spawn();
+    const pt = pointNear(4.5);
+    boss.pos.copy(pt);
+    boss.group.position.copy(pt);
+    log(meta.name + ' spawned', 'ok');
+  }
+
+  function cmdKillEnemies() {
+    let n = 0;
+    const dir = new THREE.Vector3(0, 0, 1);
+    ENEMY.list.forEach(e => {
+      if (e.alive && !e.isBoss && !e.isBoss2 && !e.isBoss3) {
+        ENEMY.applyDamage(e, 99999, e.pos, dir, 'body');
+        n++;
+      }
+    });
+    log('Killed ' + n + ' enem' + (n === 1 ? 'y' : 'ies'), 'ok');
+  }
+
+  function cmdResetEnemies() {
+    ENEMY.reset();
+    log('Enemy/boss state reset (kills back to 0)', 'ok');
+  }
+
+  const COMMANDS = {
+    help: cmdHelp, list: cmdList, spawn: cmdSpawn, enemy: cmdEnemy, boss: cmdBoss,
+    killenemies: cmdKillEnemies, resetenemies: cmdResetEnemies,
+    clear: function () { if (typeof UI !== 'undefined') UI.clearDevConsoleLog(); },
+    close: close, exit: close, quit: close
+  };
+
+  function execute(line) {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    log('> ' + trimmed, 'cmd');
+    const parts = trimmed.split(/\s+/);
+    const fn = COMMANDS[parts[0].toLowerCase()];
+    if (!fn) { log('Unknown command "' + parts[0] + '" -- try "help"', 'err'); return; }
+    try { fn(parts.slice(1)); } catch (err) { log('Error: ' + err.message, 'err'); }
+  }
+
+  function handleKeyDown(e) {
+    if (e.code === 'Backquote' || e.code === 'Escape') { close(); return; }
+    if (e.code === 'Enter') {
+      const text = buffer;
+      buffer = '';
+      if (typeof UI !== 'undefined') UI.setDevConsoleInput('');
+      execute(text);
+      return;
+    }
+    if (e.code === 'Backspace') {
+      buffer = buffer.slice(0, -1);
+    } else if (e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      buffer += e.key;
+    } else {
+      return;
+    }
+    if (typeof UI !== 'undefined') UI.setDevConsoleInput(buffer);
+  }
+
+  return { isOpen, canOpen, open, close, handleKeyDown };
 })();
 
 /* ============================== [BOOT] ===============================
