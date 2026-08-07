@@ -1385,11 +1385,17 @@ const CONFIG = {
     catwalkY: 3.5
   },
   enemy: {
-    count: 8,
+    // v0.22.01-EAST: the corn maze + horse stable add roughly +20% to the
+    // farm's developed footprint (see the buildCornMaze/buildHorseStable
+    // comments in LEVEL) -- count and coopMax both scale by the same +20%
+    // (8->10, 18->22) so the new ground isn't noticeably emptier than the
+    // rest of the map. New WORLD.addSpawn markers ('corn_maze_1/2/3',
+    // 'horse_stable') give spawnAdditional real, in-zone places to put them.
+    count: 10,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
     coopPerExtraPlayer: 3,
-    coopMax: 18,
+    coopMax: 22,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -3821,6 +3827,164 @@ const LEVEL = (() => {
     WORLD.addSpawn(-7, 0, -43, 'north_pasture');
   }
 
+  /* ---------------- East side: corn maze ----------------
+     Fills the previously-empty stretch east of the barn/original field with
+     a real maze: a recursive-backtracker perfect maze over a grid of 3m
+     cells, walled with corn, then loosened with a handful of extra knocked-
+     down walls so multiplayer coop has flanking routes instead of one true
+     path. Uses the level's own seeded RNG (see UTIL.setSeed in build()), so
+     the layout is stable across loads like everything else on this farm.
+
+     The grid spans a big bounding rectangle, but four EXCLUDE zones carve
+     out the ground the existing barn, original corn field (buildField --
+     untouched, still exactly where it was), hidden nook and North Pasture
+     shelter already occupy: any maze wall whose position falls inside one
+     of those boxes is simply skipped, so the maze naturally flows around
+     (and connects into) what's already there instead of overwriting it. */
+  function buildCornMaze(parent) {
+    const X0 = 9, X1 = 30, Z0 = -36, Z1 = 25, CELL = 3.0;
+    const cols = Math.floor((X1 - X0) / CELL), rows = Math.floor((Z1 - Z0) / CELL);
+    const EXCLUDE = [
+      { x0: 10, x1: 25, z0: 7, z1: 23 },      // original corn field (buildField)
+      { x0: 21, x1: 29.5, z0: -17, z1: -1 },  // hidden nook / "the good spot"
+      { x0: 4, x1: 25.5, z0: -17, z1: 1 },    // barn + stair vestibule bump-out
+      { x0: 13, x1: 25, z0: -47, z1: -36 }    // north pasture shelter + scatter
+    ];
+    function excluded(cx, cz) {
+      return EXCLUDE.some(e => cx >= e.x0 && cx <= e.x1 && cz >= e.z0 && cz <= e.z1);
+    }
+
+    const idx = (c, r) => r * cols + c;
+    // dir order: N, E, S, W -- opposite[i] is the reciprocal wall on the neighbor.
+    const DX = [0, 1, 0, -1], DZ = [-1, 0, 1, 0], OPP = [2, 3, 0, 1];
+    const visited = new Array(cols * rows).fill(false);
+    const open = [];
+    for (let i = 0; i < cols * rows; i++) open.push([false, false, false, false]);
+
+    const stack = [[0, 0]];
+    visited[idx(0, 0)] = true;
+    while (stack.length) {
+      const cur = stack[stack.length - 1];
+      const c = cur[0], r = cur[1];
+      const options = [];
+      for (let d = 0; d < 4; d++) {
+        const nc = c + DX[d], nr = r + DZ[d];
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (!visited[idx(nc, nr)]) options.push([nc, nr, d]);
+      }
+      if (options.length === 0) { stack.pop(); continue; }
+      const pick = options[Math.floor(UTIL.rand() * options.length)];
+      open[idx(c, r)][pick[2]] = true;
+      open[idx(pick[0], pick[1])][OPP[pick[2]]] = true;
+      visited[idx(pick[0], pick[1])] = true;
+      stack.push([pick[0], pick[1]]);
+    }
+    // Knock down extra walls for combat flanking routes -- a perfect maze
+    // has exactly one path between any two cells, which reads as puzzle
+    // design, not a farm you can fight through.
+    const extraCuts = Math.floor(cols * rows * 0.12);
+    for (let i = 0; i < extraCuts; i++) {
+      const c = Math.floor(UTIL.rand() * cols), r = Math.floor(UTIL.rand() * rows);
+      const d = Math.floor(UTIL.rand() * 4);
+      const nc = c + DX[d], nr = r + DZ[d];
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      open[idx(c, r)][d] = true;
+      open[idx(nc, nr)][OPP[d]] = true;
+    }
+
+    const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
+    const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
+    const WALL_H = 2.4;
+    function cornWall(cx, cz, horizontal) {
+      if (excluded(cx, cz)) return;
+      for (let i = 0; i < 5; i++) {
+        const t = (i + 0.5) / 5 - 0.5;
+        const x = horizontal ? cx + t * CELL : cx + UTIL.rng(-0.15, 0.15);
+        const z = horizontal ? cz + UTIL.rng(-0.15, 0.15) : cz + t * CELL;
+        const h = UTIL.rng(2.1, 2.6);
+        stalks.cyl(0.06, 0.09, h, 6, x, h / 2, z, 0, 0, UTIL.rng(-.08, .08));
+        for (let l = 0; l < 2; l++) {
+          const a = UTIL.rng(0, 6.28);
+          leaves.box(0.85, 0.05, 0.2, x + Math.cos(a) * 0.35, h * UTIL.rng(0.5, 0.85), z + Math.sin(a) * 0.35,
+            0, a, UTIL.rng(-.4, -.1), 0.02);
+        }
+      }
+      WORLD.addFloor(cx, 0, cz, horizontal ? CELL : 0.5, WALL_H, horizontal ? 0.5 : CELL, 'corn_wall');
+    }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cx = X0 + c * CELL + CELL / 2, cz = Z0 + r * CELL + CELL / 2;
+        if (excluded(cx, cz)) continue;
+        const o = open[idx(c, r)];
+        if (!o[0] && r === 0) cornWall(cx, Z0 + r * CELL, true);          // north perimeter
+        if (!o[1] && c === cols - 1) cornWall(X0 + (c + 1) * CELL, cz, false); // east perimeter
+        if (!o[2]) cornWall(cx, Z0 + (r + 1) * CELL, true);               // south edge (owns every interior N/S wall)
+        if (!o[3] && c === 0) cornWall(X0 + c * CELL, cz, false);         // west perimeter
+      }
+    }
+    stalks.build(parent);
+    leaves.build(parent, { ray: false });
+
+    // A couple of waypoints so the maze reads as a deliberate attraction and
+    // gives players a landmark to navigate by, same convention as every
+    // other zone's signposts.
+    PROPS.signPost(parent, 20.0, 22.0, ['CORN MAZE'], -0.25,
+      { w: 1.8, h: 0.8, bg: PAL.mustard, fg: PAL.oliveDeep, postH: 1.6 });
+    PROPS.hayBale(parent, 16.5, 0, -6.5, 0.15);
+    PROPS.hayBale(parent, 17.3, 0, -6.2, -0.2);
+    PROPS.crate(parent, 27.0, 0, 5.0, 0.9, 0.4);
+
+    WORLD.addSpawn(15.0, 0, 12.0, 'corn_maze_1');
+    WORLD.addSpawn(26.0, 0, -6.0, 'corn_maze_2');
+    WORLD.addSpawn(12.0, 0, -20.0, 'corn_maze_3');
+  }
+
+  /* ---------------- East side: horse stable ----------------
+     North end of the corn maze, at the same latitude as North Pasture but
+     east of its shelter footprint -- an open-sided structure (roof + posts,
+     partial stall dividers, hay/crate cover) rather than a sealed building,
+     so it reads as a real firefight arena instead of another loot room. */
+  function buildHorseStable(parent) {
+    const CX = 25, CZ = -45, HW = 4, HD = 4.5, POST_H = 3.1, ROOF_Y = 3.35;
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const b = new PRIM.Batch(timber, 0.045);
+
+    const posts = [[-HW, -HD], [HW, -HD], [-HW, HD], [HW, HD], [-HW, 0], [HW, 0]];
+    posts.forEach(p => {
+      b.box(0.32, POST_H, 0.32, CX + p[0], POST_H / 2, CZ + p[1], 0, 0, UTIL.rng(-.03, .03), 0.02);
+      WORLD.addFloor(CX + p[0], 0, CZ + p[1], 0.48, POST_H, 0.48, 'stable_post');
+    });
+    // Open-sided roof -- no walls underneath, keeping every sightline
+    // between the posts a legal firing lane.
+    b.box(HW * 2 + 0.6, 0.3, HD * 2 + 0.6, CX, ROOF_Y, CZ, 0, 0, -0.012, 0.03);
+    b.build(parent);
+    WORLD.add(CX, ROOF_Y, CZ, HW * 2 + 0.6, 0.3, HD * 2 + 0.6, 'stable_roof');
+
+    // A pair of low stall dividers -- waist-high cover, not sightline blockers.
+    const rail = new PRIM.Batch(timber, 0.04);
+    rail.box(0.16, 1.05, HD * 2 - 1.0, CX - HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
+    rail.box(0.16, 1.05, HD * 2 - 1.0, CX + HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
+    rail.build(parent);
+    WORLD.addFloor(CX - HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
+    WORLD.addFloor(CX + HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
+
+    PROPS.hayBale(parent, CX - HW + 1.2, 0, CZ - HD + 1.2, 0.2);
+    PROPS.hayBale(parent, CX - HW + 1.0, 0, CZ, -0.15);
+    PROPS.hayBale(parent, CX + HW - 1.2, 0, CZ + HD - 1.2, 0.3);
+    PROPS.crate(parent, CX + HW - 1.0, 0, CZ - HD + 1.4, 0.95, -0.3);
+    PROPS.barrel(parent, CX, CZ - HD + 1.0, { color: PAL.rust });
+    PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ - HD + 0.4, 0);
+    PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ + HD - 0.4, 0);
+    // A stray tree already stood near (28,-44) before this structure existed
+    // (see buildNorthPasture's windbreak scatter) -- left in place rather
+    // than relocated, reading as one growing through the stable's east edge.
+    PROPS.signPost(parent, CX, CZ - HD - 1.6, ['HORSE STABLE'], 0,
+      { w: 2.0, h: 0.8, bg: PAL.cream, fg: PAL.rustDeep, postH: 1.6 });
+
+    WORLD.addSpawn(CX, 0, CZ, 'horse_stable');
+  }
+
   /* ---------------- Silo Row: orchard approach ----------------
      Ground-level dressing between the siloTransition breach and the silo
      base -- short sightlines through tree cover, distinct from the
@@ -4928,6 +5092,8 @@ const LEVEL = (() => {
     buildNook(root);
     buildScatter(root);
     buildNorthPasture(root);
+    buildCornMaze(root);
+    buildHorseStable(root);
     buildOrchard(root);
     buildSilo(root);
     buildCatwalks(root);
@@ -5005,7 +5171,15 @@ const MAPVIEW = (() => {
     { shape: 'rect', x: -22.5, z: 12, x2: -15.5, z2: 18, label: 'Shed' },
     { shape: 'circle', x: -17, z: -6.75, r: 2.6, label: 'Water Tower' },
     { shape: 'circle', x: -6, z: -26, r: 2.2, label: 'Windmill' },
-    { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' }
+    { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' },
+    { shape: 'rect', x: 21, z: -49.5, x2: 29, z2: -40.5, label: 'Horse Stable' }
+  ];
+
+  // Bounding outline of the corn maze (see buildCornMaze) -- drawn as a
+  // dashed outline rather than a filled structure, since a solid fill over
+  // an area this size would bury every hatch/POI marker inside it.
+  const MAZES = [
+    { x: 9, z: -36, x2: 30, z2: 25, label: 'Corn Maze' }
   ];
 
   // Named landmarks pulled from the game's own signposts (PROPS.signPost
@@ -5148,6 +5322,21 @@ const MAPVIEW = (() => {
     ctx.restore();
   }
 
+  function drawMazes(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    MAZES.forEach(mz => {
+      const p1 = toXY(mz.x, mz.z, m), p2 = toXY(mz.x2, mz.z2, m);
+      ctx.strokeStyle = '#6E7A42';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      ctx.setLineDash([]);
+      labelAtCorner(ctx, p1[0], p1[1], mz.label, '#6E7A42');
+    });
+    ctx.restore();
+  }
+
   function drawStructures(m) {
     const ctx = m.ctx;
     ctx.save();
@@ -5250,6 +5439,7 @@ const MAPVIEW = (() => {
     if (!canvas) return;
     const m = beginCanvas(canvas, THEME_SURFACE);
     drawFences(m);
+    drawMazes(m);
     drawStructures(m);
     drawPois(m);
     drawWell(m, true);
@@ -10248,7 +10438,21 @@ const PICKUP = (() => {
     { id: 'batteryPack', x: 9.0, z: 18.0 },                    // house side, for players who'd rather not detour underground
     { id: 'sprayTorchWeapon', x: 4.0, y: 8.2, z: -65.0 },      // silo deck: exposed, high-value ground
     { id: 'spraycanBox', x: -3.0, y: 8.2, z: -67.0 },          // same deck
-    { id: 'spraycanBox', x: 19.0, z: -1.0 }                    // field side, convenient restock
+    { id: 'spraycanBox', x: 19.0, z: -1.0 },                   // field side, convenient restock
+
+    // v0.22.01-EAST: corn maze + horse stable. Spread through open maze
+    // lanes (never inside a corn wall cell) so exploring the new ground pays
+    // off regardless of which route through the maze a player takes.
+    { id: 'lightAmmo', x: 13.5, z: -28.5 },    // maze, northwest lane
+    { id: 'shellBox', x: 25.5, z: -25.5 },     // maze, northeast lane
+    { id: 'healthTonic', x: 10.5, z: -20.5 },  // maze, west edge
+    { id: 'carbineAmmo', x: 28.5, z: -20.5 },  // maze, east edge
+    { id: 'jaysPack', x: 19.5, z: -19.5 },     // maze, center-north
+    { id: 'shieldCell', x: 13.5, z: 3.5 },     // maze, south gap near the original field
+    { id: 'grenadeBundle', x: 28.5, z: 3.5 },  // maze, south-east gap
+    { id: 'batteryPack', x: 27.5, z: 12.0 },   // maze, east of the original field
+    { id: 'healthTonic', x: 10.5, z: 24.0 },   // maze, south entrance
+    { id: 'shieldCell', x: 25.0, z: -45.0 }    // horse stable: the reward for reaching the north end
   ];
 
   function define(id, def) {
