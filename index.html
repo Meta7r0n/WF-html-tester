@@ -1169,7 +1169,7 @@
           </span>
           <span class="hero-choice-text">
             <b>Jeff · Knife Storm</b>
-            <small>The pilot. At 10% health, 5 knives burst out and clear the area — every kill from the storm heals you 15%.</small>
+            <small>At 10% health, 5 knives burst out and clear the area — every kill from the storm heals you 15%.</small>
           </span>
         </button>
       </div>
@@ -1376,20 +1376,34 @@ const CONFIG = {
     // The south gate stays fixed while expansions push the farm north.
     // Keeping these limits together makes later horizontal slices less
     // error-prone than scattering invisible-wall coordinates through LEVEL.
-    west: -31.2, east: 31.2, south: 32.6, north: -80,
+    west: -31.2, east: 65.0, south: 32.6, north: -80,
     northTransition: -32,
     // The original outer boundary (WC-v0.12 and earlier) becomes an interior
     // breached cross-fence here, same trick northTransition already uses —
     // exact same value the old CONFIG.map.north used to be.
     siloTransition: -51.6,
+    // v0.22.01-EAST: the first expansion that pushes a SIDE boundary instead
+    // of the north edge -- east used to stop at 31.2 (still the value below).
+    // Rather than widen the whole north/south span, the new ground is a
+    // bump-out along the east edge, open only between eastBumpNorth and
+    // eastBumpSouth (see buildFences); everywhere else the map is exactly as
+    // wide as it always was.
+    eastTransition: 31.2,
+    eastBumpSouth: 25, eastBumpNorth: -51,
     catwalkY: 3.5
   },
   enemy: {
-    count: 8,
+    // v0.22.01-EAST: the corn maze + horse stable add roughly +20% to the
+    // farm's developed footprint (see the buildCornMaze/buildHorseStable
+    // comments in LEVEL) -- count and coopMax both scale by the same +20%
+    // (8->10, 18->22) so the new ground isn't noticeably emptier than the
+    // rest of the map. New WORLD.addSpawn markers ('corn_maze_1/2/3',
+    // 'horse_stable') give spawnAdditional real, in-zone places to put them.
+    count: 10,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
     coopPerExtraPlayer: 3,
-    coopMax: 18,
+    coopMax: 22,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -3138,6 +3152,11 @@ const LEVEL = (() => {
     const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
     const b = new PRIM.Batch(woodMat, 0.04);
     const M = CONFIG.map;
+    // v0.22.01-EAST: the east wing's bump-out range -- the existing 30/30.5
+    // decorative fence below (already continuous the whole north/south
+    // length) reads as the interior "old boundary" divider within this
+    // z-band for free; only the far outer fence + two caps are new.
+    const bumpS = M.eastBumpSouth, bumpN = M.eastBumpNorth, oldEast = M.eastTransition;
 
     // perimeter, bowed so nothing reads as a square arena
     fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8 });
@@ -3172,6 +3191,15 @@ const LEVEL = (() => {
     // field edge
     fenceRun(b, 11, 9, 24, 9.5, { bow: -1.1 });
     fenceRun(b, 24, 9.5, 24, 21, { bow: 1.0, broken: true });
+
+    // East wing: fresh outer perimeter for the corn-maze/horse-stable ground,
+    // plus two short caps sealing it back to the old boundary -- same "walk
+    // through the old cross-fence into fresh outer fencing" language as
+    // siloTransition/northTransition above, just running east/west instead
+    // of north/south.
+    fenceRun(b, M.east, bumpS, M.east, bumpN, { bow: 0.6, broken: true });
+    fenceRun(b, oldEast, bumpS, M.east, bumpS, { bow: -0.4, broken: true });
+    fenceRun(b, oldEast, bumpN, M.east, bumpN, { bow: 0.4, broken: true });
     b.build(parent);
 
     // Solid boundary. Tall enough that a jump cannot clear it, hidden behind
@@ -3181,7 +3209,15 @@ const LEVEL = (() => {
     WORLD.addFloor(0, 0, M.south, 70, 5, 1.6, 'bounds');   // just behind the gate
     WORLD.addFloor(0, 0, M.north, 70, 5, 1.6, 'bounds');
     WORLD.addFloor(M.west, 0, sideCenterZ, 1.6, 5, sideDepth, 'bounds');
-    WORLD.addFloor(M.east, 0, sideCenterZ, 1.6, 5, sideDepth, 'bounds');
+    // East side: three segments instead of one continuous wall, so the new
+    // wing only widens the map between bumpN and bumpS -- everywhere else
+    // the boundary stays exactly where it always was (oldEast), same as
+    // it read before this expansion existed.
+    WORLD.addFloor(oldEast, 0, (M.south + bumpS) * 0.5, 1.6, 5, (M.south - bumpS) + 2.0, 'bounds');
+    WORLD.addFloor(M.east, 0, (bumpS + bumpN) * 0.5, 1.6, 5, (bumpS - bumpN) + 2.0, 'bounds');
+    WORLD.addFloor(oldEast, 0, (bumpN + M.north) * 0.5, 1.6, 5, (bumpN - M.north) + 2.0, 'bounds');
+    WORLD.addFloor((oldEast + M.east) * 0.5, 0, bumpS, (M.east - oldEast) + 1.6, 5, 1.6, 'bounds');
+    WORLD.addFloor((oldEast + M.east) * 0.5, 0, bumpN, (M.east - oldEast) + 1.6, 5, 1.6, 'bounds');
     // gate line itself: two stubs either side of the opening
     WORLD.addFloor(-17, 0, 31.4, 27, 2.4, 0.8, 'fence');
     WORLD.addFloor(17, 0, 31.4, 27, 2.4, 0.8, 'fence');
@@ -3224,7 +3260,12 @@ const LEVEL = (() => {
     const M = CONFIG.map;
     const runs = [
       [[[-33, 34], [-33, M.north - 1.5]], 1.9, 0.5],  // outside the west fence
-      [[[33, 34], [33.5, M.north - 1.5]], 1.9, 0.5],  // outside the east fence
+      // East hedge splits around the new east wing's bump-out (see
+      // buildFences) -- screening the old boundary everywhere else, but
+      // pulled back from the wing's own approach so it doesn't wall off the
+      // new ground it now sits right next to.
+      [[[33, 34], [33.5, M.eastBumpSouth + 1]], 1.9, 0.5],
+      [[[33.5, M.eastBumpNorth - 1], [33, M.north - 1.5]], 1.9, 0.5],
       [[[-33, M.north - 2], [33, M.north - 2]], 2.0, 0.5], // outside the north fence
       [[[-33, 34.5], [-8, 34]], 1.9, 0.5],            // south-west of the gate
       [[[8, 34], [33, 34.5]], 1.9, 0.5],              // south-east of the gate
@@ -3819,6 +3860,148 @@ const LEVEL = (() => {
       .forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
 
     WORLD.addSpawn(-7, 0, -43, 'north_pasture');
+  }
+
+  /* ---------------- East wing: corn maze ----------------
+     Lives entirely in the new east-side bump-out (see CONFIG.map.east/
+     eastTransition/eastBumpSouth/eastBumpNorth and buildFences) -- genuinely
+     new ground beyond the old boundary, not squeezed into gaps in the
+     original map. A recursive-backtracker perfect maze over a grid of 3m
+     cells, walled with corn, then loosened with a handful of extra knocked-
+     down walls so multiplayer coop has flanking routes instead of one true
+     path. Uses the level's own seeded RNG (see UTIL.setSeed in build()), so
+     the layout is stable across loads like everything else on this farm. */
+  function buildCornMaze(parent) {
+    const X0 = 32, X1 = 63, Z0 = -40, Z1 = 23, CELL = 3.0;
+    const cols = Math.floor((X1 - X0) / CELL), rows = Math.floor((Z1 - Z0) / CELL);
+
+    const idx = (c, r) => r * cols + c;
+    // dir order: N, E, S, W -- opposite[i] is the reciprocal wall on the neighbor.
+    const DX = [0, 1, 0, -1], DZ = [-1, 0, 1, 0], OPP = [2, 3, 0, 1];
+    const visited = new Array(cols * rows).fill(false);
+    const open = [];
+    for (let i = 0; i < cols * rows; i++) open.push([false, false, false, false]);
+
+    const stack = [[0, 0]];
+    visited[idx(0, 0)] = true;
+    while (stack.length) {
+      const cur = stack[stack.length - 1];
+      const c = cur[0], r = cur[1];
+      const options = [];
+      for (let d = 0; d < 4; d++) {
+        const nc = c + DX[d], nr = r + DZ[d];
+        if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+        if (!visited[idx(nc, nr)]) options.push([nc, nr, d]);
+      }
+      if (options.length === 0) { stack.pop(); continue; }
+      const pick = options[Math.floor(UTIL.rand() * options.length)];
+      open[idx(c, r)][pick[2]] = true;
+      open[idx(pick[0], pick[1])][OPP[pick[2]]] = true;
+      visited[idx(pick[0], pick[1])] = true;
+      stack.push([pick[0], pick[1]]);
+    }
+    // Knock down extra walls for combat flanking routes -- a perfect maze
+    // has exactly one path between any two cells, which reads as puzzle
+    // design, not a farm you can fight through.
+    const extraCuts = Math.floor(cols * rows * 0.12);
+    for (let i = 0; i < extraCuts; i++) {
+      const c = Math.floor(UTIL.rand() * cols), r = Math.floor(UTIL.rand() * rows);
+      const d = Math.floor(UTIL.rand() * 4);
+      const nc = c + DX[d], nr = r + DZ[d];
+      if (nc < 0 || nc >= cols || nr < 0 || nr >= rows) continue;
+      open[idx(c, r)][d] = true;
+      open[idx(nc, nr)][OPP[d]] = true;
+    }
+
+    const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
+    const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
+    const WALL_H = 2.4;
+    function cornWall(cx, cz, horizontal) {
+      for (let i = 0; i < 5; i++) {
+        const t = (i + 0.5) / 5 - 0.5;
+        const x = horizontal ? cx + t * CELL : cx + UTIL.rng(-0.15, 0.15);
+        const z = horizontal ? cz + UTIL.rng(-0.15, 0.15) : cz + t * CELL;
+        const h = UTIL.rng(2.1, 2.6);
+        stalks.cyl(0.06, 0.09, h, 6, x, h / 2, z, 0, 0, UTIL.rng(-.08, .08));
+        for (let l = 0; l < 2; l++) {
+          const a = UTIL.rng(0, 6.28);
+          leaves.box(0.85, 0.05, 0.2, x + Math.cos(a) * 0.35, h * UTIL.rng(0.5, 0.85), z + Math.sin(a) * 0.35,
+            0, a, UTIL.rng(-.4, -.1), 0.02);
+        }
+      }
+      WORLD.addFloor(cx, 0, cz, horizontal ? CELL : 0.5, WALL_H, horizontal ? 0.5 : CELL, 'corn_wall');
+    }
+
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const cx = X0 + c * CELL + CELL / 2, cz = Z0 + r * CELL + CELL / 2;
+        const o = open[idx(c, r)];
+        if (!o[0] && r === 0) cornWall(cx, Z0 + r * CELL, true);          // north perimeter
+        if (!o[1] && c === cols - 1) cornWall(X0 + (c + 1) * CELL, cz, false); // east perimeter
+        if (!o[2]) cornWall(cx, Z0 + (r + 1) * CELL, true);               // south edge (owns every interior N/S wall)
+        if (!o[3] && c === 0) cornWall(X0 + c * CELL, cz, false);         // west perimeter
+      }
+    }
+    stalks.build(parent);
+    leaves.build(parent, { ray: false });
+
+    // A couple of waypoints so the maze reads as a deliberate attraction and
+    // gives players a landmark to navigate by, same convention as every
+    // other zone's signposts. Kept off any cell's own center -- that's the
+    // walkable path node the maze itself relies on, and every one of these
+    // decorations is deliberately offset toward a cell corner (or, for the
+    // sign, placed just outside the grid in the approach) instead.
+    PROPS.signPost(parent, 34.0, 24.0, ['CORN MAZE'], -0.25,
+      { w: 1.8, h: 0.8, bg: PAL.mustard, fg: PAL.oliveDeep, postH: 1.6 });
+    PROPS.hayBale(parent, 38.2, 0, -15.8, 0.15);
+    PROPS.hayBale(parent, 38.3, 0, -15.6, -0.2);
+    PROPS.crate(parent, 55.8, 0, 2.2, 0.9, 0.4);
+
+    WORLD.addSpawn(35.0, 0, 18.0, 'corn_maze_1');   // south entrance
+    WORLD.addSpawn(58.0, 0, -8.0, 'corn_maze_2');   // east-central
+    WORLD.addSpawn(38.0, 0, -30.0, 'corn_maze_3');  // approaching the stable
+  }
+
+  /* ---------------- East wing: horse stable ----------------
+     North end of the corn maze, inside the same new bump-out -- an open-
+     sided structure (roof + posts, partial stall dividers, hay/crate cover)
+     rather than a sealed building, so it reads as a real firefight arena
+     instead of another loot room. */
+  function buildHorseStable(parent) {
+    const CX = 48, CZ = -46, HW = 5, HD = 5, POST_H = 3.1, ROOF_Y = 3.35;
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const b = new PRIM.Batch(timber, 0.045);
+
+    const posts = [[-HW, -HD], [HW, -HD], [-HW, HD], [HW, HD], [-HW, 0], [HW, 0]];
+    posts.forEach(p => {
+      b.box(0.32, POST_H, 0.32, CX + p[0], POST_H / 2, CZ + p[1], 0, 0, UTIL.rng(-.03, .03), 0.02);
+      WORLD.addFloor(CX + p[0], 0, CZ + p[1], 0.48, POST_H, 0.48, 'stable_post');
+    });
+    // Open-sided roof -- no walls underneath, keeping every sightline
+    // between the posts a legal firing lane.
+    b.box(HW * 2 + 0.6, 0.3, HD * 2 + 0.6, CX, ROOF_Y, CZ, 0, 0, -0.012, 0.03);
+    b.build(parent);
+    WORLD.add(CX, ROOF_Y, CZ, HW * 2 + 0.6, 0.3, HD * 2 + 0.6, 'stable_roof');
+
+    // A pair of low stall dividers -- waist-high cover, not sightline blockers.
+    const rail = new PRIM.Batch(timber, 0.04);
+    rail.box(0.16, 1.05, HD * 2 - 1.0, CX - HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
+    rail.box(0.16, 1.05, HD * 2 - 1.0, CX + HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
+    rail.build(parent);
+    WORLD.addFloor(CX - HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
+    WORLD.addFloor(CX + HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
+
+    PROPS.hayBale(parent, CX - HW + 1.2, 0, CZ - HD + 1.2, 0.2);
+    PROPS.hayBale(parent, CX - HW + 1.0, 0, CZ, -0.15);
+    PROPS.hayBale(parent, CX + HW - 1.2, 0, CZ + HD - 1.2, 0.3);
+    PROPS.crate(parent, CX + HW - 1.0, 0, CZ - HD + 1.4, 0.95, -0.3);
+    PROPS.barrel(parent, CX, CZ - HD + 1.0, { color: PAL.rust });
+    PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ - HD + 0.4, 0);
+    PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ + HD - 0.4, 0);
+    PROPS.signPost(parent, CX, CZ - HD - 1.6, ['HORSE STABLE'], 0,
+      { w: 2.0, h: 0.8, bg: PAL.cream, fg: PAL.rustDeep, postH: 1.6 });
+
+    WORLD.addSpawn(CX, 0, CZ, 'horse_stable');
   }
 
   /* ---------------- Silo Row: orchard approach ----------------
@@ -4928,6 +5111,8 @@ const LEVEL = (() => {
     buildNook(root);
     buildScatter(root);
     buildNorthPasture(root);
+    buildCornMaze(root);
+    buildHorseStable(root);
     buildOrchard(root);
     buildSilo(root);
     buildCatwalks(root);
@@ -4982,7 +5167,10 @@ const LEVEL = (() => {
    west->east, rows are lettered north->south (row A / column 1 is the
    northwest corner) -- the same convention as a Battleship board. */
 const MAPVIEW = (() => {
-  const GRID = { cell: 10, cols: 7, rows: 12, originX: -35, originZ: -85 };
+  // v0.22.01-EAST widened the playable area itself (CONFIG.map.east 31.2 ->
+  // 65) -- cols grows to keep matching real world space 1:1, same 10-unit
+  // cell size as before so a grid reference still means the same thing.
+  const GRID = { cell: 10, cols: 11, rows: 12, originX: -35, originZ: -85 };
 
   const THEME_SURFACE = { bg: '#D7C39A', ink: '#16120F', grid: 'rgba(22,18,15,0.22)' };
   const THEME_UNDERGROUND = { bg: '#3A3530', ink: '#F0E6D2', grid: 'rgba(240,230,210,0.20)' };
@@ -4997,7 +5185,10 @@ const MAPVIEW = (() => {
     [30.5, -51.6, 30.5, -80], [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
     [30.5, -32, 14, -32], [8, -32, -14, -32], [-20, -32, -30, -32],
     [-8, 24, -12, 14], [9, 25, 13, 20],
-    [4, 4, 4, -1], [11, 9, 24, 9.5], [24, 9.5, 24, 21]
+    [4, 4, 4, -1], [11, 9, 24, 9.5], [24, 9.5, 24, 21],
+    // East wing (see buildFences' bumpS/bumpN/oldEast) -- fresh outer
+    // perimeter plus the two caps sealing it to the old boundary.
+    [65, 25, 65, -51], [31.2, 25, 65, 25], [31.2, -51, 65, -51]
   ];
 
   const STRUCTURES = [
@@ -5005,7 +5196,15 @@ const MAPVIEW = (() => {
     { shape: 'rect', x: -22.5, z: 12, x2: -15.5, z2: 18, label: 'Shed' },
     { shape: 'circle', x: -17, z: -6.75, r: 2.6, label: 'Water Tower' },
     { shape: 'circle', x: -6, z: -26, r: 2.2, label: 'Windmill' },
-    { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' }
+    { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' },
+    { shape: 'rect', x: 43, z: -51, x2: 53, z2: -41, label: 'Horse Stable' }
+  ];
+
+  // Bounding outline of the corn maze (see buildCornMaze) -- drawn as a
+  // dashed outline rather than a filled structure, since a solid fill over
+  // an area this size would bury every hatch/POI marker inside it.
+  const MAZES = [
+    { x: 32, z: -40, x2: 63, z2: 23, label: 'Corn Maze' }
   ];
 
   // Named landmarks pulled from the game's own signposts (PROPS.signPost
@@ -5148,6 +5347,21 @@ const MAPVIEW = (() => {
     ctx.restore();
   }
 
+  function drawMazes(m) {
+    const ctx = m.ctx;
+    ctx.save();
+    MAZES.forEach(mz => {
+      const p1 = toXY(mz.x, mz.z, m), p2 = toXY(mz.x2, mz.z2, m);
+      ctx.strokeStyle = '#6E7A42';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.strokeRect(p1[0], p1[1], p2[0] - p1[0], p2[1] - p1[1]);
+      ctx.setLineDash([]);
+      labelAtCorner(ctx, p1[0], p1[1], mz.label, '#6E7A42');
+    });
+    ctx.restore();
+  }
+
   function drawStructures(m) {
     const ctx = m.ctx;
     ctx.save();
@@ -5250,6 +5464,7 @@ const MAPVIEW = (() => {
     if (!canvas) return;
     const m = beginCanvas(canvas, THEME_SURFACE);
     drawFences(m);
+    drawMazes(m);
     drawStructures(m);
     drawPois(m);
     drawWell(m, true);
@@ -10248,7 +10463,22 @@ const PICKUP = (() => {
     { id: 'batteryPack', x: 9.0, z: 18.0 },                    // house side, for players who'd rather not detour underground
     { id: 'sprayTorchWeapon', x: 4.0, y: 8.2, z: -65.0 },      // silo deck: exposed, high-value ground
     { id: 'spraycanBox', x: -3.0, y: 8.2, z: -67.0 },          // same deck
-    { id: 'spraycanBox', x: 19.0, z: -1.0 }                    // field side, convenient restock
+    { id: 'spraycanBox', x: 19.0, z: -1.0 },                   // field side, convenient restock
+
+    // v0.22.01-EAST: corn maze + horse stable, both entirely in the new east
+    // wing (see CONFIG.map.east/eastTransition and buildFences). Spread
+    // through open maze lanes (never inside a corn wall cell) so exploring
+    // the new ground pays off regardless of which route a player takes.
+    { id: 'lightAmmo', x: 36.5, z: -35.5 },    // maze, west lane near the stable end
+    { id: 'shellBox', x: 54.5, z: -32.5 },     // maze, east lane near the stable end
+    { id: 'healthTonic', x: 33.5, z: -23.5 },  // maze, west edge
+    { id: 'carbineAmmo', x: 60.5, z: -23.5 },  // maze, east edge
+    { id: 'jaysPack', x: 45.5, z: -20.5 },     // maze, center
+    { id: 'shieldCell', x: 36.5, z: -2.5 },    // maze, south-central
+    { id: 'grenadeBundle', x: 60.5, z: -2.5 }, // maze, south-east
+    { id: 'batteryPack', x: 57.5, z: 6.5 },    // maze, near the south entrance
+    { id: 'healthTonic', x: 33.5, z: 18.5 },   // maze, south entrance
+    { id: 'shieldCell', x: 48.0, z: -46.0 }    // horse stable: the reward for reaching the north end
   ];
 
   function define(id, def) {
