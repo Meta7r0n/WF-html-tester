@@ -3874,6 +3874,12 @@ const LEVEL = (() => {
   function buildCornMaze(parent) {
     const X0 = 32, X1 = 63, Z0 = -40, Z1 = 23, CELL = 3.0;
     const cols = Math.floor((X1 - X0) / CELL), rows = Math.floor((Z1 - Z0) / CELL);
+    // The maze perimeter is intentionally open at two authored gateways:
+    // the west/south approach from the old farm and the north route into the
+    // horse stable. Without these exceptions the recursive maze correctly
+    // builds walls, but it also seals the entire attraction behind corn.
+    const WEST_ENTRANCE_ROW = 19; // cell z=18.5, matching corn_maze_1
+    const NORTH_STABLE_EXIT_COL = 5; // cell x=48.5, centered on the stable
 
     const idx = (c, r) => r * cols + c;
     // dir order: N, E, S, W -- opposite[i] is the reciprocal wall on the neighbor.
@@ -3936,14 +3942,32 @@ const LEVEL = (() => {
       for (let c = 0; c < cols; c++) {
         const cx = X0 + c * CELL + CELL / 2, cz = Z0 + r * CELL + CELL / 2;
         const o = open[idx(c, r)];
-        if (!o[0] && r === 0) cornWall(cx, Z0 + r * CELL, true);          // north perimeter
+        const northStableExit = r === 0 && c === NORTH_STABLE_EXIT_COL;
+        const westEntrance = c === 0 && r === WEST_ENTRANCE_ROW;
+        if (!o[0] && r === 0 && !northStableExit) cornWall(cx, Z0 + r * CELL, true); // north perimeter
         if (!o[1] && c === cols - 1) cornWall(X0 + (c + 1) * CELL, cz, false); // east perimeter
         if (!o[2]) cornWall(cx, Z0 + (r + 1) * CELL, true);               // south edge (owns every interior N/S wall)
-        if (!o[3] && c === 0) cornWall(X0 + c * CELL, cz, false);         // west perimeter
+        if (!o[3] && c === 0 && !westEntrance) cornWall(X0 + c * CELL, cz, false); // west perimeter
       }
     }
     stalks.build(parent);
     leaves.build(parent, { ray: false });
+
+    // Render-only gateway frames make both openings readable through the tall
+    // corn. They deliberately have no WORLD collider: the omitted corn walls
+    // are the doorway, and adding posts to the shared solver would re-create
+    // the same blocked-entry bug at the threshold.
+    const gate = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.035);
+    const entranceZ = Z0 + WEST_ENTRANCE_ROW * CELL + CELL / 2;
+    gate.box(0.28, 2.8, 0.28, X0 - 0.3, 1.4, entranceZ - 1.35, 0, 0, 0, 0.02);
+    gate.box(0.28, 2.8, 0.28, X0 - 0.3, 1.4, entranceZ + 1.35, 0, 0, 0, 0.02);
+    gate.box(0.28, 0.24, 3.0, X0 - 0.3, 2.72, entranceZ, 0, 0, 0, 0.02);
+
+    const stableExitX = X0 + NORTH_STABLE_EXIT_COL * CELL + CELL / 2;
+    gate.box(0.28, 2.8, 0.28, stableExitX - 1.35, 1.4, Z0, 0, 0, 0.02);
+    gate.box(0.28, 2.8, 0.28, stableExitX + 1.35, 1.4, Z0, 0, 0, 0.02);
+    gate.box(3.0, 0.24, 0.28, stableExitX, 2.72, Z0, 0, 0, 0.02);
+    gate.build(parent, { ray: false });
 
     // A couple of waypoints so the maze reads as a deliberate attraction and
     // gives players a landmark to navigate by, same convention as every
