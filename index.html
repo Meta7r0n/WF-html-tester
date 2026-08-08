@@ -589,7 +589,12 @@
   body.touch-device .touch-help{display:block;}
   body.touch-device .keys{display:none;}
   body.touch-device .alt{display:none;}
-  body.touch-device #playerSelect .alt{display:block;}
+  body.touch-device #playerSelect .alt,
+  body.touch-device #start .alt,
+  body.touch-device #coopLobby .alt,
+  body.touch-device #pause .alt,
+  body.touch-device #options .alt,
+  body.touch-device #mapView .alt{display:block;}
   body.touch-device #modeChip{display:none!important;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
@@ -724,6 +729,23 @@
   #modeChoices,#coopRoles{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 4px;}
   #modeChoices .go,#coopRoles .go{flex:1 1 190px;justify-content:center;}
   #playerSelect .card{max-width:900px;}
+  /* Player selection is deliberately taller than a phone viewport. The
+     page itself keeps body scrolling disabled for the game, so this veil
+     must own the scroll gesture or the lower hero cards become unreachable. */
+  #playerSelect{
+    align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
+    padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+      max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  }
+  #playerSelect .card{flex:0 0 auto;max-height:none;margin:0 auto;}
+  #start,#coopLobby{
+    overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;touch-action:pan-y;
+    padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+      max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  }
+  #start .card,#coopLobby .card{flex:0 0 auto;margin:0 auto;}
   #heroChoices{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:16px 0 4px;}
   .hero-choice{
     display:flex;flex-direction:column;align-items:stretch;text-align:left;
@@ -770,6 +792,24 @@
   @media (prefers-reduced-motion: reduce){.hero-ref{transition:none;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
+  #coopCharacterPicker{margin:2px 0 16px;}
+  #coopCharacterChoices{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:8px;}
+  .coop-character-choice{
+    min-width:0;padding:10px 8px;text-align:left;cursor:pointer;
+    background:var(--cream);border:3px solid var(--ink);border-radius:10px;
+    color:var(--ink-soft);font:700 11px/1.25 "Rockwell",Georgia,serif;
+    box-shadow:0 3px 0 rgba(22,18,15,.55);transition:transform .08s ease,background .08s ease;
+  }
+  .coop-character-choice b{display:block;font-size:12px;letter-spacing:.4px;}
+  .coop-character-choice small{display:block;margin-top:4px;font-size:10px;color:var(--ink-soft);opacity:.78;}
+  .coop-character-choice:hover,.coop-character-choice:focus-visible{transform:translateY(-1px);background:var(--peach);}
+  .coop-character-choice.active{background:var(--mustard);color:var(--ink);box-shadow:0 4px 0 var(--ink);}
+  .coop-character-choice.active small{color:var(--ink);}
+  .coop-character-choice:disabled{cursor:default;opacity:.65;transform:none;}
+  #coopCharacterPicker .opt-hint{margin-top:8px;}
+  @media (max-width:720px){#coopCharacterChoices{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width:900px){#start,#coopLobby,#playerSelect{align-items:flex-start;justify-content:flex-start;}}
+  @media (max-width:460px){#playerSelect .card{padding:22px 18px 20px;} #coopCharacterChoices{gap:7px;}}
   .signal-label{display:block;margin:15px 0 5px;color:var(--rust-deep);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
   .signal-box{display:block;width:100%;min-height:74px;resize:vertical;padding:9px 11px;background:var(--peach);border:3px solid var(--ink);border-radius:9px;color:var(--ink);font:600 11px/1.35 "Courier New",monospace;box-shadow:3px 4px 0 rgba(22,18,15,.28);}
   input.signal-box.room-code{min-height:0;height:56px;resize:none;text-align:center;font-size:24px;line-height:1;letter-spacing:5px;font-weight:900;text-transform:uppercase;}
@@ -901,6 +941,7 @@
   @keyframes keyPulse{50%{opacity:.6;}}
 
   /* ---------- Farm map (see MAPVIEW) ---------- */
+  #mapView{z-index:42;touch-action:pan-y;}
   #mapView .map-card{max-width:96vw;max-height:92vh;overflow-y:auto;}
   #mapCanvases{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 4px;}
   .map-panel{flex:0 0 auto;}
@@ -923,6 +964,9 @@
   .map-legend-swatch.hatch{background:var(--rust);border-radius:50%;}
   .map-legend-swatch.stairs{background:var(--olive);}
   .map-legend-swatch.well{background:transparent;border-color:var(--blue-deep);border-radius:50%;}
+  .map-legend-swatch.you{background:var(--rust);border-radius:50%;}
+  .map-legend-swatch.teammate{background:var(--blue-deep);border-radius:50%;}
+  .map-live-hint{margin:8px 0 0;font-size:12px;line-height:1.35;color:var(--ink-soft);}
   @media (max-width:900px){#mapCanvases{flex-direction:column;}}
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
@@ -1097,6 +1141,16 @@
         <button class="mode-toggle-btn" id="modeFfaBtn" data-mode="ffa">Free-for-all · everyone for themselves</button>
         <button class="mode-toggle-btn" id="modeTeamsBtn" data-mode="teams">Team Deathmatch · 2 vs 2</button>
       </div>
+      <div id="coopCharacterPicker">
+        <span class="mode-toggle-label">Choose your farmhand</span>
+        <div id="coopCharacterChoices" role="group" aria-label="Choose your multiplayer character">
+          <button type="button" class="coop-character-choice" data-character="playerBluecap" aria-pressed="false"><b>Larry</b><small>Double Barrel</small></button>
+          <button type="button" class="coop-character-choice" data-character="playerMasked" aria-pressed="false"><b>Smoke</b><small>Chainsaw Hand</small></button>
+          <button type="button" class="coop-character-choice" data-character="playerStoned" aria-pressed="false"><b>Stoned</b><small>Secret Stash</small></button>
+          <button type="button" class="coop-character-choice" data-character="playerPyro" aria-pressed="false"><b>Pyro</b><small>Dy-No-Mite</small></button>
+        </div>
+        <p class="opt-hint">Choose before the farm starts. Duplicate characters are allowed.</p>
+      </div>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
         <button class="go mode-coop" id="joinBtn">Join room →</button>
@@ -1232,7 +1286,10 @@
         <li><i class="map-legend-swatch hatch"></i>Hatch</li>
         <li><i class="map-legend-swatch stairs"></i>Stairs</li>
         <li><i class="map-legend-swatch well"></i>Well / point of interest</li>
+        <li><i class="map-legend-swatch you"></i>You</li>
+        <li><i class="map-legend-swatch teammate"></i>Teammates</li>
       </ul>
+      <p class="map-live-hint">Your marker is rust. Teammates are blue; markers on the other floor stay on that floor's map.</p>
       <button class="go compact" id="mapBackBtn">Back →</button>
     </div>
   </div>
@@ -1245,6 +1302,7 @@
       <button class="go" id="resumeBtn">Back to it →</button>
       <button class="go compact" id="pauseMenuBtn">Main menu</button>
       <button class="alt" id="pauseOptionsBtn">Options</button>
+      <button class="alt" id="pauseMapBtn">Farm Map</button>
       <button class="alt" id="freeBtn2">Mouse won't lock? Use free-look instead</button>
     </div>
   </div>
@@ -5294,7 +5352,7 @@ const MAPVIEW = (() => {
     ];
   }
 
-  function beginCanvas(canvas, theme) {
+  function beginCanvas(canvas, theme, layerId) {
     const cellPx = 42, marginTop = 38, marginLeft = 38, marginRight = 22, marginBottom = 22;
     const w = marginLeft + GRID.cols * cellPx + marginRight;
     const h = marginTop + GRID.rows * cellPx + marginBottom;
@@ -5307,7 +5365,7 @@ const MAPVIEW = (() => {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, w, h);
-    return { ctx: ctx, cellPx: cellPx, marginLeft: marginLeft, marginTop: marginTop, theme: theme };
+    return { ctx: ctx, cellPx: cellPx, marginLeft: marginLeft, marginTop: marginTop, theme: theme, layerId: layerId || 'surface' };
   }
 
   function labelAt(ctx, x, y, text, color) {
@@ -5484,9 +5542,55 @@ const MAPVIEW = (() => {
     ctx.restore();
   }
 
-  function drawSurface(canvas) {
+  function drawActors(m, actors) {
+    if (!Array.isArray(actors)) return;
+    const ctx = m.ctx;
+    actors.forEach(actor => {
+      if (!actor || (actor.layerId || 'surface') !== m.layerId) return;
+      const c = toXY(actor.x, actor.z, m);
+      const color = actor.local ? '#A85A3C' : '#5C7E99';
+      ctx.save();
+      ctx.fillStyle = color;
+      ctx.strokeStyle = m.theme.ink;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(c[0], c[1], actor.local ? 6 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = m.theme.ink;
+      ctx.font = '900 8px "Rockwell",Georgia,serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(actor.label || (actor.local ? 'YOU' : 'TEAM'), c[0], c[1] - 8);
+      ctx.restore();
+    });
+  }
+
+  function liveActors() {
+    const actors = [];
+    if (typeof PLAYER !== 'undefined' && PLAYER.position) {
+      actors.push({
+        id: 'local', label: 'YOU', local: true,
+        x: PLAYER.position.x, z: PLAYER.position.z, layerId: PLAYER.layerId || 'surface'
+      });
+    }
+    if (typeof COOP !== 'undefined' && COOP.connected) {
+      (COOP.roster || []).forEach(player => {
+        if (!player || player.id === COOP.localId) return;
+        const remote = COOP.getRemote(player.id);
+        const target = remote && remote.target;
+        if (!target) return;
+        const label = typeof CAST !== 'undefined' && CAST.ROSTER[player.characterId]
+          ? CAST.ROSTER[player.characterId].label : 'TEAM';
+        actors.push({
+          id: player.id, label: label, local: false,
+          x: target.x, z: target.z, layerId: target.layerId || 'surface'
+        });
+      });
+    }
+    return actors;
+  }
+
+  function drawSurface(canvas, actors) {
     if (!canvas) return;
-    const m = beginCanvas(canvas, THEME_SURFACE);
+    const m = beginCanvas(canvas, THEME_SURFACE, 'surface');
     drawFences(m);
     drawMazes(m);
     drawStructures(m);
@@ -5494,20 +5598,22 @@ const MAPVIEW = (() => {
     drawWell(m, true);
     drawStairs(m);
     drawHatches(m);
+    drawActors(m, actors);
     drawGridAndCompass(m);
   }
 
-  function drawUnderground(canvas) {
+  function drawUnderground(canvas, actors) {
     if (!canvas) return;
-    const m = beginCanvas(canvas, THEME_UNDERGROUND);
+    const m = beginCanvas(canvas, THEME_UNDERGROUND, 'basement');
     drawRooms(m);
     drawWell(m, false);
     drawStairs(m);
     drawHatches(m);
+    drawActors(m, actors);
     drawGridAndCompass(m);
   }
 
-  return { drawSurface, drawUnderground };
+  return { drawSurface, drawUnderground, liveActors };
 })();
 
 /* =============================== [FX] ================================ */
@@ -9506,6 +9612,7 @@ const UI = (() => {
     el.copySignal = document.getElementById('copySignal');
     el.coopStatus = document.getElementById('coopStatus');
     el.coopRoster = document.getElementById('coopRoster');
+    el.coopCharacterChoices = document.getElementById('coopCharacterChoices');
     el.matchModeToggle = document.getElementById('matchModeToggle');
     el.modeCoopBtn = document.getElementById('modeCoopBtn');
     el.modeFfaBtn = document.getElementById('modeFfaBtn');
@@ -9514,6 +9621,7 @@ const UI = (() => {
     el.ultraOnBtn = document.getElementById('ultraOnBtn');
     el.startFarmBtn = document.getElementById('startFarmBtn');
     el.pause = document.getElementById('pause');
+    el.pauseMapBtn = document.getElementById('pauseMapBtn');
     el.options = document.getElementById('options');
     el.mapView = document.getElementById('mapView');
     el.mapSurfaceCanvas = document.getElementById('mapSurfaceCanvas');
@@ -10141,6 +10249,17 @@ const UI = (() => {
       return '<li' + (classes.length ? ' class="' + classes.join(' ') + '"' : '') + '>' + label + suffix + '</li>';
     }).join('');
   }
+  function renderCoopCharacterChoices() {
+    if (!el.coopCharacterChoices) return;
+    const selected = (typeof COOP !== 'undefined' && COOP.localCharacterId) ? COOP.localCharacterId : 'playerBluecap';
+    const locked = typeof COOP !== 'undefined' && COOP.matchRunning;
+    el.coopCharacterChoices.querySelectorAll('[data-character]').forEach(button => {
+      const active = button.getAttribute('data-character') === selected;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      button.disabled = locked;
+    });
+  }
   function setCoopLobbyStep(role, step) {
     const showInput = role === 'join';
     const showOutput = role === 'host' && step !== 'idle';
@@ -10156,6 +10275,7 @@ const UI = (() => {
     // The mode toggle only makes sense before a room exists — once a role
     // is chosen the match type is locked in for that room's lifetime.
     if (el.matchModeToggle) el.matchModeToggle.classList.toggle('hidden', !!role);
+    renderCoopCharacterChoices();
     if (!role) {
       if (el.coopInstructions) el.coopInstructions.textContent = 'Host a room or join a teammate\'s six-character code.';
       if (el.signalAction) {
@@ -10336,8 +10456,9 @@ const UI = (() => {
   function showMap() {
     if (el.mapView) el.mapView.classList.remove('hidden');
     if (typeof MAPVIEW !== 'undefined') {
-      MAPVIEW.drawSurface(el.mapSurfaceCanvas);
-      MAPVIEW.drawUnderground(el.mapUndergroundCanvas);
+      const actors = MAPVIEW.liveActors ? MAPVIEW.liveActors() : [];
+      MAPVIEW.drawSurface(el.mapSurfaceCanvas, actors);
+      MAPVIEW.drawUnderground(el.mapUndergroundCanvas, actors);
     }
   }
   function hideMap() {
@@ -10399,7 +10520,7 @@ const UI = (() => {
     pushChat, showChatInput, setChatComposing, setVoiceChip,
     showDevConsole, setDevConsoleInput, pushDevConsoleLog, clearDevConsoleLog,
     get rebindingAction() { return rebindingAction; },
-    showPlayerSelect, hidePlayerSelect,
+    showPlayerSelect, hidePlayerSelect, renderCoopCharacterChoices,
     setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
     el
@@ -10430,6 +10551,18 @@ const PICKUP = (() => {
     { id: 'shieldCell', x: 27.0, z: -9.0 },
     { id: 'carbineAmmo', x: 20.8, z: -40.0 },
     { id: 'shieldCell', x: 15.5, z: -31.2 },
+
+    // Farm-wide boss approach caches. These deliberately sit outside the
+    // original south-yard cluster so a player can re-arm while crossing the
+    // west, north, and old-east routes instead of backtracking to the barn.
+    { id: 'pipePopperWeapon', x: -26.0, z: 25.0 },
+    { id: 'shellBox', x: -21.0, z: 24.0 },
+    { id: 'lightAmmo', x: -25.0, z: 4.0 },
+    { id: 'carbineAmmo', x: -23.0, z: -21.0 },
+    { id: 'fieldhandWeapon', x: -16.0, z: -35.0 },
+    { id: 'batteryPack', x: -25.0, z: -45.0 },
+    { id: 'spraycanBox', x: 27.0, z: 16.0 },
+    { id: 'shellBox', x: 27.0, z: -27.0 },
 
     // One visible resource per major underground zone. Explicit y values keep
     // surface and basement pickups independent at shared map coordinates.
@@ -10502,7 +10635,19 @@ const PICKUP = (() => {
     { id: 'grenadeBundle', x: 60.5, z: -2.5 }, // maze, south-east
     { id: 'batteryPack', x: 57.5, z: 6.5 },    // maze, near the south entrance
     { id: 'healthTonic', x: 33.5, z: 18.5 },   // maze, south entrance
-    { id: 'shieldCell', x: 48.0, z: -46.0 }    // horse stable: the reward for reaching the north end
+    { id: 'pipePopperWeapon', x: 36.5, z: 17.5 },  // maze, south-west restock
+    { id: 'lightAmmo', x: 42.5, z: 14.5 },         // maze, south lane
+    { id: 'fieldhandWeapon', x: 60.5, z: 17.5 },   // maze, south-east restock
+    { id: 'carbineAmmo', x: 57.5, z: -17.5 },      // maze, east-central lane
+    { id: 'tinSixerWeapon', x: 45.5, z: -35.5 },   // maze, north-central lane
+    { id: 'sprayTorchWeapon', x: 60.5, z: -38.5 }, // maze, north-east lane
+    { id: 'shellBox', x: 33.5, z: -5.5 },          // maze, west lane
+    { id: 'batteryPack', x: 51.5, z: -5.5 },       // maze, central lane
+    { id: 'spraycanBox', x: 42.5, z: -5.5 },       // maze, west-central lane
+    { id: 'grenadeBundle', x: 54.5, z: 14.5 },     // maze, south-east lane
+    { id: 'shellBox', x: 45.5, z: -46.0 },         // horse stable, west stall
+    { id: 'batteryPack', x: 51.5, z: -46.0 },      // horse stable, east stall
+    { id: 'shieldCell', x: 48.0, z: -46.0 }        // horse stable: the reward for reaching the north end
   ];
 
   function define(id, def) {
@@ -10517,6 +10662,10 @@ const PICKUP = (() => {
   define('tinSixerWeapon', {
     type: 'weapon', label: 'Tin Sixer', weaponId: 'tinSixer',
     quantity: 18, color: PAL.rust, respawn: 0
+  });
+  define('pipePopperWeapon', {
+    type: 'weapon', label: 'Pipe Popper', weaponId: 'pipePopper',
+    quantity: 12, color: PAL.rustDeep, respawn: 0
   });
   define('fieldhandWeapon', {
     type: 'weapon', label: 'Fieldhand Carbine', weaponId: 'fieldhand',
@@ -10533,23 +10682,23 @@ const PICKUP = (() => {
   });
   define('shellBox', {
     type: 'ammo', label: 'Pipe Shells', ammoType: 'shells',
-    quantity: 12, color: PAL.rust, respawn: 22
+    quantity: 16, color: PAL.rust, respawn: 22
   });
   define('lightAmmo', {
     type: 'ammo', label: 'Sixer Rounds', ammoType: 'light',
-    quantity: 18, color: PAL.mustard, respawn: 24
+    quantity: 24, color: PAL.mustard, respawn: 24
   });
   define('carbineAmmo', {
     type: 'ammo', label: 'Carbine Rounds', ammoType: 'carbine',
-    quantity: 36, color: PAL.olive, respawn: 26
+    quantity: 42, color: PAL.olive, respawn: 26
   });
   define('batteryPack', {
     type: 'ammo', label: 'Batteries', ammoType: 'battery',
-    quantity: 8, color: PAL.blue, respawn: 26
+    quantity: 10, color: PAL.blue, respawn: 26
   });
   define('spraycanBox', {
     type: 'ammo', label: 'Spray Cans', ammoType: 'spraycan',
-    quantity: 120, color: PAL.hotSauce, respawn: 24
+    quantity: 150, color: PAL.hotSauce, respawn: 24
   });
   define('healthTonic', {
     type: 'health', label: 'Pep Tonic', quantity: 30,
@@ -11067,6 +11216,11 @@ const GAME = (() => {
     document.getElementById('modeCoopBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('coop'); });
     document.getElementById('modeFfaBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('ffa'); });
     document.getElementById('modeTeamsBtn').addEventListener('click', e => { e.stopPropagation(); setLobbyMode('teams'); });
+    document.getElementById('coopCharacterChoices').addEventListener('click', e => {
+      e.stopPropagation();
+      const button = e.target.closest('[data-character]');
+      if (button) COOP.selectCharacter(button.getAttribute('data-character'));
+    });
     document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
     document.getElementById('signalAction').addEventListener('click', () => COOP.signalAction());
@@ -11088,10 +11242,11 @@ const GAME = (() => {
     // showOptions/hideOptions), so both entry points just toggle it directly.
     document.getElementById('startOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
     document.getElementById('pauseOptionsBtn').addEventListener('click', e => { e.stopPropagation(); UI.showOptions(); });
+    document.getElementById('pauseMapBtn').addEventListener('click', e => { e.stopPropagation(); UI.showMap(); });
     document.getElementById('optionsBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideOptions(); });
 
-    // Farm map: same "veil layered over the start screen" pattern as
-    // Options above -- main-menu only, no pause-screen entry point.
+    // Farm map: same "veil layered over the screen underneath" pattern as
+    // Options above -- it can be opened from the start screen or pause.
     document.getElementById('startMapBtn').addEventListener('click', e => { e.stopPropagation(); UI.showMap(); });
     document.getElementById('mapBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideMap(); });
     document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
@@ -11245,6 +11400,7 @@ const GAME = (() => {
     });
 
     window.addEventListener('resize', onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
     onResize();
     if (UI.el.loading) UI.el.loading.textContent = 'Inking the farm…';
     UI.hideLoading();
@@ -11531,7 +11687,9 @@ const GAME = (() => {
   }
 
   function onResize() {
-    const w = window.innerWidth, h = window.innerHeight;
+    const viewport = window.visualViewport;
+    const w = Math.max(1, Math.round(viewport ? viewport.width : window.innerWidth));
+    const h = Math.max(1, Math.round(viewport ? viewport.height : window.innerHeight));
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
     renderer.setSize(w, h);
     camera.aspect = w / h; camera.updateProjectionMatrix();
@@ -15777,8 +15935,9 @@ const COOP = (() => {
   const remotes = new Map();
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
-  // Host is always slot 0. Joiners get the next free slot in join order; it
-  // frees up again when that peer disconnects. Same 4 IDs as CAST.ROSTER.
+  // These are the multiplayer-capable farmhands. Character identity is a
+  // player choice now; room order remains a separate slot/team assignment so
+  // duplicate characters do not collide at spawn or collapse Team mode.
   const CHARACTER_POOL = ['playerBluecap', 'playerMasked', 'playerStoned', 'playerPyro'];
   let scene = null, peer = null;
   // One DataConnection per remote peer. Host keys this by each joiner's peer
@@ -15792,6 +15951,8 @@ const COOP = (() => {
   let role = null, phase = 'idle', connected = false, closing = false, peerReady = false;
   let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
   let myCharacterId = 'playerBluecap';
+  let requestedCharacterId = 'playerBluecap';
+  let rosterOrder = [];
   let roomCode = '', sendAcc = 0, connectTimer = null;
   let matchRunning = false;
   // Host picks this before hosting; joiners learn it from `welcome`. Match-
@@ -15878,6 +16039,8 @@ const COOP = (() => {
     matchRunning = false;
     matchMode = 'coop';
     myCharacterId = 'playerBluecap';
+    requestedCharacterId = 'playerBluecap';
+    rosterOrder = [];
     killCounts.clear();
     lastKillTime.clear();
     comboStreak.clear();
@@ -15944,32 +16107,76 @@ const COOP = (() => {
     }, 20000);
   }
 
-  /* Host-only: the next character not already worn by the host or another
-     connected joiner. Null only if the pool is exhausted, which shouldn't
-     happen since the pool size matches C.maxPlayers. */
-  function nextFreeCharacter() {
-    const taken = new Set(slotAssignments.values());
-    taken.add(myCharacterId);
-    return CHARACTER_POOL.find(id => !taken.has(id)) || null;
+  function sanitizeCharacter(id) {
+    return CHARACTER_POOL.indexOf(id) >= 0 ? id : 'playerBluecap';
+  }
+
+  function roomOrder() {
+    if (role === 'host') return [localId].concat(Array.from(channels.keys()));
+    const ids = rosterOrder.length ? rosterOrder.slice() : [localId].concat(Array.from(remotes.keys()));
+    if (ids.indexOf(localId) < 0) ids.unshift(localId);
+    return ids;
   }
 
   function rosterList() {
-    const list = [{ id: localId, characterId: myCharacterId, isHost: role === 'host' }];
-    if (role === 'host') {
-      channels.forEach((ch, id) => list.push({ id: id, characterId: slotAssignments.get(id), isHost: false }));
-    } else {
-      remotes.forEach((remote, id) => list.push({ id: id, characterId: remote.characterId, isHost: true }));
-    }
-    return list;
+    return roomOrder().map((id, index) => {
+      const local = id === localId;
+      let characterId = local ? myCharacterId : 'playerMasked';
+      if (role === 'host' && !local) characterId = slotAssignments.get(id);
+      else if (!local) {
+        const remote = remotes.get(id);
+        characterId = remote && remote.characterId;
+      }
+      return {
+        id: id,
+        characterId: sanitizeCharacter(characterId),
+        isHost: role === 'host' ? local : index === 0
+      };
+    });
   }
 
-  /* Team Deathmatch: even CHARACTER_POOL slot (host + the 2nd joiner) is
-     Team A, odd (1st + 3rd joiner) is Team B -- deterministic from the
-     same join-order assignment nextFreeCharacter() already does, so no
-     separate team-picker UI is needed for a first pass. */
+  function applyRoster(roster) {
+    const entries = Array.isArray(roster) ? roster.filter(p => p && p.id) : [];
+    const ids = entries.map(p => p.id);
+    if (ids.length) rosterOrder = ids;
+    const seen = new Set(ids);
+    entries.forEach(p => {
+      const characterId = sanitizeCharacter(p.characterId);
+      if (p.id === localId) {
+        if (role === 'join') {
+          myCharacterId = requestedCharacterId || characterId;
+          requestedCharacterId = myCharacterId;
+        }
+      } else {
+        makeRemote(p.id, characterId);
+      }
+    });
+    if (ids.length) remotes.forEach((remote, id) => { if (!seen.has(id)) removeRemote(id); });
+    if (typeof UI !== 'undefined' && UI.setCoopLobbyStep) UI.setCoopLobbyStep(role, phase);
+  }
+
+  function selectCharacter(id) {
+    const chosen = sanitizeCharacter(id);
+    if (matchRunning) {
+      status('Character choices lock when the farm starts.', 'bad');
+      if (typeof UI !== 'undefined' && UI.renderCoopCharacterChoices) UI.renderCoopCharacterChoices();
+      return false;
+    }
+    myCharacterId = chosen;
+    requestedCharacterId = chosen;
+    if (role === 'join' && connected) send({ type: 'characterChoice', characterId: chosen });
+    if (role === 'host' && connected) broadcast({ type: 'rosterUpdate', roster: rosterList() });
+    if (typeof UI !== 'undefined' && UI.renderCoopCharacterChoices) UI.renderCoopCharacterChoices();
+    if (typeof UI !== 'undefined' && UI.setCoopLobbyStep) UI.setCoopLobbyStep(role, phase);
+    return true;
+  }
+
+  /* Team Deathmatch follows room order rather than character identity. That
+     keeps 2-vs-2 balanced even when two players deliberately pick the same
+     farmhand. */
   function teamOfId(id) {
-    const entry = rosterList().find(p => p.id === id);
-    return entry ? CHARACTER_POOL.indexOf(entry.characterId) % 2 : 0;
+    const index = roomOrder().indexOf(id);
+    return index >= 0 ? index % 2 : 0;
   }
   function sameTeam(idA, idB) {
     return teamOfId(idA) === teamOfId(idB);
@@ -16101,10 +16308,12 @@ const COOP = (() => {
     // "Host room" — stop() unconditionally resets matchMode back to 'coop',
     // so it has to be captured first or an FFA pick silently reverts.
     const chosenMode = matchMode;
+    const chosenCharacter = sanitizeCharacter(myCharacterId);
     stop();
     matchMode = chosenMode;
     role = 'host';
-    myCharacterId = 'playerBluecap';
+    myCharacterId = chosenCharacter;
+    requestedCharacterId = chosenCharacter;
     phase = 'creating';
     UI.setCoopLobbyStep('host', phase);
     status('Opening a private room…');
@@ -16133,8 +16342,11 @@ const COOP = (() => {
   }
 
   function prepareJoin() {
+    const chosenCharacter = sanitizeCharacter(myCharacterId);
     stop();
     role = 'join';
+    myCharacterId = chosenCharacter;
+    requestedCharacterId = chosenCharacter;
     phase = 'opening';
     UI.setSignalOutput('');
     UI.setCoopLobbyStep('join', phase);
@@ -16167,7 +16379,10 @@ const COOP = (() => {
     armConnectTimeout();
     let next;
     try {
-      next = peer.connect(code, { reliable: true, serialization: 'json', metadata: { game: 'wf-html-tester', version: '0.08.00' } });
+      next = peer.connect(code, {
+        reliable: true, serialization: 'json',
+        metadata: { game: 'wf-html-tester', version: '0.08.00', characterId: requestedCharacterId }
+      });
     } catch (err) {
       failJoin(peerErrorText(err));
       return;
@@ -16195,18 +16410,20 @@ const COOP = (() => {
     const onOpen = () => {
       if (channels.get(peerId) !== next) return;
       connected = true;
-      const characterId = nextFreeCharacter();
-      if (!characterId) { try { next.close(); } catch (err) {} channels.delete(peerId); return; }
+      // The joiner requested this character in the PeerJS metadata. There is
+      // no uniqueness check: duplicate character picks are intentional and
+      // valid in every multiplayer mode.
+      const characterId = sanitizeCharacter(next.metadata && next.metadata.characterId);
       slotAssignments.set(peerId, characterId);
       // Tell the new joiner who they are and who else is already here.
-      const roster = [{ id: localId, characterId: myCharacterId }];
-      channels.forEach((ch, id) => { if (id !== peerId) roster.push({ id: id, characterId: slotAssignments.get(id) }); });
+      const roster = rosterList();
       sendTo(peerId, {
         type: 'welcome', id: localId, characterId: characterId,
         roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers, matchMode: matchMode
       });
       // Tell everyone ELSE a new farmhand joined, so their remote list grows too.
       broadcast({ type: 'playerJoined', id: peerId, characterId: characterId }, peerId);
+      broadcast({ type: 'rosterUpdate', roster: rosterList() });
       UI.setCoopLobbyStep('host', phase);
       emit('connected', peerId);
       status(roster.length + ' of ' + C.maxPlayers + ' farmhands connected.', 'good');
@@ -16235,6 +16452,7 @@ const COOP = (() => {
     if (remote && scene && remote.group) scene.remove(remote.group);
     remotes.delete(peerId);
     broadcast({ type: 'playerLeft', id: peerId });
+    broadcast({ type: 'rosterUpdate', roster: rosterList() });
     status(message, 'bad');
     if (channels.size === 0) connected = false;
     // A farmhand disconnecting mid-lobby is just a roster update (handled
@@ -16262,6 +16480,7 @@ const COOP = (() => {
       phase = 'connected';
       UI.setCoopLobbyStep(role, phase);
       status('Connected. Waiting for the host to start the farm…', 'good');
+      send({ type: 'characterChoice', characterId: requestedCharacterId });
       if (localVoiceStream) callVoice('host');
     };
     next.on('open', onOpen);
@@ -16388,7 +16607,13 @@ const COOP = (() => {
      peer id comes from which channel the data arrived on, not the payload */
   function receiveOnHost(fromId, message) {
     if (!message || !message.type) return;
-    if (message.type === 'state' && message.player) {
+    if (message.type === 'characterChoice') {
+      const chosen = sanitizeCharacter(message.characterId);
+      if (!channels.has(fromId)) return;
+      slotAssignments.set(fromId, chosen);
+      broadcast({ type: 'rosterUpdate', roster: rosterList() });
+      UI.setCoopLobbyStep('host', phase);
+    } else if (message.type === 'state' && message.player) {
       const remote = makeRemote(fromId, slotAssignments.get(fromId));
       remote.target = Object.assign(remote.target, message.player);
       remote.lastSeen = 0;
@@ -16417,20 +16642,30 @@ const COOP = (() => {
   function receiveOnJoin(message) {
     if (!message || !message.type) return;
     if (message.type === 'welcome') {
-      myCharacterId = message.characterId || myCharacterId;
+      // Keep the character selected locally; `message.characterId` is only a
+      // compatibility fallback for a host that does not echo the roster.
+      if (!requestedCharacterId) {
+        myCharacterId = sanitizeCharacter(message.characterId);
+        requestedCharacterId = myCharacterId;
+      }
       matchRunning = !!message.matchRunning;
       matchMode = (message.matchMode === 'ffa' || message.matchMode === 'teams') ? message.matchMode : 'coop';
-      (message.roster || []).forEach(p => { if (p.id !== localId) makeRemote(p.id, p.characterId); });
+      applyRoster(message.roster);
       UI.setCoopLobbyStep(role, phase);
       // A late join has no record of the real starting count -- roster.length
       // (peers already connected, not counting this join) is the best
       // available approximation, assuming no one's left since match start.
       if (matchRunning) emit('matchStart', (message.roster || []).length || 1);
+    } else if (message.type === 'rosterUpdate') {
+      applyRoster(message.roster);
+      UI.setCoopLobbyStep(role, phase);
     } else if (message.type === 'playerJoined' && message.id) {
       makeRemote(message.id, message.characterId);
+      if (rosterOrder.indexOf(message.id) < 0) rosterOrder.push(message.id);
       UI.setCoopLobbyStep(role, phase);
     } else if (message.type === 'playerLeft' && message.id) {
       removeRemote(message.id);
+      rosterOrder = rosterOrder.filter(id => id !== message.id);
       UI.setCoopLobbyStep(role, phase);
       // Mirrors the host-side emit in hostLosePeer -- same event, same
       // "continue without them or head back" choice, for whichever other
@@ -16824,7 +17059,7 @@ const COOP = (() => {
   }
 
   return {
-    init, on, openLobby, host, prepareJoin, signalAction, stop, update, startMatch, setMatchMode,
+    init, on, openLobby, host, prepareJoin, selectCharacter, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
     broadcastBossDefeated, broadcastBoss2Defeated, broadcastBoss3Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     sendChat, displayNameFor, setLocalVoiceStream,
@@ -16839,11 +17074,11 @@ const COOP = (() => {
     // channels.size + 1 only counts right on the host -- a join only ever
     // holds one channel (keyed 'host'). this.roster is correct for both.
     get playerCount() { return this.roster.length; },
-    get spawnSlotIndex() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)); },
+    get spawnSlotIndex() { const index = roomOrder().indexOf(localId); return index >= 0 ? index : 0; },
     get localCharacterId() { return myCharacterId; },
     get roster() { return rosterList(); },
     teamOf: teamOfId,
-    get localTeam() { return Math.max(0, CHARACTER_POOL.indexOf(myCharacterId)) % 2; },
+    get localTeam() { return teamOfId(localId); },
     // KILLCAM-only: resolves the {pvp:true,id} marker PLAYER.lastAttacker
     // carries back to that peer's visible remote model.
     getRemote(id) { return remotes.get(id); }
