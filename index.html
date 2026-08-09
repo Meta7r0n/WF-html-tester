@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.07.05 Pause Menu</title>
+<title>The Wilted Farm — v0.22.69</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -1516,9 +1516,12 @@ const CONFIG = {
   // the claws themselves are procedural props, not part of the mesh.
   bearClaw: {
     id: 'bearClaw', name: 'Bear Claw',
-    asset: 'assets/bear_claw_character.glb',
-    assetForwardCorrection: Math.PI,
-    assetScale: 1.55,
+    asset: 'assets/skeleton_lobster.glb',
+    // The replacement asset faces the farmhand rig's native -Z direction.
+    assetForwardCorrection: 0,
+    // The source is authored at roughly six world units tall; keep the
+    // existing Bear Claw collider and encounter proportions at game scale.
+    assetScale: 0.34,
     spawn: { x: 8.0, y: 0, z: -56.0 },
     hp: 520, radius: 0.58, height: 2.0, eyeHeight: 1.5,
     stepHeight: 0.5, gravity: 27, speed: 3.6, reach: 3.1,
@@ -4879,7 +4882,7 @@ const LEVEL = (() => {
     addSlab(-18.5, -11.5, 13.0, 13.0, 'utility_room');
     addWall(-25.15, -11.5, 0.30, 13.3, 'utility_room');
     addWall(-18.5, -18.15, 13.3, 0.30, 'utility_room');
-    addWall(-22.675, -4.85, 4.95, 0.30, 'utility_room');
+    addWall(-23.475, -4.85, 3.35, 0.30, 'utility_room');
     addWall(-14.325, -4.85, 4.95, 0.30, 'utility_room');
     addWall(-11.85, -15.625, 0.30, 5.05, 'utility_room');
     addWall(-11.85, -7.375, 0.30, 5.05, 'utility_room');
@@ -4890,20 +4893,22 @@ const LEVEL = (() => {
     addSlab(-4.0, -18.55, 3.4, 10.9, 'root_spur');
     addWall(-5.85, -18.55, 0.30, 11.1, 'root_spur');
     addWall(-2.15, -18.55, 0.30, 11.1, 'root_spur');
-    addSlab(-4.0, -30.0, 12.0, 12.0, 'root_cellar');
+    // Expanded east edge makes the northeast branch and east tunnel full
+    // width at their mouths instead of leaving 1.8 m of usable floor.
+    addSlab(-3.1, -30.0, 13.8, 12.0, 'root_cellar');
     // Split the west wall around the v0.06.04 northwest branch. The opening
     // is a full 3.5 m wide, so it remains smooth at sprint speed and later
     // leaves enough circulation room for multiple players.
     addWall(-10.15, -35.45, 0.30, 1.40, 'root_cellar');
     addWall(-10.15, -27.55, 0.30, 7.40, 'root_cellar');
-    addWall(2.15, -33.925, 0.30, 4.45, 'root_cellar');
-    addWall(2.15, -26.075, 0.30, 4.45, 'root_cellar');
+    addWall(3.95, -33.925, 0.30, 4.45, 'root_cellar');
+    addWall(3.95, -26.075, 0.30, 4.45, 'root_cellar');
     // North wall split around a 3.6 m doorway at x=2 -- the v0.14.01-UGEX
     // northeast branch descends into this gap (see below).
     addWall(-4.975, -36.15, 10.35, 0.30, 'root_cellar');
     addWall(5.975, -36.15, 4.35, 0.30, 'root_cellar');
     addWall(-7.925, -23.85, 4.45, 0.30, 'root_cellar');
-    addWall(-0.075, -23.85, 4.45, 0.30, 'root_cellar');
+    addWall(0.75, -23.85, 6.10, 0.30, 'root_cellar');
 
     /* ---- v0.06.04 northwest grenade room ----
        A compact L-shaped branch reaches beneath the northwest corner of the
@@ -4913,8 +4918,10 @@ const LEVEL = (() => {
     // edge exactly -- a stale -10.15 edge here (root_cellar's doorway wall
     // centerline, not its floor edge) left a 0.15 m floor-crack gap that
     // read as a bottomless sliver at the doorway threshold.
-    addSlab(-14.325, -33.0, 8.65, 3.6, 'northwest_link');
-    addWall(-14.325, -31.25, 8.65, 0.30, 'northwest_link');
+    // Widen the L-junction to the full 3.6 m bend width. The previous
+    // overlap exposed only 1.95 m at the actual turn mouth.
+    addSlab(-15.15, -33.0, 10.3, 3.6, 'northwest_link');
+    addWall(-15.15, -31.25, 10.3, 0.30, 'northwest_link');
     addWall(-13.35, -34.75, 6.70, 0.30, 'northwest_link');
 
     // The bend meets both neighbors on exact rectangle edges. Its old
@@ -4935,10 +4942,11 @@ const LEVEL = (() => {
        The southern run reaches toward the gate side of the farm. The eastern
        run bends north into a relay room rather than becoming one giant open
        basement, preserving ambushes, navigation choices and occlusion. */
-    // Matches generator_hall's 3.4 m south doorway and meets the well hall
-    // at x=-16.8 without penetrating its floor.
-    addSlab(-18.5, 2.55, 3.4, 14.9, 'south_tunnel');
-    addWall(-20.25, 2.55, 0.30, 15.2, 'south_tunnel');
+    // Utility_room -> south_tunnel -> generator_hall is one continuous
+    // 5 m-wide run. Its floor now starts exactly at utility_room's north
+    // edge, removing the 0.1 m seam that the perimeter sealer closed.
+    addSlab(-19.3, 2.5, 5.0, 15.0, 'south_tunnel');
+    addWall(-21.95, 2.5, 0.30, 15.3, 'south_tunnel');
     // East wall shortened at its north end for a doorway (z 6.7 to 10.15,
     // the tunnel's own natural end) -- the v0.15.01-UGEX-FIX well shaft
     // hallway connects the whole network here (see below).
@@ -4948,14 +4956,17 @@ const LEVEL = (() => {
     addWall(-25.15, 17.5, 0.30, 15.3, 'generator_hall');
     // Leave the east edge open from z=10 to z=11.8 for the well hall; the
     // old full-height run blocked the new edge-to-edge gallery at its mouth.
-    addWall(-9.85, 18.4, 0.30, 13.2, 'generator_hall');
+    // Keep a full 3 m opening to the well hall at the generator's east edge.
+    addWall(-9.85, 19.0, 0.30, 12.0, 'generator_hall');
     addWall(-17.5, 25.15, 15.3, 0.30, 'generator_hall');
-    addWall(-22.675, 9.85, 4.95, 0.30, 'generator_hall');
+    addWall(-23.475, 9.85, 3.35, 0.30, 'generator_hall');
     addWall(-13.325, 9.85, 6.95, 0.30, 'generator_hall');
 
-    addSlab(9.55, -30.0, 15.1, 3.6, 'east_tunnel');
-    addWall(9.55, -28.25, 15.4, 0.30, 'east_tunnel');
-    addWall(8.55, -31.75, 13.4, 0.30, 'east_tunnel');
+    // Match the north turn's 3.4 m mouth and the expanded root-cellar
+    // edge, removing the old 1.8 m east-tunnel choke point.
+    addSlab(11.25, -30.0, 14.9, 3.6, 'east_tunnel');
+    addWall(11.25, -28.25, 15.2, 0.30, 'east_tunnel');
+    addWall(9.475, -31.75, 11.65, 0.30, 'east_tunnel');
     // Exact mouths at east_tunnel and relay_room. The former cap wall sat
     // outside the turn and walled off the connector's corner pocket.
     addSlab(17.0, -34.65, 3.4, 5.7, 'north_turn');
@@ -4970,9 +4981,10 @@ const LEVEL = (() => {
     addWall(23.475, -50.65, 3.35, 0.30, 'relay_room');
     addWall(12.075, -37.35, 6.45, 0.30, 'relay_room');
     addWall(21.925, -37.35, 6.45, 0.30, 'relay_room');
-    // East wall is split around the secret panel at z=-44.
-    addWall(25.15, -48.025, 0.30, 5.25, 'relay_room');
-    addWall(25.15, -39.975, 0.30, 5.25, 'relay_room');
+    // East wall opens to the full 6 m cache width, leaving a comfortable
+    // passage instead of a 2.8 m slot through the secret-panel area.
+    addWall(25.15, -48.9, 0.30, 3.5, 'relay_room');
+    addWall(25.15, -39.1, 0.30, 3.5, 'relay_room');
 
     // The cache is intentionally tiny and otherwise sealed. Its west doorway
     // is covered only by a visual panel, never a collider.
@@ -5020,11 +5032,11 @@ const LEVEL = (() => {
     PROPS.lantern(parent, 8, -0.78, -71, 0);
     PROPS.lantern(parent, 2, -0.78, -52.8, 0);
 
-    // A 2.2 m-high gallery reaches the well from the west. Its two ends
+    // A 3 m-high gallery reaches the well from the west. Its two ends
     // terminate exactly on south_tunnel and the well_shaft_area; the north
     // edge is already covered by generator_hall's split south wall.
-    addSlab(-13.4, 8.9, 6.8, 2.2, 'well_south_link');
-    addWall(-13.4, 7.8, 6.8, 0.30, 'well_south_link');
+    addSlab(-13.4, 8.5, 6.8, 3.0, 'well_south_link');
+    addWall(-13.4, 7.0, 6.8, 0.30, 'well_south_link');
 
     /* ---- v0.15.01-UGEX-FIX well shaft ----
        The front-yard well (see buildYard) is a real drop shaft now, not a
@@ -5037,7 +5049,7 @@ const LEVEL = (() => {
     // The well hall now sits east of the generator's x=-10 edge. A short
     // gallery below the generator carries the south-tunnel connection into
     // its west side without letting either room penetrate the other.
-    const wellX0 = -10.0, wellX1 = 4.2, wellZ0 = 7.8, wellZ1 = 11.8;
+    const wellX0 = -10.0, wellX1 = 4.2, wellZ0 = 7.0, wellZ1 = 13.0;
     const hallCX = (wellX0 + wellX1) * 0.5, hallCZ = (wellZ0 + wellZ1) * 0.5;
     const wellW = wellX1 - wellX0, wellD = wellZ1 - wellZ0;
     shell.box(wellW, 0.22, wellD, hallCX, FLOOR_Y - 0.11, hallCZ);
@@ -5062,7 +5074,8 @@ const LEVEL = (() => {
     // Dead end, directly under the well -- fully closed except for the
     // ceiling hole above.
     addWall(wellX1, hallCZ, 0.30, wellD, 'well_shaft');
-    PROPS.lantern(parent, -10, -0.78, 10, 0);
+    // Move the lantern out of the generator/well mouth.
+    PROPS.lantern(parent, -3.8, -0.78, 10.8, 0);
     // The open shaft (no solid across it) is real, so a lobbed grenade
     // already falls straight through on plain projectile physics -- but
     // the player's own ground resolution always defaults to the flat
@@ -5102,10 +5115,10 @@ const LEVEL = (() => {
     doorwayFrame(-11.82, -11.5, false);
     doorwayFrame(-4.0, -13.22, true);
     doorwayFrame(-4.0, -23.82, true);
-    doorwayFrame(-18.5, -4.82, true);
-    doorwayFrame(-18.5, 9.82, true);
+    doorwayFrame(-19.3, -4.82, true, 2.35);
+    doorwayFrame(-19.3, 9.82, true, 2.35);
     doorwayFrame(2.12, -30.0, false);
-    doorwayFrame(17.0, -31.72, true);
+    doorwayFrame(17.0, -31.72, true, 1.70);
     doorwayFrame(17.0, -37.32, true);
     // Wider half-span: this doorway (root_cellar <-> northwest_link) is a
     // genuine 3.5 m-wide opening, half a meter wider than every other
@@ -5119,7 +5132,7 @@ const LEVEL = (() => {
     doorwayFrame(20, -66.85, true);
     doorwayFrame(14.85, -71, false);
     doorwayFrame(20, -50.65, true);
-    doorwayFrame(2, -36.15, true);
+    doorwayFrame(2, -36.15, true, 1.80);
     // No frame at (-16.75, 9.2) either: well_shaft <-> south_tunnel is now
     // a wide, wall-less corridor mouth (see the south wall split above),
     // not a discrete doorway -- same reasoning as the northwest corner.
@@ -5424,7 +5437,7 @@ const MAPVIEW = (() => {
   const ROOMS = [
     { x: 8, z: -20, x2: 28, z2: -3, label: 'Basement' },
     { x: -25, z: -18, x2: -12, z2: -5, label: 'Utility Room' },
-    { x: -10, z: -36, x2: 2, z2: -24, label: 'Root Cellar' },
+    { x: -10, z: -36, x2: 3.8, z2: -24, label: 'Root Cellar' },
     { x: -27, z: -47.5, x2: -16, z2: -38.5, label: 'Grenade Room' },
     { x: -25, z: 10, x2: -10, z2: 25, label: 'Generator Hall' },
     { x: 9, z: -50.5, x2: 25, z2: -37.5, label: 'Relay Room' },
@@ -5433,15 +5446,15 @@ const MAPVIEW = (() => {
     { x: 1.8, z: 8.8, x2: 4.2, z2: 11.2, label: 'Well Shaft' },
     { x: -12, z: -13.1, x2: 8, z2: -9.9 },
     { x: -5.7, z: -24, x2: -2.3, z2: -13.1 },
-    { x: -18.65, z: -34.8, x2: -10, z2: -31.2 },
+    { x: -20.3, z: -34.8, x2: -10, z2: -31.2 },
     { x: -20.3, z: -38.5, x2: -16.7, z2: -34.8 },
-    { x: -20.2, z: -4.9, x2: -16.8, z2: 10 },
-    { x: 2, z: -31.8, x2: 17.1, z2: -28.2 },
+    { x: -21.8, z: -5, x2: -16.8, z2: 10 },
+    { x: 3.8, z: -31.8, x2: 18.7, z2: -28.2 },
     { x: 15.3, z: -37.5, x2: 18.7, z2: -31.8 },
     { x: 18.2, z: -67, x2: 21.8, z2: -50.5 },
     { x: 0.2, z: -72.8, x2: 15, z2: -69.2 },
     { x: 0.2, z: -69.2, x2: 3.8, z2: -36 },
-    { x: -16.8, z: 7.8, x2: -10, z2: 10 }
+    { x: -16.8, z: 7, x2: -10, z2: 10 }
   ];
 
   function toXY(x, z, m) {
@@ -13900,15 +13913,35 @@ const ENEMY = (() => {
     };
   }
 
-  /* Bear Claw's rig is just the bare mesh -- no joints, no clips, so this
-     is a much smaller version of buildBossAssetRig above. The procedural
-     claw props (see buildBearClawClaws) get attached separately, in
-     create(), once the entity group actually exists. */
+  /* The replacement skeleton lobster exports authored idle, walk, and
+     claw-snap clips. Keep its animation mixer separate from the procedural
+     fallback so a failed asset load still leaves the original encounter
+     playable. */
   function buildBearClawAssetRig() {
     if (!bearClawAsset) return null;
     const root = bearClawAsset;
     root.name = 'BearClawGLB';
-    return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
+    const mixer = THREE.AnimationMixer ? new THREE.AnimationMixer(root) : null;
+    const idleClip = bearClawAssetAnimations.find(clip => /idle/i.test(clip.name));
+    const runClip = bearClawAssetAnimations.find(clip => /walk|run/i.test(clip.name));
+    const attackClip = bearClawAssetAnimations.find(clip => /claw|snap|attack/i.test(clip.name));
+    const idleAction = mixer && idleClip ? mixer.clipAction(idleClip) : null;
+    const runAction = mixer && runClip ? mixer.clipAction(runClip) : null;
+    const attackAction = mixer && attackClip ? mixer.clipAction(attackClip) : null;
+    if (idleAction) idleAction.play();
+    if (attackAction) {
+      attackAction.setLoop(THREE.LoopOnce, 1);
+      attackAction.clampWhenFinished = true;
+    }
+    return {
+      root: root,
+      asset: true,
+      mixer: mixer,
+      idleAction: idleAction,
+      runAction: runAction,
+      attackAction: attackAction,
+      action: idleAction
+    };
   }
 
   /* Beat Slayer: same bare-mesh shape as Bear Claw's rig above -- no joints,
@@ -14021,6 +14054,7 @@ const ENEMY = (() => {
       assetIdleAction: built.rig.idleAction || null,
       assetRunAction: built.rig.runAction || null,
       assetAction: built.rig.action || null,
+      assetAttackAction: built.rig.attackAction || null,
       assetShoulderR: built.rig.shoulderR || null,
       assetShoulderL: built.rig.shoulderL || null,
       assetShoulderRBase: built.rig.shoulderRBase || null,
@@ -14088,7 +14122,10 @@ const ENEMY = (() => {
     e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(anyBoss ? 0.82 : 0.62,
       anyBoss ? 1.2 : 0.98, anyBoss ? 0.66 : 0.5), bodyY, 'body', e, 'body');
 
-    if (isBoss2) e.clawArms = buildBearClawClaws(e.group);
+    // The replacement GLB includes both lobster claws; retain the old
+    // procedural props only when the loader has fallen back to the legacy
+    // Bear Claw rig.
+    if (isBoss2 && !isAssetBoss) e.clawArms = buildBearClawClaws(e.group);
 
     // alert "!" billboard
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -15316,9 +15353,9 @@ const ENEMY = (() => {
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
-  function updateAssetAction(e, moving) {
+  function updateAssetAction(e, moving, forcedAction) {
     if (!e.assetMixer) return;
-    const next = moving && e.assetRunAction ? e.assetRunAction : e.assetIdleAction;
+    const next = forcedAction || (moving && e.assetRunAction ? e.assetRunAction : e.assetIdleAction);
     if (next && e.assetAction !== next) {
       if (e.assetAction) e.assetAction.fadeOut(0.14);
       next.reset().fadeIn(0.14).play();
@@ -15363,10 +15400,9 @@ const ENEMY = (() => {
     }
   }
 
-  /* Whole-transform posing only -- the GLB has no rig at all to animate,
-     so every readable "pose" here comes from either the group transform
-     (squash/stretch, corpse wilt) or the procedural claw arms built by
-     buildBearClawClaws, not from anything inside the mesh itself. */
+  /* Bear Claw uses the replacement GLB's authored clips when available.
+     The group transform still supplies the common squash, corpse, and
+     attack-state motion, while the procedural claws remain fallback-only. */
   function poseBearClaw(e, t) {
     // The forward correction only fixes the GLB's own authored-forward
     // mismatch (see B2.assetForwardCorrection). When the asset fails to
@@ -15387,6 +15423,10 @@ const ENEMY = (() => {
     const sq = 1 + e.squash;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     e.group.rotation.set(0, e.yaw + correction, 0);
+
+    const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
+    const attackAction = e.state === 'boss2_melee' ? e.assetAttackAction : null;
+    updateAssetAction(e, moving, attackAction);
 
     // Claw reach: 0 at rest, peaks partway through the melee windup and
     // eases back out through the recover half -- the "stretchy" part of
