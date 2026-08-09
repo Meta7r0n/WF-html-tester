@@ -87,3 +87,31 @@ resets the active run through the same safe path as the end-game start-screen
 button, stops any co-op transport, releases input capture, and returns to the
 single-player / online co-op mode selector without changing the current run on
 the branch until the player chooses a new one.
+
+## v0.23-CFP Alpha Lab deployment
+
+This branch is prepared for a private Cloudflare Worker deployment. The game
+files live under `public/`, while `worker.js` runs first and serves the game
+only after a short-lived, signed tester session is established.
+
+### Cloudflare setup
+
+1. Create or open the Worker connected to this repository and set its
+   production branch to `v0.23-CFP` (do not use `main`).
+2. Leave **Build command** empty and use `npx wrangler deploy` for the deploy
+   command. The repository already contains `wrangler.jsonc` and the Worker
+   entry point.
+3. After the first deployment, open **Worker → Settings → Variables & Secrets**
+   and add these as encrypted secrets:
+   - `LAB_PIN`: the current shared tester PIN. Choose a new value for this
+     release; do not reuse a PIN that has appeared in chat or documentation.
+   - `SESSION_SECRET`: a long random signing secret. Generate one locally, for
+     example with `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`.
+4. Add the custom domain `alpha.lobsterlabz.com` to the Worker. Keep this
+   address out of the public navigation until the alpha is ready.
+
+The PIN and signing key are runtime secrets; neither is included in the
+repository or sent to the browser. Rotating `LAB_PIN` changes tester access,
+and rotating `SESSION_SECRET` immediately invalidates existing sessions. The
+in-Worker attempt counter is only a small edge-local brake, so add a Cloudflare
+Rate Limiting rule if this endpoint is ever opened to a larger audience.
