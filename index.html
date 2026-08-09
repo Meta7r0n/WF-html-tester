@@ -3118,8 +3118,13 @@ const LEVEL = (() => {
         [10, 20], [4, 22], [-1, 26], [0, 29]                    // field back to gate
       ],
       [
+        [16, 14], [20, 15.2], [24, 17.0], [28, 18.5], [31.5, 18.5],
+        [35, 18.5]                                              // original field to maze gate
+      ],
+      [
         [12.5, -15.5], [12, -21], [10, -27], [11, -31.5],      // barn to east breach
-        [14, -37], [19, -42], [20, -46]                         // feed shelter
+        [14, -37], [19, -42], [20, -46], [26, -46], [30.5, -46],
+        [38, -46], [45, -46]                                    // feed shelter to stable
       ],
       [
         [-21, -27], [-18, -31.5], [-16, -37], [-10, -42],      // ruins to west breach
@@ -3188,8 +3193,11 @@ const LEVEL = (() => {
     const n = Math.max(1, Math.round(len / 2.6));
     const dx = (bx - ax) / n, dz = (bz - az) / n;
     const ang = Math.atan2(bx - ax, bz - az);
-    const WALL_H = opts.wallHeight || 5;
-    const WALL_T = opts.wallThickness || 0.32;
+    // Fence collision follows the authored visual fence footprint. The old
+    // perimeter pass used a 5m "wall" here, which made a low fence block
+    // raised catwalks and made future jumping impossible.
+    const FENCE_H = opts.fenceHeight || 1.75;
+    const FENCE_T = opts.fenceThickness || 0.32;
 
     // AABB the rotated strip the player actually sees. WORLD's solver is
     // axis-aligned, so the box is the tight world-space envelope of the same
@@ -3239,12 +3247,12 @@ const LEVEL = (() => {
         0, ang, UTIL.rng(-.04, .04), 0.012);
 
       if (opts.wall) {
-        // The perimeter uses one tall collider per authored interval to keep
-        // players from jumping the low decorative rail. Its footprint is
-        // still generated from this same visible interval and stops exactly
-        // where a deliberate run gap begins.
+        // Perimeter intervals use the same low vertical extent as the visible
+        // post/rail assembly. This leaves space for raised walkways and keeps
+        // a future jump mechanic from colliding with invisible air above the
+        // actual fence asset.
         const segmentAngle = Math.atan2(q.x - p.x, q.z - p.z);
-        addStripCollider(mx, mz, actualLength + 0.16, WALL_T, WALL_H / 2, WALL_H,
+        addStripCollider(mx, mz, actualLength + 0.16, FENCE_T, FENCE_H / 2, FENCE_H,
           segmentAngle, 'fence');
       } else {
         // Interior rails use the same two visible strips as their blockers.
@@ -3266,7 +3274,35 @@ const LEVEL = (() => {
     // perimeter, bowed so nothing reads as a square arena
     fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8, wall: true });
     fenceRun(b, 3.6, 31.2, 30, 32, { bow: -0.8, wall: true });
-    fenceRun(b, 30, 32, 30.5, M.siloTransition, { bow: 1.4, wall: true });
+    // Old east boundary: split around two real access gates. The south gate
+    // lines up with the maze's west entrance at z=18.5; the north gate lines
+    // up with the horse stable/pasture route at z=-46.
+    const OLD_EAST_FENCE_X = 30.5;
+    const MAZE_GATE_CENTER_Z = 18.5;
+    const MAZE_GATE_SOUTH_EDGE = 21.75;
+    const MAZE_GATE_NORTH_EDGE = 15.25;
+    const STABLE_GATE_CENTER_Z = -46.0;
+    const STABLE_GATE_SOUTH_EDGE = -43.15;
+    const STABLE_GATE_NORTH_EDGE = -48.85;
+
+    fenceRun(b, 30, 32, OLD_EAST_FENCE_X, MAZE_GATE_SOUTH_EDGE, { bow: 0, wall: true });
+    fenceRun(b, OLD_EAST_FENCE_X, MAZE_GATE_NORTH_EDGE,
+      OLD_EAST_FENCE_X, STABLE_GATE_SOUTH_EDGE, { bow: 0, wall: true });
+    fenceRun(b, OLD_EAST_FENCE_X, STABLE_GATE_NORTH_EDGE,
+      OLD_EAST_FENCE_X, M.siloTransition, { bow: 0, wall: true });
+
+    // Gateposts are placed at the edges of the open sections and receive
+    // their own matching low colliders. The passage itself stays empty.
+    function addBoundaryGatePosts(centerZ, halfWidth) {
+      const postOffset = halfWidth - 0.35;
+      [-1, 1].forEach(side => {
+        const z = centerZ + side * postOffset;
+        b.box(0.24, 1.75, 0.24, OLD_EAST_FENCE_X, 0.875, z, 0, 0, 0, 0.02);
+        WORLD.addFloor(OLD_EAST_FENCE_X, 0, z, 0.34, 1.75, 0.34, 'fence_gatepost');
+      });
+    }
+    addBoundaryGatePosts(MAZE_GATE_CENTER_Z, 3.25);
+    addBoundaryGatePosts(STABLE_GATE_CENTER_Z, 2.85);
     fenceRun(b, -30, M.siloTransition, -30.5, 32, { bow: -1.4, wall: true });
 
     // The original outer boundary now reads as an old cross-fence -- same
@@ -3289,7 +3325,10 @@ const LEVEL = (() => {
     fenceRun(b, -20, -32, -30, -32, { bow: 0.3, wall: true });
 
     // interior guide fencing: curves the walk from the gate toward the yard
-    fenceRun(b, -8, 24, -12, 14, { bow: 2.2 });
+    // South-west shed-side fence: preserve the authored endpoints but remove
+    // the heavy bow so the asset and its generated collider form one clean,
+    // straight line.
+    fenceRun(b, -8, 24, -12, 14, { bow: 0 });
     fenceRun(b, 9, 25, 13, 20, { bow: -1.4 });
     // paddock rail west of the barn
     fenceRun(b, 4, 4, 4, -1, { bow: 0.6 });
@@ -4052,7 +4091,9 @@ const LEVEL = (() => {
     // walkable path node the maze itself relies on, and every one of these
     // decorations is deliberately offset toward a cell corner (or, for the
     // sign, placed just outside the grid in the approach) instead.
-    PROPS.signPost(parent, 34.0, 24.0, ['CORN MAZE'], -0.25,
+    // Keep the sign on the old-farm side of the entrance, north of the
+    // approach line so the field-to-maze path remains unobstructed.
+    PROPS.signPost(parent, 28.0, 22.4, ['CORN MAZE'], 0.25,
       { w: 1.8, h: 0.8, bg: PAL.mustard, fg: PAL.oliveDeep, postH: 1.6 });
     PROPS.hayBale(parent, 38.2, 0, -15.8, 0.15);
     PROPS.hayBale(parent, 38.3, 0, -15.6, -0.2);
@@ -5281,7 +5322,9 @@ const MAPVIEW = (() => {
   // only needs the boundary shape, not the bow.
   const FENCES = [
     [-30, 32, -3.6, 31.2], [3.6, 31.2, 30, 32],
-    [30, 32, 30.5, -51.6], [-30, -51.6, -30.5, 32],
+    // The old east boundary mirrors the two authored gates in LEVEL.
+    [30, 32, 30.5, 21.75], [30.5, 15.25, 30.5, -43.15],
+    [30.5, -48.85, 30.5, -51.6], [-30, -51.6, -30.5, 32],
     [30.5, -51.6, 14, -51.6], [8, -51.6, -14, -51.6], [-20, -51.6, -30, -51.6],
     [30.5, -51.6, 30.5, -80], [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
     [30.5, -32, 14, -32], [8, -32, -14, -32], [-20, -32, -30, -32],
