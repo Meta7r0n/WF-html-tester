@@ -1516,9 +1516,12 @@ const CONFIG = {
   // the claws themselves are procedural props, not part of the mesh.
   bearClaw: {
     id: 'bearClaw', name: 'Bear Claw',
-    asset: 'assets/bear_claw_character.glb',
-    assetForwardCorrection: Math.PI,
-    assetScale: 1.55,
+    asset: 'assets/skeleton_lobster.glb',
+    // The replacement asset faces the farmhand rig's native -Z direction.
+    assetForwardCorrection: 0,
+    // The source is authored at roughly six world units tall; keep the
+    // existing Bear Claw collider and encounter proportions at game scale.
+    assetScale: 0.34,
     spawn: { x: 8.0, y: 0, z: -56.0 },
     hp: 520, radius: 0.58, height: 2.0, eyeHeight: 1.5,
     stepHeight: 0.5, gravity: 27, speed: 3.6, reach: 3.1,
@@ -13910,15 +13913,35 @@ const ENEMY = (() => {
     };
   }
 
-  /* Bear Claw's rig is just the bare mesh -- no joints, no clips, so this
-     is a much smaller version of buildBossAssetRig above. The procedural
-     claw props (see buildBearClawClaws) get attached separately, in
-     create(), once the entity group actually exists. */
+  /* The replacement skeleton lobster exports authored idle, walk, and
+     claw-snap clips. Keep its animation mixer separate from the procedural
+     fallback so a failed asset load still leaves the original encounter
+     playable. */
   function buildBearClawAssetRig() {
     if (!bearClawAsset) return null;
     const root = bearClawAsset;
     root.name = 'BearClawGLB';
-    return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
+    const mixer = THREE.AnimationMixer ? new THREE.AnimationMixer(root) : null;
+    const idleClip = bearClawAssetAnimations.find(clip => /idle/i.test(clip.name));
+    const runClip = bearClawAssetAnimations.find(clip => /walk|run/i.test(clip.name));
+    const attackClip = bearClawAssetAnimations.find(clip => /claw|snap|attack/i.test(clip.name));
+    const idleAction = mixer && idleClip ? mixer.clipAction(idleClip) : null;
+    const runAction = mixer && runClip ? mixer.clipAction(runClip) : null;
+    const attackAction = mixer && attackClip ? mixer.clipAction(attackClip) : null;
+    if (idleAction) idleAction.play();
+    if (attackAction) {
+      attackAction.setLoop(THREE.LoopOnce, 1);
+      attackAction.clampWhenFinished = true;
+    }
+    return {
+      root: root,
+      asset: true,
+      mixer: mixer,
+      idleAction: idleAction,
+      runAction: runAction,
+      attackAction: attackAction,
+      action: idleAction
+    };
   }
 
   /* Beat Slayer: same bare-mesh shape as Bear Claw's rig above -- no joints,
@@ -14031,6 +14054,7 @@ const ENEMY = (() => {
       assetIdleAction: built.rig.idleAction || null,
       assetRunAction: built.rig.runAction || null,
       assetAction: built.rig.action || null,
+      assetAttackAction: built.rig.attackAction || null,
       assetShoulderR: built.rig.shoulderR || null,
       assetShoulderL: built.rig.shoulderL || null,
       assetShoulderRBase: built.rig.shoulderRBase || null,
@@ -14098,7 +14122,10 @@ const ENEMY = (() => {
     e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(anyBoss ? 0.82 : 0.62,
       anyBoss ? 1.2 : 0.98, anyBoss ? 0.66 : 0.5), bodyY, 'body', e, 'body');
 
-    if (isBoss2) e.clawArms = buildBearClawClaws(e.group);
+    // The replacement GLB includes both lobster claws; retain the old
+    // procedural props only when the loader has fallen back to the legacy
+    // Bear Claw rig.
+    if (isBoss2 && !isAssetBoss) e.clawArms = buildBearClawClaws(e.group);
 
     // alert "!" billboard
     const mk = new THREE.Sprite(new THREE.SpriteMaterial({
@@ -15326,9 +15353,9 @@ const ENEMY = (() => {
   /* ---------------- posing ----------------
      Position integrates smoothly; the pose is evaluated on a 12 fps clock so
      the characters read as animated on twos, like the reference art. */
-  function updateAssetAction(e, moving) {
+  function updateAssetAction(e, moving, forcedAction) {
     if (!e.assetMixer) return;
-    const next = moving && e.assetRunAction ? e.assetRunAction : e.assetIdleAction;
+    const next = forcedAction || (moving && e.assetRunAction ? e.assetRunAction : e.assetIdleAction);
     if (next && e.assetAction !== next) {
       if (e.assetAction) e.assetAction.fadeOut(0.14);
       next.reset().fadeIn(0.14).play();
@@ -15373,10 +15400,9 @@ const ENEMY = (() => {
     }
   }
 
-  /* Whole-transform posing only -- the GLB has no rig at all to animate,
-     so every readable "pose" here comes from either the group transform
-     (squash/stretch, corpse wilt) or the procedural claw arms built by
-     buildBearClawClaws, not from anything inside the mesh itself. */
+  /* Bear Claw uses the replacement GLB's authored clips when available.
+     The group transform still supplies the common squash, corpse, and
+     attack-state motion, while the procedural claws remain fallback-only. */
   function poseBearClaw(e, t) {
     // The forward correction only fixes the GLB's own authored-forward
     // mismatch (see B2.assetForwardCorrection). When the asset fails to
@@ -15397,6 +15423,10 @@ const ENEMY = (() => {
     const sq = 1 + e.squash;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     e.group.rotation.set(0, e.yaw + correction, 0);
+
+    const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
+    const attackAction = e.state === 'boss2_melee' ? e.assetAttackAction : null;
+    updateAssetAction(e, moving, attackAction);
 
     // Claw reach: 0 at rest, peaks partway through the melee windup and
     // eases back out through the recover half -- the "stretchy" part of
