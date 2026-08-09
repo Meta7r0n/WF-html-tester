@@ -1548,9 +1548,9 @@ const CONFIG = {
   // (see CONFIG.throwables.boomboxThrowable / THROWABLE.spawnBoomboxZone).
   beatSlayer: {
     id: 'beatSlayer', name: 'Beat Slayer',
-    asset: 'assets/beat_slayer_character.glb',
-    assetForwardCorrection: Math.PI,
-    assetScale: 1.0,
+    asset: 'assets/boombox_cat.glb',
+    assetForwardCorrection: 0,
+    assetScale: 0.34,
     spawn: { x: 20.0, y: 0, z: -25.0 },
     hp: 420, radius: 0.5, height: 1.9, eyeHeight: 1.45,
     stepHeight: 0.5, gravity: 27,
@@ -13952,7 +13952,16 @@ const ENEMY = (() => {
     if (!beatSlayerAsset) return null;
     const root = beatSlayerAsset;
     root.name = 'BeatSlayerGLB';
-    return { root: root, asset: true, mixer: null, idleAction: null, runAction: null, action: null };
+    const mixer = THREE.AnimationMixer ? new THREE.AnimationMixer(root) : null;
+    const idleClip = beatSlayerAssetAnimations.find(clip => /idle/i.test(clip.name));
+    const runClip = beatSlayerAssetAnimations.find(clip => /walk|run/i.test(clip.name));
+    const attackClip = beatSlayerAssetAnimations.find(clip => /boombox|bounce|attack/i.test(clip.name));
+    const idleAction = mixer && idleClip ? mixer.clipAction(idleClip) : null;
+    const runAction = mixer && runClip ? mixer.clipAction(runClip) : null;
+    const attackAction = mixer && attackClip ? mixer.clipAction(attackClip) : null;
+    if (idleAction) idleAction.play();
+    if (attackAction) { attackAction.setLoop(THREE.LoopOnce, 1); attackAction.clampWhenFinished = true; }
+    return { root, asset: true, mixer, idleAction, runAction, attackAction, action: idleAction };
   }
 
   /* One stretchy claw arm: a fixed shoulder pivot plus a "stretch" group
@@ -15481,6 +15490,9 @@ const ENEMY = (() => {
       const wk = B3.windup / total;
       pitch = (k < wk ? (k / wk) : Math.max(0, 1 - (k - wk) / (1 - wk) * 1.6)) * 0.3;
     }
+    const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
+    const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
+    updateAssetAction(e, moving, attackAction);
     e.group.rotation.set(pitch, e.yaw + correction, 0);
   }
 
