@@ -4946,7 +4946,9 @@ const LEVEL = (() => {
 
     addSlab(-17.5, 17.5, 15.0, 15.0, 'generator_hall');
     addWall(-25.15, 17.5, 0.30, 15.3, 'generator_hall');
-    addWall(-9.85, 17.5, 0.30, 15.3, 'generator_hall');
+    // Leave the east edge open from z=10 to z=11.8 for the well hall; the
+    // old full-height run blocked the new edge-to-edge gallery at its mouth.
+    addWall(-9.85, 18.4, 0.30, 13.2, 'generator_hall');
     addWall(-17.5, 25.15, 15.3, 0.30, 'generator_hall');
     addWall(-22.675, 9.85, 4.95, 0.30, 'generator_hall');
     addWall(-13.325, 9.85, 6.95, 0.30, 'generator_hall');
