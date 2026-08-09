@@ -86,6 +86,28 @@
     text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
   }
   #weaponName.on{opacity:1;}
+  #weaponInventory{
+    position:fixed;right:26px;bottom:166px;z-index:36;
+    display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;
+    width:min(58vw,520px);pointer-events:none;opacity:0;transition:opacity .18s ease;
+  }
+  #weaponInventory.on{opacity:1;}
+  .weapon-slot-btn{
+    display:flex;align-items:center;gap:5px;min-height:31px;max-width:150px;padding:5px 7px;
+    pointer-events:auto;cursor:pointer;border:3px solid var(--ink);
+    border-radius:7px 10px 8px 9px;background:rgba(246,233,210,.9);color:var(--ink);
+    box-shadow:3px 4px 0 rgba(22,18,15,.5);font:900 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
+    transition:transform .1s ease,background .1s ease,opacity .1s ease;
+  }
+  .weapon-slot-btn:nth-child(even){transform:rotate(1deg);}
+  .weapon-slot-btn kbd{
+    display:grid;place-items:center;min-width:20px;height:20px;padding:0 3px;
+    border:2px solid var(--ink);border-radius:4px;background:var(--blue);font:900 11px/1 "Courier New",monospace;
+  }
+  .weapon-slot-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(2px) rotate(-1deg);box-shadow:1px 2px 0 rgba(22,18,15,.7);}
+  .weapon-slot-btn:active{transform:translateY(3px) rotate(0deg);}
   #ammo{
     position:fixed;right:26px;bottom:22px;z-index:30;
     display:flex;align-items:flex-end;gap:12px;
@@ -294,6 +316,7 @@
      cutaway without touching that unrelated toggle logic. */
   body.killcam-active #crosshair,
   body.killcam-active #weaponName,
+  body.killcam-active #weaponInventory,
   body.killcam-active #ammo,
   body.killcam-active #vitals,
   body.killcam-active #tally,
@@ -452,21 +475,6 @@
   #radarTitle b{color:var(--mustard);font-size:9px;letter-spacing:1px;}
   #radarSignal{bottom:1px;color:var(--mustard);font-size:9px;letter-spacing:1px;}
 
-  #modeChip{
-    position:fixed;right:26px;top:22px;z-index:31;max-width:300px;
-    background:var(--cream);border:3px solid var(--ink);border-radius:9px 13px 8px 12px;
-    padding:9px 13px;transform:rotate(1.2deg);box-shadow:4px 5px 0 rgba(22,18,15,.42);
-    font:700 12px/1.35 "Rockwell",Georgia,serif;letter-spacing:1px;color:var(--ink-soft);
-    display:none;cursor:pointer;
-  }
-  #modeChip.on{display:block;}
-  #modeChip b{color:var(--rust);}
-  #modeChip span{
-    display:block;margin-top:5px;font-weight:600;letter-spacing:0;
-    font-size:11px;opacity:.62;text-transform:none;
-  }
-  #modeChip u{display:block;margin-top:6px;font-size:11px;color:var(--blue-deep);}
-
   /* ---------- Mobile controls ---------- */
   #mobileControls{
     position:fixed;inset:0;z-index:34;display:none;pointer-events:none;
@@ -595,12 +603,17 @@
   body.touch-device #pause .alt,
   body.touch-device #options .alt,
   body.touch-device #mapView .alt{display:block;}
-  body.touch-device #modeChip{display:none!important;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
     max-width:42vw;text-align:right;font-size:10px;
   }
+  body.touch-device #weaponInventory{
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(150px,calc(env(safe-area-inset-top) + 136px));bottom:auto;
+    width:min(54vw,250px);max-height:30vh;overflow:auto;gap:4px;
+    transform:scale(.78) rotate(-1deg);transform-origin:right top;
+  }
+  body.touch-device .weapon-slot-btn{min-height:35px;max-width:118px;font-size:9px;}
   body.touch-device #ammo{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(39px,calc(env(safe-area-inset-top) + 25px));bottom:auto;
     transform:scale(.72);transform-origin:right top;
@@ -986,6 +999,7 @@
   <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
 
   <div id="weaponName">Pipe Popper</div>
+  <div id="weaponInventory" aria-label="Weapon inventory"></div>
   <div id="ammo">
     <div id="shells"></div>
     <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
@@ -1048,12 +1062,6 @@
   </div>
   <div id="hurt"></div>
   <div id="specialHaze"></div>
-  <div id="modeChip">
-    Free-look &middot; <b>Esc</b> to pause
-    <span id="modeWhy"></span>
-    <u>Try mouse lock again</u>
-  </div>
-
   <div id="mobileControls" aria-hidden="true">
     <div id="mobileLookZone" aria-label="Drag to look"><span>Drag to look</span></div>
     <div id="movePad" aria-label="Movement joystick">
@@ -1107,13 +1115,13 @@
         <li><kbd>Click</kbd> Fire / punch</li>
         <li><kbd>V</kbd> Quick melee</li>
         <li><kbd>RMB</kbd> Aim — steadier, slower</li>
-        <li><kbd>1–4</kbd> Switch weapon</li>
+        <li><kbd>1–8</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
         <li><kbd>G</kbd> Throw grenade</li>
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
-      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
+      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Tap a weapon in the inventory strip to equip it. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
       <div id="ultraModeToggle">
         <span class="mode-toggle-label">Difficulty</span>
         <button class="mode-toggle-btn active" id="ultraOffBtn" data-ultra="off">Normal</button>
@@ -1125,7 +1133,6 @@
       </div>
       <button class="alt" id="startOptionsBtn">Options</button>
       <button class="alt" id="startMapBtn">Farm Map</button>
-      <button class="alt" id="freeBtn">Mouse won't lock? Use free-look instead</button>
       <p class="foot">Choose a mode to begin</p>
     </div>
   </div>
@@ -1297,13 +1304,12 @@
   <div id="pause" class="veil hidden">
     <div class="card">
       <p class="eyebrow">Paused</p>
-      <h1>Hold<br/>Still<span>Mouse is free</span></h1>
+      <h1>Hold<br/>Still<span>Mouse released</span></h1>
       <p class="sub" id="pauseHint">Click anywhere to grab the mouse again and get back to the farm.</p>
       <button class="go" id="resumeBtn">Back to it →</button>
       <button class="go compact" id="pauseMenuBtn">Main menu</button>
       <button class="alt" id="pauseOptionsBtn">Options</button>
       <button class="alt" id="pauseMapBtn">Farm Map</button>
-      <button class="alt" id="freeBtn2">Mouse won't lock? Use free-look instead</button>
     </div>
   </div>
 
@@ -1510,7 +1516,6 @@ const CONFIG = {
   // the claws themselves are procedural props, not part of the mesh.
   bearClaw: {
     id: 'bearClaw', name: 'Bear Claw',
-    // Meshy AI Clawed Skeleton King export; keep the stable runtime path.
     asset: 'assets/bear_claw_character.glb',
     assetForwardCorrection: Math.PI,
     assetScale: 1.55,
@@ -1862,9 +1867,6 @@ const CONFIG = {
     pickupRateMult: 0.75, healEffectMult: 0.75
   },
   input: {
-    // free-look fallback: how close to the window edge starts a steady turn,
-    // as a fraction of the viewport, and how fast that turn goes
-    edgeMargin: 0.14, edgeTurnX: 980, edgeTurnY: 420,
     touchLookScale: 1.5, stickDeadZone: 0.14, stickSprint: 0.86
   },
   palette: {
@@ -6680,28 +6682,27 @@ const AUDIO = (() => {
 })();
 
 /* ============================== [INPUT] ==============================
-   Three control modes feed one named-action table:
+   Desktop Pointer Lock and mobile touch controls feed one named-action
+   table. Touch keeps separate pointer captures for movement and aim, so
+   both thumbs can work at once. The fire button is also an aim surface:
+   press to shoot, then keep dragging that same held finger to turn.
 
-     'lock'   Pointer Lock mouse controls.
-     'free'   Mouse fallback for previews that refuse Pointer Lock.
-     'touch'  Multitouch movement, right-side look and action buttons.
-
-   Touch keeps separate pointer captures for movement and aim, so both thumbs
-   can work at once. The fire button is also an aim surface: press to shoot,
-   then keep dragging that same held finger to turn. */
+   Desktop deliberately has no cursor-edge fallback: look only changes from
+   actual pointer-lock deltas, which prevents a stationary cursor from
+   producing camera drift. */
 const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
     melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
     crouch: false, voiceTalk: false, ads: false,
-    slot1: false, slot2: false, slot3: false, slot4: false
+    slot1: false, slot2: false, slot3: false, slot4: false,
+    slot5: false, slot6: false, slot7: false, slot8: false
   };
   const pressed = {};
   const touchResetters = [];
   const moveOut = { x: 0, y: 0 };
   let mouseDX = 0, mouseDY = 0;
-  let pointerX = 0, pointerY = 0;
   let touchMoveX = 0, touchMoveY = 0, touchSprint = false;
   let locked = false, engaged = false;
   let touchMode = false;
@@ -6714,10 +6715,9 @@ const INPUT = (() => {
   } catch (e) {}
   let mode = touchMode ? 'touch' : 'lock';
   let element = null;
-  let lockTimer = null, lastRequest = 0, lockedAt = 0, quickDrops = 0;
+  let lockTimer = null, lastRequest = 0;
   let diagnosis = '';
-  const listeners = { lock: [], unlock: [], press: [], fallback: [] };
-  const edge = { x: 0, y: 0 };
+  const listeners = { lock: [], unlock: [], press: [], lockError: [] };
 
   const KEYMAP = {
     'KeyW': 'forward', 'ArrowUp': 'forward',
@@ -6737,7 +6737,11 @@ const INPUT = (() => {
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
-    'Digit4': 'slot4', 'Numpad4': 'slot4'
+    'Digit4': 'slot4', 'Numpad4': 'slot4',
+    'Digit5': 'slot5', 'Numpad5': 'slot5',
+    'Digit6': 'slot6', 'Numpad6': 'slot6',
+    'Digit7': 'slot7', 'Numpad7': 'slot7',
+    'Digit8': 'slot8', 'Numpad8': 'slot8'
   };
   // Snapshot of the defaults, taken before anything can rebind KEYMAP, so
   // Options -> Controls has something to reset back to.
@@ -6746,12 +6750,13 @@ const INPUT = (() => {
   // so movement and weapon slots can never end up fully unreachable.
   const PERMANENT_CODES = new Set([
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftRight',
-    'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4'
+    'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4',
+    'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
     'reload', 'lantern', 'melee', 'throwable', 'useJays', 'voiceTalk',
-    'slot1', 'slot2', 'slot3', 'slot4'
+    'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8'
   ];
 
   function primaryCodeFor(action) {
@@ -6828,8 +6833,9 @@ const INPUT = (() => {
     touchResetters.forEach(reset => reset());
   }
 
-  /* The single source of truth for "is the game receiving input". Lock mode
-     follows the browser; free and touch modes drive engagement themselves. */
+  /* The single source of truth for "is the game receiving input". Desktop
+     follows the browser's pointer-lock state; touch drives engagement from
+     the on-screen controls. */
   function setEngaged(v) {
     if (engaged === v) return;
     engaged = v;
@@ -6844,7 +6850,7 @@ const INPUT = (() => {
   function diagnose() {
     const bits = [];
     try {
-      if (!document.body || !document.body.requestPointerLock) bits.push('no Pointer Lock API');
+      if (!element || !element.requestPointerLock) bits.push('no Pointer Lock API');
     } catch (e) {}
     try {
       if (window.self !== window.top) bits.push('page is running inside an iframe');
@@ -6861,23 +6867,13 @@ const INPUT = (() => {
     return bits.length ? bits.join('; ') : 'the browser refused the request';
   }
 
-  function goFree(why) {
-    if (mode === 'touch') { setEngaged(true); return; }
-    if (mode === 'free') { setEngaged(true); return; }
-    mode = 'free';
+  function failLock(why) {
     if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
+    locked = false;
     diagnosis = why || diagnose();
-    emit('fallback', diagnosis);
-    setEngaged(true);
-  }
-
-  function tryLockAgain() {
-    if (mode !== 'free') return;
-    mode = 'lock';
-    quickDrops = 0;
-    lastRequest = 0;
-    setEngaged(false);
-    requestLock();
+    if (engaged) setEngaged(false);
+    else clearActions();
+    emit('lockError', diagnosis);
   }
 
   function onKey(e, down) {
@@ -6896,13 +6892,6 @@ const INPUT = (() => {
     if (typeof CHAT !== 'undefined' && CHAT.isOpen()) {
       if (down) CHAT.handleKeyDown(e);
       if (e.preventDefault) e.preventDefault();
-      return;
-    }
-    // In free mode the browser will not hand Escape back to us via pointer
-    // lock, so we own it. This is the guaranteed way out.
-    if (down && e.code === 'Escape' && mode === 'free' && engaged) {
-      if (e.preventDefault) e.preventDefault();
-      setEngaged(false);
       return;
     }
     if (down && e.code === 'Enter' && typeof CHAT !== 'undefined' && CHAT.canOpen()) {
@@ -7084,8 +7073,6 @@ const INPUT = (() => {
     window.addEventListener('blur', clearActions);
 
     document.addEventListener('mousemove', e => {
-      pointerX = e.clientX || 0;
-      pointerY = e.clientY || 0;
       if (!engaged || mode === 'touch') return;
       mouseDX += e.movementX || 0;
       mouseDY += e.movementY || 0;
@@ -7107,23 +7094,14 @@ const INPUT = (() => {
     document.addEventListener('pointerlockchange', () => {
       locked = document.pointerLockElement === element;
       if (lockTimer) { clearTimeout(lockTimer); lockTimer = null; }
-      if (locked) {
-        lockedAt = now();
-      } else if (lockedAt && now() - lockedAt < 400) {
-        // Something keeps yanking the lock straight back off us.
-        lockedAt = 0;
-        if (++quickDrops >= 3) { goFree('pointer lock kept being released immediately'); return; }
-      } else {
-        lockedAt = 0;
-      }
       if (mode === 'lock') setEngaged(locked);
     });
-    document.addEventListener('pointerlockerror', () => { if (mode === 'lock') goFree(); });
+    document.addEventListener('pointerlockerror', () => { if (mode === 'lock') failLock(); });
   }
 
   function requestLock() {
     if (!element) return;
-    if (mode === 'touch' || mode === 'free') { setEngaged(true); return; }
+    if (mode === 'touch') { setEngaged(true); return; }
     // Browsers rate-limit re-locking right after an exit; spamming it is what
     // turned a failed lock into an inescapable pause loop.
     const t = now();
@@ -7131,14 +7109,14 @@ const INPUT = (() => {
     lastRequest = t;
     let p = null;
     try { p = element.requestPointerLock(); }
-    catch (e) { goFree('requestPointerLock threw: ' + (e && e.message ? e.message : e)); return; }
-    if (p && p.catch) p.catch(err => goFree('request rejected: ' + (err && err.message ? err.message : err)));
+    catch (e) { failLock('requestPointerLock threw: ' + (e && e.message ? e.message : e)); return; }
+    if (p && p.catch) p.catch(err => failLock('request rejected: ' + (err && err.message ? err.message : err)));
     if (lockTimer) clearTimeout(lockTimer);
-    lockTimer = setTimeout(() => { lockTimer = null; if (!locked) goFree('lock request never resolved'); }, 900);
+    lockTimer = setTimeout(() => { lockTimer = null; if (!locked) failLock('lock request never resolved'); }, 900);
   }
 
   function releaseLock() {
-    if (mode === 'touch' || mode === 'free') { setEngaged(false); return; }
+    if (mode === 'touch') { setEngaged(false); return; }
     if (document.pointerLockElement) document.exitPointerLock();
     else setEngaged(false);
   }
@@ -7158,23 +7136,6 @@ const INPUT = (() => {
     return moveOut;
   }
 
-  /* Free mode only: how hard the cursor is pushing into a window edge, in
-     [-1, 1] per axis. GAME scales this by dt and folds it into the look. */
-  function edgeTurn() {
-    edge.x = edge.y = 0;
-    if (mode !== 'free' || !engaged) return edge;
-    const w = window.innerWidth || 1, h = window.innerHeight || 1;
-    const mx = Math.max(w * CONFIG.input.edgeMargin, 40);
-    const my = Math.max(h * CONFIG.input.edgeMargin, 40);
-    if (pointerX < mx) edge.x = -(1 - pointerX / mx);
-    else if (pointerX > w - mx) edge.x = (pointerX - (w - mx)) / mx;
-    if (pointerY < my) edge.y = -(1 - pointerY / my);
-    else if (pointerY > h - my) edge.y = (pointerY - (h - my)) / my;
-    edge.x = UTIL.clamp(edge.x, -1, 1);
-    edge.y = UTIL.clamp(edge.y, -1, 1);
-    return edge;
-  }
-
   function consumePress(action) {
     if (pressed[action]) { pressed[action] = false; return true; }
     return false;
@@ -7182,7 +7143,7 @@ const INPUT = (() => {
 
   return {
     init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
-    edgeTurn, forceFree: goFree, tryLockAgain, clearActions,
+    clearActions,
     rebind, resetKeymap, getBindings, applyBindings, codeLabel,
     get locked() { return locked; },
     get engaged() { return engaged; },
@@ -8302,6 +8263,13 @@ const WEAPON = (() => {
   function stateFor(id) { return inventory[id || currentId]; }
   function defFor(id) { return DEFS[id || currentId]; }
 
+  function ownedWeaponList() {
+    return Object.keys(DEFS)
+      .filter(id => !DEFS[id].specialOnly && inventory[id] && inventory[id].owned)
+      .sort((a, b) => DEFS[a].slot - DEFS[b].slot)
+      .map(id => ({ id: id, name: DEFS[id].name, slot: DEFS[id].slot, kind: DEFS[id].kind }));
+  }
+
   function setMuzzleVisible(on) {
     Object.keys(models).forEach(id => {
       const m = models[id];
@@ -8312,6 +8280,7 @@ const WEAPON = (() => {
 
   function syncHUD() {
     const d = defFor(), s = stateFor();
+    UI.setWeaponInventory(ownedWeaponList(), currentId);
     UI.setWeapon(d.name, d.kind, s.mag, s.reserve, d.magSize || 0);
     if ((d.kind !== 'gun' && d.kind !== 'flame') || d.specialOnly) UI.showReloadHint(false);
     else if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
@@ -8640,7 +8609,8 @@ const WEAPON = (() => {
     damageMultTimer = Math.max(damageMultTimer, duration || 0);
   }
 
-  function grantWeapon(id, reserveBonus) {
+  function grantWeapon(id, reserveBonus, options) {
+    options = options || {};
     const d = DEFS[id], s = inventory[id];
     // v0.17.02: The Claw is the first pickup-granted (non-specialOnly)
     // melee-kind weapon -- widened from gun/flame-only. specialOnly stays
@@ -8655,14 +8625,27 @@ const WEAPON = (() => {
     // Melee weapons carry no mag/reserve at all (see initInventory) -- both
     // always sit at 0, so there's nothing to top up.
     if (d.kind === 'gun' || d.kind === 'flame') {
+      const beforeMag = s.mag, beforeReserve = s.reserve;
       if (newlyOwned && s.mag <= 0) s.mag = d.magSize;
-      const before = s.reserve;
-      s.reserve = Math.min(d.maxReserve, s.reserve + Math.max(0, Math.floor(reserveBonus || 0)));
-      ammoAdded = s.reserve - before;
+      if (!newlyOwned && options.repeatPickup) {
+        // Dev-console weapon spawns are deliberate test fixtures. Re-picking
+        // one re-arms it instead of becoming a silent no-op at the ammo cap.
+        s.mag = d.magSize;
+        s.reserve = d.maxReserve;
+      } else {
+        s.reserve = Math.min(d.maxReserve, s.reserve + Math.max(0, Math.floor(reserveBonus || 0)));
+      }
+      ammoAdded = (s.mag - beforeMag) + (s.reserve - beforeReserve);
     }
     if (newlyOwned) setCurrent(id, true);
     else syncHUD();
-    return { consumed: newlyOwned || ammoAdded > 0, newlyOwned: newlyOwned, ammoAdded: ammoAdded };
+    return {
+      consumed: newlyOwned || ammoAdded > 0 || !!options.repeatPickup,
+      newlyOwned: newlyOwned,
+      ammoAdded: ammoAdded,
+      repeated: !!options.repeatPickup,
+      refilled: !newlyOwned && !!options.repeatPickup && (d.kind === 'gun' || d.kind === 'flame')
+    };
   }
 
   function beginHeroSpecial(id) {
@@ -8698,7 +8681,7 @@ const WEAPON = (() => {
     }
 
     if (active) {
-      for (let slot = 1; slot <= 4; slot++) {
+      for (let slot = 1; slot <= 8; slot++) {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
       if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
@@ -9646,6 +9629,7 @@ const UI = (() => {
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
     el.weaponName = document.getElementById('weaponName');
+    el.weaponInventory = document.getElementById('weaponInventory');
     el.ammo = document.getElementById('ammo');
     el.shells = document.getElementById('shells');
     el.ammoNum = document.getElementById('ammoNum');
@@ -9718,10 +9702,16 @@ const UI = (() => {
     el.deadHeadline = document.getElementById('deadHeadline');
     el.deadSub = document.getElementById('deadSub');
     el.againBtn = document.getElementById('againBtn');
-    el.modeChip = document.getElementById('modeChip');
-    el.modeWhy = document.getElementById('modeWhy');
     el.pauseHint = document.getElementById('pauseHint');
     el.mobileControls = document.getElementById('mobileControls');
+
+    if (el.weaponInventory) {
+      el.weaponInventory.addEventListener('click', event => {
+        const button = event.target && event.target.closest ? event.target.closest('[data-weapon-id]') : null;
+        if (!button || typeof WEAPON === 'undefined') return;
+        WEAPON.setCurrent(button.getAttribute('data-weapon-id'));
+      });
+    }
 
     el.grain.style.backgroundImage = 'url(' + TEX.grainDataURL(128) + ')';
     el.scratches.style.backgroundImage = 'url(' + TEX.scratchDataURL(512, 512) + ')';
@@ -9730,6 +9720,28 @@ const UI = (() => {
       document.getElementById('enterBtn').textContent = 'Tap to enter →';
       document.getElementById('resumeBtn').textContent = 'Back to it →';
     }
+  }
+
+  function setWeaponInventory(list, currentId) {
+    if (!el.weaponInventory) return;
+    const items = Array.isArray(list) ? list : [];
+    el.weaponInventory.textContent = '';
+    items.forEach(item => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'weapon-slot-btn' + (item.id === currentId ? ' active' : '');
+      button.dataset.weaponId = item.id;
+      button.setAttribute('aria-label', 'Equip ' + item.name);
+      button.setAttribute('aria-pressed', item.id === currentId ? 'true' : 'false');
+      button.title = 'Equip ' + item.name + (item.slot <= 9 ? ' · key ' + item.slot : '');
+      const key = document.createElement('kbd');
+      key.textContent = item.slot >= 1 && item.slot <= 9 ? item.slot : '•';
+      const name = document.createElement('span');
+      name.textContent = item.name;
+      button.append(key, name);
+      el.weaponInventory.appendChild(button);
+    });
+    el.weaponInventory.classList.toggle('on', items.length > 0);
   }
 
   function setWeapon(name, kind, n, reserve, max) {
@@ -10117,18 +10129,15 @@ const UI = (() => {
     el.specialHaze.classList.add('on');
   }
 
-  /* Pointer Lock was refused. Say so plainly and retitle the pause card, so
-     nobody is left clicking a button that can never work. */
-  function showFallback(why) {
-    el.modeChip.classList.add('on');
-    el.modeWhy.textContent = why || '';
-    el.pauseHint.textContent =
-      'Free-look is on because the browser would not lock the mouse. ' +
-      'Click anywhere to carry on. Push the cursor to a screen edge to keep turning.';
+  /* Pointer Lock was refused. Keep the player in the normal pause flow and
+     make the retry action explicit instead of switching to another look
+     model. */
+  function showLockError(why) {
+    if (!el.pauseHint) return;
+    el.pauseHint.textContent = 'Mouse lock failed' + (why ? ': ' + why : '') + '. Click anywhere to retry.';
   }
-  function hideFallback() {
-    el.modeChip.classList.remove('on');
-    el.pauseHint.textContent = 'Click anywhere to grab the mouse again and get back to the farm.';
+  function clearLockError() {
+    if (el.pauseHint) el.pauseHint.textContent = 'Click anywhere to grab the mouse again and get back to the farm.';
   }
 
   let deadShown = false;
@@ -10145,6 +10154,7 @@ const UI = (() => {
     el.pause.classList.add('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     if (el.bossHud) el.bossHud.classList.remove('on');
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     if (el.boss3Hud) el.boss3Hud.classList.remove('on');
@@ -10173,6 +10183,7 @@ const UI = (() => {
     el.dead.classList.add('hidden');
     el.crosshair.classList.add('on');
     el.radar.classList.add('on');
+    if (el.weaponInventory) el.weaponInventory.classList.add('on');
     showMobileControls(false);
   }
   function showDowned() {
@@ -10208,10 +10219,12 @@ const UI = (() => {
     // view instead of a stray crosshair/radar floating over it.
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    if (el.weaponInventory) el.weaponInventory.classList.remove('on');
   }
   function showHud() {
     el.crosshair.classList.add('on');
     el.weaponName.classList.add('on');
+    if (el.weaponInventory) el.weaponInventory.classList.add('on');
     el.ammo.classList.add('on');
     el.vitals.classList.add('on');
     el.tally.classList.add('on');
@@ -10333,6 +10346,7 @@ const UI = (() => {
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
+    if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
     el.tally.classList.remove('on');
@@ -10351,6 +10365,7 @@ const UI = (() => {
     hideSplash();
     hideEndGame();
     hideCoopLobby();
+    clearLockError();
     if (typeof AUDIO !== 'undefined') AUDIO.playMenuMusic();
     if (el.signalInput) el.signalInput.value = '';
     setSignalOutput('');
@@ -10366,6 +10381,7 @@ const UI = (() => {
     if (el.boss2Hud) el.boss2Hud.classList.remove('on');
     if (el.boss3Hud) el.boss3Hud.classList.remove('on');
     el.weaponName.classList.remove('on');
+    if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     el.ammo.classList.remove('on');
     el.vitals.classList.remove('on');
     el.tally.classList.remove('on');
@@ -10381,16 +10397,20 @@ const UI = (() => {
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
   }
   function showPause() {
+    clearLockError();
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     hideDowned();
     showMobileControls(false);
   }
   function hidePause() {
+    clearLockError();
     el.pause.classList.add('hidden');
     el.crosshair.classList.add('on');
     el.radar.classList.add('on');
+    if (el.weaponInventory) el.weaponInventory.classList.add('on');
     // Resuming from a pause taken while downed must restore that prompt,
     // otherwise the recovery instructions vanish for the rest of the run.
     if (typeof HERO !== 'undefined' && HERO.downedActive) showDowned();
@@ -10407,7 +10427,8 @@ const UI = (() => {
     jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays',
     voiceTalk: 'Push to Talk',
-    slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4'
+    slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4',
+    slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
   };
   let rebindingAction = null;
   function renderControlsList() {
@@ -10506,13 +10527,13 @@ const UI = (() => {
   }
 
   return {
-    init, setWeapon, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
+    init, setWeapon, setWeaponInventory, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
-    showStart, showSplash, hideSplash, showFallback, hideFallback,
+    showStart, showSplash, hideSplash, showLockError, clearLockError,
     showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding, showMap, hideMap,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
@@ -10763,13 +10784,19 @@ const PICKUP = (() => {
     quantity: 1, color: PAL.mustard, respawn: 0
   });
 
-  registerHandler('weapon', def => {
-    const result = WEAPON.grantWeapon(def.weaponId, def.quantity);
+  registerHandler('weapon', (def, pickup) => {
+    const result = WEAPON.grantWeapon(def.weaponId, def.quantity, {
+      repeatPickup: !!(pickup && pickup.devSpawn)
+    });
     if (!result.consumed) return null;
     const slot = CONFIG.weapons[def.weaponId].slot;
     return {
       message: result.newlyOwned
         ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Swap to cycle' : 'slot ' + slot)
+        : result.refilled
+          ? def.label + ' restocked — full ammo'
+        : result.repeated
+          ? def.label + ' reacquired for testing'
         : '+' + result.ammoAdded + ' ' + def.label + ' rounds'
     };
   });
@@ -11029,6 +11056,7 @@ const PICKUP = (() => {
     const p = {
       def: def, root: root, visual: visual, ring: ring, label: label,
       active: true, timer: 0, phase: UTIL.rng(0, Math.PI * 2),
+      devSpawn: !!options.devSpawn,
       respawn: options.respawn === undefined ? def.respawn : options.respawn
     };
     items.push(p);
@@ -11200,7 +11228,16 @@ const GAME = (() => {
       AUDIO.muteWind();
     });
 
-    INPUT.on('fallback', why => UI.showFallback(why));
+    INPUT.on('lockError', why => {
+      if (!entered) return;
+      running = false;
+      // A rejected request can happen before pointerlockchange gets a chance
+      // to emit unlock, so make sure the retry card is still reachable.
+      if (!PLAYER.isDead && UI.el.pause && UI.el.pause.classList.contains('hidden')) UI.showPause();
+      if (!PLAYER.isDead) UI.showLockError(why);
+      AUDIO.duckGameMusic();
+      AUDIO.muteWind();
+    });
 
     document.getElementById('ultraOffBtn').addEventListener('click', e => { e.stopPropagation(); setUltraMode(false); });
     document.getElementById('ultraOnBtn').addEventListener('click', e => { e.stopPropagation(); setUltraMode(true); });
@@ -11306,21 +11343,6 @@ const GAME = (() => {
       UI.hideCrewLeft();
       returnToStart();
     });
-    // manual escape hatches, in case the automatic detection ever misses
-    const goFree = e => {
-      e.stopPropagation();
-      mode = 'single';
-      COOP.stop();
-      INPUT.forceFree('switched on by hand');
-      // Shared by #freeBtn (start menu) and #freeBtn2 (pause card) -- the
-      // pause-card case must never replay the cutscene mid-match, and since
-      // both buttons share this one handler, skip it for both rather than
-      // threading a flag through just to intro the rarer start-menu path.
-      enter(false);
-    };
-    document.getElementById('freeBtn').addEventListener('click', goFree);
-    document.getElementById('freeBtn2').addEventListener('click', goFree);
-    UI.el.modeChip.addEventListener('click', () => { UI.hideFallback(); INPUT.tryLockAgain(); });
     UI.el.pause.addEventListener('click', enter);
 
     COOP.on('status', (message, kind) => UI.setCoopStatus(message, kind));
@@ -11709,7 +11731,6 @@ const GAME = (() => {
       // but this keeps any stray delta from piling up and snapping the
       // camera the instant enterNow() re-requests the lock afterward.
       INPUT.consumeMouse();
-      INPUT.edgeTurn();
       INTRO.update(dt);
       LEVEL.update(dt, time);
       FX.update(dt, time);
@@ -11722,10 +11743,6 @@ const GAME = (() => {
 
     // one read of the mouse delta per frame, shared by the look and the sway
     const look = INPUT.consumeMouse();
-    // in free-look mode, pushing the cursor into a screen edge keeps you turning
-    const edge = INPUT.edgeTurn();
-    if (edge.x) look.x += edge.x * CONFIG.input.edgeTurnX * dt;
-    if (edge.y) look.y += edge.y * CONFIG.input.edgeTurnY * dt;
     if (running) WEAPON.addLook(look.x, look.y);
 
     // A paused host must not freeze the shared world for everyone else --
@@ -14315,7 +14332,9 @@ const ENEMY = (() => {
       // so this just follows that existing convention.
       const dropPos = [e.pos.x, e.pos.y, e.pos.z];
       if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
-        PICKUP.spawn('carrotCannonWeapon', { x: dropPos[0], y: dropPos[1], z: dropPos[2] }, { respawn: 0 });
+        PICKUP.spawn('carrotCannonWeapon', { x: dropPos[0], y: dropPos[1], z: dropPos[2] }, {
+          respawn: 0, devSpawn: !!e.devSpawn
+        });
       }
       // die() only ever runs on the host or in single-player (a join never
       // reaches this point — its applyDamage relays out instead), so this is
@@ -14346,7 +14365,9 @@ const ENEMY = (() => {
       const dropId = isFinalDefeat ? 'theClawWeapon' : 'packOfSmokesThrowable';
       const dropPos2 = [e.pos.x, e.pos.y, e.pos.z];
       if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
-        PICKUP.spawn(dropId, { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, { respawn: 0 });
+        PICKUP.spawn(dropId, { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, {
+          respawn: 0, devSpawn: !!e.devSpawn
+        });
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2, dropId);
       // Bear Claw is a mid-match mini-boss, not a win condition -- no
@@ -14366,7 +14387,9 @@ const ENEMY = (() => {
       }
       const dropPos3 = [e.pos.x, e.pos.y, e.pos.z];
       if (typeof PICKUP !== 'undefined' && PICKUP.spawn) {
-        PICKUP.spawn('goldenBoomboxThrowable', { x: dropPos3[0], y: dropPos3[1], z: dropPos3[2] }, { respawn: 0 });
+        PICKUP.spawn('goldenBoomboxThrowable', { x: dropPos3[0], y: dropPos3[1], z: dropPos3[2] }, {
+          respawn: 0, devSpawn: !!e.devSpawn
+        });
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss3Defeated(dropPos3);
       // Beat Slayer is also a mid-match mini-boss, not a win condition --
@@ -17358,7 +17381,9 @@ const DEVCONSOLE = (() => {
     if (!defId) { log('Unknown spawnable "' + key + '" -- try "list"', 'err'); return; }
     const p = PLAYER.position;
     const y = WORLD.groundAt(p.x, p.z, p.y + 0.8, PLAYER.layerId);
-    PICKUP.spawn(defId, { x: p.x, y: y, z: p.z });
+    // Mark console fixtures so repeated weapon spawns re-arm an owned gun
+    // instead of being rejected once its reserve reaches the normal cap.
+    PICKUP.spawn(defId, { x: p.x, y: y, z: p.z }, { devSpawn: true, respawn: 0 });
     log('Spawned ' + PICKUP.definitions[defId].label, 'ok');
   }
 
@@ -17378,6 +17403,9 @@ const DEVCONSOLE = (() => {
     const state = meta.state();
     if (state !== 'inactive') { log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err'); return; }
     const boss = meta.spawn();
+    // Keep console-only boss tests repeatable: die() carries this marker to
+    // the boss drop, which lets an owned weapon be picked up again.
+    boss.devSpawn = true;
     const pt = pointNear(4.5);
     boss.pos.copy(pt);
     boss.group.position.copy(pt);
