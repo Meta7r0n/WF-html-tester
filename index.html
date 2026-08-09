@@ -4751,107 +4751,127 @@ const LEVEL = (() => {
     // doorways; all remaining segments receive a continuous bulkhead. This
     // catches small corner omissions without hand-maintaining dozens of wall
     // endpoints as the underground footprint grows.
-    function sealFloorEdges() {
-      const areas = WORLD.layers.basement.areas;
-      const tolerance = 0.65, edgeEpsilon = 0.05;
-      // Seal pieces intentionally overlap at their ends. The earlier 0.24 m
-      // overlap still left hairline cracks at a few skewed room junctions,
-      // especially when the ink outline exaggerates the seam on mobile.
-      const sealOverlap = 0.40, cornerSize = 0.48;
+    function sealBasementBoundary() {
+      /*
+       * Basement areas are authored as a graph of rooms and connector
+       * corridors. The old per-rectangle sealer treated every overlapping
+       * rectangle as a separate room edge, then laid a second wall over each
+       * junction. That made a connector's floor walkable while its generated
+       * wall still closed the mouth. Build one perimeter from the union of all
+       * floor areas instead: shared edges disappear, true outer edges remain,
+       * and authored doorway walls are reused rather than duplicated.
+       */
+      const areas = WORLD.layers.basement.areas.slice();
+      if (!areas.length) return;
 
-      function coveredIntervals(area, horizontal, edge, start, end, isMin) {
-        const out = [];
-        for (let i = 0; i < areas.length; i++) {
-          const other = areas[i];
-          if (other === area) continue;
-          const crosses = horizontal
-            ? (isMin
-              ? other.minZ < edge - edgeEpsilon && other.maxZ > edge - tolerance
-              : other.maxZ > edge + edgeEpsilon && other.minZ < edge + tolerance)
-            : (isMin
-              ? other.minX < edge - edgeEpsilon && other.maxX > edge - tolerance
-              : other.maxX > edge + edgeEpsilon && other.minX < edge + tolerance);
-          if (!crosses) continue;
-          const lo = Math.max(start, horizontal ? other.minX : other.minZ);
-          const hi = Math.min(end, horizontal ? other.maxX : other.maxZ);
-          if (hi - lo > 0.08) out.push([lo, hi]);
+      const EPS = 0.01, MIN_SEGMENT = 0.08;
+      const xs = [], zs = [];
+      function addCoord(list, value) {
+        if (!list.some(v => Math.abs(v - value) <= EPS)) list.push(value);
+      }
+      areas.forEach(area => {
+        addCoord(xs, area.minX); addCoord(xs, area.maxX);
+        addCoord(zs, area.minZ); addCoord(zs, area.maxZ);
+      });
+      xs.sort((a, b) => a - b);
+      zs.sort((a, b) => a - b);
+
+      const occupied = [];
+      for (let i = 0; i < xs.length - 1; i++) {
+        occupied[i] = [];
+        for (let j = 0; j < zs.length - 1; j++) {
+          const cx = (xs[i] + xs[i + 1]) * 0.5;
+          const cz = (zs[j] + zs[j + 1]) * 0.5;
+          occupied[i][j] = areas.some(area =>
+            cx > area.minX + EPS && cx < area.maxX - EPS &&
+            cz > area.minZ + EPS && cz < area.maxZ - EPS);
         }
-        // A hand-placed wall already sitting on this exact edge line covers
-        // whatever span it spans, same as a neighboring area would. Without
-        // this, every simple wall with nothing registered on its far side
-        // (the overwhelming common case -- most rooms are mostly solid
-        // walls with one or two doorways) got a full-length duplicate
-        // dropped directly on top of it: the source of the reported
-        // z-fighting/glitching walls and the near-boundary collision
-        // slivers that read as "blocked passageways."
-        const wallCenter = w => horizontal ? (w.minZ + w.maxZ) * 0.5 : (w.minX + w.maxX) * 0.5;
-        WORLD.solids.forEach(w => {
-          if (!w.tag || w.tag.indexOf('_wall') === -1) return;
-          if (w.tag.indexOf('basement_seal') === 0) return; // never treat an earlier seal as coverage
-          if (w.minY > FLOOR_Y + 0.15 || w.maxY < CEIL_Y - 0.15) return; // must span full basement height
-          if (Math.abs(wallCenter(w) - edge) > 0.35) return;
-          const lo = Math.max(start, horizontal ? w.minX : w.minZ);
-          const hi = Math.min(end, horizontal ? w.maxX : w.maxZ);
-          if (hi - lo > 0.08) out.push([lo, hi]);
-        });
-        out.sort((a, b) => a[0] - b[0]);
+      }
+
+      const horizontal = [], vertical = [];
+      for (let i = 0; i < xs.length - 1; i++) {
+        for (let j = 0; j < zs.length - 1; j++) {
+          if (!occupied[i][j]) continue;
+          if (!(occupied[i] && occupied[i][j - 1])) {
+            horizontal.push({ edge: zs[j], start: xs[i], end: xs[i + 1] });
+          }
+          if (!(occupied[i] && occupied[i][j + 1])) {
+            horizontal.push({ edge: zs[j + 1], start: xs[i], end: xs[i + 1] });
+          }
+          if (!(occupied[i - 1] && occupied[i - 1][j])) {
+            vertical.push({ edge: xs[i], start: zs[j], end: zs[j + 1] });
+          }
+          if (!(occupied[i + 1] && occupied[i + 1][j])) {
+            vertical.push({ edge: xs[i + 1], start: zs[j], end: zs[j + 1] });
+          }
+        }
+      }
+
+      function mergeSegments(segments) {
+        segments.sort((a, b) => a.edge - b.edge || a.start - b.start);
         const merged = [];
-        out.forEach(interval => {
+        segments.forEach(segment => {
           const last = merged[merged.length - 1];
-          if (last && interval[0] <= last[1] + 0.08) last[1] = Math.max(last[1], interval[1]);
-          else merged.push(interval.slice());
+          if (last && Math.abs(last.edge - segment.edge) <= EPS &&
+              segment.start <= last.end + EPS) {
+            last.end = Math.max(last.end, segment.end);
+          } else {
+            merged.push({ edge: segment.edge, start: segment.start, end: segment.end });
+          }
         });
         return merged;
       }
 
-      function addUncovered(area, horizontal, edge, start, end, isMin) {
-        const covered = coveredIntervals(area, horizontal, edge, start, end, isMin);
-        let cursor = start;
-        const addSegment = (lo, hi) => {
-          if (hi - lo <= 0.04) return;
-          const length = hi - lo + sealOverlap;
-          const center = (lo + hi) * 0.5;
-          if (horizontal) addWall(center, edge, length, 0.30, 'basement_seal');
-          else addWall(edge, center, 0.30, length, 'basement_seal');
-        };
-        covered.forEach(interval => {
-          if (interval[0] > cursor) addSegment(cursor, interval[0]);
-          cursor = Math.max(cursor, interval[1]);
+      function authoredCoverage(isHorizontal, edge, start, end) {
+        const spans = [];
+        WORLD.solids.forEach(wall => {
+          if (!wall.tag || wall.tag.indexOf('_wall') === -1) return;
+          if (wall.tag.indexOf('basement_boundary') === 0) return;
+          if (wall.minY > FLOOR_Y + 0.15 || wall.maxY < CEIL_Y - 0.15) return;
+          const center = isHorizontal
+            ? (wall.minZ + wall.maxZ) * 0.5
+            : (wall.minX + wall.maxX) * 0.5;
+          if (Math.abs(center - edge) > 0.36) return;
+          const lo = Math.max(start, isHorizontal ? wall.minX : wall.minZ);
+          const hi = Math.min(end, isHorizontal ? wall.maxX : wall.maxZ);
+          if (hi - lo > MIN_SEGMENT) spans.push([lo, hi]);
         });
-        if (cursor < end) addSegment(cursor, end);
+        spans.sort((a, b) => a[0] - b[0]);
+        const merged = [];
+        spans.forEach(span => {
+          const last = merged[merged.length - 1];
+          if (last && span[0] <= last[1] + EPS) last[1] = Math.max(last[1], span[1]);
+          else merged.push(span.slice());
+        });
+        return merged;
       }
 
-      areas.forEach(area => {
-        addUncovered(area, true, area.minZ, area.minX, area.maxX, true);
-        addUncovered(area, true, area.maxZ, area.minX, area.maxX, false);
-        addUncovered(area, false, area.minX, area.minZ, area.maxZ, true);
-        addUncovered(area, false, area.maxX, area.minZ, area.maxZ, false);
-
-        // A wall run can be perfectly covered along both axes while a tiny
-        // diagonal sightline remains at its exposed corner. Add a compact
-        // bulkhead only when no other authored area reaches that corner; a
-        // genuine room/tunnel junction is left open for circulation.
-        [[area.minX, area.minZ], [area.minX, area.maxZ],
-         [area.maxX, area.minZ], [area.maxX, area.maxZ]].forEach(corner => {
-          const x = corner[0], z = corner[1];
-          let junction = false;
-          for (let i = 0; i < areas.length; i++) {
-            const other = areas[i];
-            if (other === area) continue;
-            const nearX = x >= other.minX - tolerance && x <= other.maxX + tolerance;
-            const nearZ = z >= other.minZ - tolerance && z <= other.maxZ + tolerance;
-            if (nearX && nearZ) { junction = true; break; }
-          }
-          if (!junction) addWall(x, z, cornerSize, cornerSize, 'basement_seal_corner');
+      function emit(segment, isHorizontal) {
+        const covered = authoredCoverage(isHorizontal, segment.edge, segment.start, segment.end);
+        let cursor = segment.start;
+        const addGap = (lo, hi) => {
+          if (hi - lo <= MIN_SEGMENT) return;
+          const length = hi - lo + 0.04;
+          const center = (lo + hi) * 0.5;
+          if (isHorizontal) addWall(center, segment.edge, length, 0.30, 'basement_boundary');
+          else addWall(segment.edge, center, 0.30, length, 'basement_boundary');
+        };
+        covered.forEach(span => {
+          if (span[0] > cursor) addGap(cursor, span[0]);
+          cursor = Math.max(cursor, span[1]);
         });
-      });
-    }
+        if (cursor < segment.end) addGap(cursor, segment.end);
+      }
 
+      mergeSegments(horizontal).forEach(segment => emit(segment, true));
+      mergeSegments(vertical).forEach(segment => emit(segment, false));
+    }
     // Main 3.2 m-wide west service tunnel. Its north wall is split at x=-4
     // for the root-cellar spur; the south wall remains a stable sightline.
-    addSlab(-2.1, -11.5, 20.2, 3.6, 'service_tunnel');
-    addWall(-2.1, -9.75, 20.4, 0.30, 'service_tunnel');
-    addWall(-8.95, -13.25, 6.5, 0.30, 'service_tunnel');
+    // Exact edge-to-edge mouths: utility_room <- service_tunnel -> basement.
+    addSlab(-2.0, -11.5, 20.0, 3.2, 'service_tunnel');
+    addWall(-2.0, -9.75, 20.0, 0.30, 'service_tunnel');
+    addWall(-8.85, -13.25, 6.3, 0.30, 'service_tunnel');
     addWall(2.85, -13.25, 10.3, 0.30, 'service_tunnel');
 
     // Utility room beneath the water-tower side of the farm. The east wall
@@ -4867,9 +4887,9 @@ const LEVEL = (() => {
     // North spur and root cellar. The room is offset under the windmill side
     // of the farm, making it a strong candidate area for a later hatch without
     // committing to that entrance in this milestone.
-    addSlab(-4.0, -18.55, 3.6, 10.9, 'root_spur');
-    addWall(-5.75, -18.55, 0.30, 11.1, 'root_spur');
-    addWall(-2.25, -18.55, 0.30, 11.1, 'root_spur');
+    addSlab(-4.0, -18.55, 3.4, 10.9, 'root_spur');
+    addWall(-5.85, -18.55, 0.30, 11.1, 'root_spur');
+    addWall(-2.15, -18.55, 0.30, 11.1, 'root_spur');
     addSlab(-4.0, -30.0, 12.0, 12.0, 'root_cellar');
     // Split the west wall around the v0.06.04 northwest branch. The opening
     // is a full 3.5 m wide, so it remains smooth at sprint speed and later
@@ -4897,9 +4917,12 @@ const LEVEL = (() => {
     addWall(-14.325, -31.25, 8.65, 0.30, 'northwest_link');
     addWall(-13.35, -34.75, 6.70, 0.30, 'northwest_link');
 
-    addSlab(-18.50, -36.55, 3.6, 7.6, 'northwest_bend');
-    addWall(-20.25, -36.55, 0.30, 3.60, 'northwest_bend');
-    addWall(-16.75, -36.55, 0.30, 3.60, 'northwest_bend');
+    // The bend meets both neighbors on exact rectangle edges. Its old
+    // 7.6 m slab overlapped northwest_link and grenade_room, so their walls
+    // were inside the walkable floor at the L-junction.
+    addSlab(-18.50, -36.65, 3.6, 3.7, 'northwest_bend');
+    addWall(-20.25, -36.65, 0.30, 3.70, 'northwest_bend');
+    addWall(-16.75, -36.65, 0.30, 3.70, 'northwest_bend');
 
     addSlab(-21.50, -43.0, 11.0, 9.0, 'grenade_room');
     addWall(-27.15, -43.0, 0.30, 9.30, 'grenade_room');
@@ -4912,7 +4935,9 @@ const LEVEL = (() => {
        The southern run reaches toward the gate side of the farm. The eastern
        run bends north into a relay room rather than becoming one giant open
        basement, preserving ambushes, navigation choices and occlusion. */
-    addSlab(-18.5, 2.55, 3.6, 14.9, 'south_tunnel');
+    // Matches generator_hall's 3.4 m south doorway and meets the well hall
+    // at x=-16.8 without penetrating its floor.
+    addSlab(-18.5, 2.55, 3.4, 14.9, 'south_tunnel');
     addWall(-20.25, 2.55, 0.30, 15.2, 'south_tunnel');
     // East wall shortened at its north end for a doorway (z 6.7 to 10.15,
     // the tunnel's own natural end) -- the v0.15.01-UGEX-FIX well shaft
@@ -4921,7 +4946,9 @@ const LEVEL = (() => {
 
     addSlab(-17.5, 17.5, 15.0, 15.0, 'generator_hall');
     addWall(-25.15, 17.5, 0.30, 15.3, 'generator_hall');
-    addWall(-9.85, 17.5, 0.30, 15.3, 'generator_hall');
+    // Leave the east edge open from z=10 to z=11.8 for the well hall; the
+    // old full-height run blocked the new edge-to-edge gallery at its mouth.
+    addWall(-9.85, 18.4, 0.30, 13.2, 'generator_hall');
     addWall(-17.5, 25.15, 15.3, 0.30, 'generator_hall');
     addWall(-22.675, 9.85, 4.95, 0.30, 'generator_hall');
     addWall(-13.325, 9.85, 6.95, 0.30, 'generator_hall');
@@ -4929,12 +4956,11 @@ const LEVEL = (() => {
     addSlab(9.55, -30.0, 15.1, 3.6, 'east_tunnel');
     addWall(9.55, -28.25, 15.4, 0.30, 'east_tunnel');
     addWall(8.55, -31.75, 13.4, 0.30, 'east_tunnel');
-    addSlab(17.0, -34.55, 3.6, 6.9, 'north_turn');
-    addWall(15.25, -34.55, 0.30, 5.8, 'north_turn');
-    addWall(18.75, -34.55, 0.30, 5.8, 'north_turn');
-    // Extend the outside wall through the corner pocket so players naturally
-    // stop in the turn instead of walking beyond the authored tunnel floor.
-    addWall(18.75, -29.95, 0.30, 3.7, 'north_turn');
+    // Exact mouths at east_tunnel and relay_room. The former cap wall sat
+    // outside the turn and walled off the connector's corner pocket.
+    addSlab(17.0, -34.65, 3.4, 5.7, 'north_turn');
+    addWall(15.3, -34.65, 0.30, 5.7, 'north_turn');
+    addWall(18.7, -34.65, 0.30, 5.7, 'north_turn');
 
     addSlab(17.0, -44.0, 16.0, 13.0, 'relay_room');
     addWall(8.85, -44.0, 0.30, 13.3, 'relay_room');
@@ -4972,23 +4998,33 @@ const LEVEL = (() => {
     WORLD.addSpawn(21, FLOOR_Y, -73, 'basement_northeast', 'basement');
 
     // West branch: a straight run down into relay_room's newly split north wall.
-    addSlab(20, -58.75, 3.6, 17.5, 'northeast_link_west');
-    addWall(18.2, -58.75, 0.30, 17.8, 'northeast_link_west');
-    addWall(21.8, -58.75, 0.30, 17.8, 'northeast_link_west');
+    // Both ends now terminate on the relay_room and northeast_room floor
+    // edges; no half-meter overlap remains inside either doorway.
+    addSlab(20, -58.75, 3.6, 16.5, 'northeast_link_west');
+    addWall(18.2, -58.75, 0.30, 16.5, 'northeast_link_west');
+    addWall(21.8, -58.75, 0.30, 16.5, 'northeast_link_west');
 
-    // South branch: jogs west first to clear relay_room/secret_cache, then
-    // drops straight down into root_cellar's newly split north wall.
-    addSlab(7.75, -71, 15.5, 3.6, 'northeast_link_south_a');
-    addWall(7.75, -72.8, 15.8, 0.30, 'northeast_link_south_a');
-    addWall(7.75, -69.2, 15.8, 0.30, 'northeast_link_south_a');
-    addSlab(2, -52.8, 3.6, 34.4, 'northeast_link_south_b');
-    addWall(0.2, -52.8, 0.30, 34.7, 'northeast_link_south_b');
-    addWall(3.8, -52.8, 0.30, 34.7, 'northeast_link_south_b');
+    // South branch: the horizontal and vertical runs meet at B4 on one
+    // shared edge. The old overlap left the horizontal ceiling wall crossing
+    // the vertical mouth and produced the reported walled-off junction.
+    addSlab(7.6, -71, 14.8, 3.6, 'northeast_link_south_a');
+    addWall(7.6, -72.8, 14.8, 0.30, 'northeast_link_south_a');
+    // Leave x=.2..3.8 open at the B4 mouth; only the east remainder is wall.
+    addWall(9.4, -69.2, 11.2, 0.30, 'northeast_link_south_a');
+    addSlab(2, -52.6, 3.6, 33.2, 'northeast_link_south_b');
+    addWall(0.2, -52.6, 0.30, 33.2, 'northeast_link_south_b');
+    addWall(3.8, -52.6, 0.30, 33.2, 'northeast_link_south_b');
 
     PROPS.lantern(parent, 21, -0.78, -75, 0);
     PROPS.lantern(parent, 20, -0.78, -59, 0);
     PROPS.lantern(parent, 8, -0.78, -71, 0);
     PROPS.lantern(parent, 2, -0.78, -52.8, 0);
+
+    // A 2.2 m-high gallery reaches the well from the west. Its two ends
+    // terminate exactly on south_tunnel and the well_shaft_area; the north
+    // edge is already covered by generator_hall's split south wall.
+    addSlab(-13.4, 8.9, 6.8, 2.2, 'well_south_link');
+    addWall(-13.4, 7.8, 6.8, 0.30, 'well_south_link');
 
     /* ---- v0.15.01-UGEX-FIX well shaft ----
        The front-yard well (see buildYard) is a real drop shaft now, not a
@@ -4998,7 +5034,10 @@ const LEVEL = (() => {
        falls the same way a player does. A simple dead-end run west into
        south_tunnel's newly shortened east wall -- drop at the east end,
        run west to reach the rest of the network. */
-    const wellX0 = -18.9, wellX1 = 4.2, wellZ0 = 8.2, wellZ1 = 11.8;
+    // The well hall now sits east of the generator's x=-10 edge. A short
+    // gallery below the generator carries the south-tunnel connection into
+    // its west side without letting either room penetrate the other.
+    const wellX0 = -10.0, wellX1 = 4.2, wellZ0 = 7.8, wellZ1 = 11.8;
     const hallCX = (wellX0 + wellX1) * 0.5, hallCZ = (wellZ0 + wellZ1) * 0.5;
     const wellW = wellX1 - wellX0, wellD = wellZ1 - wellZ0;
     shell.box(wellW, 0.22, wellD, hallCX, FLOOR_Y - 0.11, hallCZ);
@@ -5014,14 +5053,11 @@ const LEVEL = (() => {
         shell.box(p.w, 0.30, p.d, p.cx, CEIL_Y - 0.15, p.cz);
         WORLD.add(p.cx, CEIL_Y - 0.15, p.cz, p.w, 0.30, p.d, 'well_shaft_ceiling');
       });
-    // South wall is split at the west end: the doc comment above promises a
-    // walkable connection into south_tunnel, but this used to run the wall
-    // the full hallway width with no gap at all, sealing the shaft off from
-    // the rest of the network entirely -- the one-way drop ladder (see
-    // below) made that a real dead end with no way back out. The gap lines
-    // up with south_tunnel's own east-wall doorway (x -16.75, open for
-    // z 6.7-10.15) so the two openings actually meet.
-    addWall(-6.275, wellZ0, 21.25, 0.30, 'well_shaft');
+    // The gallery approaches from the west, so the well's south wall stays
+    // continuous. The generator's east wall already closes the well's west
+    // edge above the gallery; adding a second wall there would recreate the
+    // overlapping half-wall seam this audit is removing.
+    addWall(hallCX, wellZ0, wellW + 0.3, 0.30, 'well_shaft');
     addWall(hallCX, wellZ1, wellW + 0.3, 0.30, 'well_shaft');
     // Dead end, directly under the well -- fully closed except for the
     // ceiling hole above.
@@ -5044,7 +5080,7 @@ const LEVEL = (() => {
         tag: 'well_shaft_ladder'
       });
 
-    sealFloorEdges();
+    sealBasementBoundary();
     shell.build(parent);
 
     // Repeated timber portals make junctions obvious at sprint speed. They are
@@ -5395,16 +5431,17 @@ const MAPVIEW = (() => {
     { x: 25, z: -47, x2: 30, z2: -41, label: 'Secret Cache' },
     { x: 15, z: -79, x2: 27, z2: -67, label: 'Northeast Room' },
     { x: 1.8, z: 8.8, x2: 4.2, z2: 11.2, label: 'Well Shaft' },
-    { x: -12.2, z: -13.3, x2: 7.9, z2: -9.7 },
-    { x: -5.8, z: -24, x2: -2.2, z2: -13.1 },
+    { x: -12, z: -13.1, x2: 8, z2: -9.9 },
+    { x: -5.7, z: -24, x2: -2.3, z2: -13.1 },
     { x: -18.65, z: -34.8, x2: -10, z2: -31.2 },
-    { x: -20.3, z: -40.35, x2: -16.7, z2: -32.75 },
-    { x: -20.3, z: -4.9, x2: -16.7, z2: 10 },
+    { x: -20.3, z: -38.5, x2: -16.7, z2: -34.8 },
+    { x: -20.2, z: -4.9, x2: -16.8, z2: 10 },
     { x: 2, z: -31.8, x2: 17.1, z2: -28.2 },
-    { x: 15.2, z: -38, x2: 18.8, z2: -31.1 },
-    { x: 18.2, z: -67.5, x2: 21.8, z2: -50 },
-    { x: 0, z: -72.8, x2: 15.5, z2: -69.2 },
-    { x: 0.2, z: -70, x2: 3.8, z2: -35.6 }
+    { x: 15.3, z: -37.5, x2: 18.7, z2: -31.8 },
+    { x: 18.2, z: -67, x2: 21.8, z2: -50.5 },
+    { x: 0.2, z: -72.8, x2: 15, z2: -69.2 },
+    { x: 0.2, z: -69.2, x2: 3.8, z2: -36 },
+    { x: -16.8, z: 7.8, x2: -10, z2: 10 }
   ];
 
   function toXY(x, z, m) {
