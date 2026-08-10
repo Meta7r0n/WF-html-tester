@@ -9572,6 +9572,11 @@ const THROWABLE = (() => {
       const inside = !PLAYER.isDead && Math.hypot(dx, dz) <= def.hazardRadius;
       if (inside) {
         if (typeof PLAYER.grantSlow === 'function') PLAYER.grantSlow(0.25, def.slowMult);
+      }
+      // A player-owned zone is resolved against the host's complete player
+      // roster every tick. The old local `inside` gate meant it damaged
+      // nobody unless the thrower stood inside their own boombox field.
+      if (playerOwned || inside) {
         zone.tickTimer -= dt;
         if (zone.tickTimer <= 0) {
           zone.tickTimer = def.dotTickInterval;
@@ -16978,14 +16983,19 @@ const COOP = (() => {
 
   function isDeathmatch() { return matchMode === 'ffa' || matchMode === 'teams'; }
 
-  /* Keep visual visibility, collision, and raycast state on one path. A
-     parent group's `.visible` flag is not enough for a flat RAY_TARGETS list:
-     dead/off-layer remotes must explicitly turn their combat proxies off. */
+  /* Keep visual visibility and combat-proxy lifecycle on one path. A parent
+     group's `.visible` flag is not inherited by the flat RAY_TARGETS list:
+     dead/climbing remotes must explicitly turn their proxies off, while an
+     alive off-layer proxy stays available to the host's authoritative query. */
   function setRemoteCombatState(remote, immediate) {
     if (!remote || !remote.target) return;
     const target = remote.target;
     const visible = target.layerId === PLAYER.layerId && !target.dead;
-    const hittable = visible && isDeathmatch() && !target.climbing;
+    // Visibility is local-camera state, but hitability is host-authoritative
+    // match state. Keeping the two coupled made two joiners on the same
+    // underground layer impossible to shoot whenever the host was still on
+    // the surface, because the host had disabled both of their proxies.
+    const hittable = !target.dead && isDeathmatch() && !target.climbing;
     if (remote.group) {
       remote.group.visible = visible;
       if (immediate) {
@@ -17063,7 +17073,13 @@ const COOP = (() => {
       }
     } else if (message.type === 'shot' && message.shot) {
       const shot = Object.assign({}, message.shot, { ownerId: fromId });
-      sendTo(fromId, { type: 'shotResolved', shot: shot, endPoint: resolveShotAsHost(shot, fromId) });
+      const endPoint = resolveShotAsHost(shot, fromId);
+      const resolved = { type: 'shotResolved', shot: shot, endPoint: endPoint };
+      // Every joiner sees the same resolved tracer, and the host draws it
+      // locally as well. The old sender-only reply made other clients miss
+      // all joiner gunfire even though the host had already resolved it.
+      broadcast(resolved);
+      drawShotTracer(shot, endPoint);
     } else if (message.type === 'enemyDamage' && message.key !== undefined) {
       ENEMY.applyDamageByKey(message.key, message.amount, message.point, message.dir, message.zone, message.force);
     } else if (message.type === 'playerHitReport' && message.targetId) {
@@ -17182,32 +17198,105 @@ const COOP = (() => {
     }
   }
 
-  /* Host-only: the one place damage actually applies to an enemy — or, in
-     FFA, a player — from a shot. Returns the tracer endpoint (hit point, or
-     full range on a miss) so the shooter can draw a tracer that matches
-     what really happened instead of re-deriving it from a raycast against
-     its own, possibly-stale geometry. */
-  function resolveShotAsHost(shot, shooterId) {
-    const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
-    const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
-    const range = shot.range || 100;
+  const hostShotRay = new THREE.Ray();
+  const hostHeadSphere = new THREE.Sphere();
+  const hostBodyBox = new THREE.Box3();
+  const hostHeadPoint = new THREE.Vector3();
+  const hostBodyPoint = new THREE.Vector3();
+
+  /* The host has no third-person local model, so it also had no entry in the
+     shared RAY_TARGETS pool. A joiner's hitscan could therefore hit every
+     other joiner but pass straight through the host. Intersect the same
+     head/body volumes used by makeRemote() analytically, then compare that
+     distance with the nearest world/remote hit so walls still win. */
+  function traceLocalHostPlayer(origin, dir, range, shooterId) {
+    if (role !== 'host' || !isDeathmatch() || !shooterId || shooterId === localId ||
+        PLAYER.isDead || PLAYER.isClimbing) return null;
+    const shooter = remotes.get(shooterId);
+    if (!shooter || !shooter.target || shooter.target.dead || shooter.target.climbing ||
+        shooter.target.layerId !== PLAYER.layerId) return null;
+
+    const scale = 1.08;
+    const p = PLAYER.position;
+    const radius = CONFIG.player.radius;
+    const height = CONFIG.player.height;
+    hostShotRay.set(origin, dir);
+
+    hostHeadSphere.center.set(p.x, p.y + height * 0.75 * scale, p.z);
+    hostHeadSphere.radius = radius * 0.82 * scale;
+    const headPoint = hostShotRay.intersectSphere(hostHeadSphere, hostHeadPoint);
+
+    const halfX = radius * 0.9 * scale;
+    const halfY = height * 0.29 * scale;
+    const halfZ = radius * 0.8 * scale;
+    const bodyY = p.y + height * 0.42 * scale;
+    hostBodyBox.min.set(p.x - halfX, bodyY - halfY, p.z - halfZ);
+    hostBodyBox.max.set(p.x + halfX, bodyY + halfY, p.z + halfZ);
+    const bodyPoint = hostShotRay.intersectBox(hostBodyBox, hostBodyPoint);
+
+    let best = null;
+    if (headPoint) {
+      const distance = origin.distanceTo(headPoint);
+      if (distance <= range) best = { id: localId, zone: 'head', point: headPoint.clone(), distance: distance };
+    }
+    if (bodyPoint) {
+      const distance = origin.distanceTo(bodyPoint);
+      if (distance <= range && (!best || distance < best.distance)) {
+        best = { id: localId, zone: 'body', point: bodyPoint.clone(), distance: distance };
+      }
+    }
+    return best;
+  }
+
+  /* Host-only: the one place a joiner's shot applies damage. `dealDamage`
+     is false for the host's own tracer relay because fireGun() immediately
+     resolves that same local shot with its full impact FX. Previously both
+     paths applied damage, doubling every host bullet in multiplayer. */
+  function resolveShotAsHost(shot, shooterId, dealDamage) {
+    shot = shot || {};
     const ownerId = shooterId || shot.ownerId || null;
-    const hit = FX.trace(origin, dir, range, h => {
+    const authoritativeOrigin = combatOrigin(ownerId);
+    const origin = new THREE.Vector3().fromArray(Array.isArray(shot.origin) ? shot.origin : []);
+    if (![origin.x, origin.y, origin.z].every(Number.isFinite)) {
+      if (!authoritativeOrigin) return [0, 0, 0];
+      origin.copy(authoritativeOrigin);
+    } else if (authoritativeOrigin && origin.distanceToSquared(authoritativeOrigin) > 16) {
+      // Reject a wildly stale/malformed camera origin without teleporting
+      // anybody; the host's latest accepted player state is the safe source.
+      origin.copy(authoritativeOrigin);
+    }
+    const dir = normalizedDirection(shot.dir);
+    if (!dir) return origin.toArray();
+    const requestedRange = Number(shot.range);
+    const range = UTIL.clamp(Number.isFinite(requestedRange) ? requestedRange : 100, 0.1, 250);
+    const worldHit = FX.trace(origin, dir, range, h => {
       const playerHit = h.object.userData && h.object.userData.playerHit;
       // A joiner's camera origin can begin inside its own interpolated proxy.
       // Never let the host resolve that self-collider as the shot's target.
       return !playerHit || playerHit.id !== ownerId;
     });
-    const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
-    if (hit) {
-      const playerHit = hit.object.userData && hit.object.userData.playerHit;
-      if (playerHit && (matchMode === 'ffa' || matchMode === 'teams')) {
-        const base = shot.damage === undefined ? CONFIG.enemy.pelletDamage : shot.damage;
-        const falloff = UTIL.clamp(1 - hit.distance / range, 0.22, 1);
-        const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
-        applyPlayerHit(playerHit.id, base * falloff * head, hit.point.toArray(), ownerId || localId);
-      } else {
-        ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+    const localHit = traceLocalHostPlayer(origin, dir, range, ownerId);
+    const hitLocalPlayer = !!(localHit && (!worldHit || localHit.distance < worldHit.distance));
+    const end = hitLocalPlayer
+      ? localHit.point
+      : (worldHit ? worldHit.point : origin.clone().addScaledVector(dir, range));
+
+    if (dealDamage !== false) {
+      const rawDamage = shot.damage === undefined ? CONFIG.enemy.pelletDamage : Number(shot.damage);
+      const base = Number.isFinite(rawDamage) && rawDamage > 0 ? rawDamage : CONFIG.enemy.pelletDamage;
+      if (hitLocalPlayer) {
+        const falloff = UTIL.clamp(1 - localHit.distance / range, 0.22, 1);
+        const head = localHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
+        applyPlayerHit(localId, base * falloff * head, localHit.point.toArray(), ownerId || localId);
+      } else if (worldHit) {
+        const playerHit = worldHit.object.userData && worldHit.object.userData.playerHit;
+        if (playerHit && isDeathmatch()) {
+          const falloff = UTIL.clamp(1 - worldHit.distance / range, 0.22, 1);
+          const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
+          applyPlayerHit(playerHit.id, base * falloff * head, worldHit.point.toArray(), ownerId || localId);
+        } else {
+          ENEMY.hit(worldHit.object, worldHit.point, dir, worldHit.distance, shot);
+        }
       }
     }
     return end.toArray();
@@ -17228,6 +17317,13 @@ const COOP = (() => {
     if (targetId !== localId && !remotes.has(targetId)) return false;
     const remoteTarget = targetId === localId ? null : remotes.get(targetId).target;
     if (remoteTarget && (remoteTarget.dead || remoteTarget.climbing)) return false;
+    const attackerState = attackerId === localId
+      ? { layerId: PLAYER.layerId }
+      : (remotes.get(attackerId) && remotes.get(attackerId).target);
+    const targetState = targetId === localId
+      ? { layerId: PLAYER.layerId }
+      : remoteTarget;
+    if (attackerState && targetState && attackerState.layerId !== targetState.layerId) return false;
     if (matchMode === 'teams' && attackerId !== targetId && sameTeam(attackerId, targetId)) return false;
     if (targetId === localId) {
       const applied = PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
@@ -17268,7 +17364,10 @@ const COOP = (() => {
   }
 
   function normalizedDirection(dir) {
-    const out = new THREE.Vector3().fromArray(Array.isArray(dir) ? dir : [dir.x, dir.y, dir.z]);
+    const values = Array.isArray(dir)
+      ? dir
+      : (dir && typeof dir === 'object' ? [dir.x, dir.y, dir.z] : [NaN, NaN, NaN]);
+    const out = new THREE.Vector3().fromArray(values);
     if (!Number.isFinite(out.x) || !Number.isFinite(out.y) || !Number.isFinite(out.z) || out.lengthSq() < 0.0001) return null;
     return out.normalize();
   }
@@ -17594,11 +17693,15 @@ const COOP = (() => {
     if (role === 'join' && connected) send({ type: 'shot', shot: shot });
   }
   function relayHostShot(shot) {
-    // The host's own shot never goes through receiveOnHost, so resolve it
-    // here and broadcast the same {shot, endPoint} shape a joiner's would get.
+    // The host's own shot never goes through receiveOnHost. Resolve only the
+    // tracer endpoint here; fireGun() applies the actual hit immediately
+    // afterward. Letting both paths deal damage doubled every host bullet.
     if (role === 'host' && connected) {
       const resolvedShot = Object.assign({}, shot, { ownerId: localId });
-      broadcast({ type: 'shotResolved', shot: resolvedShot, endPoint: resolveShotAsHost(resolvedShot, localId) });
+      broadcast({
+        type: 'shotResolved', shot: resolvedShot,
+        endPoint: resolveShotAsHost(resolvedShot, localId, false)
+      });
     }
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
