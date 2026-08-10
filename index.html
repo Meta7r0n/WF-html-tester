@@ -1516,12 +1516,18 @@ const CONFIG = {
   // the claws themselves are procedural props, not part of the mesh.
   bearClaw: {
     id: 'bearClaw', name: 'Bear Claw',
+    // The first appearance keeps the current skeleton-lobster visual.
     asset: 'assets/skeleton_lobster.glb',
+    // The rematch uses the taller, elongated Longbone variant.
+    secondAsset: 'assets/longbone_bear_claw.glb',
     // The replacement asset faces the farmhand rig's native -Z direction.
     assetForwardCorrection: 0,
     // The source is authored at roughly six world units tall; keep the
     // existing Bear Claw collider and encounter proportions at game scale.
     assetScale: 0.34,
+    // Longbone is authored larger, so scale it to the same collider height
+    // while preserving its intentionally lankier proportions.
+    secondAssetScale: 0.25,
     spawn: { x: 8.0, y: 0, z: -56.0 },
     hp: 520, radius: 0.58, height: 2.0, eyeHeight: 1.5,
     stepHeight: 0.5, gravity: 27, speed: 3.6, reach: 3.1,
@@ -13783,13 +13789,14 @@ const ENEMY = (() => {
   let bossAsset = null;
   let bossAssetAnimations = [];
   let bossAssetPromise = null;
-  // Bear Claw: a second, independent GLB slot alongside the Carrot Warden's
-  // above. Its source mesh has no rig or animation clips at all (a static
-  // Meshy AI export), so bearClawAssetAnimations always stays empty and
-  // buildBearClawAssetRig's mixer/idle/run fields just stay null -- posing
-  // is whole-transform only, see poseBearClaw.
+  // Bear Claw has two independent GLB slots: the current skeleton-lobster
+  // visual for the first fight and the elongated Longbone visual for the
+  // rematch. Both assets carry authored idle/walk/claw-snap clips; the
+  // entity's wrapper root supplies the shared encounter transform.
   let bearClawAsset = null;
   let bearClawAssetAnimations = [];
+  let bearClawSecondAsset = null;
+  let bearClawSecondAssetAnimations = [];
   // Beat Slayer: third GLB slot, same static-mesh-no-rig shape as Bear
   // Claw's -- whole-transform posing only, see poseBeatSlayer.
   let beatSlayerAsset = null;
@@ -13874,6 +13881,16 @@ const ENEMY = (() => {
           obj.receiveShadow = false;
         });
       }),
+      loadBossAsset(CONFIG.bearClaw.secondAsset, 'Bear Claw Rematch', gltf => {
+        bearClawSecondAsset = gltf.scene;
+        bearClawSecondAssetAnimations = gltf.animations || [];
+        bearClawSecondAsset.traverse(obj => {
+          if (!obj.isMesh) return;
+          obj.raycast = NO_RAY;
+          obj.castShadow = false;
+          obj.receiveShadow = false;
+        });
+      }),
       loadBossAsset(CONFIG.beatSlayer.asset, 'Beat Slayer', gltf => {
         beatSlayerAsset = gltf.scene;
         beatSlayerAssetAnimations = gltf.animations || [];
@@ -13917,14 +13934,12 @@ const ENEMY = (() => {
      claw-snap clips. Keep its animation mixer separate from the procedural
      fallback so a failed asset load still leaves the original encounter
      playable. */
-  function buildBearClawAssetRig() {
-    if (!bearClawAsset) return null;
-    const root = bearClawAsset;
-    root.name = 'BearClawGLB';
+  function makeBearClawAssetRig(root, model, animations) {
+    const clips = animations || [];
     const mixer = THREE.AnimationMixer ? new THREE.AnimationMixer(root) : null;
-    const idleClip = bearClawAssetAnimations.find(clip => /idle/i.test(clip.name));
-    const runClip = bearClawAssetAnimations.find(clip => /walk|run/i.test(clip.name));
-    const attackClip = bearClawAssetAnimations.find(clip => /claw|snap|attack/i.test(clip.name));
+    const idleClip = clips.find(clip => /idle/i.test(clip.name));
+    const runClip = clips.find(clip => /walk|run/i.test(clip.name));
+    const attackClip = clips.find(clip => /claw|snap|attack/i.test(clip.name));
     const idleAction = mixer && idleClip ? mixer.clipAction(idleClip) : null;
     const runAction = mixer && runClip ? mixer.clipAction(runClip) : null;
     const attackAction = mixer && attackClip ? mixer.clipAction(attackClip) : null;
@@ -13935,6 +13950,7 @@ const ENEMY = (() => {
     }
     return {
       root: root,
+      model: model,
       asset: true,
       mixer: mixer,
       idleAction: idleAction,
@@ -13942,6 +13958,37 @@ const ENEMY = (() => {
       attackAction: attackAction,
       action: idleAction
     };
+  }
+
+  // Keep the entity root stable so its hit proxies, HUD marker, and shadow do
+  // not need to be rebuilt when Bear Claw returns with a different GLB.
+  function buildBearClawAssetRig(asset, animations, modelName) {
+    if (!asset) return null;
+    const root = new THREE.Group();
+    root.name = (modelName || 'BearClawGLB') + 'Root';
+    root.add(asset);
+    return makeBearClawAssetRig(root, asset, animations);
+  }
+
+  function installBearClawAsset(e, asset, animations, modelName, scale) {
+    if (!e || !e.group || !asset || !e.asset) return false;
+    if (e.assetMixer) {
+      e.assetMixer.stopAllAction();
+      if (e.assetMixer.uncacheRoot) e.assetMixer.uncacheRoot(e.group);
+    }
+    if (e.assetModel && e.assetModel.parent === e.group) e.group.remove(e.assetModel);
+    e.group.add(asset);
+    asset.name = modelName || asset.name;
+    const rig = makeBearClawAssetRig(e.group, asset, animations);
+    e.rig = rig;
+    e.assetModel = rig.model;
+    e.assetMixer = rig.mixer;
+    e.assetIdleAction = rig.idleAction;
+    e.assetRunAction = rig.runAction;
+    e.assetAction = rig.action;
+    e.assetAttackAction = rig.attackAction;
+    e.visualScale = scale;
+    return true;
   }
 
   /* Beat Slayer: same bare-mesh shape as Bear Claw's rig above -- no joints,
@@ -14060,6 +14107,7 @@ const ENEMY = (() => {
       asset: isAssetBoss,
       visualScale: isAssetBoss ? bc.assetScale : (anyBoss ? bc.visualScale : 1),
       assetMixer: built.rig.mixer || null,
+      assetModel: built.rig.model || null,
       assetIdleAction: built.rig.idleAction || null,
       assetRunAction: built.rig.runAction || null,
       assetAction: built.rig.action || null,
@@ -14201,12 +14249,24 @@ const ENEMY = (() => {
     bearClawAppearances++;
     boss2.appearanceIndex = bearClawAppearances;
     const isSecond = bearClawAppearances >= 2;
+    const desiredAsset = isSecond ? bearClawSecondAsset : bearClawAsset;
+    if (desiredAsset && boss2.assetModel !== desiredAsset) {
+      installBearClawAsset(
+        boss2,
+        desiredAsset,
+        isSecond ? bearClawSecondAssetAnimations : bearClawAssetAnimations,
+        isSecond ? 'LongboneBearClawGLB' : 'BearClawGLB',
+        isSecond ? B2.secondAssetScale : B2.assetScale
+      );
+    }
     boss2.maxHp = B2.hp * (isSecond ? B2.secondHpMult : 1);
     boss2.hp = boss2.maxHp;
     boss2.effDamage = B2.damage * (isSecond ? B2.secondDamageMult : 1);
     boss2.effSpeed = B2.speed * (isSecond ? B2.secondSpeedMult : 1);
     boss2.effStunChance = isSecond ? B2.secondStunChance : B2.stunChance;
-    boss2.visualScale = boss2.asset ? B2.assetScale : B2.visualScale;
+    boss2.visualScale = boss2.asset
+      ? (boss2.assetModel === bearClawSecondAsset ? B2.secondAssetScale : B2.assetScale)
+      : B2.visualScale;
     boss2.state = 'boss2_chase';
     boss2.timer = 0;
     boss2.sawPlayer = true;
@@ -14750,6 +14810,9 @@ const ENEMY = (() => {
         }
         e.bearClawHitStreak = 0;
         e.bearClawHitGapTimer = 0;
+        if (e.isBoss2 && e.asset && bearClawAsset && e.assetModel !== bearClawAsset) {
+          installBearClawAsset(e, bearClawAsset, bearClawAssetAnimations, 'BearClawGLB', B2.assetScale);
+        }
         e.appearanceIndex = 0;
         e.stunTimer = 0;
         e.beatSlayerThrowCooldown = 0;
@@ -15855,7 +15918,8 @@ const ENEMY = (() => {
         x: Math.round(boss2.pos.x * 100) / 100, y: Math.round(boss2.pos.y * 100) / 100,
         z: Math.round(boss2.pos.z * 100) / 100, yaw: Math.round(boss2.yaw * 1000) / 1000,
         hp: Math.round(boss2.hp), maxHp: boss2.maxHp, alive: boss2.alive,
-        state: boss2.state, layerId: boss2.layerId
+        state: boss2.state, layerId: boss2.layerId,
+        appearanceIndex: boss2.appearanceIndex
       } : null,
       boss3: boss3 ? {
         x: Math.round(boss3.pos.x * 100) / 100, y: Math.round(boss3.pos.y * 100) / 100,
@@ -15894,6 +15958,27 @@ const ENEMY = (() => {
     e.alive = snap.alive;
     e.hp = snap.hp;
     e.state = snap.state;
+    if (e.isBoss2) {
+      // Older hosts did not send appearanceIndex, so undefined safely means
+      // the original first-encounter visual.
+      const appearance = snap.appearanceIndex >= 2 ? 2 : 1;
+      if (e.appearanceIndex !== appearance) {
+        const desiredAsset = appearance >= 2 ? bearClawSecondAsset : bearClawAsset;
+        if (desiredAsset && e.assetModel !== desiredAsset) {
+          installBearClawAsset(
+            e,
+            desiredAsset,
+            appearance >= 2 ? bearClawSecondAssetAnimations : bearClawAssetAnimations,
+            appearance >= 2 ? 'LongboneBearClawGLB' : 'BearClawGLB',
+            appearance >= 2 ? B2.secondAssetScale : B2.assetScale
+          );
+        }
+        e.appearanceIndex = appearance;
+      }
+      if (e.asset) {
+        e.visualScale = e.assetModel === bearClawSecondAsset ? B2.secondAssetScale : B2.assetScale;
+      }
+    }
     if (wasAlive && snap.hp < prevHp) e.hitFlash = 0.12;
     if (wasAlive && !snap.alive) {
       e.mark.visible = false;
