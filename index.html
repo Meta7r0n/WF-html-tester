@@ -7283,7 +7283,11 @@ const PLAYER = (() => {
   let landOffset = 0, landVel = 0;
   let stepDist = 0;
   let health = C.maxHealth, shield = 0, dead = false, deadTime = 0, deadTilt = 0;
-  let invuln = 0, regenTimer = 0, shake = 0;
+  // Hurt i-frames and real protection are separate. PvP ignores only the
+  // former so automatic rounds and same-trigger shotgun pellets register;
+  // spawn protection, ladders, Iron Hide, and hero saves still block every
+  // kind of damage through protectionTimer.
+  let hitInvuln = 0, protectionTimer = 0, regenTimer = 0, shake = 0;
   // KILLCAM-only: whichever attacker most recently damaged the player, so a
   // fatal hit can be traced back to who/what threw it. Either a real ENEMY
   // entity (PvE) or a small { pvp: true, id } marker (PvP -- COOP.getRemote
@@ -7366,7 +7370,10 @@ const PLAYER = (() => {
      its own could inherit a stale one left over from an earlier, unrelated
      hit that never actually killed anyone. */
   function damage(amount, fromPos, attacker) {
-    if (dead || invuln > 0) return;
+    amount = Number(amount);
+    const pvpHit = !!(attacker && attacker.pvp);
+    if (dead || protectionTimer > 0 || (!pvpHit && hitInvuln > 0) ||
+        !Number.isFinite(amount) || amount <= 0) return false;
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
@@ -7381,24 +7388,33 @@ const PLAYER = (() => {
     // when it isn't lethal -- every other hero special only ever reacts to
     // health actually reaching zero, further down.
     if (typeof HERO !== 'undefined') HERO.checkLowHealthTrigger(healthBeforeHit, health, C.maxHealth);
-    invuln = C.invulnAfterHit;
+    hitInvuln = C.invulnAfterHit;
     regenTimer = 0;
     shake = C.hurtShake;
     UI.hurtFlash(UTIL.clamp((amount + absorbed * 0.35) / 20, 0.22, 1));
     UI.setHealth(health, C.maxHealth);
     if (fromPos) {
-      const dx = pos.x - fromPos.x, dz = pos.z - fromPos.z;
-      const d = Math.hypot(dx, dz) || 1;
-      vel.x += dx / d * C.hitKnockback;
-      vel.z += dz / d * C.hitKnockback;
-      // Cap the resulting speed rather than the raw impulse -- several hits
-      // landing close together (or one landing on top of existing movement
-      // speed) must still never add up to more than a player could reach by
-      // sprinting, so a shove can never turn into an uncontrolled launch.
-      const spd = Math.hypot(vel.x, vel.z);
-      if (spd > C.maxKnockbackSpeed) {
-        const scale = C.maxKnockbackSpeed / spd;
-        vel.x *= scale; vel.z *= scale;
+      // Network hits use compact [x,y,z] arrays while local PvE hits pass a
+      // THREE.Vector3. Reading an array as {x,z} produced NaN knockback,
+      // poisoned the player's velocity/position, and made a damaged remote
+      // appear to vanish or snap back only after respawning. Accept both
+      // shapes and simply skip knockback when a malformed source arrives.
+      const sourceX = Array.isArray(fromPos) ? Number(fromPos[0]) : Number(fromPos.x);
+      const sourceZ = Array.isArray(fromPos) ? Number(fromPos[2]) : Number(fromPos.z);
+      if (Number.isFinite(sourceX) && Number.isFinite(sourceZ)) {
+        const dx = pos.x - sourceX, dz = pos.z - sourceZ;
+        const d = Math.hypot(dx, dz) || 1;
+        vel.x += dx / d * C.hitKnockback;
+        vel.z += dz / d * C.hitKnockback;
+        // Cap the resulting speed rather than the raw impulse -- several hits
+        // landing close together (or one landing on top of existing movement
+        // speed) must still never add up to more than a player could reach by
+        // sprinting, so a shove can never turn into an uncontrolled launch.
+        const spd = Math.hypot(vel.x, vel.z);
+        if (spd > C.maxKnockbackSpeed) {
+          const scale = C.maxKnockbackSpeed / spd;
+          vel.x *= scale; vel.z *= scale;
+        }
       }
     }
     if (health <= 0) {
@@ -7409,6 +7425,7 @@ const PLAYER = (() => {
     } else if (amount > 0) {
       AUDIO.playerHurt();
     }
+    return true;
   }
 
   function heal(amount) {
@@ -7432,17 +7449,16 @@ const PLAYER = (() => {
     health = C.maxHealth * pct;
     shield = 0;
     dead = false;
-    deadTime = 0; deadTilt = 0; shake = 0; invuln = 1.2; regenTimer = 0;
+    deadTime = 0; deadTilt = 0; shake = 0; hitInvuln = 0; protectionTimer = 1.2; regenTimer = 0;
     if (resetPosition !== false) respawn();
     UI.setHealth(health, C.maxHealth);
     UI.setShield(shield, C.maxShield);
   }
 
-  /* A hero special gets a longer, explicit invulnerability window than the
-     brief post-hit i-frame reviveAt() already grants on its own — this only
-     ever extends it (never shortens one already running from a fresher hit). */
+  /* Hero saves, revives, ladders, and Iron Hide use a true protection window
+     separate from ordinary hit recovery. This only ever extends protection. */
   function grantInvuln(seconds) {
-    invuln = Math.max(invuln, seconds || 0);
+    protectionTimer = Math.max(protectionTimer, seconds || 0);
   }
 
   /* Bear Claw's stun-chance claw swipe. Only ever extends an already-running
@@ -7452,10 +7468,9 @@ const PLAYER = (() => {
     stunTimer = Math.max(stunTimer, seconds || 0);
   }
 
-  /* Iron Hide power-up. Rides the same invuln timer grantInvuln already
-     backs damage() with, but tracks its own HUD-facing countdown separately
-     -- invuln alone is shared with post-hit i-frames/hero specials/revive,
-     none of which should make the Iron Hide chip light up. */
+  /* Iron Hide rides the shared protection timer used by hero saves, revives,
+     and ladders, but tracks its HUD countdown separately so those other
+     protection sources do not light up the Iron Hide chip. */
   function applyIronHide(seconds) {
     grantInvuln(seconds);
     ironHideTimer = Math.max(ironHideTimer, seconds || 0);
@@ -7514,7 +7529,8 @@ const PLAYER = (() => {
       deadTime += dt;
       if (!downed) active = false;
     }
-    if (invuln > 0) invuln -= dt;
+    if (hitInvuln > 0) hitInvuln -= dt;
+    if (protectionTimer > 0) protectionTimer -= dt;
     if (stunTimer > 0) stunTimer = Math.max(0, stunTimer - dt);
     // Stunned locks out the same set of actions `downed` already does --
     // look stays free, movement/sprint/crouch/jump/aim/ladders don't.
@@ -8545,6 +8561,7 @@ const WEAPON = (() => {
     // ones that happened to connect.
     const relayRemote = COOP.shouldRemoteRelayShots();
     const relayHost = COOP.shouldHostRelayShots();
+    const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
     const shotMeta = {
       damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
       critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
@@ -8558,24 +8575,45 @@ const WEAPON = (() => {
       _t.y += UTIL.rng(-spread, spread);
       _t.z += UTIL.rng(-spread, spread);
       _t.normalize();
+      // Host shots resolve against the host's local scene exactly once.
+      // Join shots also perform a local player-only claim in deathmatch so
+      // the host itself (which has no proxy in its own scene) can be hit.
+      // PvE remains host-authoritative below in COOP.resolveShotAsHost.
+      const tracedLocally = relayHost || (relayRemote && deathmatch);
+      let hit = tracedLocally ? FX.trace(_o, _t, d.range) : null;
+      let payload = null;
       if (relayRemote || relayHost) {
-        const payload = {
+        payload = {
           origin: _o.toArray(), dir: _t.toArray(),
           damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
           critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
           headshotStunChance: d.headshotStunChance || 0, headshotStunDuration: d.headshotStunDuration || 0
         };
-        if (relayRemote) COOP.sendShot(payload); else COOP.relayHostShot(payload);
+        const claimedPlayer = hit && hit.object.userData && hit.object.userData.playerHit;
+        if (relayRemote && deathmatch && claimedPlayer) {
+          payload.playerTargetId = claimedPlayer.id;
+          payload.playerZone = claimedPlayer.zone;
+          payload.playerHitDistance = hit.distance;
+          payload.playerHitPoint = hit.point.toArray();
+        }
+        if (relayRemote) COOP.sendShot(payload);
       }
       if (relayRemote) {
         if (d.pellets === 1 || i === 0) {
-          _end.copy(_o).addScaledVector(_t, d.range);
+          if (hit) _end.copy(hit.point);
+          else _end.copy(_o).addScaledVector(_t, d.range);
           FX.tracer(_muzzleWorld, _end);
           if (d.projectileVisual) FX.launchJunk(_muzzleWorld, _end);
         }
+        const claimedPlayer = hit && hit.object.userData && hit.object.userData.playerHit;
+        if (claimedPlayer) {
+          FX.impact(hit.point, _t.clone().negate(), {
+            big: claimedPlayer.zone === 'head', scale: d.pellets === 1 ? 0.75 : 1
+          });
+        }
         continue;
       }
-      const hit = FX.trace(_o, _t, d.range);
+      if (!tracedLocally) hit = FX.trace(_o, _t, d.range);
       if (hit) {
         if (d.pellets === 1 || i % 2 === 0) FX.tracer(_muzzleWorld, hit.point);
         if (d.projectileVisual) FX.launchJunk(_muzzleWorld, hit.point);
@@ -8600,6 +8638,13 @@ const WEAPON = (() => {
         _end.copy(_o).addScaledVector(_t, d.range);
         FX.tracer(_muzzleWorld, _end);
         if (d.projectileVisual) FX.launchJunk(_muzzleWorld, _end);
+      }
+      if (relayHost && payload) {
+        if (hit) COOP.relayHostShot(payload, hit.point.toArray());
+        else {
+          _end.copy(_o).addScaledVector(_t, d.range);
+          COOP.relayHostShot(payload, _end.toArray());
+        }
       }
     }
     if (currentId === 'doubleBarrel') HERO.onDoubleBarrelShot();
@@ -11909,7 +11954,7 @@ const GAME = (() => {
       // Reported once, right as the death happens — reportDeath() reads
       // whichever attacker last damaged this client, so it has to fire
       // before anything else has a chance to land another hit first.
-      if (mode === 'coop' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')) COOP.reportDeath();
+      if (mode === 'coop') COOP.reportDeath();
     }
     if (deathPending && !PLAYER.isDowned && !UI.deadShown && !KILLCAM.active && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
@@ -14073,7 +14118,9 @@ const ENEMY = (() => {
     const isBoss3 = !!options.isBoss3;
     const anyBoss = isBoss || isBoss2 || isBoss3;
     const bc = isBoss ? B : (isBoss2 ? B2 : (isBoss3 ? B3 : null));
-    const assetRig = isBoss ? buildBossAssetRig() : (isBoss2 ? buildBearClawAssetRig() : (isBoss3 ? buildBeatSlayerAssetRig() : null));
+    const assetRig = isBoss ? buildBossAssetRig() : (isBoss2
+      ? buildBearClawAssetRig(bearClawAsset, bearClawAssetAnimations, 'BearClawGLB')
+      : (isBoss3 ? buildBeatSlayerAssetRig() : null));
     const baseDef = CAST.ROSTER[id];
     const built = assetRig ? {
       def: baseDef,
@@ -14235,8 +14282,12 @@ const ENEMY = (() => {
      tracks which. Blocked while he's actively mid-fight, but unlike
      spawnBoss() a 'defeated' bossState2 doesn't block re-entry, since
      that's exactly the rematch's own resting state between fights. */
-  function spawnBoss2() {
+  function spawnBoss2(requestedAppearance) {
     if (bossState2 === 'active') return boss2;
+    // Developer console can jump straight to the rematch without first
+    // fighting/killing the original. Normal progression passes no argument
+    // and keeps the existing 0 -> 1 -> 2 sequence untouched.
+    if (Number(requestedAppearance) >= 2 && bearClawAppearances < 1) bearClawAppearances = 1;
     if (bearClawAppearances >= 2) return boss2;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_2',
@@ -16171,6 +16222,7 @@ const ENEMY = (() => {
     get boss() { return boss; },
     get bossState2() { return bossState2; },
     get boss2() { return boss2; },
+    get bearClawAppearances() { return bearClawAppearances; },
     get bossState3() { return bossState3; },
     get boss3() { return boss3; },
     get roster() { return ENEMY_ROSTER; },
@@ -16190,6 +16242,7 @@ const COOP = (() => {
   const C = CONFIG.multiplayer;
   const callbacks = { status: [], connected: [], disconnected: [], error: [], matchStart: [], matchOver: [], crewMemberLeft: [], killFeed: [], chat: [], voiceStream: [], voiceGone: [] };
   const remotes = new Map();
+  const NO_PLAYER_RAY = function () {};
   const ROOM_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ROOM_PREFIX = 'WF';
   // These are the multiplayer-capable farmhands. Character identity is a
@@ -16247,10 +16300,44 @@ const COOP = (() => {
     clearRemotes();
   }
 
+  function untrackPlayerProxy(proxy) {
+    if (!proxy) return;
+    proxy.raycast = NO_PLAYER_RAY;
+    let index = RAY_TARGETS.indexOf(proxy);
+    while (index >= 0) {
+      RAY_TARGETS.splice(index, 1);
+      index = RAY_TARGETS.indexOf(proxy);
+    }
+  }
+
+  function destroyRemote(remote) {
+    if (!remote) return;
+    untrackPlayerProxy(remote.headProxy);
+    untrackPlayerProxy(remote.bodyProxy);
+    if (scene && remote.group) scene.remove(remote.group);
+  }
+
   function clearRemotes() {
-    remotes.forEach(remote => { if (scene && remote.group) scene.remove(remote.group); });
+    remotes.forEach(destroyRemote);
     remotes.clear();
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
+  }
+
+  /* Network state is untrusted even in a friendly room: one NaN/null
+     coordinate is enough to make a whole character disappear from Three's
+     matrix math. Copy only finite numeric transforms and known primitive
+     fields, preserving the last valid state for anything malformed. */
+  function applyRemotePlayerState(remote, next) {
+    if (!remote || !next) return;
+    const target = remote.target;
+    ['x', 'y', 'z', 'yaw', 'pitch'].forEach(key => {
+      if (typeof next[key] === 'number' && Number.isFinite(next[key])) target[key] = next[key];
+    });
+    if (typeof next.layerId === 'string' && WORLD.layers[next.layerId]) target.layerId = next.layerId;
+    ['dead', 'moving', 'climbing', 'sprinting'].forEach(key => {
+      if (typeof next[key] === 'boolean') target[key] = next[key];
+    });
+    remote.hasState = true;
   }
 
   function clearConnectTimer() {
@@ -16706,7 +16793,7 @@ const COOP = (() => {
     slotAssignments.delete(peerId);
     loseVoiceCall(peerId);
     const remote = remotes.get(peerId);
-    if (remote && scene && remote.group) scene.remove(remote.group);
+    destroyRemote(remote);
     remotes.delete(peerId);
     broadcast({ type: 'playerLeft', id: peerId });
     broadcast({ type: 'rosterUpdate', roster: rosterList() });
@@ -16807,9 +16894,9 @@ const COOP = (() => {
 
   /* Invisible hit colliders, same idea as ENEMY.makeProxy — but a co-op
      teammate must never be shootable, so raycast only gets wired to a real
-     hit test when this room is actually in FFA or Team Deathmatch. That
-     decision is made once, at proxy creation, since matchMode is fixed for
-     the room's lifetime (see setMatchMode). Teams mode leaves every
+     hit test when this room is actually in FFA or Team Deathmatch. update()
+     refreshes that gate with the remote's live/dead, layer, and climbing
+     state. Teams mode leaves every
      player's proxy raycastable regardless of team -- a shared RAY_TARGETS
      pool has no notion of "who's asking," so friendly fire is blocked
      downstream in applyPlayerHit instead, not by hiding the geometry. */
@@ -16817,7 +16904,9 @@ const COOP = (() => {
     const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ visible: false }));
     m.position.y = y;
     m.userData.playerHit = { id: id, zone: zone };
-    m.raycast = (matchMode === 'ffa' || matchMode === 'teams') ? THREE.Mesh.prototype.raycast : function () {};
+    // Stay inert until the first validated state arrives; update() enables
+    // it only while that remote is alive, visible, and in a PvP mode.
+    m.raycast = NO_PLAYER_RAY;
     parent.add(m);
     RAY_TARGETS.push(m);
     return m;
@@ -16827,7 +16916,10 @@ const COOP = (() => {
     const desired = CHARACTER_POOL.indexOf(characterId) >= 0 ? characterId : 'playerMasked';
     let remote = remotes.get(id);
     if (remote && remote.characterId !== desired) {
-      if (scene && remote.group) scene.remove(remote.group);
+      // Character swaps rebuild the rig and its proxies. Remove the old
+      // proxies from the flat raycast list too, or an invisible collider at
+      // the previous position can keep absorbing shots forever.
+      destroyRemote(remote);
       remotes.delete(id);
       remote = null;
     }
@@ -16848,7 +16940,8 @@ const COOP = (() => {
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
         moving: false, climbing: false, sprinting: false
       },
-      active: true, lastSeen: 0, animPhase: Math.random() * Math.PI * 2
+      active: true, hasState: false, lastSeen: 0, animPhase: Math.random() * Math.PI * 2,
+      deathPose: 0
     };
     remotes.set(id, remote);
     return remote;
@@ -16856,7 +16949,7 @@ const COOP = (() => {
 
   function removeRemote(id) {
     const remote = remotes.get(id);
-    if (remote && scene && remote.group) scene.remove(remote.group);
+    destroyRemote(remote);
     remotes.delete(id);
   }
 
@@ -16872,18 +16965,19 @@ const COOP = (() => {
       UI.setCoopLobbyStep('host', phase);
     } else if (message.type === 'state' && message.player) {
       const remote = makeRemote(fromId, slotAssignments.get(fromId));
-      remote.target = Object.assign(remote.target, message.player);
+      applyRemotePlayerState(remote, message.player);
       remote.lastSeen = 0;
       // Relay to every OTHER joiner so peers see each other through the hub.
-      broadcast(message, fromId);
+      broadcast(Object.assign({}, message, { id: fromId, characterId: remote.characterId }), fromId);
     } else if (message.type === 'shot' && message.shot) {
-      sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot) });
+      sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot, fromId) });
     } else if (message.type === 'enemyDamage' && message.key !== undefined) {
       ENEMY.applyDamageByKey(message.key, message.amount, message.point, message.dir, message.zone, message.force);
     } else if (message.type === 'playerHitReport' && message.targetId) {
       applyPlayerHit(message.targetId, message.amount, message.source, fromId);
-    } else if (message.type === 'playerDied' && message.victimId) {
-      registerKill(message.killerId, message.victimId);
+    } else if (message.type === 'playerDied') {
+      // The connection, not a client-authored field, owns victim identity.
+      registerKill(message.killerId, fromId);
     } else if (message.type === 'teamHealUse') {
       resolveTeamHeal(fromId, message.heal, message.shield, message.radius);
     } else if (message.type === 'chat' && message.text) {
@@ -16930,7 +17024,7 @@ const COOP = (() => {
       if (matchRunning) emit('crewMemberLeft', message.id);
     } else if (message.type === 'state' && message.id && message.player) {
       const remote = makeRemote(message.id, message.characterId);
-      remote.target = Object.assign(remote.target, message.player);
+      applyRemotePlayerState(remote, message.player);
       remote.lastSeen = 0;
     } else if (message.type === 'shotResolved' && message.shot) {
       drawShotTracer(message.shot, message.endPoint);
@@ -16962,8 +17056,9 @@ const COOP = (() => {
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
-      lastAttackerId = message.attackerId || lastAttackerId;
-      PLAYER.damage(message.amount, message.source, message.attackerId ? { pvp: true, id: message.attackerId } : null);
+      const attackerId = message.attackerId || null;
+      const applied = PLAYER.damage(message.amount, message.source, attackerId ? { pvp: true, id: attackerId } : null);
+      if (applied) lastAttackerId = attackerId;
     } else if (message.type === 'matchStart') {
       matchRunning = true;
       emit('matchStart', message.playerCount || 1);
@@ -16989,22 +17084,39 @@ const COOP = (() => {
      full range on a miss) so the shooter can draw a tracer that matches
      what really happened instead of re-deriving it from a raycast against
      its own, possibly-stale geometry. */
-  function resolveShotAsHost(shot) {
+  function resolveShotAsHost(shot, attackerId) {
     const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
     const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
-    const range = shot.range || 100;
-    const hit = FX.trace(origin, dir, range);
-    const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
-    if (hit) {
-      const playerHit = hit.object.userData && hit.object.userData.playerHit;
-      if (playerHit && (matchMode === 'ffa' || matchMode === 'teams')) {
-        const base = shot.damage === undefined ? CONFIG.enemy.pelletDamage : shot.damage;
-        const falloff = UTIL.clamp(1 - hit.distance / range, 0.22, 1);
-        const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
-        applyPlayerHit(playerHit.id, base * falloff * head, hit.point.toArray(), localId);
-      } else {
-        ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
+    const requestedRange = Number(shot.range);
+    const range = Number.isFinite(requestedRange) ? UTIL.clamp(requestedRange, 0.1, 250) : 100;
+    const missEnd = origin.clone().addScaledVector(dir, range);
+
+    // A joining client's scene is the only one that contains a hit proxy
+    // for the host. Carry that client's first-hit claim with the shot, then
+    // recompute damage here from the weapon metadata. This fixes join->host
+    // hits without trusting a client-supplied damage total, and avoids the
+    // old host-scene raycast hitting the shooter's own proxy at the origin.
+    if (matchMode === 'ffa' || matchMode === 'teams') {
+      const targetId = typeof shot.playerTargetId === 'string' ? shot.playerTargetId : '';
+      const pointArr = Array.isArray(shot.playerHitPoint) && shot.playerHitPoint.length >= 3 &&
+        shot.playerHitPoint.slice(0, 3).every(value => Number.isFinite(Number(value)))
+        ? shot.playerHitPoint.slice(0, 3).map(Number) : missEnd.toArray();
+      if (targetId && targetId !== attackerId && (targetId === localId || channels.has(targetId))) {
+        const rawBase = Number(shot.damage);
+        const base = Number.isFinite(rawBase) ? UTIL.clamp(rawBase, 0, 1000) : CONFIG.enemy.pelletDamage;
+        const rawDistance = Number(shot.playerHitDistance);
+        const distance = Number.isFinite(rawDistance) ? UTIL.clamp(rawDistance, 0, range) : range;
+        const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
+        const head = shot.playerZone === 'head' ? C.ffaHeadMultiplier : 1;
+        applyPlayerHit(targetId, base * falloff * head, pointArr, attackerId);
       }
+      return pointArr;
+    }
+
+    const hit = FX.trace(origin, dir, range);
+    const end = hit ? hit.point : missEnd;
+    if (hit) {
+      ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
     }
     return end.toArray();
   }
@@ -17017,12 +17129,17 @@ const COOP = (() => {
      shared pool can't tell shooter from target — so friendly fire is
      blocked right here instead, the one place every hit funnels through. */
   function applyPlayerHit(targetId, amount, source, attackerId) {
-    if (matchMode === 'teams' && sameTeam(attackerId, targetId)) return;
+    amount = Number(amount);
+    if (!targetId || targetId === attackerId || !Number.isFinite(amount) || amount <= 0) return false;
+    if (targetId !== localId && !channels.has(targetId)) return false;
+    if (matchMode === 'teams' && sameTeam(attackerId, targetId)) return false;
     if (targetId === localId) {
-      lastAttackerId = attackerId;
-      PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
+      const applied = PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
+      if (applied) lastAttackerId = attackerId || null;
+      return applied;
     } else {
       sendPlayerDamage(targetId, amount, source, attackerId);
+      return true;
     }
   }
   /* Join-only: the local gun/melee/blast query already found `targetId`
@@ -17101,6 +17218,14 @@ const COOP = (() => {
      entry. Safe to call in coop too; it's a no-op there (see the mode guard
      GAME uses before calling it). */
   function reportDeath() {
+    // GAME stops its normal live-state cadence while the local player is
+    // dead. Send this edge explicitly so every peer can show the fallen
+    // character instead of holding the last alive pose until respawn.
+    sendState();
+    if (matchMode !== 'ffa' && matchMode !== 'teams') {
+      lastAttackerId = null;
+      return;
+    }
     const killerId = lastAttackerId;
     lastAttackerId = null;
     if (role === 'host') registerKill(killerId, localId);
@@ -17201,10 +17326,11 @@ const COOP = (() => {
   function sendShot(shot) {
     if (role === 'join' && connected) send({ type: 'shot', shot: shot });
   }
-  function relayHostShot(shot) {
-    // The host's own shot never goes through receiveOnHost, so resolve it
-    // here and broadcast the same {shot, endPoint} shape a joiner's would get.
-    if (role === 'host' && connected) broadcast({ type: 'shotResolved', shot: shot, endPoint: resolveShotAsHost(shot) });
+  function relayHostShot(shot, endPoint) {
+    // WEAPON already resolved this shot once against the host's live scene.
+    // Broadcast only its visual result; resolving here again used to apply
+    // every host bullet (and every pellet) twice.
+    if (role === 'host' && connected) broadcast({ type: 'shotResolved', shot: shot, endPoint: endPoint });
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
   function shouldHostRelayShots() { return role === 'host' && connected; }
@@ -17245,6 +17371,16 @@ const COOP = (() => {
     const r = remote.rig;
     const target = remote.target;
     if (!r) return;
+    // A defeated remote remains in the world as a fallen body until their
+    // real respawn state arrives. Hiding the whole group made a lethal hit
+    // look like an asset/collision failure and gave no visual explanation
+    // for the later spawn jump.
+    remote.deathPose = UTIL.damp(remote.deathPose || 0, target.dead ? 1 : 0, 10, dt);
+    r.root.rotation.z = remote.deathPose * 1.42;
+    if (target.dead) {
+      if (r.bob) r.bob.position.y = -0.12 * remote.deathPose;
+      return;
+    }
     const moving = !!target.moving;
     remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
     const sw = Math.sin(remote.animPhase);
@@ -17281,7 +17417,7 @@ const COOP = (() => {
     remotes.forEach(remote => {
       remote.lastSeen += dt;
       const target = remote.target;
-      const visible = target.layerId === PLAYER.layerId && !target.dead;
+      const visible = remote.hasState && target.layerId === PLAYER.layerId;
       remote.group.visible = visible;
       // A flat RAY_TARGETS array doesn't inherit the parent group's
       // .visible for free the way a recursive scene raycast would — a dead
@@ -17291,9 +17427,9 @@ const COOP = (() => {
       // permanently inert regardless of visibility (see makePlayerProxy).
       // Also inert while climbing, mirroring the local player's own ladder
       // invuln so a mid-rung opponent can't be sniped either.
-      const hittable = visible && (matchMode === 'ffa' || matchMode === 'teams') && !target.climbing;
-      if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
-      if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
+      const hittable = visible && !target.dead && (matchMode === 'ffa' || matchMode === 'teams') && !target.climbing;
+      if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : NO_PLAYER_RAY;
+      if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : NO_PLAYER_RAY;
       remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
       remote.group.position.y = UTIL.damp(remote.group.position.y, target.y, 14, dt);
       remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
@@ -17575,18 +17711,24 @@ const DEVCONSOLE = (() => {
   const BOSS_ALIASES = {
     warden: 'boss', carrotwarden: 'boss', carrot: 'boss', boss1: 'boss',
     bearclaw: 'boss2', claw: 'boss2', bear: 'boss2', boss2: 'boss2',
+    bearclaw2: 'boss2rematch', claw2: 'boss2rematch', boss2rematch: 'boss2rematch',
     beatslayer: 'boss3', slayer: 'boss3', beat: 'boss3', boss3: 'boss3'
   };
   const BOSS_META = {
     boss: { spawn: () => ENEMY.spawnBoss(), state: () => ENEMY.bossState, name: 'Carrot Warden' },
     boss2: { spawn: () => ENEMY.spawnBoss2(), state: () => ENEMY.bossState2, name: 'Bear Claw' },
+    boss2rematch: {
+      spawn: () => ENEMY.spawnBoss2(2), state: () => ENEMY.bossState2,
+      canSpawn: () => ENEMY.bossState2 !== 'active' && ENEMY.bearClawAppearances < 2,
+      name: 'Bear Claw Rematch'
+    },
     boss3: { spawn: () => ENEMY.spawnBoss3(), state: () => ENEMY.bossState3, name: 'Beat Slayer' }
   };
 
   function cmdHelp() {
     log('spawn <id>        spawn+grant a weapon/ammo/pickup/throwable/buff near you');
     log('enemy [type] [n]  spawn n (default 1, max 10) grunts near you');
-    log('boss <name>       spawn a mini boss near you (warden/bearclaw/beatslayer)');
+    log('boss <name>       spawn a mini boss (warden/bearclaw/bearclaw2/beatslayer)');
     log('killenemies       instantly kill every non-boss enemy on the map');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
     log('list              list every spawnable id, enemy type and boss name');
@@ -17604,7 +17746,7 @@ const DEVCONSOLE = (() => {
     });
     Object.keys(groups).sort().forEach(type => log(type.toUpperCase() + ': ' + groups[type].join(', ')));
     log('ENEMIES: ' + (ENEMY.roster || []).join(', '));
-    log('BOSSES: warden, bearclaw, beatslayer');
+    log('BOSSES: warden, bearclaw, bearclaw2, beatslayer');
   }
 
   function cmdSpawn(args) {
@@ -17631,10 +17773,11 @@ const DEVCONSOLE = (() => {
 
   function cmdBoss(args) {
     const which = BOSS_ALIASES[(args[0] || '').toLowerCase()];
-    if (!which) { log('Usage: boss <warden|bearclaw|beatslayer>', 'err'); return; }
+    if (!which) { log('Usage: boss <warden|bearclaw|bearclaw2|beatslayer>', 'err'); return; }
     const meta = BOSS_META[which];
     const state = meta.state();
-    if (state !== 'inactive') { log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err'); return; }
+    const blocked = meta.canSpawn ? !meta.canSpawn() : state !== 'inactive';
+    if (blocked) { log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err'); return; }
     const boss = meta.spawn();
     // Keep console-only boss tests repeatable: die() carries this marker to
     // the boss drop, which lets an owned weapon be picked up again.
