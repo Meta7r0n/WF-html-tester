@@ -16795,9 +16795,10 @@ const COOP = (() => {
     channels.delete(peerId);
     slotAssignments.delete(peerId);
     loseVoiceCall(peerId);
-    const remote = remotes.get(peerId);
-    if (remote && scene && remote.group) scene.remove(remote.group);
-    remotes.delete(peerId);
+    // Remove the model and its invisible combat proxies together. Leaving
+    // those proxies in RAY_TARGETS makes a disconnected player keep blocking
+    // shots and can produce phantom hits for the rest of the match.
+    removeRemote(peerId);
     broadcast({ type: 'playerLeft', id: peerId });
     broadcast({ type: 'rosterUpdate', roster: rosterList() });
     status(message, 'bad');
@@ -16917,8 +16918,9 @@ const COOP = (() => {
     const desired = CHARACTER_POOL.indexOf(characterId) >= 0 ? characterId : 'playerMasked';
     let remote = remotes.get(id);
     if (remote && remote.characterId !== desired) {
-      if (scene && remote.group) scene.remove(remote.group);
-      remotes.delete(id);
+      // Character changes rebuild the remote rig; use the same full cleanup
+      // path as disconnects so the old hit proxies cannot survive the swap.
+      removeRemote(id);
       remote = null;
     }
     if (remote) return remote;
