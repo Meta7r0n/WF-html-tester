@@ -60,12 +60,46 @@ const crossOriginLogin = await worker.fetch(
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
       Origin: "https://example.com",
+      "Sec-Fetch-Site": "cross-site",
     },
     body: "pin=test-only-1234",
   }),
   env
 );
 assert(crossOriginLogin.status === 403, "cross-origin login must be rejected");
+
+const customDomainLogin = await worker.fetch(
+  new Request("https://internal-worker.example/__alpha/login", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: base,
+      "Sec-Fetch-Site": "same-origin",
+    },
+    body: "pin=test-only-1234",
+  }),
+  env
+);
+assert(
+  customDomainLogin.status === 303,
+  "same-origin custom-domain login must be accepted"
+);
+
+const privacyModeLogin = await worker.fetch(
+  new Request(`${base}/__alpha/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: "null",
+    },
+    body: "pin=test-only-1234",
+  }),
+  env
+);
+assert(
+  privacyModeLogin.status === 303,
+  "privacy-mode login must be accepted"
+);
 
 const acceptedLogin = await worker.fetch(
   new Request(`${base}/__alpha/login`, {
