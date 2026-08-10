@@ -2605,6 +2605,10 @@ const WORLD = {
   portals: [],
   /* [SPAWN] Phase 2 reads these. Nothing renders or spawns from them today. */
   spawnMarkers: [],
+  // Populated by LEVEL.buildCornMaze. ENEMY reads this compact navigation
+  // graph so grunts can follow the real open lanes instead of steering
+  // straight into a wall of corn.
+  cornMaze: null,
 
   add(cx, cy, cz, w, h, d, tag) {
     const s = {
@@ -2741,6 +2745,7 @@ const WORLD = {
     this.layers = { surface: { id: 'surface', floorY: 0 } };
     this.portals.length = 0;
     this.spawnMarkers.length = 0;
+    this.cornMaze = null;
   },
 
   /* ---- shared actor collision ----
@@ -4044,6 +4049,17 @@ const LEVEL = (() => {
       open[idx(nc, nr)][OPP[d]] = true;
     }
 
+    // Preserve the exact generated openings as a lightweight navigation
+    // graph. The maze stays deterministic because this is captured only
+    // after the same seeded generation above has completed.
+    WORLD.cornMaze = {
+      x0: X0, z0: Z0, cell: CELL, cols: cols, rows: rows,
+      x1: X0 + cols * CELL, z1: Z0 + rows * CELL,
+      open: open.map(directions => directions.slice()),
+      westEntrance: { c: 0, r: WEST_ENTRANCE_ROW },
+      northEntrance: { c: NORTH_STABLE_EXIT_COL, r: 0 }
+    };
+
     const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
     const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
     const WALL_H = 2.4;
@@ -4108,9 +4124,12 @@ const LEVEL = (() => {
     PROPS.hayBale(parent, 38.3, 0, -15.6, -0.2);
     PROPS.crate(parent, 55.8, 0, 2.2, 0.9, 0.4);
 
-    WORLD.addSpawn(35.0, 0, 18.0, 'corn_maze_1');   // south entrance
-    WORLD.addSpawn(58.0, 0, -8.0, 'corn_maze_2');   // east-central
-    WORLD.addSpawn(38.0, 0, -30.0, 'corn_maze_3');  // approaching the stable
+    // Cell centers are always walkable. The old coordinates put two guards
+    // exactly on generated wall boundaries, which could pin them in corn at
+    // spawn before their first AI tick.
+    WORLD.addSpawn(33.5, 0, 18.5, 'corn_maze_1');   // west/south entrance cell
+    WORLD.addSpawn(57.5, 0, -8.5, 'corn_maze_2');   // east-central cell
+    WORLD.addSpawn(39.5, 0, -29.5, 'corn_maze_3');  // north-west lane
   }
 
   /* ---------------- East wing: horse stable ----------------
@@ -7308,6 +7327,11 @@ const PLAYER = (() => {
   // stepping out rather than lingering as a separate timer to manage.
   let slowMult = 1, slowTimer = 0;
   let ironHideTimer = 0;
+  // Grinner's rare claw proc. Bleed has its own fixed tick cadence so it can
+  // apply a tiny status cost without being swallowed by ordinary hurt
+  // recovery or producing frame-rate-dependent damage.
+  const BLEED_TICK_INTERVAL = 0.5;
+  let bleedTimer = 0, bleedTickTimer = 0, bleedTickDamage = 0, bleedAttacker = null;
   // Bear Claw's stun-chance melee hit (see ENEMY.updateBearClaw). Freezes
   // input the same way `downed` already does -- look is still free, but
   // movement/sprint/crouch/jump/aim/ladders/firing/throwing all lock out.
@@ -7332,7 +7356,15 @@ const PLAYER = (() => {
 
   function setSpawnOffset(x, z) { spawnOffsetX = x || 0; spawnOffsetZ = z || 0; }
 
+  function clearTimedDamage() {
+    bleedTimer = 0;
+    bleedTickTimer = 0;
+    bleedTickDamage = 0;
+    bleedAttacker = null;
+  }
+
   function respawn() {
+    clearTimedDamage();
     pos.set(C.startPos.x + spawnOffsetX, C.startPos.y, C.startPos.z + spawnOffsetZ);
     vel.set(0, 0, 0);
     yaw = C.startYaw; pitch = 0;
@@ -7369,10 +7401,11 @@ const PLAYER = (() => {
      the MOST RECENT hit, whatever that was, or a death with no attacker of
      its own could inherit a stale one left over from an earlier, unrelated
      hit that never actually killed anyone. */
-  function damage(amount, fromPos, attacker) {
+  function damage(amount, fromPos, attacker, options) {
+    options = options || {};
     amount = Number(amount);
     const pvpHit = !!(attacker && attacker.pvp);
-    if (dead || protectionTimer > 0 || (!pvpHit && hitInvuln > 0) ||
+    if (dead || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
         !Number.isFinite(amount) || amount <= 0) return false;
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
@@ -7388,10 +7421,14 @@ const PLAYER = (() => {
     // when it isn't lethal -- every other hero special only ever reacts to
     // health actually reaching zero, further down.
     if (typeof HERO !== 'undefined') HERO.checkLowHealthTrigger(healthBeforeHit, health, C.maxHealth);
-    hitInvuln = C.invulnAfterHit;
+    if (!options.noHitRecovery) hitInvuln = C.invulnAfterHit;
     regenTimer = 0;
-    shake = C.hurtShake;
-    UI.hurtFlash(UTIL.clamp((amount + absorbed * 0.35) / 20, 0.22, 1));
+    shake = options.subtle ? Math.max(shake, C.hurtShake * 0.22) : C.hurtShake;
+    UI.hurtFlash(UTIL.clamp(
+      (amount + absorbed * 0.35) / 20,
+      options.subtle ? 0.08 : 0.22,
+      options.subtle ? 0.32 : 1
+    ));
     UI.setHealth(health, C.maxHealth);
     if (fromPos) {
       // Network hits use compact [x,y,z] arrays while local PvE hits pass a
@@ -7422,9 +7459,38 @@ const PLAYER = (() => {
       deadTime = 0;
       if (HERO.beginDowned()) AUDIO.playerHurt();
       else AUDIO.playerDie();
-    } else if (amount > 0) {
+    } else if (amount > 0 && !options.silentAudio) {
       AUDIO.playerHurt();
     }
+    return true;
+  }
+
+  /* Flashlight and bleed ticks bypass only the brief post-hit recovery
+     window. True protection (revive, ladder, hero save, Iron Hide) still
+     blocks them, and the subtle option keeps tiny ticks from shaking the
+     camera like a full melee strike. */
+  function damageOverTime(amount, attacker) {
+    return damage(amount, null, attacker, {
+      ignoreHitRecovery: true,
+      noHitRecovery: true,
+      subtle: true
+    });
+  }
+
+  function applyBleed(seconds, totalDamage, attacker) {
+    const duration = Number(seconds);
+    const damageTotal = Number(totalDamage);
+    if (dead || !Number.isFinite(duration) || duration <= 0 ||
+        !Number.isFinite(damageTotal) || damageTotal <= 0) return false;
+    const wasActive = bleedTimer > 0;
+    const ticks = Math.max(1, Math.ceil(duration / BLEED_TICK_INTERVAL));
+    bleedTimer = Math.max(bleedTimer, duration);
+    bleedTickTimer = wasActive
+      ? Math.min(Math.max(bleedTickTimer, 0), BLEED_TICK_INTERVAL)
+      : BLEED_TICK_INTERVAL;
+    bleedTickDamage = Math.max(bleedTickDamage, damageTotal / ticks);
+    bleedAttacker = attacker || bleedAttacker;
+    UI.toast('CLAW WOUND — BLEEDING', Math.min(1.1, duration + 0.1));
     return true;
   }
 
@@ -7450,6 +7516,7 @@ const PLAYER = (() => {
     shield = 0;
     dead = false;
     deadTime = 0; deadTilt = 0; shake = 0; hitInvuln = 0; protectionTimer = 1.2; regenTimer = 0;
+    clearTimedDamage();
     if (resetPosition !== false) respawn();
     UI.setHealth(health, C.maxHealth);
     UI.setShield(shield, C.maxShield);
@@ -7531,6 +7598,16 @@ const PLAYER = (() => {
     }
     if (hitInvuln > 0) hitInvuln -= dt;
     if (protectionTimer > 0) protectionTimer -= dt;
+    if (bleedTimer > 0 && !dead) {
+      const bleedStep = Math.min(dt, bleedTimer);
+      bleedTimer = Math.max(0, bleedTimer - bleedStep);
+      bleedTickTimer -= bleedStep;
+      while (bleedTickTimer <= 0 && !dead) {
+        damageOverTime(bleedTickDamage, bleedAttacker);
+        bleedTickTimer += BLEED_TICK_INTERVAL;
+      }
+      if (bleedTimer <= 0 || dead) clearTimedDamage();
+    }
     if (stunTimer > 0) stunTimer = Math.max(0, stunTimer - dt);
     // Stunned locks out the same set of actions `downed` already does --
     // look stays free, movement/sprint/crouch/jump/aim/ladders don't.
@@ -7834,7 +7911,7 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
+    init, update, respawn, forwardVector, damage, damageOverTime, applyBleed, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
     applyIronHide, applySpeedBoost, grantStun, grantSlow,
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
@@ -7842,6 +7919,7 @@ const PLAYER = (() => {
     get stunRemaining() { return stunTimer; },
     get slowed() { return slowTimer > 0; },
     get slowRemaining() { return slowTimer; },
+    get bleedRemaining() { return bleedTimer; },
     get lastAttacker() { return lastAttacker; },
     get health() { return health; },
     get shield() { return shield; },
@@ -12586,10 +12664,14 @@ const CAST = (() => {
       b.cyl(0.05, 0.045, 0.22, 10, 0, 0.02, -0.12, Math.PI / 2, 0, 0);
       b.cyl(0.085, 0.05, 0.12, 10, 0, 0.02, -0.28, -Math.PI / 2, 0, 0);
       b.build(group, { ray: false });
-      // the beam: a soft unlit cone, no extra light in the scene
-      const beam = PRIM.cone(0.62, 3.4, 12, MAT.flat(0xFFE9A0, {
+      // The beam is enabled only while Howler's AI has a close-range lock.
+      // Naming it lets ENEMY toggle the authored prop without coupling CAST
+      // to combat code; the larger cone matches the actual seven-metre lock.
+      const beam = PRIM.cone(1.35, 6.4, 12, MAT.flat(0xFFE9A0, {
         transparent: true, opacity: 0.26, depthWrite: false, fog: false
-      }), { pos: [0, 0.02, -2.05], rot: [-Math.PI / 2, 0, 0], parent: group, outline: false, ray: false });
+      }), { pos: [0, 0.02, -3.35], rot: [-Math.PI / 2, 0, 0], parent: group, outline: false, ray: false });
+      beam.name = 'enemyFlashlightBeam';
+      beam.visible = false;
       beam.renderOrder = 2;
     },
     claws(group, skin) {
@@ -12727,38 +12809,67 @@ const CAST = (() => {
   const ROSTER = {
     reaper: {
       label: 'The Reaper',
+      role: 'polearm',
       head: 'reaper',
       collar: 'chain',
       hand: 'scythe',
       skin: { shorts: PAL.olive, shoe: PAL.rust, metal: PAL.mustard },
-      stats: { hp: 130, speed: 2.5, damage: 15, reach: 2.4, windup: 0.55, recover: 0.85, weight: 1.35 },
+      // Long-weapon melee (the current prop is a scythe; this is the enemy
+      // players have been describing as the pitchfork unit). It notices and
+      // threatens from slightly farther away, but still has no ranged hit.
+      stats: {
+        hp: 130, speed: 2.5, damage: 15, reach: 2.72,
+        windup: 0.55, recover: 0.85, weight: 1.35,
+        sightRange: 31, hearRange: 10
+      },
       voice: { pitch: 0.78 }
     },
     howler: {
       label: 'The Howler',
+      role: 'spotter',
       head: 'howler',
       collar: 'ruff',
       hand: 'flashlight',
       skin: { shorts: PAL.olive, shoe: PAL.rustDeep, sole: PAL.cream },
-      stats: { hp: 85, speed: 4.4, damage: 8, reach: 1.7, windup: 0.28, recover: 0.5, weight: 0.75 },
+      // Long-range observer, short-range flashlight attacker. It must close
+      // most of the detection distance before the beam can lock or deal its
+      // intentionally light damage-over-time.
+      stats: {
+        hp: 85, speed: 4.0, damage: 0, reach: 0,
+        windup: 0.18, recover: 0.35, weight: 0.75,
+        sightRange: 40, sightFov: 1.0, hearRange: 8,
+        shineRange: 7, flashlightFov: 0.3,
+        flashlightDamage: 0.75, flashlightTickInterval: 0.4
+      },
       voice: { pitch: 1.35 }
     },
     gaper: {
       label: 'The Gaper',
+      role: 'brawler',
       head: 'gaper',
       collar: null,
       hand: null,
       skin: { glove: PAL.mustard, shorts: PAL.rust, shoe: PAL.rustDeep, sole: PAL.creamDim },
-      stats: { hp: 110, speed: 3.2, damage: 12, reach: 1.9, windup: 0.4, recover: 0.7, weight: 1.0 },
+      // Baseline puncher: simple melee, but a small speed bump keeps the
+      // otherwise basic class from being free target practice.
+      stats: { hp: 110, speed: 3.55, damage: 12, reach: 1.9, windup: 0.4, recover: 0.7, weight: 1.0 },
       voice: { pitch: 0.95 }
     },
     grinner: {
       label: 'The Grinner',
+      role: 'claw',
       head: 'grinner',
       collar: 'chain',
       hand: 'claws',
       skin: { limb: PAL.blueGrayDk, shorts: PAL.olive, shoe: PAL.creamDim, sole: PAL.charcoal, metal: PAL.mustard },
-      stats: { hp: 100, speed: 3.7, damage: 11, reach: 1.8, windup: 0.33, recover: 0.55, weight: 0.9 },
+      // Ambush melee: short senses and reach. One percent of successful claw
+      // hits adds a very small one-second bleed (two damage total).
+      stats: {
+        hp: 100, speed: 3.7, damage: 11, reach: 1.55,
+        windup: 0.33, recover: 0.55, weight: 0.9,
+        sightRange: 14, sightFov: 1.05, hearRange: 5,
+        bleedChance: 0.01, bleedDuration: 1, bleedDamage: 2
+      },
       voice: { pitch: 1.12 }
     },
     playerBluecap: {
@@ -14163,6 +14274,10 @@ const ENEMY = (() => {
       assetShoulderL: built.rig.shoulderL || null,
       assetShoulderRBase: built.rig.shoulderRBase || null,
       assetProp: built.rig.prop || null,
+      // Howler only. The cone is authored with the flashlight prop, then
+      // driven by the AI's `shine` state (including on coop join ghosts).
+      flashlightBeam: !anyBoss && built.rig.root.getObjectByName
+        ? built.rig.root.getObjectByName('enemyFlashlightBeam') : null,
       assetDelta: 0,
       home: home.clone(),
       pos: home.clone(),
@@ -14184,6 +14299,14 @@ const ENEMY = (() => {
       sawPlayer: false,
       wander: home.clone(),
       wanderTimer: UTIL.rng(1, 4),
+      specialTickTimer: 0,
+      spotlightAlertTimer: 0,
+      mazeWaypoint: new THREE.Vector3(),
+      mazeHasWaypoint: false,
+      mazeRepathTimer: 0,
+      mazeEntranceCommitted: false,
+      mazeEntranceC: 0, mazeEntranceR: 0,
+      mazeEntranceX: 0, mazeEntranceZ: 0,
       stepFlip: false,
       climbing: false,
       activeLadder: null,
@@ -14369,19 +14492,27 @@ const ENEMY = (() => {
   // instead of re-picking ones init() already filled.
   const usedMarkerKinds = new Set();
 
-  /* Spreads the cast across the spawn markers the level already publishes,
-     reserving one slot for each underground marker so a new layer cannot be
-     silently starved by the surface roster, and fills up to `targetTotal`
-     non-boss enemies total (not `targetTotal` *more* -- safe to call again
-     with a bigger number to top up an already-populated roster). */
+  /* Spreads the cast across the spawn markers the level already publishes.
+     Maze markers are selected first so the original ten-enemy solo budget
+     cannot starve them merely because they were authored later in the file;
+     the remaining budget still reserves every available basement marker.
+     Fills up to `targetTotal` non-boss enemies total (not `targetTotal`
+     *more* -- safe to call again with a bigger number to top up an already-
+     populated roster). */
   function spawnAdditional(targetTotal, roster) {
     const need = targetTotal - nonBossList().length;
     if (need <= 0) return;
     const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard' && !usedMarkerKinds.has(m.kind));
     const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
-    const surfaceMarkers = eligible.filter(m => (m.layerId || 'surface') !== 'basement');
-    const reserve = Math.min(basementMarkers.length, need);
-    const markers = surfaceMarkers.slice(0, need - reserve).concat(basementMarkers.slice(0, reserve));
+    const mazeMarkers = eligible.filter(m => /^corn_maze_/.test(m.kind));
+    const surfaceMarkers = eligible.filter(m =>
+      (m.layerId || 'surface') !== 'basement' && !/^corn_maze_/.test(m.kind));
+    const mazeReserve = Math.min(mazeMarkers.length, need);
+    const basementReserve = Math.min(basementMarkers.length, need - mazeReserve);
+    const surfaceSlots = Math.max(0, need - mazeReserve - basementReserve);
+    const markers = mazeMarkers.slice(0, mazeReserve)
+      .concat(surfaceMarkers.slice(0, surfaceSlots))
+      .concat(basementMarkers.slice(0, basementReserve));
     markers.forEach(m => {
       if (nonBossList().length >= targetTotal) return;
       create(roster[usedMarkerKinds.size % roster.length], m);
@@ -14474,17 +14605,16 @@ const ENEMY = (() => {
     e.stunTimer = Math.max(e.stunTimer || 0, seconds || 0);
   }
 
-  function canSee(e) {
-    if (e.layerId !== PLAYER.layerId) return false;
-    const p = PLAYER.position;
+  function canSeePoint(e, p, targetLayer, range, fov, hearRange) {
+    if (e.layerId !== targetLayer) return false;
     _v.set(p.x - e.pos.x, 0, p.z - e.pos.z);
     const dist = _v.length();
-    if (dist > C.sightRange) return false;
-    if (dist > C.hearRange) {
+    if (dist > range) return false;
+    if (dist > hearRange) {
       // outside earshot it has to actually be looking your way
       _v.normalize();
       const fx = -Math.sin(e.yaw), fz = -Math.cos(e.yaw);
-      if (fx * _v.x + fz * _v.z < Math.cos(C.sightFov)) return false;
+      if (fx * _v.x + fz * _v.z < Math.cos(fov)) return false;
     }
     _v.set(e.pos.x, e.pos.y + (e.isBoss2 ? B2.eyeHeight : (e.isBoss ? B.eyeHeight : (e.isBoss3 ? B3.eyeHeight : C.eyeHeight))), e.pos.z);
     _v2.set(p.x - _v.x, (p.y + CONFIG.player.eyeHeight) - _v.y, p.z - _v.z);
@@ -14499,6 +14629,163 @@ const ENEMY = (() => {
       break;
     }
     return true;
+  }
+
+  function canSee(e) {
+    const st = e.def.stats || {};
+    const range = st.sightRange === undefined ? C.sightRange : st.sightRange;
+    const fov = st.sightFov === undefined ? C.sightFov : st.sightFov;
+    const hearing = st.hearRange === undefined ? C.hearRange : st.hearRange;
+    return canSeePoint(e, PLAYER.position, PLAYER.layerId, range, fov, hearing);
+  }
+
+  // Howler can notice a farmhand across a field, but the damaging beam gets
+  // a second, much shorter and narrower LOS check before it can switch on.
+  function hasFlashlightLock(e) {
+    const st = e.def.stats || {};
+    if (e.def.role !== 'spotter' || !st.shineRange) return false;
+    return canSeePoint(e, PLAYER.position, PLAYER.layerId, st.shineRange,
+      st.flashlightFov === undefined ? 0.3 : st.flashlightFov, 0);
+  }
+
+  /* ---------------- corn-maze navigation ----------------
+     The shared actor solver correctly treats corn rows as solid, but direct
+     chase steering has no concept of the openings between those rows. This
+     tiny breadth-first route uses the exact generated maze graph captured by
+     buildCornMaze(), returning one cell-centre waypoint at a time. */
+  const MAZE_DX = [0, 1, 0, -1], MAZE_DZ = [-1, 0, 1, 0];
+
+  function cornMazeCell(m, x, z) {
+    if (!m || x < m.x0 || x >= m.x1 || z < m.z0 || z >= m.z1) return null;
+    const c = Math.floor((x - m.x0) / m.cell);
+    const r = Math.floor((z - m.z0) / m.cell);
+    if (c < 0 || c >= m.cols || r < 0 || r >= m.rows) return null;
+    return { c: c, r: r, index: r * m.cols + c };
+  }
+
+  function cornMazeCenter(m, c, r, out) {
+    out.set(m.x0 + (c + 0.5) * m.cell, 0, m.z0 + (r + 0.5) * m.cell);
+    return out;
+  }
+
+  function nearestCornMazeEntrance(m, x, z) {
+    const westX = m.x0 - 0.9;
+    const westZ = m.z0 + (m.westEntrance.r + 0.5) * m.cell;
+    const northX = m.x0 + (m.northEntrance.c + 0.5) * m.cell;
+    const northZ = m.z0 - 0.9;
+    const westD2 = (x - westX) * (x - westX) + (z - westZ) * (z - westZ);
+    const northD2 = (x - northX) * (x - northX) + (z - northZ) * (z - northZ);
+    return westD2 <= northD2
+      ? { c: m.westEntrance.c, r: m.westEntrance.r, x: westX, z: westZ }
+      : { c: m.northEntrance.c, r: m.northEntrance.r, x: northX, z: northZ };
+  }
+
+  function setCornMazeChaseWaypoint(e, target) {
+    const m = WORLD.cornMaze;
+    if (!m) { e.mazeHasWaypoint = false; e.mazeEntranceCommitted = false; return false; }
+    const start = cornMazeCell(m, e.pos.x, e.pos.z);
+    const actualGoal = cornMazeCell(m, target.x, target.z);
+    if (!start && !actualGoal) {
+      e.mazeHasWaypoint = false;
+      e.mazeEntranceCommitted = false;
+      return false;
+    }
+
+    // Crossing the perimeter is always routed through the closest authored
+    // doorway: west for the old farm approach or north for the stable.
+    let entrance = (!start || !actualGoal)
+      ? nearestCornMazeEntrance(m, start ? target.x : e.pos.x, start ? target.z : e.pos.z)
+      : null;
+    if (!start) {
+      // Hold onto the selected doorway once the enemy reaches its outside
+      // staging point. Recomputing the distance every frame made it alternate
+      // between that point and the inside cell centre, oscillating forever at
+      // x=31.8 without technically colliding with anything.
+      if (e.mazeEntranceCommitted) {
+        entrance = {
+          c: e.mazeEntranceC, r: e.mazeEntranceR,
+          x: e.mazeEntranceX, z: e.mazeEntranceZ
+        };
+      } else {
+        const d = Math.hypot(e.pos.x - entrance.x, e.pos.z - entrance.z);
+        if (d > 0.72) {
+          e.mazeWaypoint.set(entrance.x, e.pos.y, entrance.z);
+          e.mazeHasWaypoint = true;
+          return true;
+        }
+        e.mazeEntranceCommitted = true;
+        e.mazeEntranceC = entrance.c; e.mazeEntranceR = entrance.r;
+        e.mazeEntranceX = entrance.x; e.mazeEntranceZ = entrance.z;
+      }
+      cornMazeCenter(m, entrance.c, entrance.r, e.mazeWaypoint).y = e.pos.y;
+      e.mazeHasWaypoint = true;
+      return true;
+    }
+    e.mazeEntranceCommitted = false;
+
+    const goal = actualGoal || {
+      c: entrance.c, r: entrance.r,
+      index: entrance.r * m.cols + entrance.c
+    };
+    if (start.index === goal.index) {
+      if (actualGoal) e.mazeWaypoint.set(target.x, e.pos.y, target.z);
+      else e.mazeWaypoint.set(entrance.x, e.pos.y, entrance.z);
+      e.mazeHasWaypoint = true;
+      return true;
+    }
+
+    const count = m.cols * m.rows;
+    const previous = new Int16Array(count);
+    previous.fill(-1);
+    const visited = new Uint8Array(count);
+    const queue = new Int16Array(count);
+    let head = 0, tail = 0;
+    queue[tail++] = start.index;
+    visited[start.index] = 1;
+    while (head < tail && !visited[goal.index]) {
+      const current = queue[head++];
+      const c = current % m.cols, r = Math.floor(current / m.cols);
+      const openings = m.open[current];
+      for (let d = 0; d < 4; d++) {
+        if (!openings[d]) continue;
+        const nc = c + MAZE_DX[d], nr = r + MAZE_DZ[d];
+        if (nc < 0 || nc >= m.cols || nr < 0 || nr >= m.rows) continue;
+        const next = nr * m.cols + nc;
+        if (visited[next]) continue;
+        visited[next] = 1;
+        previous[next] = current;
+        queue[tail++] = next;
+      }
+    }
+    if (!visited[goal.index]) { e.mazeHasWaypoint = false; return false; }
+
+    let step = goal.index;
+    while (previous[step] !== start.index && previous[step] !== -1) step = previous[step];
+    cornMazeCenter(m, step % m.cols, Math.floor(step / m.cols), e.mazeWaypoint);
+    e.mazeWaypoint.y = e.pos.y;
+    e.mazeHasWaypoint = true;
+    return true;
+  }
+
+  function cornMazePursuitActive(e) {
+    const m = WORLD.cornMaze;
+    return !!m && (!!cornMazeCell(m, e.pos.x, e.pos.z) ||
+      !!cornMazeCell(m, PLAYER.position.x, PLAYER.position.z));
+  }
+
+  // A flashlight lock acts as a live callout: all other regular enemies on
+  // that layer receive the player's position even if their own short-range
+  // senses could not have found it independently.
+  function alertEnemiesToFlashlight(source) {
+    for (let i = 0; i < list.length; i++) {
+      const other = list[i];
+      if (other === source || other.isBoss || other.isBoss2 || other.isBoss3 ||
+          !other.alive || other.layerId !== source.layerId) continue;
+      other.sawPlayer = true;
+      other.lastSeen = 0;
+      other.spotlightAlertTimer = 0.75;
+      if (other.state === 'idle') setState(other, 'alert');
+    }
   }
 
   /* ---------------- damage ---------------- */
@@ -14554,6 +14841,7 @@ const ENEMY = (() => {
     e.timer = 0;
     e.hp = 0;
     e.mark.visible = false;
+    if (e.flashlightBeam) e.flashlightBeam.visible = false;
     e.headProxy.raycast = NO_RAY;
     e.bodyProxy.raycast = NO_RAY;
     AUDIO.enemyDie(e.def.voice.pitch);
@@ -14814,6 +15102,11 @@ const ENEMY = (() => {
     e.ladderGoal = null;
     e.climbDirection = 0;
     e.ladderCooldown = 0;
+    e.specialTickTimer = 0;
+    e.spotlightAlertTimer = 0;
+    e.mazeHasWaypoint = false;
+    e.mazeRepathTimer = 0;
+    e.mazeEntranceCommitted = false;
     e.pos.copy(e.home);
     e.vel.set(0, 0, 0);
     e.group.position.copy(e.pos);
@@ -14824,6 +15117,7 @@ const ENEMY = (() => {
     e.bodyProxy.raycast = THREE.Mesh.prototype.raycast;
     setState(e, 'idle');
     e.sawPlayer = false;
+    if (e.flashlightBeam) e.flashlightBeam.visible = false;
     e.group.visible = true;
   }
 
@@ -14885,6 +15179,7 @@ const ENEMY = (() => {
   function setState(e, s) {
     e.state = s;
     e.timer = 0;
+    if (s === 'shine') e.specialTickTimer = 0;
     if (s === 'alert') {
       e.mark.visible = true;
       AUDIO.enemyAlert(e.def.voice.pitch);
@@ -15611,6 +15906,7 @@ const ENEMY = (() => {
   }
 
   function pose(e, t) {
+    if (e.flashlightBeam) e.flashlightBeam.visible = e.alive && e.state === 'shine';
     if (e.isBoss2) {
       poseBearClaw(e, t);
       return;
@@ -15731,6 +16027,13 @@ const ENEMY = (() => {
         r.torso.rotation.x = -0.3 + swing * 0.75;
         r.torso.rotation.y = 0.45 - swing * 0.9;
       }
+    } else if (e.state === 'shine') {
+      // Hold the flashlight steadily in front while the beam is locked.
+      r.armR.rotation.x = -1.35;
+      r.armR.rotation.z = 0.08;
+      r.torso.rotation.x = -0.08;
+      r.torso.rotation.y = 0.08;
+      r.head.rotation.x = -0.04;
     } else {
       r.torso.rotation.y = 0;
     }
@@ -15771,6 +16074,7 @@ const ENEMY = (() => {
     }
 
     e.ladderCooldown = Math.max(0, e.ladderCooldown - dt);
+    e.spotlightAlertTimer = Math.max(0, e.spotlightAlertTimer - dt);
     if (e.climbing) {
       updateLadderClimb(e, dt, t);
       return;
@@ -15780,7 +16084,7 @@ const ENEMY = (() => {
     e.losTimer -= dt;
     if (e.losTimer <= 0) {
       e.losTimer = C.losInterval;
-      e.sawPlayer = !PLAYER.isDead && canSee(e);
+      e.sawPlayer = !PLAYER.isDead && (e.spotlightAlertTimer > 0 || canSee(e));
       if (e.sawPlayer) e.lastSeen = 0;
     }
     if (!e.sawPlayer) e.lastSeen += dt;
@@ -15789,6 +16093,13 @@ const ENEMY = (() => {
     const distToPlayer = Math.hypot(p.x - e.pos.x, p.z - e.pos.z);
     const st = e.def.stats;
     const sameLayer = e.layerId === PLAYER.layerId;
+    const mazePursuit = sameLayer && e.layerId === 'surface' && cornMazePursuitActive(e);
+    // Tall corn breaks LOS by design. Once an enemy has genuinely acquired a
+    // player, retain that trail while either one is still in the maze; normal
+    // five-second memory resumes as soon as both emerge into open ground.
+    // Without this, a valid long route (the generated maze can exceed 100m)
+    // was abandoned after only a few cells even though pathfinding worked.
+    const pursuitMemory = mazePursuit && !PLAYER.isDead ? Infinity : C.loseSightTime;
     const pursuingAcrossLayer = !PLAYER.isDead &&
       (e.sawPlayer || (e.lastSeen >= 0 && e.lastSeen <= C.loseSightTime));
     const ladderRoute = !sameLayer && pursuingAcrossLayer ? findLadderRoute(e) : null;
@@ -15824,15 +16135,42 @@ const ENEMY = (() => {
       case 'chase': {
         if (!sameLayer) {
           idleBrake(e, dt);
-          if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+          if (e.lastSeen > pursuitMemory) setState(e, 'idle');
           break;
         }
-        faceTowards(e, p.x, p.z, dt, 7);
-        steer(e, p.x, p.z, st.speed, dt);
-        if (distToPlayer < st.reach && Math.abs(p.y - e.pos.y) < 1.6) setState(e, 'attack');
-        else if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+        let routed = false;
+        if (mazePursuit) {
+          e.mazeRepathTimer -= dt;
+          const atWaypoint = e.mazeHasWaypoint &&
+            Math.hypot(e.pos.x - e.mazeWaypoint.x, e.pos.z - e.mazeWaypoint.z) < 0.35;
+          if (e.mazeRepathTimer <= 0 || !e.mazeHasWaypoint || atWaypoint) {
+            routed = setCornMazeChaseWaypoint(e, p);
+            // The graph is static and players cannot cross a three-metre cell
+            // instantly. A short cache avoids thousands of tiny BFS-array
+            // allocations per second on a full 22-enemy mobile coop roster.
+            e.mazeRepathTimer = 0.14;
+          } else {
+            routed = e.mazeHasWaypoint;
+          }
+        } else {
+          e.mazeHasWaypoint = false;
+          e.mazeRepathTimer = 0;
+          e.mazeEntranceCommitted = false;
+        }
+        const chaseX = routed ? e.mazeWaypoint.x : p.x;
+        const chaseZ = routed ? e.mazeWaypoint.z : p.z;
+        faceTowards(e, chaseX, chaseZ, dt, 7);
+        steer(e, chaseX, chaseZ, st.speed, dt);
+        if (e.def.role === 'spotter' && hasFlashlightLock(e)) setState(e, 'shine');
+        else if (e.def.role !== 'spotter' && distToPlayer < st.reach &&
+                 Math.abs(p.y - e.pos.y) < 1.6) setState(e, 'attack');
+        else if (e.lastSeen > pursuitMemory) setState(e, 'idle');
         // shove past a wall corner rather than grinding into it
-        if (e.body.blocked) {
+        // Graph waypoints already turn through a known opening. The generic
+        // blind corner-shove can push a routed enemy sideways into the corn
+        // wall it is deliberately trying to avoid, so reserve it for ordinary
+        // direct pursuit elsewhere on the farm.
+        if (e.body.blocked && !routed) {
           const s = e.stepFlip ? 1 : -1;
           e.vel.x += -Math.cos(e.yaw) * s * st.speed * 0.8 * dt * 6;
           e.vel.z += Math.sin(e.yaw) * s * st.speed * 0.8 * dt * 6;
@@ -15840,10 +16178,33 @@ const ENEMY = (() => {
         }
         break;
       }
+      case 'shine': {
+        if (!sameLayer || PLAYER.isDead) {
+          idleBrake(e, dt);
+          setState(e, 'chase');
+          break;
+        }
+        idleBrake(e, dt);
+        faceTowards(e, p.x, p.z, dt, 10);
+        if (!hasFlashlightLock(e)) {
+          setState(e, 'chase');
+          break;
+        }
+        e.sawPlayer = true;
+        e.lastSeen = 0;
+        alertEnemiesToFlashlight(e);
+        e.specialTickTimer -= dt;
+        const tickInterval = st.flashlightTickInterval || 0.4;
+        while (e.specialTickTimer <= 0 && !PLAYER.isDead) {
+          PLAYER.damageOverTime(st.flashlightDamage || 0.75, e);
+          e.specialTickTimer += tickInterval;
+        }
+        break;
+      }
       case 'attack': {
         if (!sameLayer) {
           idleBrake(e, dt);
-          if (e.lastSeen > C.loseSightTime) setState(e, 'idle');
+          if (e.lastSeen > pursuitMemory) setState(e, 'idle');
           break;
         }
         idleBrake(e, dt);
@@ -15852,13 +16213,18 @@ const ENEMY = (() => {
           e.didStrike = true;
           e.squashVel += 5;
           if (distToPlayer < st.reach + 0.55 && Math.abs(p.y - e.pos.y) < 1.8 && !PLAYER.isDead) {
-            PLAYER.damage(st.damage, e.pos, e);
+            const landed = PLAYER.damage(st.damage, e.pos, e);
+            if (landed && e.def.role === 'claw' && st.bleedChance &&
+                Math.random() < st.bleedChance) {
+              PLAYER.applyBleed(st.bleedDuration || 1, st.bleedDamage || 2, e);
+            }
           } else {
             AUDIO.enemySwing(e.def.voice.pitch * 0.9);
           }
         }
         if (e.timer >= st.windup + st.recover) {
-          setState(e, distToPlayer < C.sightRange ? 'chase' : 'idle');
+          const sightRange = st.sightRange === undefined ? C.sightRange : st.sightRange;
+          setState(e, distToPlayer < sightRange || e.lastSeen <= pursuitMemory ? 'chase' : 'idle');
         }
         break;
       }
