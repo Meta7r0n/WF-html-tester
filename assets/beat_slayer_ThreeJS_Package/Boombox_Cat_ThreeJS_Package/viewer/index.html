@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Boombox Cat — Three.js Asset Viewer</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #263e5a; color: #f7efe3; }
+    body { overflow: hidden; }
+    #stage { position: fixed; inset: 0; }
+    canvas { display: block; width: 100%; height: 100%; }
+    #hud { position: fixed; left: 18px; top: 18px; width: min(370px, calc(100vw - 36px)); padding: 16px 17px; border: 1px solid rgba(255,255,255,.15); border-radius: 16px; background: rgba(18,27,39,.78); backdrop-filter: blur(12px); box-shadow: 0 18px 60px rgba(0,0,0,.32); pointer-events: none; }
+    h1 { margin: 0 0 4px; font-size: 18px; letter-spacing: .02em; }
+    p { margin: 0; color: #c5d2dd; font-size: 12px; line-height: 1.45; }
+    #controls { margin-top: 12px; display: flex; gap: 8px; align-items: center; pointer-events: auto; }
+    select, button { color: #f7efe3; background: #26384d; border: 1px solid #5d7590; border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 12px; }
+    button { cursor: pointer; }
+    #status { margin-top: 10px; color: #f0bd3a; font-size: 11px; }
+    #status.ready { color: #9ee5b0; }
+    #legend { position: fixed; right: 18px; bottom: 16px; color: rgba(255,255,255,.62); font-size: 11px; text-align: right; pointer-events: none; }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/": "./vendor/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+  <section id="hud">
+    <h1>Boombox Cat</h1>
+    <p>Procedural game-ready character + prop · Y-up · faces -Z</p>
+    <div id="controls">
+      <select id="animation" aria-label="Animation"></select>
+      <button id="pause" type="button">Pause</button>
+      <button id="reset" type="button">Reset view</button>
+    </div>
+    <div id="status">Loading GLB…</div>
+  </section>
+  <div id="legend">Drag to orbit · wheel to zoom · right-drag to pan</div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+    const stage = document.querySelector('#stage');
+    const status = document.querySelector('#status');
+    const animationSelect = document.querySelector('#animation');
+    const pauseButton = document.querySelector('#pause');
+    const resetButton = document.querySelector('#reset');
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x89a9c8);
+    scene.fog = new THREE.Fog(0x89a9c8, 16, 30);
+
+    const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+    camera.position.set(-8.6, 5.6, -15.8);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    stage.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 3.2, 0);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.065;
+    controls.minDistance = 5;
+    controls.maxDistance = 26;
+
+    scene.add(new THREE.HemisphereLight(0xf7f3e8, 0x273e5d, 2.3));
+    const key = new THREE.DirectionalLight(0xffe8b0, 4.0);
+    key.position.set(-5, 10, -8);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.camera.left = -9; key.shadow.camera.right = 9; key.shadow.camera.top = 11; key.shadow.camera.bottom = -7;
+    scene.add(key);
+    const rim = new THREE.DirectionalLight(0x84b7ef, 2.6);
+    rim.position.set(7, 5, 8);
+    scene.add(rim);
+
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(8.0, 64), new THREE.MeshStandardMaterial({ color: 0x557591, roughness: 1 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.y = -0.56;
+    ground.receiveShadow = true;
+    scene.add(ground);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(4.2, 4.24, 96), new THREE.MeshBasicMaterial({ color: 0xf0b90f, transparent: true, opacity: 0.30, side: THREE.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = -0.55;
+    scene.add(ring);
+
+    let assetRoot = null;
+    let mixer = null;
+    let clips = [];
+    let activeAction = null;
+    let paused = false;
+    const clock = new THREE.Clock();
+    const initialCamera = new THREE.Vector3(-8.6, 5.6, -15.8);
+    const initialTarget = new THREE.Vector3(0, 3.2, 0);
+
+    function setAnimation(name) {
+      if (!mixer) return;
+      const clip = clips.find((candidate) => candidate.name === name) ?? clips[0];
+      if (!clip) return;
+      const next = mixer.clipAction(clip);
+      next.reset().play();
+      if (activeAction && activeAction !== next) activeAction.crossFadeTo(next, 0.18, false);
+      activeAction = next;
+    }
+
+    function frameAsset(root) {
+      const box = new THREE.Box3().setFromObject(root);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      controls.target.copy(center).add(new THREE.Vector3(0, -0.05, 0));
+      const radius = Math.max(size.x, size.y, size.z) * 0.62;
+      camera.position.set(center.x - radius * 1.20, center.y + radius * 0.36, center.z - radius * 3.00);
+      camera.lookAt(controls.target);
+      controls.update();
+    }
+
+    new GLTFLoader().load('./boombox_cat.glb', (gltf) => {
+      assetRoot = gltf.scene;
+      assetRoot.traverse((object) => {
+        if (object.isMesh) {
+          object.castShadow = true;
+          object.receiveShadow = true;
+        }
+      });
+      scene.add(assetRoot);
+      clips = gltf.animations ?? [];
+      animationSelect.innerHTML = clips.map((clip) => `<option value="${clip.name}">${clip.name.replaceAll('_', ' ')}</option>`).join('');
+      mixer = new THREE.AnimationMixer(assetRoot);
+      setAnimation(clips[0]?.name);
+      frameAsset(assetRoot);
+      status.textContent = `${assetRoot.children.length} root parts · ${clips.length} animations · GLB loaded`;
+      status.classList.add('ready');
+      window.__ASSET_READY__ = true;
+    }, undefined, (error) => {
+      console.error(error);
+      status.textContent = 'Could not load boombox_cat.glb';
+      status.style.color = '#ff9b91';
+      window.__ASSET_ERROR__ = String(error);
+    });
+
+    animationSelect.addEventListener('change', () => setAnimation(animationSelect.value));
+    pauseButton.addEventListener('click', () => {
+      paused = !paused;
+      pauseButton.textContent = paused ? 'Play' : 'Pause';
+    });
+    resetButton.addEventListener('click', () => {
+      camera.position.copy(initialCamera);
+      controls.target.copy(initialTarget);
+      controls.update();
+    });
+    addEventListener('resize', () => {
+      camera.aspect = innerWidth / innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(innerWidth, innerHeight);
+    });
+
+    function render() {
+      requestAnimationFrame(render);
+      const delta = Math.min(clock.getDelta(), 0.05);
+      if (!paused) mixer?.update(delta);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    render();
+  </script>
+</body>
+</html>
