@@ -1411,7 +1411,11 @@ const CONFIG = {
     // coop slot gets a small fixed offset around startPos instead.
     coopSpawnRing: 1.4,
     maxHealth: 100, maxShield: 50, regenDelay: 6.5, regenRate: 7, hurtShake: 0.55,
-    invulnAfterHit: 0.45, reviveDelay: 2.2,
+    // PvE attacks keep their short safety window so overlapping enemy swings
+    // do not erase a farmhand instantly. PvP damage is authoritative per
+    // projectile/pellet, so it has no extra post-hit gate: every valid hit in
+    // a shotgun burst or automatic stream must actually reach the target.
+    invulnAfterHit: 0.45, pvpInvulnAfterHit: 0, reviveDelay: 2.2,
     // Knockback from a hit (gunfire or explosion). maxKnockbackSpeed is kept
     // just above sprintSpeed so a hit can only ever nudge a player about as
     // hard as they could move themselves -- never launch them, which is what
@@ -6155,18 +6159,42 @@ const FX = (() => {
     }
   }
 
-  /* Bullet resolution. Returns the hit point or null. */
+  /* Bullet resolution. Returns the hit point or null. `accept` lets the
+     authoritative host ignore the shooter's own remote proxy while resolving
+     a joiner's shot; without that filter, a ray starting inside a stale
+     interpolated player collider could damage the shooter instead of the
+     intended target. */
   const raycaster = new THREE.Raycaster();
-  function trace(origin, dir, range) {
+  function trace(origin, dir, range, accept) {
     raycaster.far = range || 120;
     raycaster.set(origin, dir);
     const hits = raycaster.intersectObjects(RAY_TARGETS, true);
     for (let i = 0; i < hits.length; i++) {
       const h = hits[i];
       if (h.object.userData.outline) continue;
+      if (accept && !accept(h)) continue;
       return h;
     }
     return null;
+  }
+
+  /* Shared obstruction query for every combat shape: hitscan, melee cones,
+     flames, and explosions all agree on the same authored world collision.
+     Enemy/player proxies are targets, not walls, so they are skipped here. */
+  function worldBlocked(from, to) {
+    _v.subVectors(to, from);
+    const distance = _v.length();
+    if (distance < 0.05) return false;
+    _v.multiplyScalar(1 / distance);
+    raycaster.far = distance;
+    raycaster.set(from, _v);
+    const hits = raycaster.intersectObjects(RAY_TARGETS, true);
+    for (let i = 0; i < hits.length; i++) {
+      const data = hits[i].object.userData || {};
+      if (data.outline || data.enemyHit || data.playerHit) continue;
+      return hits[i].distance < distance - 0.18;
+    }
+    return false;
   }
 
   function hitWobbler(object, dir, strength) {
@@ -6184,7 +6212,7 @@ const FX = (() => {
   }
 
   return {
-    init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler,
+    init, update, impact, explosion, tracer, trace, worldBlocked, spawnParticle, muzzleFlashLight, hitWobbler,
     launchJunk, sprayDecal
   };
 })();
@@ -7366,7 +7394,13 @@ const PLAYER = (() => {
      its own could inherit a stale one left over from an earlier, unrelated
      hit that never actually killed anyone. */
   function damage(amount, fromPos, attacker) {
-    if (dead || invuln > 0) return;
+    amount = Number(amount);
+    if (!Number.isFinite(amount) || amount <= 0 || dead || invuln > 0) return false;
+    // If an older client already poisoned motion with a malformed network
+    // hit, recover the avatar before applying another authoritative hit
+    // instead of allowing NaN to survive into the movement/camera loop.
+    if (![pos.x, pos.y, pos.z, vel.x, vel.y, vel.z].every(Number.isFinite)) respawn();
+    const isPvp = !!(attacker && attacker.pvp);
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
@@ -7381,12 +7415,17 @@ const PLAYER = (() => {
     // when it isn't lethal -- every other hero special only ever reacts to
     // health actually reaching zero, further down.
     if (typeof HERO !== 'undefined') HERO.checkLowHealthTrigger(healthBeforeHit, health, C.maxHealth);
-    invuln = C.invulnAfterHit;
+    invuln = isPvp ? C.pvpInvulnAfterHit : C.invulnAfterHit;
     regenTimer = 0;
     shake = C.hurtShake;
     UI.hurtFlash(UTIL.clamp((amount + absorbed * 0.35) / 20, 0.22, 1));
     UI.setHealth(health, C.maxHealth);
-    if (fromPos) {
+    // Network combat messages serialize Vector3 hit points as `[x,y,z]`.
+    // The old path handed that array straight back into this function, where
+    // `.x`/`.z` became undefined and poisoned velocity with NaN. That was the
+    // source of the apparent teleport/disappear reports after a remote hit.
+    if (Array.isArray(fromPos)) fromPos = { x: Number(fromPos[0]), z: Number(fromPos[2]) };
+    if (fromPos && Number.isFinite(fromPos.x) && Number.isFinite(fromPos.z)) {
       const dx = pos.x - fromPos.x, dz = pos.z - fromPos.z;
       const d = Math.hypot(dx, dz) || 1;
       vel.x += dx / d * C.hitKnockback;
@@ -7409,6 +7448,7 @@ const PLAYER = (() => {
     } else if (amount > 0) {
       AUDIO.playerHurt();
     }
+    return true;
   }
 
   function heal(amount) {
@@ -7507,6 +7547,7 @@ const PLAYER = (() => {
   }
 
   function update(dt, active, look) {
+    if (![pos.x, pos.y, pos.z, vel.x, vel.y, vel.z].every(Number.isFinite)) respawn();
     // Downed keeps the camera under player control so the recovery shots can
     // actually be aimed. A full death still freezes everything.
     const downed = dead && typeof HERO !== 'undefined' && HERO.downedActive;
@@ -8560,6 +8601,7 @@ const WEAPON = (() => {
       _t.normalize();
       if (relayRemote || relayHost) {
         const payload = {
+          ownerId: COOP.localId,
           origin: _o.toArray(), dir: _t.toArray(),
           damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
           critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
@@ -8659,9 +8701,12 @@ const WEAPON = (() => {
     const flameArc = ads && d.adsArcMult ? d.arc * d.adsArcMult : d.arc;
     const flameDamage = (ads && d.adsDamageMult ? d.damage * d.adsDamageMult : d.damage) * damageMult;
     const flameMinDamage = ads && d.adsDamageMult ? d.minDamage * d.adsDamageMult : d.minDamage;
-    ENEMY.coneDamage(_o, _d, {
+    const flameOpts = {
       range: flameRange, arc: flameArc, damage: flameDamage, minDamage: flameMinDamage, force: 0.6
-    });
+    };
+    const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+    if (deathmatch) COOP.sendPlayerConeDamage(_d, flameOpts);
+    else ENEMY.coneDamage(_o, _d, flameOpts);
     const wallHit = FX.trace(_o, _d, flameRange);
     if (wallHit && !(wallHit.object.userData && (wallHit.object.userData.enemyHit || wallHit.object.userData.playerHit))) {
       const n = wallHit.face ? wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld)
@@ -8680,7 +8725,7 @@ const WEAPON = (() => {
     meleeSide *= -1;
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
-    const connected = ENEMY.melee(_o, _d, {
+    const meleeOpts = {
       damage: d.meleeDamage * damageMult,
       range: d.meleeRange,
       arc: d.meleeArc,
@@ -8689,7 +8734,15 @@ const WEAPON = (() => {
       // weapon, which ENEMY.melee() already treats as "no stun roll."
       stunChance: d.enemyStunChance,
       stunDuration: d.enemyStunDuration
-    });
+    };
+    // FFA/Teams have no active PvE roster. Keeping the enemy query alive here
+    // made a hidden grunt consume the swing before the player query could
+    // resolve, which looked like a random no-damage melee attack.
+    const enemyConnected = (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')
+      ? false : ENEMY.melee(_o, _d, meleeOpts);
+    const playerConnected = (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams')
+      ? COOP.sendPlayerMelee(_d, meleeOpts) : false;
+    const connected = enemyConnected || playerConnected;
     AUDIO.melee(d.kind === 'melee' ? 'unarmed' : 'gun', connected);
     UI.crosshairKick();
     recoilVel += connected ? 5.4 : 2.4;
@@ -9244,7 +9297,8 @@ const THROWABLE = (() => {
     else buildGrenadeVisual(root, 1);
     active.push({
       id: currentId, def: def, root: root, pos: pos, vel: vel,
-      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius
+      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius,
+      ownerId: (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams') ? COOP.localId : null
     });
     AUDIO.throwable('throw');
     UI.crosshairKick();
@@ -9366,14 +9420,15 @@ const THROWABLE = (() => {
   // basically. A real blast against whatever's still nearby fires once the
   // zone's timer finally runs out.
   const activeBoombox = [];
-  function spawnBoomboxZone(point, def) {
+  function spawnBoomboxZone(point, def, ownerId) {
     const root = new THREE.Group();
     root.position.copy(point);
     if (scene) scene.add(root);
     buildBoomboxVisual(root, 1.5);
     AUDIO.throwable('throw');
     activeBoombox.push({
-      point: point.clone(), def: def, timer: def.duration, tickTimer: def.dotTickInterval, root: root
+      point: point.clone(), def: def, ownerId: ownerId || null,
+      timer: def.duration, tickTimer: def.dotTickInterval, root: root
     });
   }
   function clearBoombox() {
@@ -9412,25 +9467,33 @@ const THROWABLE = (() => {
       return;
     }
     if (projectile.def.boombox) {
-      spawnBoomboxZone(point, projectile.def);
+      spawnBoomboxZone(point, projectile.def, projectile.ownerId);
       return;
     }
     FX.explosion(point, projectile.def.blastRadius);
     AUDIO.blast();
-    ENEMY.blast(point, {
-      radius: projectile.def.blastRadius,
-      damage: projectile.def.damage,
-      minDamage: projectile.def.minDamage,
-      force: projectile.def.force
-    });
+    const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+    if (deathmatch) {
+      // The host resolves the same blast for every player. This prevents a
+      // joiner's local projectile simulation from damaging only itself while
+      // the intended target remains untouched.
+      COOP.sendPlayerBlast(point, projectile.def.id);
+    } else {
+      ENEMY.blast(point, {
+        radius: projectile.def.blastRadius,
+        damage: projectile.def.damage,
+        minDamage: projectile.def.minDamage,
+        force: projectile.def.force
+      });
 
-    _target.copy(PLAYER.position);
-    _target.y += CONFIG.player.height * 0.52;
-    const distance = _target.distanceTo(point);
-    if (!PLAYER.isDead && distance <= projectile.def.blastRadius && !worldBlocked(point, _target)) {
-      const falloff = 1 - UTIL.clamp(distance / projectile.def.blastRadius, 0, 1);
-      const amount = UTIL.lerp(projectile.def.playerMinDamage, projectile.def.playerDamage, falloff);
-      PLAYER.damage(amount, point);
+      _target.copy(PLAYER.position);
+      _target.y += CONFIG.player.height * 0.52;
+      const distance = _target.distanceTo(point);
+      if (!PLAYER.isDead && distance <= projectile.def.blastRadius && !worldBlocked(point, _target)) {
+        const falloff = 1 - UTIL.clamp(distance / projectile.def.blastRadius, 0, 1);
+        const amount = UTIL.lerp(projectile.def.playerMinDamage, projectile.def.playerDamage, falloff);
+        PLAYER.damage(amount, point);
+      }
     }
   }
 
@@ -9484,6 +9547,8 @@ const THROWABLE = (() => {
     for (let i = activeBoombox.length - 1; i >= 0; i--) {
       const zone = activeBoombox[i];
       const def = zone.def;
+      const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+      const playerOwned = deathmatch && !!zone.ownerId;
       zone.timer -= dt;
       zone.root.rotation.y += dt * 2.2;
 
@@ -9499,15 +9564,22 @@ const THROWABLE = (() => {
         if (zone.tickTimer <= 0) {
           zone.tickTimer = def.dotTickInterval;
           const ticks = Math.max(1, Math.round(def.duration / def.dotTickInterval));
-          PLAYER.damage(def.dotTotalDamage / ticks, zone.point);
+          if (playerOwned) COOP.sendPlayerZoneDamage(zone.point, def.hazardRadius, def.dotTotalDamage / ticks, true);
+          else PLAYER.damage(def.dotTotalDamage / ticks, zone.point);
         }
       }
 
       if (zone.timer <= 0) {
         FX.explosion(zone.point, def.blastRadius);
         AUDIO.blast();
-        if (typeof ENEMY !== 'undefined' && ENEMY.blast) {
+        if (!playerOwned && typeof ENEMY !== 'undefined' && ENEMY.blast) {
           ENEMY.blast(zone.point, { radius: def.blastRadius, damage: def.damage, minDamage: def.minDamage, force: def.force });
+        }
+        if (playerOwned) {
+          // A joiner must send the expiry blast to the host just like each
+          // damage tick; resolving it locally would only hurt that joiner's
+          // own copy and would never reach the other players.
+          COOP.sendPlayerZoneDamage(zone.point, def.blastRadius, def.damage, true);
         }
         scene.remove(zone.root);
         disposeVisual(zone.root);
@@ -11872,6 +11944,10 @@ const GAME = (() => {
     const simRunning = running || hostSimActive;
 
     PLAYER.update(dt, running, look);
+    // Apply incoming remote states before any weapon query so player hitboxes
+    // are at their newest known positions. This also keeps dead proxies off
+    // the raycast list during the same frame the death packet arrives.
+    COOP.update(dt, simRunning);
     // Aim (RMB): a modest FOV pull-in, not a real scope -- reads as
     // "steadying up" rather than zooming through glass.
     const targetFov = (running && PLAYER.aiming) ? CONFIG.render.adsFov : CONFIG.render.fov;
@@ -11890,7 +11966,6 @@ const GAME = (() => {
     if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
-    COOP.update(dt, simRunning && !PLAYER.isDead);
     VOICE.update();
     UI.setVoiceChip(VOICE.enabled, VOICE.talking);
     FX.update(dt, time);
@@ -13428,9 +13503,21 @@ const HERO = (() => {
     // same enemy across sticks since its local alive flag doesn't flip until
     // the host's next snapshot confirms the kill.
     _pyroPoint.set(origin.x, origin.y + 0.4, origin.z);
-    const hits = (typeof ENEMY !== 'undefined')
-      ? ENEMY.blast(_pyroPoint, { radius: radius + stickOffset, damage: 99999, minDamage: 99999, force: 4.5 })
-      : 0;
+    const teamDeathmatch = typeof GAME !== 'undefined' && GAME.isCoop &&
+      typeof COOP !== 'undefined' && COOP.matchMode === 'teams';
+    const hits = teamDeathmatch
+      ? 0
+      : ((typeof ENEMY !== 'undefined')
+        ? ENEMY.blast(_pyroPoint, { radius: radius + stickOffset, damage: 99999, minDamage: 99999, force: 4.5 })
+        : 0);
+    if (teamDeathmatch && typeof COOP !== 'undefined') {
+      // Team Deathmatch has no PvE roster, but Pyro's emergency special is
+      // deliberately still enabled there. Send one guaranteed-lethal radial
+      // player blast through the host instead of querying hidden enemies.
+      COOP.sendPlayerBlast(_pyroPoint, 'dynamite', {
+        radius: radius + stickOffset, damage: 99999, minDamage: 99999, allowSelf: false
+      });
+    }
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2 + UTIL.rng(-0.3, 0.3);
       _pyroFx.set(
@@ -14235,9 +14322,13 @@ const ENEMY = (() => {
      tracks which. Blocked while he's actively mid-fight, but unlike
      spawnBoss() a 'defeated' bossState2 doesn't block re-entry, since
      that's exactly the rematch's own resting state between fights. */
-  function spawnBoss2() {
+  function spawnBoss2(forceSecond) {
     if (bossState2 === 'active') return boss2;
-    if (bearClawAppearances >= 2) return boss2;
+    if (!forceSecond && bearClawAppearances >= 2) return boss2;
+    // The dev-console rematch command is intentionally deterministic. It can
+    // call the second appearance from a fresh reset, after the first defeat,
+    // or again after a previous console test without depending on kill count.
+    if (forceSecond) bearClawAppearances = 1;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_2',
       position: new THREE.Vector3(B2.spawn.x, B2.spawn.y, B2.spawn.z)
@@ -16248,8 +16339,7 @@ const COOP = (() => {
   }
 
   function clearRemotes() {
-    remotes.forEach(remote => { if (scene && remote.group) scene.remove(remote.group); });
-    remotes.clear();
+    remotes.forEach((remote, id) => removeRemote(id));
     if (typeof UI !== 'undefined' && UI.setRadarContacts) UI.setRadarContacts([]);
   }
 
@@ -16839,13 +16929,31 @@ const COOP = (() => {
     group.userData.coopPlayer = id;
     if (scene) scene.add(group);
     PROPS.blobShadow(group, 0, 0, 0.62, 0.5);
-    const headProxy = makePlayerProxy(group, new THREE.SphereGeometry(0.32, 8, 6), 1.28, id, 'head');
-    const bodyProxy = makePlayerProxy(group, new THREE.BoxGeometry(0.6, 0.96, 0.48), 0.68, id, 'body');
+    // Combat proxies are shared across all four authored farmhand meshes.
+    // Size them from the actual player capsule instead of hard-coded values
+    // that left some hats/heads and wider silhouettes impossible to hit.
+    const headProxy = makePlayerProxy(
+      group,
+      new THREE.SphereGeometry(CONFIG.player.radius * 0.82, 8, 6),
+      CONFIG.player.height * 0.75,
+      id,
+      'head'
+    );
+    const bodyProxy = makePlayerProxy(
+      group,
+      new THREE.BoxGeometry(CONFIG.player.radius * 1.8, CONFIG.player.height * 0.58, CONFIG.player.radius * 1.6),
+      CONFIG.player.height * 0.42,
+      id,
+      'body'
+    );
     remote = {
       id: id, characterId: desired, rig: built.rig, group: group,
       headProxy: headProxy, bodyProxy: bodyProxy,
       target: {
-        x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
+        // A remote is not hittable or visible until its first authoritative
+        // state arrives. Treating the uninitialized origin as alive let an
+        // early shot hit a freshly-created proxy instead of the real player.
+        x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: true,
         moving: false, climbing: false, sprinting: false
       },
       active: true, lastSeen: 0, animPhase: Math.random() * Math.PI * 2
@@ -16854,9 +16962,67 @@ const COOP = (() => {
     return remote;
   }
 
+  function isDeathmatch() { return matchMode === 'ffa' || matchMode === 'teams'; }
+
+  /* Keep visual visibility, collision, and raycast state on one path. A
+     parent group's `.visible` flag is not enough for a flat RAY_TARGETS list:
+     dead/off-layer remotes must explicitly turn their combat proxies off. */
+  function setRemoteCombatState(remote, immediate) {
+    if (!remote || !remote.target) return;
+    const target = remote.target;
+    const visible = target.layerId === PLAYER.layerId && !target.dead;
+    const hittable = visible && isDeathmatch() && !target.climbing;
+    if (remote.group) {
+      remote.group.visible = visible;
+      if (immediate) {
+        remote.group.position.set(target.x, target.y, target.z);
+        remote.group.rotation.y = Number.isFinite(target.yaw) ? target.yaw : 0;
+        remote.group.updateMatrixWorld(true);
+      }
+    }
+    if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
+    if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
+  }
+
+  /* Network state is still client-reported in this PeerJS prototype, but it
+     must be finite and layer-valid before it can move a combat collider. An
+     invalid basement coordinate is rejected and the last valid position is
+     retained; snapping to the global spawn here is what made bad packets look
+     like damage teleports. */
+  function acceptRemoteState(remote, incoming, immediate) {
+    if (!remote || !incoming) return false;
+    const numeric = ['x', 'y', 'z', 'yaw', 'pitch'];
+    for (let i = 0; i < numeric.length; i++) {
+      if (!Number.isFinite(Number(incoming[numeric[i]]))) return false;
+    }
+    const layerId = WORLD.layers[incoming.layerId] ? incoming.layerId : null;
+    if (!layerId) return false;
+    const x = Number(incoming.x), y = Number(incoming.y), z = Number(incoming.z);
+    if (y < -8 || y > 80) return false;
+    if (layerId !== 'surface' && !WORLD.canOccupy(layerId, x, z, CONFIG.player.radius)) return false;
+    remote.target = Object.assign(remote.target, {
+      x: x, y: y, z: z,
+      yaw: Number(incoming.yaw), pitch: Number(incoming.pitch), layerId: layerId,
+      dead: !!incoming.dead, moving: !!incoming.moving,
+      climbing: !!incoming.climbing, sprinting: !!incoming.sprinting
+    });
+    setRemoteCombatState(remote, !!immediate);
+    return true;
+  }
+
   function removeRemote(id) {
     const remote = remotes.get(id);
-    if (remote && scene && remote.group) scene.remove(remote.group);
+    if (!remote) return;
+    if (scene && remote.group) scene.remove(remote.group);
+    [remote.headProxy, remote.bodyProxy].forEach(proxy => {
+      if (!proxy) return;
+      proxy.raycast = function () {};
+      if (proxy.parent) proxy.parent.remove(proxy);
+      const index = RAY_TARGETS.indexOf(proxy);
+      if (index >= 0) RAY_TARGETS.splice(index, 1);
+      if (proxy.geometry && proxy.geometry.dispose) proxy.geometry.dispose();
+      if (proxy.material && proxy.material.dispose) proxy.material.dispose();
+    });
     remotes.delete(id);
   }
 
@@ -16872,16 +17038,30 @@ const COOP = (() => {
       UI.setCoopLobbyStep('host', phase);
     } else if (message.type === 'state' && message.player) {
       const remote = makeRemote(fromId, slotAssignments.get(fromId));
-      remote.target = Object.assign(remote.target, message.player);
-      remote.lastSeen = 0;
-      // Relay to every OTHER joiner so peers see each other through the hub.
-      broadcast(message, fromId);
+      if (acceptRemoteState(remote, message.player, true)) {
+        remote.lastSeen = 0;
+        // Relay the host-validated state to every OTHER joiner so every
+        // client uses the same position/dead/collision truth.
+        broadcast({
+          type: 'state', id: fromId, characterId: remote.characterId,
+          player: Object.assign({}, remote.target)
+        }, fromId);
+      }
     } else if (message.type === 'shot' && message.shot) {
-      sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot) });
+      const shot = Object.assign({}, message.shot, { ownerId: fromId });
+      sendTo(fromId, { type: 'shotResolved', shot: shot, endPoint: resolveShotAsHost(shot, fromId) });
     } else if (message.type === 'enemyDamage' && message.key !== undefined) {
       ENEMY.applyDamageByKey(message.key, message.amount, message.point, message.dir, message.zone, message.force);
     } else if (message.type === 'playerHitReport' && message.targetId) {
       applyPlayerHit(message.targetId, message.amount, message.source, fromId);
+    } else if (message.type === 'playerMelee' && message.dir) {
+      resolvePlayerMelee(message.dir, message, fromId);
+    } else if (message.type === 'playerCone' && message.dir) {
+      resolvePlayerCone(message.dir, message, fromId);
+    } else if (message.type === 'playerBlast' && message.point && message.defId) {
+      resolvePlayerBlast(message.point, message.defId, fromId, message);
+    } else if (message.type === 'playerZoneDamage' && message.point) {
+      resolvePlayerZoneDamage(message.point, message.radius, message.amount, fromId, true);
     } else if (message.type === 'playerDied' && message.victimId) {
       registerKill(message.killerId, message.victimId);
     } else if (message.type === 'teamHealUse') {
@@ -16930,8 +17110,7 @@ const COOP = (() => {
       if (matchRunning) emit('crewMemberLeft', message.id);
     } else if (message.type === 'state' && message.id && message.player) {
       const remote = makeRemote(message.id, message.characterId);
-      remote.target = Object.assign(remote.target, message.player);
-      remote.lastSeen = 0;
+      if (acceptRemoteState(remote, message.player, true)) remote.lastSeen = 0;
     } else if (message.type === 'shotResolved' && message.shot) {
       drawShotTracer(message.shot, message.endPoint);
     } else if (message.type === 'enemyState') {
@@ -16962,8 +17141,13 @@ const COOP = (() => {
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
-      lastAttackerId = message.attackerId || lastAttackerId;
-      PLAYER.damage(message.amount, message.source, message.attackerId ? { pvp: true, id: message.attackerId } : null);
+      const amount = Number(message.amount);
+      if (Number.isFinite(amount) && amount > 0 && isDeathmatch()) {
+        // A missing attacker means environmental/self damage; do not retain a
+        // stale killer id from an earlier packet and award the wrong FFA kill.
+        const applied = PLAYER.damage(amount, message.source, message.attackerId ? { pvp: true, id: message.attackerId } : null);
+        if (applied) lastAttackerId = message.attackerId || null;
+      }
     } else if (message.type === 'matchStart') {
       matchRunning = true;
       emit('matchStart', message.playerCount || 1);
@@ -16989,11 +17173,17 @@ const COOP = (() => {
      full range on a miss) so the shooter can draw a tracer that matches
      what really happened instead of re-deriving it from a raycast against
      its own, possibly-stale geometry. */
-  function resolveShotAsHost(shot) {
+  function resolveShotAsHost(shot, shooterId) {
     const origin = new THREE.Vector3().fromArray(shot.origin || [0, 0, 0]);
     const dir = new THREE.Vector3().fromArray(shot.dir || [0, 0, -1]).normalize();
     const range = shot.range || 100;
-    const hit = FX.trace(origin, dir, range);
+    const ownerId = shooterId || shot.ownerId || null;
+    const hit = FX.trace(origin, dir, range, h => {
+      const playerHit = h.object.userData && h.object.userData.playerHit;
+      // A joiner's camera origin can begin inside its own interpolated proxy.
+      // Never let the host resolve that self-collider as the shot's target.
+      return !playerHit || playerHit.id !== ownerId;
+    });
     const end = hit ? hit.point : origin.clone().addScaledVector(dir, range);
     if (hit) {
       const playerHit = hit.object.userData && hit.object.userData.playerHit;
@@ -17001,7 +17191,7 @@ const COOP = (() => {
         const base = shot.damage === undefined ? CONFIG.enemy.pelletDamage : shot.damage;
         const falloff = UTIL.clamp(1 - hit.distance / range, 0.22, 1);
         const head = playerHit.zone === 'head' ? C.ffaHeadMultiplier : 1;
-        applyPlayerHit(playerHit.id, base * falloff * head, hit.point.toArray(), localId);
+        applyPlayerHit(playerHit.id, base * falloff * head, hit.point.toArray(), ownerId || localId);
       } else {
         ENEMY.hit(hit.object, hit.point, dir, hit.distance, shot);
       }
@@ -17017,20 +17207,208 @@ const COOP = (() => {
      shared pool can't tell shooter from target — so friendly fire is
      blocked right here instead, the one place every hit funnels through. */
   function applyPlayerHit(targetId, amount, source, attackerId) {
-    if (matchMode === 'teams' && sameTeam(attackerId, targetId)) return;
+    if (!isDeathmatch()) return false;
+    amount = Number(amount);
+    const allowSelf = arguments.length > 4 && arguments[4] === true;
+    if (!targetId || !Number.isFinite(amount) || amount <= 0 || (!allowSelf && targetId === attackerId)) return false;
+    if (targetId !== localId && !remotes.has(targetId)) return false;
+    const remoteTarget = targetId === localId ? null : remotes.get(targetId).target;
+    if (remoteTarget && (remoteTarget.dead || remoteTarget.climbing)) return false;
+    if (matchMode === 'teams' && attackerId !== targetId && sameTeam(attackerId, targetId)) return false;
     if (targetId === localId) {
-      lastAttackerId = attackerId;
-      PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
+      const applied = PLAYER.damage(amount, source, attackerId ? { pvp: true, id: attackerId } : null);
+      if (applied) lastAttackerId = attackerId || null;
+      return applied;
     } else {
       sendPlayerDamage(targetId, amount, source, attackerId);
+      return true;
     }
+  }
+
+  function combatPlayers() {
+    const players = [{
+      id: localId, x: PLAYER.position.x, y: PLAYER.position.y, z: PLAYER.position.z,
+      layerId: PLAYER.layerId, dead: PLAYER.isDead, climbing: PLAYER.isClimbing
+    }];
+    remotes.forEach(remote => {
+      const t = remote.target;
+      players.push({
+        id: remote.id, x: t.x, y: t.y, z: t.z,
+        layerId: t.layerId, dead: !!t.dead, climbing: !!t.climbing
+      });
+    });
+    return players;
+  }
+
+  function combatOrigin(attackerId) {
+    if (attackerId === localId) {
+      return new THREE.Vector3(PLAYER.position.x, PLAYER.position.y + CONFIG.player.eyeHeight, PLAYER.position.z);
+    }
+    const remote = remotes.get(attackerId);
+    const t = remote && remote.target;
+    return t ? new THREE.Vector3(t.x, t.y + CONFIG.player.eyeHeight, t.z) : null;
+  }
+
+  function combatTargetPoint(player) {
+    return new THREE.Vector3(player.x, player.y + CONFIG.player.height * 0.52, player.z);
+  }
+
+  function normalizedDirection(dir) {
+    const out = new THREE.Vector3().fromArray(Array.isArray(dir) ? dir : [dir.x, dir.y, dir.z]);
+    if (!Number.isFinite(out.x) || !Number.isFinite(out.y) || !Number.isFinite(out.z) || out.lengthSq() < 0.0001) return null;
+    return out.normalize();
+  }
+
+  function findPlayerInCone(attackerId, dir, opts, allTargets) {
+    const direction = normalizedDirection(dir);
+    const origin = combatOrigin(attackerId);
+    if (!direction || !origin) return null;
+    const range = Math.max(0.1, Number(opts.range) || 2.2);
+    const arc = opts.arc === undefined ? 0.6 : UTIL.clamp(Number(opts.arc), -1, 1);
+    let best = null, bestScore = Infinity;
+    const players = allTargets || combatPlayers();
+    for (let i = 0; i < players.length; i++) {
+      const target = players[i];
+      if (target.id === attackerId || target.dead || target.climbing || target.layerId !== (attackerId === localId ? PLAYER.layerId : (remotes.get(attackerId) || {}).target?.layerId)) continue;
+      const point = combatTargetPoint(target);
+      const to = point.clone().sub(origin);
+      const distance = to.length();
+      if (distance > range || distance < 0.05) continue;
+      to.multiplyScalar(1 / distance);
+      const facing = to.dot(direction);
+      if (facing < arc || FX.worldBlocked(origin, point)) continue;
+      const score = distance - facing * 0.35;
+      if (score < bestScore) { best = { target: target, point: point, origin: origin }; bestScore = score; }
+    }
+    return best;
+  }
+
+  function resolvePlayerMelee(dir, opts, attackerId) {
+    if (!isDeathmatch()) return false;
+    opts = opts || {};
+    const hit = findPlayerInCone(attackerId, dir, opts);
+    if (!hit) return false;
+    return applyPlayerHit(hit.target.id, opts.damage, hit.origin.toArray(), attackerId);
+  }
+
+  function sendPlayerMelee(dir, opts) {
+    if (!isDeathmatch()) return false;
+    if (role === 'join' && connected) {
+      send({ type: 'playerMelee', dir: Array.isArray(dir) ? dir : [dir.x, dir.y, dir.z],
+        damage: opts.damage, range: opts.range, arc: opts.arc, force: opts.force });
+      return true;
+    }
+    return resolvePlayerMelee(dir, opts, localId);
+  }
+
+  function resolvePlayerCone(dir, opts, attackerId) {
+    if (!isDeathmatch()) return 0;
+    opts = opts || {};
+    const direction = normalizedDirection(dir), origin = combatOrigin(attackerId);
+    if (!direction || !origin) return 0;
+    const range = Math.max(0.1, Number(opts.range) || 6);
+    const arc = opts.arc === undefined ? 0.75 : UTIL.clamp(Number(opts.arc), -1, 1);
+    const maxDamage = Math.max(0, Number(opts.damage) || 0);
+    const minDamage = opts.minDamage === undefined ? maxDamage * 0.4 : Math.max(0, Number(opts.minDamage) || 0);
+    let hits = 0;
+    combatPlayers().forEach(target => {
+      if (target.id === attackerId || target.dead || target.climbing || target.layerId !== (attackerId === localId ? PLAYER.layerId : (remotes.get(attackerId) || {}).target?.layerId)) return;
+      const point = combatTargetPoint(target);
+      const to = point.clone().sub(origin);
+      const distance = to.length();
+      if (distance > range || distance < 0.05) return;
+      to.multiplyScalar(1 / distance);
+      if (to.dot(direction) < arc || FX.worldBlocked(origin, point)) return;
+      const falloff = 1 - UTIL.clamp(distance / range, 0, 1);
+      const amount = UTIL.lerp(minDamage, maxDamage, falloff);
+      if (applyPlayerHit(target.id, amount, origin.toArray(), attackerId)) hits++;
+    });
+    return hits;
+  }
+
+  function sendPlayerConeDamage(dir, opts) {
+    if (!isDeathmatch()) return false;
+    if (role === 'join' && connected) {
+      send({ type: 'playerCone', dir: Array.isArray(dir) ? dir : [dir.x, dir.y, dir.z],
+        damage: opts.damage, minDamage: opts.minDamage, range: opts.range, arc: opts.arc, force: opts.force });
+      return true;
+    }
+    return resolvePlayerCone(dir, opts, localId) > 0;
+  }
+
+  function resolvePlayerBlast(pointArr, defId, attackerId, overrides) {
+    if (!isDeathmatch()) return 0;
+    const def = CONFIG.throwables[defId];
+    if (!def) return 0;
+    const center = new THREE.Vector3().fromArray(pointArr || []);
+    if (![center.x, center.y, center.z].every(Number.isFinite)) return 0;
+    overrides = overrides || {};
+    const radius = Math.max(0.1, Number(overrides.radius === undefined ? def.blastRadius : overrides.radius) || 0);
+    const maxDamage = Math.max(0, Number(overrides.damage === undefined ? def.playerDamage : overrides.damage) || 0);
+    const minDamage = Math.max(0, Number(overrides.minDamage === undefined ? def.playerMinDamage : overrides.minDamage) || 0);
+    const allowSelf = overrides.allowSelf === undefined ? true : !!overrides.allowSelf;
+    let hits = 0;
+    combatPlayers().forEach(target => {
+      if (target.dead || target.climbing || target.layerId !== (attackerId === localId ? PLAYER.layerId : (remotes.get(attackerId) || {}).target?.layerId)) return;
+      const point = combatTargetPoint(target);
+      const distance = point.distanceTo(center);
+      if (distance > radius || FX.worldBlocked(center, point)) return;
+      const falloff = 1 - UTIL.clamp(distance / radius, 0, 1);
+      const amount = UTIL.lerp(minDamage, maxDamage, falloff);
+      if (applyPlayerHit(target.id, amount, center.toArray(), attackerId, allowSelf)) hits++;
+    });
+    return hits;
+  }
+
+  function sendPlayerBlast(point, defId, overrides) {
+    if (!isDeathmatch()) return false;
+    const pointArr = Array.isArray(point) ? point : [point.x, point.y, point.z];
+    if (role === 'join' && connected) {
+      const message = { type: 'playerBlast', point: pointArr, defId: defId };
+      if (overrides) {
+        message.radius = overrides.radius;
+        message.damage = overrides.damage;
+        message.minDamage = overrides.minDamage;
+        message.allowSelf = overrides.allowSelf;
+      }
+      send(message);
+      return true;
+    }
+    return resolvePlayerBlast(pointArr, defId, localId, overrides) > 0;
+  }
+
+  function resolvePlayerZoneDamage(pointArr, radius, amount, attackerId, allowSelf) {
+    if (!isDeathmatch()) return 0;
+    const center = new THREE.Vector3().fromArray(pointArr || []);
+    const r = Number(radius), damage = Number(amount);
+    if (![center.x, center.y, center.z, r, damage].every(Number.isFinite) || r <= 0 || damage <= 0) return 0;
+    let hits = 0;
+    combatPlayers().forEach(target => {
+      if (target.dead || target.climbing || target.layerId !== (attackerId === localId ? PLAYER.layerId : (remotes.get(attackerId) || {}).target?.layerId)) return;
+      const point = combatTargetPoint(target);
+      if (point.distanceTo(center) > r || FX.worldBlocked(center, point)) return;
+      if (applyPlayerHit(target.id, damage, center.toArray(), attackerId, allowSelf !== false)) hits++;
+    });
+    return hits;
+  }
+
+  function sendPlayerZoneDamage(point, radius, amount, allowSelf) {
+    if (!isDeathmatch()) return false;
+    const pointArr = Array.isArray(point) ? point : [point.x, point.y, point.z];
+    if (role === 'join' && connected) {
+      send({ type: 'playerZoneDamage', point: pointArr, radius: radius, amount: amount });
+      return true;
+    }
+    return resolvePlayerZoneDamage(pointArr, radius, amount, localId, allowSelf) > 0;
   }
   /* Join-only: the local gun/melee/blast query already found `targetId`
      (see WEAPON) — relay it to the host for authoritative resolution. Host
      calling this directly (no relay needed) covers its own shots. */
   function sendPlayerHit(targetId, amount, source) {
+    if (!isDeathmatch()) return false;
     if (role === 'join' && connected) send({ type: 'playerHitReport', targetId: targetId, amount: amount, source: source });
-    else if (role === 'host') applyPlayerHit(targetId, amount, source, localId);
+    else if (role === 'host') return applyPlayerHit(targetId, amount, source, localId);
+    return true;
   }
   function sendPlayerDamage(targetId, amount, source, attackerId) {
     if (role === 'host') sendTo(targetId, { type: 'playerDamage', targetId: targetId, amount: amount, source: source, attackerId: attackerId });
@@ -17204,7 +17582,10 @@ const COOP = (() => {
   function relayHostShot(shot) {
     // The host's own shot never goes through receiveOnHost, so resolve it
     // here and broadcast the same {shot, endPoint} shape a joiner's would get.
-    if (role === 'host' && connected) broadcast({ type: 'shotResolved', shot: shot, endPoint: resolveShotAsHost(shot) });
+    if (role === 'host' && connected) {
+      const resolvedShot = Object.assign({}, shot, { ownerId: localId });
+      broadcast({ type: 'shotResolved', shot: resolvedShot, endPoint: resolveShotAsHost(resolvedShot, localId) });
+    }
   }
   function shouldRemoteRelayShots() { return role === 'join' && connected; }
   function shouldHostRelayShots() { return role === 'host' && connected; }
@@ -17273,7 +17654,11 @@ const COOP = (() => {
 
   function update(dt, running) {
     if (!connected) return;
-    if (running) {
+    // A full death releases pointer lock on the local client, which flips
+    // GAME's `running` flag before the next ordinary state tick. Keep sending
+    // the authoritative dead packet while that player is down, or peers keep
+    // rendering an alive collider until the respawn teleports it.
+    if (running || PLAYER.isDead) {
       sendAcc += dt;
       if (sendAcc >= 1 / C.stateRate) { sendAcc = 0; sendState(); }
     }
@@ -17281,25 +17666,16 @@ const COOP = (() => {
     remotes.forEach(remote => {
       remote.lastSeen += dt;
       const target = remote.target;
-      const visible = target.layerId === PLAYER.layerId && !target.dead;
-      remote.group.visible = visible;
-      // A flat RAY_TARGETS array doesn't inherit the parent group's
-      // .visible for free the way a recursive scene raycast would — a dead
-      // or off-layer remote's hit proxies stay raycastable unless this is
-      // toggled explicitly too, same reasoning as ENEMY's own NO_RAY swap.
-      // Still gated on FFA/Teams — a co-op teammate's proxies stay
-      // permanently inert regardless of visibility (see makePlayerProxy).
-      // Also inert while climbing, mirroring the local player's own ladder
-      // invuln so a mid-rung opponent can't be sniped either.
-      const hittable = visible && (matchMode === 'ffa' || matchMode === 'teams') && !target.climbing;
-      if (remote.headProxy) remote.headProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
-      if (remote.bodyProxy) remote.bodyProxy.raycast = hittable ? THREE.Mesh.prototype.raycast : function () {};
+      // Keep proxy state correct before any weapon query in this frame. The
+      // game loop calls COOP.update before WEAPON.update for that reason.
+      setRemoteCombatState(remote);
       remote.group.position.x = UTIL.damp(remote.group.position.x, target.x, 14, dt);
       remote.group.position.y = UTIL.damp(remote.group.position.y, target.y, 14, dt);
       remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
       remote.group.rotation.y = UTIL.damp(remote.group.rotation.y, target.yaw || 0, 14, dt);
+      remote.group.updateMatrixWorld(true);
       poseRemote(remote, dt);
-      contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
+      if (!target.dead) contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
       // Voice: coop is party mode (every teammate full volume, no falloff);
       // FFA/Teams switches to a proximity mic, linear falloff between the
       // near/far radii. Reuses target.x/y/z since that's the same networked
@@ -17318,6 +17694,7 @@ const COOP = (() => {
   return {
     init, on, openLobby, host, prepareJoin, selectCharacter, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
+    sendPlayerMelee, sendPlayerConeDamage, sendPlayerBlast, sendPlayerZoneDamage, resolvePlayerZoneDamage,
     broadcastBossDefeated, broadcastBoss2Defeated, broadcastBoss3Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     sendChat, displayNameFor, setLocalVoiceStream,
     get role() { return role; },
@@ -17575,18 +17952,20 @@ const DEVCONSOLE = (() => {
   const BOSS_ALIASES = {
     warden: 'boss', carrotwarden: 'boss', carrot: 'boss', boss1: 'boss',
     bearclaw: 'boss2', claw: 'boss2', bear: 'boss2', boss2: 'boss2',
+    bearclaw2: 'boss2second', longbonebearclaw: 'boss2second',
     beatslayer: 'boss3', slayer: 'boss3', beat: 'boss3', boss3: 'boss3'
   };
   const BOSS_META = {
     boss: { spawn: () => ENEMY.spawnBoss(), state: () => ENEMY.bossState, name: 'Carrot Warden' },
     boss2: { spawn: () => ENEMY.spawnBoss2(), state: () => ENEMY.bossState2, name: 'Bear Claw' },
+    boss2second: { spawn: () => ENEMY.spawnBoss2(true), state: () => ENEMY.bossState2, name: 'Bear Claw 2 · Longbone' },
     boss3: { spawn: () => ENEMY.spawnBoss3(), state: () => ENEMY.bossState3, name: 'Beat Slayer' }
   };
 
   function cmdHelp() {
     log('spawn <id>        spawn+grant a weapon/ammo/pickup/throwable/buff near you');
     log('enemy [type] [n]  spawn n (default 1, max 10) grunts near you');
-    log('boss <name>       spawn a mini boss near you (warden/bearclaw/beatslayer)');
+    log('boss <name>       spawn a mini boss near you (warden/bearclaw/bearclaw2/beatslayer)');
     log('killenemies       instantly kill every non-boss enemy on the map');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
     log('list              list every spawnable id, enemy type and boss name');
@@ -17604,7 +17983,7 @@ const DEVCONSOLE = (() => {
     });
     Object.keys(groups).sort().forEach(type => log(type.toUpperCase() + ': ' + groups[type].join(', ')));
     log('ENEMIES: ' + (ENEMY.roster || []).join(', '));
-    log('BOSSES: warden, bearclaw, beatslayer');
+    log('BOSSES: warden, bearclaw, bearclaw2, beatslayer');
   }
 
   function cmdSpawn(args) {
@@ -17631,10 +18010,14 @@ const DEVCONSOLE = (() => {
 
   function cmdBoss(args) {
     const which = BOSS_ALIASES[(args[0] || '').toLowerCase()];
-    if (!which) { log('Usage: boss <warden|bearclaw|beatslayer>', 'err'); return; }
+    if (!which) { log('Usage: boss <warden|bearclaw|bearclaw2|beatslayer>', 'err'); return; }
     const meta = BOSS_META[which];
     const state = meta.state();
-    if (state !== 'inactive') { log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err'); return; }
+    const forcedRematch = which === 'boss2second';
+    if (state === 'active' || (!forcedRematch && state !== 'inactive')) {
+      log(meta.name + ' is already ' + state + ' -- try "resetenemies" first', 'err');
+      return;
+    }
     const boss = meta.spawn();
     // Keep console-only boss tests repeatable: die() carries this marker to
     // the boss drop, which lets an owned weapon be picked up again.
