@@ -7399,7 +7399,13 @@ const PLAYER = (() => {
     // If an older client already poisoned motion with a malformed network
     // hit, recover the avatar before applying another authoritative hit
     // instead of allowing NaN to survive into the movement/camera loop.
-    if (![pos.x, pos.y, pos.z, vel.x, vel.y, vel.z].every(Number.isFinite)) respawn();
+    if (![pos.x, pos.y, pos.z].every(Number.isFinite)) {
+      respawn();
+    } else if (![vel.x, vel.y, vel.z].every(Number.isFinite)) {
+      // A malformed network hit must not turn a healthy player into a spawn
+      // teleport. Preserve the valid position and discard only bad motion.
+      vel.set(0, 0, 0);
+    }
     const isPvp = !!(attacker && attacker.pvp);
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
@@ -7547,7 +7553,13 @@ const PLAYER = (() => {
   }
 
   function update(dt, active, look) {
-    if (![pos.x, pos.y, pos.z, vel.x, vel.y, vel.z].every(Number.isFinite)) respawn();
+    if (![pos.x, pos.y, pos.z].every(Number.isFinite)) {
+      respawn();
+    } else if (![vel.x, vel.y, vel.z].every(Number.isFinite)) {
+      // A malformed network hit must not turn a healthy player into a spawn
+      // teleport. Preserve the valid position and discard only bad motion.
+      vel.set(0, 0, 0);
+    }
     // Downed keeps the camera under player control so the recovery shots can
     // actually be aimed. A full death still freezes everything.
     const downed = dead && typeof HERO !== 'undefined' && HERO.downedActive;
