@@ -1459,15 +1459,14 @@ const CONFIG = {
   enemy: {
     // v0.22.01-EAST: the corn maze + horse stable add roughly +20% to the
     // farm's developed footprint (see the buildCornMaze/buildHorseStable
-    // comments in LEVEL) -- count and coopMax both scale by the same +20%
-    // (8->10, 18->22) so the new ground isn't noticeably emptier than the
-    // rest of the map. New WORLD.addSpawn markers ('corn_maze_1/2/3',
-    // 'horse_stable') give spawnAdditional real, in-zone places to put them.
-    count: 10,
+    // comments in LEVEL). v0.27 adds two more safe surface markers and raises
+    // the active roster from 10/13/16/19 to 12/16/20/23 for one through four
+    // players: +2 solo, +3 duo, and +4 for the larger crews.
+    count: 12,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
-    coopPerExtraPlayer: 3,
-    coopMax: 22,
+    coopPerExtraPlayer: 4,
+    coopMax: 23,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -1502,6 +1501,13 @@ const CONFIG = {
     stepHeight: 0.5, gravity: 27, speed: 3.35, reach: 2.72,
     damage: 24, windup: 0.64, recover: 0.78, weight: 4.5,
     headMultiplier: 1.5, visualScale: 1.24,
+    // World-space damage proxies, measured against the loaded GLB rather
+    // than inherited from its render scale. Body is deliberately a little
+    // narrower than the full arm/carrot silhouette to avoid air hits.
+    hitbox: {
+      head: { x: 0, y: 1.62, z: 0, radius: 0.48 },
+      body: { x: 0.08, y: 0.79, z: 0, width: 1.55, height: 1.34, depth: 0.82 }
+    },
     seedRange: 24, seedPellets: 7, seedDamage: 7,
     seedSpread: 0.22, seedHitCone: 0.115,
     seedWindup: 0.72, seedRecover: 0.78, seedCooldown: 4.8,
@@ -1544,7 +1550,18 @@ const CONFIG = {
     // compounds Carrot Warden's post-continue difficulty instead of
     // authoring a whole new tier by hand.
     secondHpMult: 1.45, secondDamageMult: 1.2, secondSpeedMult: 1.1,
-    secondStunChance: 0.03
+    secondStunChance: 0.03,
+    // The first GLB is ~1.91 x 2.05 m at game scale; Longbone is ~2.41 x
+    // 2.01 m. These remain world-sized even though their render roots use
+    // 0.34 and 0.25 scale respectively (see ENEMY.syncBossHitboxes).
+    hitbox: {
+      head: { x: 0.05, y: 1.68, z: -0.1, radius: 0.46 },
+      body: { x: 0.05, y: 0.8, z: -0.1, width: 1.55, height: 1.34, depth: 0.82 }
+    },
+    secondHitbox: {
+      head: { x: 0.02, y: 1.66, z: -0.13, radius: 0.46 },
+      body: { x: 0.02, y: 0.77, z: -0.13, width: 1.8, height: 1.34, depth: 0.78 }
+    }
   },
   // Third mini-boss (beatSlayerThreshold, see progress). Evasive rather than
   // a chaser -- kites at a distance and lobs a boombox rather than closing
@@ -1571,6 +1588,10 @@ const CONFIG = {
     rushSpeedMult: 1.3, rushTimeout: 6,
     reach: 1.85, damage: 18, windup: 0.35, recover: 0.45, weight: 3.4,
     headMultiplier: 1.4, visualScale: 1.0,
+    hitbox: {
+      head: { x: 0, y: 1.78, z: -0.09, radius: 0.48 },
+      body: { x: 0, y: 0.82, z: -0.09, width: 1.35, height: 1.48, depth: 0.82 }
+    },
     boomboxDefId: 'boomboxThrowable'
   },
   radar: {
@@ -3990,6 +4011,9 @@ const LEVEL = (() => {
       .forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
 
     WORLD.addSpawn(-7, 0, -43, 'north_pasture');
+    // Open lane between the west marker and feed shelter. Browser collider
+    // audit leaves over 3 m to the nearest solid, including enemy radius.
+    WORLD.addSpawn(8, 0, -45, 'north_pasture_east');
   }
 
   /* ---------------- East wing: corn maze ----------------
@@ -4192,6 +4216,9 @@ const LEVEL = (() => {
 
     WORLD.addSpawn(-10, 0, -58, 'orchard');
     WORLD.addSpawn(9, 0, -60.5, 'orchard');
+    // Far-west orchard edge: a second new surface origin with more than 5 m
+    // of measured solid clearance, well away from the silo/basement spawns.
+    WORLD.addSpawn(-22, 0, -67, 'orchard_west_edge');
   }
 
   /* ---------------- Silo Row: the silo cluster ----------------
@@ -14222,6 +14249,33 @@ const ENEMY = (() => {
     return m;
   }
 
+  function bossHitboxFor(e) {
+    if (e.isBoss) return B.hitbox;
+    if (e.isBoss2) return e.appearanceIndex >= 2 ? B2.secondHitbox : B2.hitbox;
+    if (e.isBoss3) return B3.hitbox;
+    return null;
+  }
+
+  /* Boss GLBs are rendered through aggressively scaled entity roots (0.34
+     for Bear Claw/Beat Slayer and 0.25 for Longbone). Proxies are children
+     of that same root, so ordinary local geometry gets shrunk a second time.
+     Keep the authored hitbox dimensions in world units and cancel the live
+     root scale on every pose; this also makes squash/stretch cosmetic rather
+     than letting an animation create tiny or oversized damage targets. */
+  function syncBossHitboxes(e) {
+    const spec = bossHitboxFor(e);
+    if (!spec || !e.headProxy || !e.bodyProxy) return;
+    const sx = Math.max(0.001, Math.abs(e.group.scale.x));
+    const sy = Math.max(0.001, Math.abs(e.group.scale.y));
+    const sz = Math.max(0.001, Math.abs(e.group.scale.z));
+    const h = spec.head;
+    e.headProxy.position.set(h.x / sx, h.y / sy, h.z / sz);
+    e.headProxy.scale.set(h.radius / sx, h.radius / sy, h.radius / sz);
+    const b = spec.body;
+    e.bodyProxy.position.set(b.x / sx, b.y / sy, b.z / sz);
+    e.bodyProxy.scale.set(b.width / sx, b.height / sy, b.depth / sz);
+  }
+
   function create(id, marker, options) {
     options = options || {};
     const isBoss = !!options.isBoss;
@@ -14341,13 +14395,16 @@ const ENEMY = (() => {
     scene.add(e.group);
     e.group.position.copy(e.pos);
 
-    // hit proxies
-    const headY = isAssetBoss ? 1.56 : (anyBoss ? 1.32 : 1.28);
-    const bodyY = isAssetBoss ? 0.84 : (anyBoss ? 0.82 : 0.68);
-    e.headProxy = makeProxy(e.group, new THREE.SphereGeometry(anyBoss ? 0.43 : 0.34, 8, 6),
-      headY, 'head', e, 'head');
-    e.bodyProxy = makeProxy(e.group, new THREE.BoxGeometry(anyBoss ? 0.82 : 0.62,
-      anyBoss ? 1.2 : 0.98, anyBoss ? 0.66 : 0.5), bodyY, 'body', e, 'body');
+    // Boss proxies use unit geometry that syncBossHitboxes expands to each
+    // asset's audited world-space bounds. Regular enemies keep their proven
+    // local proxy sizes unchanged.
+    e.headProxy = makeProxy(e.group,
+      new THREE.SphereGeometry(anyBoss ? 1 : 0.34, 8, 6),
+      anyBoss ? 0 : 1.28, 'head', e, 'head');
+    e.bodyProxy = makeProxy(e.group,
+      anyBoss ? new THREE.BoxGeometry(1, 1, 1) : new THREE.BoxGeometry(0.62, 0.98, 0.5),
+      anyBoss ? 0 : 0.68, 'body', e, 'body');
+    if (anyBoss) syncBossHitboxes(e);
 
     // The replacement GLB includes both lobster claws; retain the old
     // procedural props only when the loader has fallen back to the legacy
@@ -14383,6 +14440,7 @@ const ENEMY = (() => {
     boss.home.y = WORLD.groundAt(boss.home.x, boss.home.z, boss.home.y + 0.8, boss.homeLayerId);
     revive(boss);
     boss.visualScale = boss.asset ? B.assetScale : B.visualScale;
+    syncBossHitboxes(boss);
     boss.state = 'boss_chase';
     boss.timer = 0;
     boss.sawPlayer = true;
@@ -14441,6 +14499,7 @@ const ENEMY = (() => {
     boss2.visualScale = boss2.asset
       ? (boss2.assetModel === bearClawSecondAsset ? B2.secondAssetScale : B2.assetScale)
       : B2.visualScale;
+    syncBossHitboxes(boss2);
     boss2.state = 'boss2_chase';
     boss2.timer = 0;
     boss2.sawPlayer = true;
@@ -14472,6 +14531,7 @@ const ENEMY = (() => {
     boss3.home.y = WORLD.groundAt(boss3.home.x, boss3.home.z, boss3.home.y + 0.8, boss3.homeLayerId);
     revive(boss3);
     boss3.visualScale = boss3.asset ? B3.assetScale : B3.visualScale;
+    syncBossHitboxes(boss3);
     boss3.state = 'boss3_kite';
     boss3.timer = 0;
     boss3.sawPlayer = true;
@@ -14493,7 +14553,7 @@ const ENEMY = (() => {
   const usedMarkerKinds = new Set();
 
   /* Spreads the cast across the spawn markers the level already publishes.
-     Maze markers are selected first so the original ten-enemy solo budget
+     Maze markers are selected first so the solo enemy budget
      cannot starve them merely because they were authored later in the file;
      the remaining budget still reserves every available basement marker.
      Fills up to `targetTotal` non-boss enemies total (not `targetTotal`
@@ -15802,6 +15862,7 @@ const ENEMY = (() => {
     const sq = 1 + e.squash;
     const scale = e.visualScale || 1;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
     // The supplied model declares +Z as forward; the farmhand rig faces -Z.
     e.group.rotation.set(0, e.yaw + B.assetForwardCorrection, 0);
 
@@ -15840,6 +15901,7 @@ const ENEMY = (() => {
 
     const sq = 1 + e.squash;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
     e.group.rotation.set(0, e.yaw + correction, 0);
 
     const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
@@ -15886,6 +15948,7 @@ const ENEMY = (() => {
 
     const sq = 1 + e.squash;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
 
     let pitch = 0;
     if (e.state === 'boss3_throw') {
@@ -15975,6 +16038,7 @@ const ENEMY = (() => {
       const sq = 1 + e.squash;
       const scale = e.visualScale || 1;
       e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+      syncBossHitboxes(e);
       return;
     }
 
