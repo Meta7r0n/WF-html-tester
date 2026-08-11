@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.35</title>
+<title>The Withered Farm — v0.36</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -136,7 +136,47 @@
   #runClock.on{opacity:1} #runClock small{display:block;font-size:8px;letter-spacing:2px;color:var(--rust-deep)}
   #componentHud{position:fixed;left:50%;bottom:18px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
   #componentHud.on{opacity:1}.component-slot{width:min(25vw,145px);padding:6px 8px;background:rgba(22,18,15,.84);border:2px solid var(--cream);border-radius:7px;color:var(--cream-dim);font:900 9px/1.15 "Rockwell",Georgia,serif;text-align:center}.component-slot.collected{background:var(--olive);color:var(--cream);border-color:var(--mustard)}.component-slot.assembled{opacity:.55;text-decoration:line-through}
-  #runStats{max-height:min(48vh,410px);overflow:auto;margin:12px 0;padding:10px;text-align:left;background:rgba(22,18,15,.82);color:var(--cream);border-radius:8px;font:700 12px/1.45 system-ui,sans-serif}#runStats h3{margin:8px 0 3px;color:var(--mustard);font:900 13px Rockwell,Georgia,serif}#runStats ul{margin:3px 0 8px;padding-left:20px}
+  #runStats{
+    margin:16px 0 20px;text-align:left;background:var(--ink-soft);color:var(--cream);
+    border:4px solid var(--ink);border-radius:12px;box-shadow:7px 8px 0 rgba(22,18,15,.38);
+    overflow:hidden;font:700 12px/1.45 system-ui,sans-serif;
+  }
+  .run-report-banner{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 15px;
+    background:var(--rust-deep);border-bottom:3px solid var(--ink);
+    font:900 12px/1 "Rockwell",Georgia,serif;letter-spacing:2.4px;text-transform:uppercase;
+  }
+  .run-report-banner b{color:var(--mustard);font-size:15px;letter-spacing:1px;}
+  .run-report-player{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 15px;
+    background:rgba(246,233,210,.08);border-bottom:2px solid rgba(246,233,210,.18);
+    font:900 13px/1.2 "Rockwell",Georgia,serif;text-transform:uppercase;
+  }
+  .run-report-player small{display:block;margin-top:4px;color:rgba(246,233,210,.72);font:700 9px/1.2 "Courier New",monospace;letter-spacing:1.2px;}
+  .run-report-player strong{color:var(--mustard);font-size:22px;letter-spacing:1px;}
+  .run-report-grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));}
+  .run-report-stat{
+    min-width:0;padding:14px 9px 12px;text-align:center;border-right:2px solid rgba(246,233,210,.15);
+    border-bottom:2px solid rgba(246,233,210,.15);
+  }
+  .run-report-stat:last-child{border-right:0;}
+  .run-report-stat span{display:block;color:rgba(246,233,210,.72);font:900 9px/1.15 "Rockwell",Georgia,serif;letter-spacing:1.1px;text-transform:uppercase;}
+  .run-report-stat b{display:block;margin-top:7px;color:var(--mustard);font:900 clamp(20px,4vw,30px)/1 "Rockwell",Georgia,serif;}
+  .run-report-times{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(246,233,210,.16);}
+  .run-report-time{padding:11px 15px;background:var(--ink-soft);color:rgba(246,233,210,.72);text-transform:uppercase;letter-spacing:1px;}
+  .run-report-time b{float:right;color:var(--cream);font:900 13px/1 "Courier New",monospace;}
+  .run-report-details{border-top:2px solid rgba(246,233,210,.15);}
+  .run-report-details summary{cursor:pointer;padding:11px 15px;color:var(--blue);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;}
+  .run-report-log{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:0 15px 15px;}
+  .run-report-log h3{margin:7px 0 5px;color:var(--mustard);font:900 11px/1.2 "Rockwell",Georgia,serif;letter-spacing:1px;text-transform:uppercase;}
+  .run-report-log ul{margin:0;padding-left:18px;color:rgba(246,233,210,.72);}
+  .run-report-log p{margin:0;color:rgba(246,233,210,.72);}
+  @media (max-width:720px){
+    .run-report-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+    .run-report-stat:nth-child(3){border-right:0;}
+    .run-report-stat:nth-child(-n+3){border-bottom:2px solid rgba(246,233,210,.15);}
+    .run-report-times,.run-report-log{grid-template-columns:1fr;}
+  }
   #shells{display:flex;gap:5px;align-items:flex-end;}
   #shells span{
     width:11px;height:26px;border:3px solid var(--ink);border-radius:3px 3px 5px 5px;
@@ -856,10 +896,20 @@
   .aviation-builder-layout{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.7fr);gap:20px;margin-top:16px;}
   .aviation-preview-panel{display:flex;flex-direction:column;gap:10px;min-width:0;}
   .aviation-preview-frame{
-    display:grid;place-items:center;min-height:330px;background:var(--blue);
+    position:relative;display:grid;place-items:center;min-height:380px;background:var(--blue);
     border:4px solid var(--ink);border-radius:18px;box-shadow:5px 6px 0 var(--ink);overflow:hidden;
   }
-  #aviationBuilderPreview{display:block;width:100%;height:330px;object-fit:contain;image-rendering:auto;}
+  #aviationBuilderPreview{display:block;width:100%;height:380px;object-fit:contain;image-rendering:auto;}
+  #aviationPreviewBadge{
+    position:absolute;left:9px;top:9px;padding:5px 8px;background:rgba(22,18,15,.84);color:var(--mustard);
+    border:2px solid var(--ink);border-radius:6px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.3px;text-transform:uppercase;
+  }
+  .aviation-preview-modes{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:2px;}
+  .aviation-preview-mode{
+    cursor:pointer;padding:8px 9px;background:var(--cream);border:3px solid var(--ink);border-radius:9px;
+    color:var(--ink-soft);font:900 10px/1 "Rockwell",Georgia,serif;letter-spacing:.7px;text-transform:uppercase;box-shadow:0 3px 0 var(--ink);
+  }
+  .aviation-preview-mode.active{background:var(--mustard);color:var(--ink);transform:translateY(-1px);box-shadow:0 4px 0 var(--ink);}
   #aviationBuilderName{margin:6px 0 0;color:var(--ink);font:900 20px/1 "Rockwell",Georgia,serif;}
   #aviationBuilderTraits{margin:0;color:var(--ink-soft);font:700 11px/1.4 "Courier New",monospace;overflow-wrap:anywhere;}
   .aviation-builder-controls{min-width:0;}
@@ -890,7 +940,7 @@
   @media (max-width:460px){#heroChoices{grid-template-columns:1fr;} .hero-art{aspect-ratio:16/9;}}
   @media (max-width:760px){
     .aviation-builder-layout{grid-template-columns:1fr;}
-    .aviation-preview-frame,#aviationBuilderPreview{min-height:250px;height:250px;}
+    .aviation-preview-frame,#aviationBuilderPreview{min-height:300px;height:300px;}
     #aviationTokenGrid{grid-template-columns:repeat(3,minmax(0,1fr));min-height:0;}
   }
   @media (max-width:460px){
@@ -1007,6 +1057,8 @@
     .studio-bumper{opacity:0;}
     #splash .splash-card{opacity:1;}
   }
+  #endGame{align-items:flex-start;overflow-y:auto;padding:max(16px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));}
+  #endGame .card{max-width:820px;margin:auto;transform:none;}
   #endGame .alt{display:block;}
   #matchOverScores{list-style:none;margin:6px 0 22px;padding:0;display:grid;gap:8px;}
   #matchOverScores li{
@@ -1023,6 +1075,9 @@
   #coopLobby .card{max-width:620px;}
   #coopLobby .alt{display:block;}
 
+  /* Options is a true child modal. It must sit above Pause, which appears
+     later in the DOM and otherwise wins the equal-z-index stacking order. */
+  #options{z-index:44;}
   #options .options-card{max-width:520px;max-height:86vh;overflow-y:auto;}
   .opt-section{margin:18px 0;}
   .opt-heading{
@@ -1208,7 +1263,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.35</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.36</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1361,7 +1416,14 @@
       <p class="sub">Choose an approved aviation-hat character and a Wilted Farms hero body. Every saved Hangar pilot gets Ejection Seat: a lethal hit launches you upward and restores 50% Pep. Your third down ends the run unless Extra Life pickups raise the limit.</p>
       <div class="aviation-builder-layout">
         <section class="aviation-preview-panel" aria-live="polite">
-          <div class="aviation-preview-frame"><img id="aviationBuilderPreview" alt="Selected Hangar pilot rendered face-forward on the Wilted Farms hero rig" /></div>
+          <div class="aviation-preview-frame">
+            <img id="aviationBuilderPreview" alt="Selected Hangar pilot rendered face-forward on the Wilted Farms hero rig" />
+            <span id="aviationPreviewBadge">Full pilot</span>
+          </div>
+          <div class="aviation-preview-modes" role="group" aria-label="Character preview framing">
+            <button type="button" class="aviation-preview-mode active" data-aviation-preview="full" aria-pressed="true">Full Pilot</button>
+            <button type="button" class="aviation-preview-mode" data-aviation-preview="head" aria-pressed="false">Head Detail</button>
+          </div>
           <h2 id="aviationBuilderName">Hangar Pilot</h2>
           <p id="aviationBuilderTraits"></p>
           <p class="opt-hint">All 123 tokens have unique trait tuples and a unique seven-stitch brim code. Similar source traits intentionally share a procedural shape family.</p>
@@ -1394,10 +1456,10 @@
     </div>
   </div>
 
-  <div id="options" class="veil hidden">
+  <div id="options" class="veil hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="optionsTitle">
     <div class="card options-card">
       <p class="eyebrow">Options</p>
-      <h1>Farm<br/>Settings<span>Sound, display, and controls</span></h1>
+      <h1 id="optionsTitle">Farm<br/>Settings<span>Sound, display, and controls</span></h1>
       <div class="opt-section">
         <p class="opt-heading">Sound</p>
         <label class="opt-row"><span>Master</span><input type="range" id="optMaster" min="0" max="100" step="1" /><b id="optMasterVal"></b></label>
@@ -1481,9 +1543,9 @@
 
   <div id="endGame" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Single-player goal complete</p>
-      <h1>Warden<br/>Wilted<span>The barn is yours</span></h1>
-      <p class="sub" id="endGameSummary">The Carrot Warden is down. The farm has gone quiet.</p>
+      <p class="eyebrow">Single-player run complete</p>
+      <h1>Farm<br/>Survived<span>Final field report</span></h1>
+      <p class="sub" id="endGameSummary">Bearclaw2 is down. The farm has gone quiet.</p>
       <div id="runStats" aria-label="Run statistics"></div>
       <button class="go" id="continueBtn">Keep exploring →</button>
       <button class="alt" id="startOverBtn">Return to start screen</button>
@@ -1522,8 +1584,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.35',
-  branch: 'A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES'
+  version: 'v0.36',
+  branch: 'A-test-v0.36-PAUSE-BARN-STATS'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -2935,6 +2997,7 @@ const WORLD = {
       topLayer: options.topLayer || 'surface',
       bottomLayer: options.bottomLayer || 'surface',
       tag: options.tag || 'ladder',
+      enabled: options.enabled !== false,
       // A pit-drop like the well shaft: only ever descends (no climbing
       // back up), and ENEMY's cross-layer pathing (findLadderRoute) skips
       // it entirely -- players and grenades only.
@@ -2947,6 +3010,7 @@ const WORLD = {
   ladderAt(x, y, z, radius, height, layerId) {
     for (let i = 0; i < this.ladders.length; i++) {
       const l = this.ladders[i];
+      if (l.enabled === false) continue;
       if (layerId && l.topLayer !== layerId && l.bottomLayer !== layerId) continue;
       if (x + radius <= l.minX || x - radius >= l.maxX) continue;
       if (z + radius <= l.minZ || z - radius >= l.maxZ) continue;
@@ -3276,7 +3340,7 @@ const LEVEL = (() => {
   const animated = {
     windmillFan: null, vane: null, sails: [], hangers: [],
     basementHatch: null, basementHatches: [], barnStairGate: null,
-    northBarnDoor: null
+    northBarnDoor: null, northBarnWestDoor: null, northBarnHatch: null
   };
 
   /* soft-edged dirt blob used to paint the footpaths */
@@ -4501,19 +4565,48 @@ const LEVEL = (() => {
     roof.box(0.8, 0.6, 25.2, CX, RIDGE + 0.12, CZ, 0, 0, 0, 0.025);
     roof.build(parent);
 
-    // The west service door remains parked open on the wall for the existing
-    // Silo Row traversal route. The broad SOUTH opening is now a real hinged
-    // double door: QUEST owns the Barn Key check, while this level object owns
-    // the visible leaves and the one authoritative collision blocker.
+    // Both ground-level entrances are real hinged double doors. QUEST owns
+    // the Barn Key check; LEVEL owns each set of leaves and its authoritative
+    // blocker so players and enemies agree on whether the route is passable.
     const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
-    const parkedSideDoors = new PRIM.Batch(doorMat, 0.045);
-    parkedSideDoors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -70.35, 0, 0, 0.02, 0.025);
-    parkedSideDoors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -61.65, 0, 0, -0.02, 0.025);
-    parkedSideDoors.build(parent);
-    WORLD.addFloor(X0 - 0.18, 0, -70.35, 0.38, 4.7, 2.45, 'north_barn_door');
-    WORLD.addFloor(X0 - 0.18, 0, -61.65, 0.38, 4.7, 2.45, 'north_barn_door');
-
     const doorMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+
+    const westLeafW = 2.92, westLeafH = 4.72, westHingeX = X0 + 0.12;
+    function northBarnWestDoorLeaf(hingeZ, inwardSign) {
+      const pivot = new THREE.Group();
+      pivot.position.set(westHingeX, 0, hingeZ);
+      parent.add(pivot);
+      PRIM.box(0.22, westLeafH, westLeafW, doorMat, {
+        pos: [0, westLeafH * 0.5, inwardSign * westLeafW * 0.5],
+        parent: pivot, outline: 0.052
+      });
+      const brace = new PRIM.Batch(doorMetal, 0.022);
+      [-1.58, 0, 1.58].forEach(y =>
+        brace.box(0.08, 0.12, westLeafW - 0.28, -0.15, westLeafH * 0.5 + y,
+          inwardSign * westLeafW * 0.5));
+      [0.18, westLeafW - 0.18].forEach(offset =>
+        brace.box(0.08, westLeafH - 0.25, 0.12, -0.15, westLeafH * 0.5,
+          inwardSign * offset));
+      brace.build(pivot);
+      return pivot;
+    }
+    const northWestDoor = northBarnWestDoorLeaf(-69.02, 1);
+    const southWestDoor = northBarnWestDoorLeaf(-62.98, -1);
+    PRIM.box(0.09, 0.52, 0.34, doorMetal, {
+      pos: [-0.18, 2.35, westLeafW - 0.28], parent: northWestDoor, outline: 0.025
+    });
+    PRIM.torus(0.065, 0.025, MAT.toon(PAL.mustard), {
+      pos: [-0.24, 2.35, westLeafW - 0.28], rot: [0, Math.PI / 2, 0],
+      parent: northWestDoor, outline: 0.012, ray: false
+    });
+    const westDoorSolid = WORLD.addFloor(X0 + 0.06, 0, -66.0, 0.52, westLeafH, 5.9,
+      'north_barn_west_door');
+    animated.northBarnWestDoor = {
+      id: 'north_barn_west_door', x: X0, z: -66.0,
+      open: false, target: 0, openness: 0,
+      north: northWestDoor, south: southWestDoor, collider: westDoorSolid
+    };
+
     const leafW = 3.72, leafH = 4.72, hingeZ = Z1 - 0.12;
     function northBarnDoorLeaf(hingeX, inwardSign) {
       const pivot = new THREE.Group();
@@ -5273,6 +5366,7 @@ const LEVEL = (() => {
     const ladderMat = MAT.toon(PAL.rustDeep, { map: TEX.metal() });
     animated.basementHatches.length = 0;
     animated.basementHatch = null;
+    animated.northBarnHatch = null;
 
     function addBasementHatch(id, HX, HZ, normalZ) {
       normalZ = normalZ || 1;
@@ -5302,17 +5396,34 @@ const LEVEL = (() => {
       hatchBrace.box(0.10, 0.06, 0.92, 0, 0.115, 0.575 * normalZ);
       hatchBrace.build(hatchPivot);
 
+      const keyed = id === 'north_barn_cellar';
+      if (keyed) {
+        // Same brass lock language as both barn door sets. The cellar itself
+        // remains reachable through the underground network; only this ladder
+        // route is disabled while the surface hatch is shut.
+        PRIM.box(0.34, 0.08, 0.46, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), {
+          pos: [0.42, 0.18, 0.575 * normalZ], parent: hatchPivot, outline: 0.022, ray: false
+        });
+        PRIM.torus(0.06, 0.023, MAT.toon(PAL.mustard), {
+          pos: [0.42, 0.235, 0.575 * normalZ], rot: [Math.PI / 2, 0, 0],
+          parent: hatchPivot, outline: 0.010, ray: false
+        });
+      }
+
       const hatch = {
         id: id, pivot: hatchPivot, x: HX, z: HZ,
-        openness: 0, target: 0, openSign: normalZ
+        open: false, openness: 0, target: 0, openSign: normalZ,
+        keyed: keyed, ladder: null
       };
       animated.basementHatches.push(hatch);
       if (!animated.basementHatch) animated.basementHatch = hatch;
+      if (keyed) animated.northBarnHatch = hatch;
 
-      WORLD.addLadder(HX, FLOOR_Y, HZ, 1.75, 4.0, 1.55, {
+      hatch.ladder = WORLD.addLadder(HX, FLOOR_Y, HZ, 1.75, 4.0, 1.55, {
         topY: 0, topExitX: HX, topExitZ: HZ - normalZ * 1.08,
         bottomExitX: HX, bottomExitZ: HZ, normalZ: normalZ,
-        topLayer: 'surface', bottomLayer: 'basement', tag: id + '_hatch_ladder'
+        topLayer: 'surface', bottomLayer: 'basement', tag: id + '_hatch_ladder',
+        enabled: !keyed
       });
     }
 
@@ -5990,6 +6101,90 @@ const LEVEL = (() => {
     return !!(animated.northBarnDoor && animated.northBarnDoor.open);
   }
 
+  function nearNorthBarnWestDoor(position, layerId) {
+    const door = animated.northBarnWestDoor;
+    if (!door || !position || (layerId && layerId !== 'surface')) return false;
+    if (position.y < -0.4 || position.y > 2.25) return false;
+    return Math.abs(position.x - door.x) <= 3.2 && Math.abs(position.z - door.z) <= 4.1;
+  }
+
+  function poseNorthBarnWestDoor(door) {
+    if (!door) return;
+    const angle = door.openness * Math.PI * 0.5;
+    // Both leaves swing east into the barn and park against its inside wall.
+    door.north.rotation.y = angle;
+    door.south.rotation.y = -angle;
+    door.collider.enabled = door.target < 0.5 && door.openness < 0.06;
+  }
+
+  function setNorthBarnWestDoor(open, immediate) {
+    const door = animated.northBarnWestDoor;
+    if (!door) return false;
+    door.open = !!open;
+    door.target = door.open ? 1 : 0;
+    if (immediate) door.openness = door.target;
+    poseNorthBarnWestDoor(door);
+    return true;
+  }
+
+  function isNorthBarnWestDoorOpen() {
+    return !!(animated.northBarnWestDoor && animated.northBarnWestDoor.open);
+  }
+
+  function nearNorthBarnHatch(position, layerId) {
+    const hatch = animated.northBarnHatch;
+    if (!hatch || !position || (layerId && layerId !== 'surface' && layerId !== 'basement')) return false;
+    if (position.y < -4.35 || position.y > 1.25) return false;
+    return Math.abs(position.x - hatch.x) <= 2.6 && Math.abs(position.z - hatch.z) <= 2.6;
+  }
+
+  function poseNorthBarnHatch(hatch) {
+    if (!hatch) return;
+    hatch.pivot.rotation.x = -hatch.openness * 1.42 * hatch.openSign;
+    // The actual traversal route follows the visible lid. With the ladder
+    // disabled, neither players nor enemies can phase through a locked hatch.
+    if (hatch.ladder) hatch.ladder.enabled = hatch.target > 0.5 && hatch.openness > 0.55;
+  }
+
+  function setNorthBarnHatch(open, immediate) {
+    const hatch = animated.northBarnHatch;
+    if (!hatch) return false;
+    hatch.open = !!open;
+    hatch.target = hatch.open ? 1 : 0;
+    if (immediate) hatch.openness = hatch.target;
+    poseNorthBarnHatch(hatch);
+    return true;
+  }
+
+  function isNorthBarnHatchOpen() {
+    return !!(animated.northBarnHatch && animated.northBarnHatch.open);
+  }
+
+  const NORTH_BARN_ACCESS = Object.freeze({
+    south: Object.freeze({ id: 'south', label: 'south barn doors' }),
+    west: Object.freeze({ id: 'west', label: 'west barn doors' }),
+    hatch: Object.freeze({ id: 'hatch', label: 'cellar hatch' })
+  });
+
+  function northBarnAccessAt(position, layerId) {
+    if (nearNorthBarnDoor(position, layerId)) return NORTH_BARN_ACCESS.south;
+    if (nearNorthBarnWestDoor(position, layerId)) return NORTH_BARN_ACCESS.west;
+    if (nearNorthBarnHatch(position, layerId)) return NORTH_BARN_ACCESS.hatch;
+    return null;
+  }
+
+  function setNorthBarnAccess(id, open, immediate) {
+    if (id === 'west') return setNorthBarnWestDoor(open, immediate);
+    if (id === 'hatch') return setNorthBarnHatch(open, immediate);
+    return setNorthBarnDoor(open, immediate);
+  }
+
+  function isNorthBarnAccessOpen(id) {
+    if (id === 'west') return isNorthBarnWestDoorOpen();
+    if (id === 'hatch') return isNorthBarnHatchOpen();
+    return isNorthBarnDoorOpen();
+  }
+
   function tryInteract(position, layerId) {
     if (!nearBarnStairGate(position, layerId)) return null;
     const open = !animated.barnStairGate.open;
@@ -6034,15 +6229,19 @@ const LEVEL = (() => {
     }
     for (let i = 0; i < animated.basementHatches.length; i++) {
       const hatch = animated.basementHatches[i];
-      const dx = PLAYER.position.x - hatch.x;
-      const dz = PLAYER.position.z - hatch.z;
-      // Hysteresis prevents flicker at the edge: open within 3.2 m and remain
-      // open until the player is more than 3.8 m away. The ladder controller
-      // keeps a climbing player snapped to the correct hatch coordinates.
-      const limit = hatch.target > 0.5 ? 3.8 : 3.2;
-      hatch.target = dx * dx + dz * dz < limit * limit ? 1 : 0;
+      if (!hatch.keyed) {
+        const dx = PLAYER.position.x - hatch.x;
+        const dz = PLAYER.position.z - hatch.z;
+        // Hysteresis prevents flicker at the edge: open within 3.2 m and remain
+        // open until the player is more than 3.8 m away. The ladder controller
+        // keeps a climbing player snapped to the correct hatch coordinates.
+        const limit = hatch.target > 0.5 ? 3.8 : 3.2;
+        hatch.target = dx * dx + dz * dz < limit * limit ? 1 : 0;
+        hatch.open = hatch.target > 0.5;
+      }
       hatch.openness = UTIL.damp(hatch.openness, hatch.target, hatch.target ? 8.5 : 5.0, dt);
       hatch.pivot.rotation.x = -hatch.openness * 1.42 * hatch.openSign;
+      if (hatch.keyed) poseNorthBarnHatch(hatch);
     }
     const gate = animated.barnStairGate;
     if (gate) {
@@ -6062,12 +6261,21 @@ const LEVEL = (() => {
         northDoor.target > 0.5 ? 6.8 : 5.6, dt);
       poseNorthBarnDoor(northDoor);
     }
+    const westDoor = animated.northBarnWestDoor;
+    if (westDoor) {
+      westDoor.openness = UTIL.damp(westDoor.openness, westDoor.target,
+        westDoor.target > 0.5 ? 6.8 : 5.6, dt);
+      poseNorthBarnWestDoor(westDoor);
+    }
   }
 
   return {
     build, update, animated, tryInteract, interactionHint,
     setBarnStairGate, worldState, applyWorldState,
-    nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen
+    nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen,
+    nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
+    nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
+    northBarnAccessAt, setNorthBarnAccess, isNorthBarnAccessOpen
   };
 })();
 
@@ -8180,6 +8388,7 @@ const PLAYER = (() => {
     if (health <= 0) {
       dead = true;
       deadTime = 0;
+      if (typeof RUNSTATS !== 'undefined') RUNSTATS.down();
       if (HERO.beginDowned()) AUDIO.playerHurt();
       else AUDIO.playerDie();
     } else if (amount > 0 && !options.silentAudio) {
@@ -11237,6 +11446,8 @@ const UI = (() => {
     }
     el.endGame.classList.add('hidden');
     el.pause.classList.add('hidden');
+    if (el.options) { el.options.classList.add('hidden'); el.options.setAttribute('aria-hidden', 'true'); }
+    if (el.mapView) el.mapView.classList.add('hidden');
     el.dead.classList.add('hidden');
     hideDowned();
     // restart()/respawnAttempt() call hideDead() as part of their own reset
@@ -11403,6 +11614,8 @@ const UI = (() => {
     setSignalOutput('');
     setCoopLobbyStep(null, 'idle');
     el.start.classList.remove('hidden');
+    if (el.options) { el.options.classList.add('hidden'); el.options.setAttribute('aria-hidden', 'true'); }
+    if (el.mapView) el.mapView.classList.add('hidden');
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
     if (el.aviationBuilder) {
       el.aviationBuilder.classList.add('hidden');
@@ -11475,6 +11688,7 @@ const UI = (() => {
     slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
   };
   let rebindingAction = null;
+  let optionsReturnFocus = null;
   function renderControlsList() {
     if (!el.optControlsList || typeof INPUT === 'undefined') return;
     const bindings = INPUT.getBindings();
@@ -11507,12 +11721,24 @@ const UI = (() => {
     renderControlsList();
   }
   function showOptions() {
-    if (el.options) el.options.classList.remove('hidden');
+    optionsReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (el.options) {
+      el.options.classList.remove('hidden');
+      el.options.setAttribute('aria-hidden', 'false');
+    }
     syncOptionsUI();
+    const back = document.getElementById('optionsBackBtn');
+    if (back) requestAnimationFrame(() => back.focus({ preventScroll: true }));
   }
   function hideOptions() {
-    if (el.options) el.options.classList.add('hidden');
+    if (el.options) {
+      el.options.classList.add('hidden');
+      el.options.setAttribute('aria-hidden', 'true');
+    }
     rebindingAction = null;
+    const target = optionsReturnFocus;
+    optionsReturnFocus = null;
+    if (target && target.isConnected) requestAnimationFrame(() => target.focus({ preventScroll: true }));
   }
 
   /* Farm map (see MAPVIEW) -- same "veil layered on top" pattern as Options
@@ -12317,7 +12543,7 @@ const PICKUP = (() => {
 
 /* ============================== [GAME] =============================== */
 const RUNSTATS = (() => {
-  const SCHEMA_VERSION = 1;
+  const SCHEMA_VERSION = 2;
   let record = null, activeSince = 0, activeAccumulated = 0, running = false;
   const now = () => performance.now();
   function seconds(ms) { return Math.max(0, ms) / 1000; }
@@ -12330,7 +12556,8 @@ const RUNSTATS = (() => {
       runId: 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
       playerId: playerId || 'local', mode: mode || 'single', outcome: 'in_progress',
       startedAt: null, finalizedAt: null, activeGameplayTime: 0, totalElapsedTime: 0,
-      deaths: [], bossEncounters: [], ammoUsed: { total: 0, byWeapon: {} },
+      deaths: [], downs: 0, bossEncounters: [], ammoUsed: { total: 0, byWeapon: {} },
+      combat: { hits: 0, damageDealt: 0, enemiesDefeated: 0, bossesDefeated: 0, headshotDefeats: 0 },
       weapons: { acquired: [], crafted: [], unlocked: [] }, milestones: []
     };
     activeSince = 0; activeAccumulated = 0; running = false; updateHud(); return record;
@@ -12349,6 +12576,18 @@ const RUNSTATS = (() => {
     record.milestones.push(Object.assign({ onceKey, type, id, at: timestamp() }, data || {}));
   }
   function death() { if (record) record.deaths.push({ at: timestamp() }); }
+  function down() { if (record) record.downs++; }
+  function damage(amount) {
+    if (!record || !(amount > 0)) return;
+    record.combat.hits++;
+    record.combat.damageDealt += amount;
+  }
+  function defeat(zone, boss, devSpawn) {
+    if (!record || devSpawn) return;
+    record.combat.enemiesDefeated++;
+    if (boss) record.combat.bossesDefeated++;
+    if (zone === 'head') record.combat.headshotDefeats++;
+  }
   function ammo(weaponId, amount) {
     if (!record || !(amount > 0)) return;
     record.ammoUsed.total += amount;
@@ -12380,6 +12619,10 @@ const RUNSTATS = (() => {
     pause(); record.outcome = outcome || 'completed'; record.finalizedAt = now();
     record.activeGameplayTime = seconds(activeAccumulated);
     record.totalElapsedTime = record.startedAt ? seconds(record.finalizedAt - record.startedAt) : 0;
+    record.playerLabel = (typeof AVIATION_AVATAR !== 'undefined' && AVIATION_AVATAR.enabled && AVIATION_AVATAR.tokenId)
+      ? 'Hangar Pilot #' + AVIATION_AVATAR.tokenId
+      : (typeof HERO !== 'undefined' && HERO.label ? HERO.label : 'Farmhand');
+    record.difficulty = typeof CONFIG !== 'undefined' && CONFIG.ultra && CONFIG.ultra.active ? 'Ultra' : 'Normal';
     updateHud(); return record;
   }
   function format(value) {
@@ -12395,17 +12638,39 @@ const RUNSTATS = (() => {
     const el = document.getElementById('runStats'); if (!el || !record) return;
     const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
     const bosses = record.bossEncounters.filter(e => !e.devSpawn);
+    const combat = record.combat || { hits:0, damageDealt:0, enemiesDefeated:0, bossesDefeated:0, headshotDefeats:0 };
     const list = values => values.length ? '<ul>' + values.map(v => '<li>' + v + '</li>').join('') + '</ul>' : '<p>None</p>';
-    el.innerHTML = '<h3>' + esc(record.outcome.toUpperCase()) + '</h3>' +
-      '<p>Active ' + format(record.activeGameplayTime || seconds(activeTime())) + ' · Total ' + format(record.totalElapsedTime || (record.startedAt ? seconds(now()-record.startedAt) : 0)) + '<br>Deaths ' + record.deaths.length + ' · Ammo used ' + record.ammoUsed.total + '</p>' +
-      '<h3>Ammo by weapon</h3>' + list(Object.keys(record.ammoUsed.byWeapon).map(id => esc(id) + ': ' + record.ammoUsed.byWeapon[id])) +
-      '<h3>Bosses</h3>' + list(bosses.map(b => esc(b.name) + ' — ' + esc(b.outcome) + (b.duration === null ? '' : ' in ' + format(b.duration)))) +
-      '<h3>Weapons acquired</h3>' + list(record.weapons.acquired.map(w => esc(w.id) + ' @ ' + format(w.at))) +
-      '<h3>Weapons crafted</h3>' + list(record.weapons.crafted.map(w => esc(w.id) + ' @ ' + format(w.at))) +
-      '<h3>Milestones</h3>' + list(record.milestones.map(m => esc(m.type + ': ' + m.id) + ' @ ' + format(m.at)));
+    const stat = (label, value) => '<div class="run-report-stat"><span>' + label + '</span><b>' + esc(value) + '</b></div>';
+    const active = record.activeGameplayTime || seconds(activeTime());
+    const total = record.totalElapsedTime || (record.startedAt ? seconds(now() - record.startedAt) : 0);
+    const player = record.playerLabel || 'Farmhand';
+    const difficulty = record.difficulty || (typeof CONFIG !== 'undefined' && CONFIG.ultra && CONFIG.ultra.active ? 'Ultra' : 'Normal');
+    const modeLabel = record.mode === 'single' ? 'Solo' : esc(record.mode);
+    const bossLog = bosses.map(b => esc(b.name) + ' — ' + esc(b.outcome) + (b.duration === null ? '' : ' · ' + format(b.duration)));
+    const arsenal = record.weapons.acquired.concat(record.weapons.crafted)
+      .sort((a, b) => a.at - b.at).map(w => esc(w.id) + ' · ' + format(w.at));
+    el.innerHTML =
+      '<div class="run-report-banner"><span>Final Field Report</span><b>' + esc(record.outcome) + '</b></div>' +
+      '<div class="run-report-player"><div>' + esc(player) + '<small>' + modeLabel + ' · ' + esc(difficulty) + ' difficulty</small></div><strong>RUN END</strong></div>' +
+      '<div class="run-report-grid">' +
+        stat('Wilted', Math.round(combat.enemiesDefeated)) +
+        stat('Headshots', Math.round(combat.headshotDefeats)) +
+        stat('Downs', Math.round(record.downs || 0)) +
+        stat('Boss KOs', Math.round(combat.bossesDefeated)) +
+        stat('Damage', Math.round(combat.damageDealt).toLocaleString()) +
+        stat('Ammo Fired', Math.round(record.ammoUsed.total)) +
+      '</div>' +
+      '<div class="run-report-times">' +
+        '<div class="run-report-time">Active time <b>' + format(active) + '</b></div>' +
+        '<div class="run-report-time">Elapsed time <b>' + format(total) + '</b></div>' +
+      '</div>' +
+      '<details class="run-report-details"><summary>Boss and loadout breakdown</summary><div class="run-report-log">' +
+        '<section><h3>Boss encounters</h3>' + list(bossLog) + '</section>' +
+        '<section><h3>Arsenal acquired</h3>' + list(arsenal) + '</section>' +
+      '</div></details>';
   }
   function update() { if (record && !record.finalizedAt) updateHud(); }
-  return { begin, start, pause, resume, death, ammo, weapon, milestone, bossStart, bossDefeat, markBossDev, finalize, render, update, format,
+  return { begin, start, pause, resume, death, down, damage, defeat, ammo, weapon, milestone, bossStart, bossDefeat, markBossDev, finalize, render, update, format,
     get record() { return record; }, get schemaVersion() { return SCHEMA_VERSION; } };
 })();
 
@@ -12424,6 +12689,12 @@ const QUEST = (() => {
   let gardener = null, cutsceneTimer = 0, portalEffect = null;
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
+  function setBarnEntrances(open, immediate) {
+    if (typeof LEVEL === 'undefined') return;
+    LEVEL.setNorthBarnAccess('south', open, immediate);
+    LEVEL.setNorthBarnAccess('west', open, immediate);
+    LEVEL.setNorthBarnAccess('hatch', open, immediate);
+  }
   function syncHud() {
     const hud = document.getElementById('componentHud');
     if (!hud) return;
@@ -12441,20 +12712,20 @@ const QUEST = (() => {
     gardener = null; cutsceneTimer = 0;
     if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
     portalEffect = null;
-    if (typeof LEVEL !== 'undefined') LEVEL.setNorthBarnDoor(false, true);
+    setBarnEntrances(false, true);
     syncHud();
   }
   function start() {
     if (!isSinglePlayer()) {
       // The key quest is solo-only; keep the barn traversable in co-op/PvP.
-      if (typeof LEVEL !== 'undefined') LEVEL.setNorthBarnDoor(true, true);
+      setBarnEntrances(true, true);
       syncHud();
       return;
     }
     if (state.stage !== 0) { syncHud(); return; }
     state.stage = 1;
     state.encounterSpawned = false;
-    LEVEL.setNorthBarnDoor(false, true);
+    setBarnEntrances(false, true);
     UI.toast('WILT ' + CONFIG.progress.singleBeatSlayerThreshold + ' ENEMIES TO DRAW OUT BEAT SLAYER', 2.8);
     syncHud();
   }
@@ -12523,7 +12794,10 @@ const QUEST = (() => {
     }
     else if (id === 'bearclaw2' && state.stage === 6) { state.stage = 7; if (GAME.complete) GAME.complete(); }
   }
-  function nearDoor(p) { return LEVEL.nearNorthBarnDoor(p, 'surface'); }
+  function nearAccess(p) {
+    const layer = typeof PLAYER !== 'undefined' ? PLAYER.layerId : (p && p.y < -1 ? 'basement' : 'surface');
+    return LEVEL.northBarnAccessAt(p, layer);
+  }
   function nearStation(p) { return p && p.y > 3.2 && Math.hypot(p.x - 58.3, p.z + 76.7) < 4.2; }
   function missing() { return COMPONENTS.filter(id => !state.components[id]); }
   function interactionKey() {
@@ -12535,25 +12809,27 @@ const QUEST = (() => {
   function interactionHint(p) {
     if (!isSinglePlayer()) return '';
     const key = interactionKey();
-    if (nearDoor(p)) return key + ' · ' + (state.barnUnlocked
-      ? (LEVEL.isNorthBarnDoorOpen() ? 'Close north barn doors' : 'Open north barn doors')
-      : state.barnKey ? 'Use Barn Key to unlock north barn' : 'Locked — Barn Key required');
+    const access = nearAccess(p);
+    if (access) return key + ' · ' + (state.barnUnlocked
+      ? (LEVEL.isNorthBarnAccessOpen(access.id) ? 'Close ' + access.label : 'Open ' + access.label)
+      : state.barnKey ? 'Use Barn Key on ' + access.label : 'Locked — Barn Key required');
     if (nearStation(p)) return state.barnUnlocked ? key + ' · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
     return '';
   }
   function interact(p) {
     if (!isSinglePlayer()) return false;
-    if (nearDoor(p)) {
+    const access = nearAccess(p);
+    if (access) {
       if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
       if (!state.barnUnlocked) {
         state.barnUnlocked = true;
-        LEVEL.setNorthBarnDoor(true);
-        RUNSTATS.milestone('barn_unlocked', 'northBarn');
-        UI.toast('BARN KEY USED — NORTH BARN UNLOCKED', 2.2);
+        LEVEL.setNorthBarnAccess(access.id, true);
+        RUNSTATS.milestone('barn_unlocked', 'northBarn', { entrance: access.id });
+        UI.toast('BARN KEY USED — ' + access.label.toUpperCase() + ' UNLOCKED', 2.2);
       } else {
-        const open = !LEVEL.isNorthBarnDoorOpen();
-        LEVEL.setNorthBarnDoor(open);
-        UI.toast('NORTH BARN DOORS ' + (open ? 'OPENING' : 'CLOSING'), 1.2);
+        const open = !LEVEL.isNorthBarnAccessOpen(access.id);
+        LEVEL.setNorthBarnAccess(access.id, open);
+        UI.toast(access.label.toUpperCase() + ' ' + (open ? 'OPENING' : 'CLOSING'), 1.2);
       }
       return true;
     }
@@ -12856,7 +13132,14 @@ const GAME = (() => {
     // never also fires that key's *current* game action on its way through.
     document.addEventListener('keydown', e => {
       const action = UI.rebindingAction;
-      if (!action) return;
+      if (!action) {
+        if (e.code === 'Escape' && UI.el.options && !UI.el.options.classList.contains('hidden')) {
+          e.preventDefault();
+          e.stopPropagation();
+          UI.hideOptions();
+        }
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
       if (e.code === 'Escape') { UI.setRebinding(null); return; }
@@ -14471,7 +14754,7 @@ const CAST = (() => {
       portraitRenderer.setPixelRatio(1);
       portraitRenderer.setClearColor(0x000000, 0);
       portraitScene = new THREE.Scene();
-      portraitCamera = new THREE.PerspectiveCamera(30, width / height, 0.05, 10);
+      portraitCamera = new THREE.PerspectiveCamera(30, width / height, 0.01, 20);
       // CAST faces are authored toward -Z (FZ above). The previous +Z camera
       // photographed their backs, which was especially obvious in the large
       // builder preview where the actual face appeared blank.
@@ -14486,18 +14769,56 @@ const CAST = (() => {
       portraitScene.add(new THREE.AmbientLight(0xC9BAA9, 0.5));
     }
     // Hero thumbnails initialize this rig at 148×176, while the builder uses
-    // 280×330. Resize on every request so the reused renderer never keeps the
+    // a larger buffer. Resize on every request so the reused renderer never keeps the
     // first caller's buffer size/aspect ratio.
     portraitRenderer.setSize(width, height, false);
     portraitCamera.aspect = width / height;
     portraitCamera.updateProjectionMatrix();
   }
 
-  function renderPortrait(id, width, height, appearance) {
+  function framePortrait(built, viewMode) {
+    const mode = viewMode === 'head' ? 'head' : 'full';
+    built.rig.root.updateMatrixWorld(true);
+    const subject = mode === 'head' ? built.rig.head : built.rig.root;
+    const bounds = new THREE.Box3().setFromObject(subject);
+    if (bounds.isEmpty()) {
+      portraitCamera.position.set(0, 0.92, -2.05);
+      portraitCamera.lookAt(0, 0.82, 0);
+      return;
+    }
+    // Full-body portraits get even padding on every side. Head Detail keeps a
+    // small collar/shoulder margin so hats, petals, and tall accessories are
+    // inspectable without turning the preview into a disembodied face crop.
+    if (mode === 'head') {
+      bounds.min.x -= 0.12; bounds.max.x += 0.12;
+      bounds.min.y -= 0.20; bounds.max.y += 0.08;
+      bounds.min.z -= 0.08; bounds.max.z += 0.08;
+    } else {
+      bounds.min.x -= 0.08; bounds.max.x += 0.08;
+      bounds.min.y -= 0.08; bounds.max.y += 0.08;
+      bounds.min.z -= 0.05; bounds.max.z += 0.05;
+    }
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const verticalFov = THREE.MathUtils.degToRad(portraitCamera.fov);
+    const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * portraitCamera.aspect);
+    const fitHeight = size.y * 0.5 / Math.tan(verticalFov * 0.5);
+    const fitWidth = size.x * 0.5 / Math.tan(horizontalFov * 0.5);
+    const distance = Math.max(fitHeight, fitWidth) * (mode === 'head' ? 1.12 : 1.16) + size.z * 0.5;
+    // CAST faces are authored toward -Z, so the fitted camera stays on that
+    // side while following each body's actual bounds instead of one magic
+    // position that can clip tall heads or short bodies.
+    portraitCamera.position.set(center.x, center.y, center.z - distance);
+    portraitCamera.lookAt(center);
+    portraitCamera.updateProjectionMatrix();
+  }
+
+  function renderPortrait(id, width, height, appearance, viewMode) {
     width = width || 148; height = height || 176;
     ensurePortraitRig(width, height);
     const built = build(id, appearance || null);
     portraitScene.add(built.rig.root);
+    framePortrait(built, viewMode);
     portraitRenderer.clear();
     portraitRenderer.render(portraitScene, portraitCamera);
     const dataUrl = portraitRenderer.domElement.toDataURL('image/png');
@@ -14531,6 +14852,7 @@ const AVIATION_AVATAR = (() => {
   let working = Object.assign({}, state);
   let results = pack ? pack.list() : [];
   let page = 0;
+  let previewMode = 'full';
   let returnVeil = null;
   let refreshHeroPortraits = function () {};
   let initialized = false;
@@ -14632,7 +14954,11 @@ const AVIATION_AVATAR = (() => {
     const traits = document.getElementById('aviationBuilderTraits');
     if (!item || !img) return;
     try {
-      img.src = CAST.renderPortrait(validBody(working.bodyId), 280, 330, { aviationTokenId: item.tokenId });
+      img.src = CAST.renderPortrait(validBody(working.bodyId), 420, 500,
+        { aviationTokenId: item.tokenId }, previewMode);
+      img.alt = previewMode === 'head'
+        ? 'Close head detail of the selected Hangar pilot'
+        : 'Full-body preview of the selected Hangar pilot';
     } catch (err) {
       img.removeAttribute('src');
       console.warn('Hangar pilot preview could not be rendered.', err);
@@ -14642,6 +14968,13 @@ const AVIATION_AVATAR = (() => {
       `body:${item.traits.body}`, `eyes:${item.traits.eyes || 'unlisted'}`,
       `mouth:${item.traits.mouth || 'unlisted'}`, `hat-pin:${item.traits.accessory}`
     ].join(' · ');
+    const badge = document.getElementById('aviationPreviewBadge');
+    if (badge) badge.textContent = previewMode === 'head' ? 'Head detail' : 'Full pilot';
+    document.querySelectorAll('[data-aviation-preview]').forEach(button => {
+      const active = button.getAttribute('data-aviation-preview') === previewMode;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
     document.querySelectorAll('[data-aviation-body]').forEach(button => {
       const active = button.getAttribute('data-aviation-body') === working.bodyId;
       button.classList.toggle('active', active);
@@ -14773,6 +15106,13 @@ const AVIATION_AVATAR = (() => {
       event.stopPropagation();
       working.bodyId = validBody(button.getAttribute('data-aviation-body'));
       renderPreview();
+    });
+    document.querySelectorAll('[data-aviation-preview]').forEach(button => {
+      button.addEventListener('click', event => {
+        event.stopPropagation();
+        previewMode = button.getAttribute('data-aviation-preview') === 'head' ? 'head' : 'full';
+        renderPreview();
+      });
     });
     const searchInput = document.getElementById('aviationSearch');
     if (searchInput) searchInput.addEventListener('input', event => {
@@ -16698,6 +17038,7 @@ const ENEMY = (() => {
         [point.x, point.y, point.z], [dir.x, dir.y, dir.z], zone, force);
       return;
     }
+    if (typeof RUNSTATS !== 'undefined') RUNSTATS.damage(Math.min(Math.max(0, e.hp), Math.max(0, amount)));
     e.hp -= amount;
     e.hitFlash = 0.12;
     e.squashVel -= 7;
@@ -16708,7 +17049,7 @@ const ENEMY = (() => {
     e.sawPlayer = true;
 
     if (e.hp <= 0) {
-      die(e, dir);
+      die(e, dir, zone);
       return;
     }
     if (e.isBoss2) {
@@ -16730,11 +17071,14 @@ const ENEMY = (() => {
     AUDIO.enemyHurt(e.def.voice.pitch);
   }
 
-  function die(e, dir) {
+  function die(e, dir, zone) {
     e.alive = false;
     e.state = 'dead';
     e.timer = 0;
     e.hp = 0;
+    if (typeof RUNSTATS !== 'undefined') {
+      RUNSTATS.defeat(zone, !!(e.isBoss || e.isBoss2 || e.isBoss3 || e.isGardener), !!e.devSpawn);
+    }
     e.mark.visible = false;
     if (e.flashlightBeam) e.flashlightBeam.visible = false;
     e.headProxy.raycast = NO_RAY;
@@ -17190,7 +17534,7 @@ const ENEMY = (() => {
     let best = null;
     for (let i = 0; i < WORLD.ladders.length; i++) {
       const ladder = WORLD.ladders[i];
-      if (ladder.playerOnly) continue;
+      if (ladder.enabled === false || ladder.playerOnly) continue;
       let direction = 0, targetX = ladder.snapX, targetZ = ladder.snapZ;
       if (ladder.topLayer === e.layerId && ladder.bottomLayer === PLAYER.layerId) {
         direction = -1;
