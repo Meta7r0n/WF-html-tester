@@ -4,28 +4,26 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.31`
-- **Working branch:** `A-test-v0.31-ORIGINAL-BARN-GATE-SILO-TUNNEL`
-- **Baseline:** `A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH`
+- **Current alpha:** `v0.33`
+- **Working branch:** `A-test-v0.33-BOSS-QUANTITY-BARN-DOOR`
+- **Baseline:** `A-test-v0.32-BARN-CRAFTING-PORTAL-GUN`
 
-## What changed in v0.31
+## What changed in v0.33
 
-- Restored the two-floor North Barn's original v0.29 north/south staircase,
-  upper-floor cutout, and safety rail. Loose machinery remains moved away from
-  the stair lane.
-- Rotated the **original barn's basement stairs** north/south and rebuilt their
-  ceiling opening, shaft walls, handrails, directional portal, and floor mask.
-- Moved the two-leaf interactive floor gate onto those original-barn stairs.
-  Press `E` (or tap **Use**) to open or close it: shut leaves are a walkable
-  barn floor, while open leaves expose the descent and become guard rails.
-- Kept the barn stair gate host-authoritative in co-op, including late-join
-  synchronization.
-- Relocated the former northeast hatch to the exact center beneath the main
-  silo. Its compact underground room connects east to the North Barn cellar
-  and south to the existing basement network.
-- Updated underground cover, rewards, doorway frames, surface/underground map
-  entries, browser/menu version labels, and this README for `v0.31`.
-- Retained v0.30's stable traversal/roof routes and the North Barn cellar.
+- Keeps v0.32's single-player order—Beat Slayer, Bear Claw, Carrot Warden,
+  then The Gardener—but restores cumulative Wilted triggers at 33, 66, 99,
+  and 132 regular enemies. A boss defeat only unlocks the next threshold; it
+  no longer spawns the next encounter immediately.
+- Adds a visible hinged double door to the North Barn's real south entrance.
+  It has a world collider, stays shut after collecting the Barn Key, and only
+  unlocks/opens when the key is used with `E` (or **Use** on touch devices).
+- Keeps Bearclaw2 tied to the Portal Gun crafting sequence rather than another
+  enemy quantity.
+- Removes old run-scoped quest drops on restart, prevents Gardener summons
+  from joining the normal respawn pool, and clears developer-spawn markers on
+  reset so natural progression remains testable.
+- Adds the `wilted <count>` developer command for boundary testing without
+  grinding four full enemy waves.
 
 ## Run the game
 
@@ -35,7 +33,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.31-ORIGINAL-BARN-GATE-SILO-TUNNEL
+git switch A-test-v0.33-BOSS-QUANTITY-BARN-DOOR
 python3 -m http.server 8000
 ```
 
@@ -68,14 +66,18 @@ joining clients. GitHub Pages remains a static client host.
 - Use the farm map, proximity radar, options, rebindable controls, text chat,
   and optional push-to-talk voice chat.
 
-### Mini-boss progression
+### Single-player mini-boss progression
 
 | Wilted count | Encounter | Behavior / reward |
 | ---: | --- | --- |
-| 33 | Carrot Warden | Main completion encounter; ranged seed pressure and the Carrot Cannon drop |
-| 66 | Bear Claw | Long-reach claw fight with smoke-and-retreat behavior |
-| 99 | Bear Claw rematch | Longbone model, stronger rematch stats, and The Claw drop |
-| 132 | Beat Slayer | Ranged/kiting boombox encounter and Golden Boombox drop |
+| 33 | Beat Slayer | Ranged/kiting boombox encounter, Golden Boombox, and Green Shard |
+| 66 | Bear Claw | Long-reach claw fight, Pack of Smokes, and Metal Weapon Fragment |
+| 99 | Carrot Warden | Ranged seed pressure, Carrot Cannon, and Computer Chip |
+| 132 | The Gardener | Drops the Barn Key; use it at the North Barn door with `E` |
+| Portal Gun crafted | Bearclaw2 | Longbone rematch and the final single-player completion encounter |
+
+Co-op retains the established multiplayer thresholds: Carrot Warden at 33,
+Bear Claw at 66, its rematch at 99, and Beat Slayer at 132.
 
 Boss visuals have procedural fallbacks. If a GLB or the GLTF loader cannot be
 loaded, the encounter remains playable.
@@ -107,10 +109,10 @@ All keyboard bindings can be changed under **Options → Controls**.
 | Right click | Aim down sights |
 | `V` | Quick melee |
 | `R` | Reload |
-| `1–8` | Select weapon slot |
+| `1–9` | Select weapon slot |
 | `G` | Throw selected throwable |
 | `J` | Use Jays |
-| `E` | Open or close the original barn stair gate |
+| `E` | Interact; use the Barn Key, operate barn doors/gates, or use the workbench |
 | `F` | Toggle lantern |
 | `B` | Hold to talk when voice chat is enabled |
 | `Enter` | Open/send multiplayer text chat |
@@ -132,8 +134,9 @@ help
 list
 spawn <id>
 enemy [reaper|howler|gaper|grinner] [count]
-boss <warden|bearclaw|bearclaw2|beatslayer>
+boss <warden|bearclaw|bearclaw2|beatslayer|gardener>
 killenemies
+wilted <count>
 resetenemies
 clear
 close
