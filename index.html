@@ -1665,7 +1665,7 @@
         </div>
       </div>
       <div class="phone-thread" id="phoneSceneThread"></div>
-      <p class="phone-skip-hint">Tap or press any key to skip</p>
+      <p class="phone-skip-hint">Tap or press any key to continue</p>
     </div>
   </div>
 
@@ -2016,18 +2016,23 @@ const CONFIG = {
   // A quick beat right after the crew lands, before control unlocks -- the
   // pilot checks a text from "drewbie". gap is the pause (seconds) after that
   // bubble appears before the next one lands, roughly scaled to reading time.
-  // This runs entirely over real time the player would otherwise spend
-  // staring at a loading state anyway, so it doubles as extra headroom for
-  // ENEMY.prepareAssets()/warmAssets() (already kicked off at boot, well
-  // before this ever plays) to be fully settled before gameplay input unlocks.
+  // PHONESCENE never auto-advances to gameplay -- it waits for the player's
+  // own click/keypress. That's deliberate, not just pacing: it's also what
+  // that final INPUT.requestLock() call (in enterNow()) needs to succeed --
+  // browsers only honor pointer-lock requests within a short window of a
+  // real user gesture ("transient activation"), and a timer-driven handoff
+  // (the intro cutscene's own duration, plus this scene running on top of
+  // it) blows well past that window, so the lock request gets silently
+  // rejected and the player lands straight on the "mouse lock failed" pause
+  // card the instant control would have unlocked. Ending on the player's own
+  // gesture keeps requestLock() inside that same gesture's call stack.
   phoneScene: {
     avatar: 'assets/drewbie_avatar.png',
-    startDelay: 0.7,   // beat after the veil appears before the first bubble lands
-    holdAfter: 2.2,    // pause after the last bubble before handing off to gameplay
+    startDelay: 0.9,   // beat after the veil appears before the first bubble lands
     messages: [
-      { from: 'drewbie', text: 'hey fucker wyd?', gap: 1.6 },
-      { from: 'pilot', text: 'not much just rollin up, wbu?', gap: 1.8 },
-      { from: 'drewbie', text: "I'm trying to get these orders out, but the farm called and said some wonky shits been going on. Go take care of it yeah?", gap: 2.6 },
+      { from: 'drewbie', text: 'hey fucker wyd?', gap: 2.0 },
+      { from: 'pilot', text: 'not much just rollin up, wbu?', gap: 2.2 },
+      { from: 'drewbie', text: "I'm trying to get these orders out, but the farm called and said some wonky shits been going on. Go take care of it yeah?", gap: 3.1 },
       { from: 'pilot', text: '🫡', gap: 0 }
     ]
   },
@@ -15880,10 +15885,12 @@ const INTRO = (() => {
 /* ============================ [PHONESCENE] ============================
    The pilot checks a text the instant the crew's boots hit the ground --
    plays between INTRO.finish() and GAME's enterNow(), so control stays
-   locked out until the exchange (or a skip) hands off. Pure 2D DOM overlay,
-   not Three.js -- there's no camera/render work here, just a scripted
-   reveal of a fixed message thread. Mirrors INTRO's own play/skip/finish
-   shape so GAME's call site reads the same way for both cutscenes. */
+   locked out until the player ends it themselves. Pure 2D DOM overlay, not
+   Three.js -- there's no camera/render work here, just a scripted reveal of
+   a fixed message thread. Mirrors INTRO's own play/skip/finish shape so
+   GAME's call site reads the same way for both cutscenes, but deliberately
+   has no auto-finish timer -- see CONFIG.phoneScene's comment for why a
+   real click/keypress has to be what triggers the handoff. */
 const PHONESCENE = (() => {
   const C = CONFIG.phoneScene;
   let el = null, threadEl = null;
@@ -15951,7 +15958,9 @@ const PHONESCENE = (() => {
       timers.push(setTimeout(() => appendBubble(msg), t * 1000));
       t += msg.gap || 0;
     });
-    timers.push(setTimeout(finish, (t + C.holdAfter) * 1000));
+    // No auto-finish timer -- the scene sits on the last bubble until the
+    // player's own click/keypress ends it (see the skip listener below,
+    // which doubles as "skip ahead" mid-thread and "continue" once done).
     attachSkipListener();
   }
 
