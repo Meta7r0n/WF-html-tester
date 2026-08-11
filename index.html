@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.31</title>
+<title>The Withered Farm — v0.32</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -9721,17 +9721,19 @@ const THROWABLE = (() => {
     return root;
   }
 
-  /* Bear Claw's drop -- a stubby aerosol canister, same cylinder-plus-cap
-     shape the Spray Torch's can uses, just smaller and in a cooler gray. */
-  function buildSmokeCanVisual(parent, scale) {
+  /* Bear Claw's utility grenade is an intentionally generic, unbranded
+     cigarette pack: rectangular paper box, open foil top, readable ends. */
+  function buildSmokePackVisual(parent, scale) {
     const root = new THREE.Group();
     root.scale.setScalar(scale || 1);
     parent.add(root);
-    const body = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const cap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    PRIM.cyl(0.09, 0.09, 0.28, 10, body, { parent: root, outline: 0.014, ray: false });
-    PRIM.cyl(0.07, 0.09, 0.04, 10, cap, { pos: [0, 0.16, 0], parent: root, outline: 0.01, ray: false });
-    PRIM.cyl(0.03, 0.03, 0.06, 8, cap, { pos: [0, 0.21, 0], parent: root, outline: 0.008, ray: false });
+    PRIM.box(0.34, 0.48, 0.16, MAT.toon(PAL.creamDim), { parent: root, outline: 0.025, ray: false });
+    PRIM.box(0.30, 0.16, 0.17, MAT.toon(PAL.blueGray), { pos:[0,-0.12,0], parent:root, outline:0.012, ray:false });
+    PRIM.box(0.30, 0.08, 0.17, MAT.toon(PAL.blueGrayDk), { pos:[0,0.24,0], rot:[0,0,-0.08], parent:root, outline:0.012, ray:false });
+    [-0.11,-0.055,0,0.055,0.11].forEach(x => {
+      PRIM.cyl(0.022, 0.022, 0.15, 8, MAT.toon(PAL.cream), { pos:[x,0.3,0], parent:root, outline:0.006, ray:false });
+      PRIM.cyl(0.023, 0.023, 0.025, 8, MAT.toon(PAL.mustardDk), { pos:[x,0.38,0], parent:root, outline:0.005, ray:false });
+    });
     return root;
   }
 
@@ -9764,12 +9766,7 @@ const THROWABLE = (() => {
       return parent;
     }
     if (id === 'smokeGrenade') {
-      const a = buildSmokeCanVisual(parent, 1.2);
-      const b = buildSmokeCanVisual(parent, 1.05);
-      a.position.set(-0.13, 0, 0);
-      a.rotation.z = -0.14;
-      b.position.set(0.14, -0.03, 0.03);
-      b.rotation.z = 0.18;
+      buildSmokePackVisual(parent, 1.05);
       return parent;
     }
     if (id === 'grenade') {
@@ -11982,6 +11979,11 @@ const RUNSTATS = (() => {
     if (!encounter) return;
     encounter.defeatedAt = timestamp(); encounter.duration = Math.max(0, encounter.defeatedAt - encounter.startedAt); encounter.outcome = 'defeated';
   }
+  function markBossDev(id) {
+    if (!record) return;
+    const encounter = [...record.bossEncounters].reverse().find(e => e.id === id && e.outcome === 'active');
+    if (encounter) encounter.devSpawn = true;
+  }
   function finalize(outcome) {
     if (!record || record.finalizedAt) return record;
     pause(); record.outcome = outcome || 'completed'; record.finalizedAt = now();
@@ -12012,14 +12014,14 @@ const RUNSTATS = (() => {
       '<h3>Milestones</h3>' + list(record.milestones.map(m => esc(m.type + ': ' + m.id) + ' @ ' + format(m.at)));
   }
   function update() { if (record && !record.finalizedAt) updateHud(); }
-  return { begin, start, pause, resume, death, ammo, weapon, milestone, bossStart, bossDefeat, finalize, render, update, format,
+  return { begin, start, pause, resume, death, ammo, weapon, milestone, bossStart, bossDefeat, markBossDev, finalize, render, update, format,
     get record() { return record; }, get schemaVersion() { return SCHEMA_VERSION; } };
 })();
 
 const QUEST = (() => {
   const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
   const state = { components: {}, barnKey: false, barnUnlocked: false, crafted: false, cutscenePlayed: false, stage: 0 };
-  let gardener = null, cutsceneTimer = 0, cutsceneCallback = null;
+  let gardener = null, cutsceneTimer = 0, cutsceneCallback = null, portalEffect = null;
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
   function syncHud() {
@@ -12035,7 +12037,9 @@ const QUEST = (() => {
   function reset() {
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0;
-    gardener = null; cutsceneTimer = 0; cutsceneCallback = null; syncHud();
+    gardener = null; cutsceneTimer = 0; cutsceneCallback = null;
+    if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
+    portalEffect = null; syncHud();
   }
   function start() {
     if (!isSinglePlayer() || state.stage !== 0) { syncHud(); return; }
@@ -12109,6 +12113,14 @@ const QUEST = (() => {
     if (state.cutscenePlayed) return;
     state.cutscenePlayed = true; cutsceneTimer = 5.2;
     INPUT.clearActions(); INPUT.releaseLock();
+    portalEffect = new THREE.Mesh(
+      new THREE.TorusGeometry(1.55, 0.18, 10, 36),
+      new THREE.MeshBasicMaterial({ color:0x67e8a5, transparent:true, opacity:0.92, depthWrite:false })
+    );
+    portalEffect.position.set(62.45, 5.7, -72.8);
+    portalEffect.rotation.y = Math.PI / 2;
+    portalEffect.scale.setScalar(0.05);
+    if (GAME.scene) GAME.scene.add(portalEffect);
     UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
   }
   function update(dt) {
@@ -12121,6 +12133,9 @@ const QUEST = (() => {
       if (gardener.gardenerAttackTimer <= 0) {
         gardener.gardenerAttackTimer = 16;
         UI.toast('THE GARDENER RAISES THE WATERING CAN', 1.35);
+        const wet = new THREE.Mesh(new THREE.CircleGeometry(3.2, 24), new THREE.MeshBasicMaterial({ color:0x5c7e99, transparent:true, opacity:0.42, depthWrite:false }));
+        wet.rotation.x = -Math.PI / 2; wet.position.set(gardener.pos.x, gardener.pos.y + 0.025, gardener.pos.z);
+        GAME.scene.add(wet); setTimeout(() => { if (wet.parent) wet.parent.remove(wet); }, 5500);
         const capacity = Math.min(2, 4 - gardener.gardenerSummons.length, 4 - gardener.gardenerSpawnTimes.length);
         for (let i = 0; i < capacity; i++) {
           const a = i * Math.PI + Math.random();
@@ -12139,12 +12154,22 @@ const QUEST = (() => {
       UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
     }
     if (!cutsceneTimer) return;
+    if (portalEffect) {
+      const openK = 1 - Math.min(1, cutsceneTimer / 4.4);
+      portalEffect.scale.setScalar(Math.max(0.05, Math.sin(Math.min(1, openK) * Math.PI * 0.5)));
+      portalEffect.rotation.z += dt * 0.8;
+    }
     cutsceneTimer = Math.max(0, cutsceneTimer - dt);
     if (cutsceneTimer === 0) {
       state.stage = 6;
       const boss = ENEMY.spawnBoss2(2);
       if (boss) { boss.pos.set(55, WORLD.groundAt(55, -75, 2, 'surface'), -75); boss.group.position.copy(boss.pos); }
       UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
+      if (portalEffect) {
+        const closingPortal = portalEffect;
+        closingPortal.material.opacity = 0.45;
+        setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
+      }
       if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
     }
   }
@@ -19146,7 +19171,8 @@ const DEVCONSOLE = (() => {
     warden: 'boss', carrotwarden: 'boss', carrot: 'boss', boss1: 'boss',
     bearclaw: 'boss2', claw: 'boss2', bear: 'boss2', boss2: 'boss2',
     bearclaw2: 'boss2rematch', claw2: 'boss2rematch', boss2rematch: 'boss2rematch',
-    beatslayer: 'boss3', slayer: 'boss3', beat: 'boss3', boss3: 'boss3'
+    beatslayer: 'boss3', slayer: 'boss3', beat: 'boss3', boss3: 'boss3',
+    gardener: 'gardener', boss4: 'gardener'
   };
   const BOSS_META = {
     boss: { spawn: () => ENEMY.spawnBoss(), state: () => ENEMY.bossState, name: 'Carrot Warden' },
@@ -19156,13 +19182,14 @@ const DEVCONSOLE = (() => {
       canSpawn: () => ENEMY.bossState2 !== 'active' && ENEMY.bearClawAppearances < 2,
       name: 'Bear Claw Rematch'
     },
-    boss3: { spawn: () => ENEMY.spawnBoss3(), state: () => ENEMY.bossState3, name: 'Beat Slayer' }
+    boss3: { spawn: () => ENEMY.spawnBoss3(), state: () => ENEMY.bossState3, name: 'Beat Slayer' },
+    gardener: { spawn: () => QUEST.spawnGardener(true), state: () => QUEST.gardener && QUEST.gardener.alive ? 'active' : 'inactive', name: 'The Gardener' }
   };
 
   function cmdHelp() {
     log('spawn <id>        spawn+grant a weapon/ammo/pickup/throwable/buff near you');
     log('enemy [type] [n]  spawn n (default 1, max 10) grunts near you');
-    log('boss <name>       spawn a mini boss (warden/bearclaw/bearclaw2/beatslayer)');
+    log('boss <name>       spawn a mini boss (warden/bearclaw/bearclaw2/beatslayer/gardener)');
     log('killenemies       instantly kill every non-boss enemy on the map');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
     log('list              list every spawnable id, enemy type and boss name');
@@ -19180,7 +19207,7 @@ const DEVCONSOLE = (() => {
     });
     Object.keys(groups).sort().forEach(type => log(type.toUpperCase() + ': ' + groups[type].join(', ')));
     log('ENEMIES: ' + (ENEMY.roster || []).join(', '));
-    log('BOSSES: warden, bearclaw, bearclaw2, beatslayer');
+    log('BOSSES: warden, bearclaw, bearclaw2, beatslayer, gardener');
   }
 
   function cmdSpawn(args) {
@@ -19207,7 +19234,7 @@ const DEVCONSOLE = (() => {
 
   function cmdBoss(args) {
     const which = BOSS_ALIASES[(args[0] || '').toLowerCase()];
-    if (!which) { log('Usage: boss <warden|bearclaw|bearclaw2|beatslayer>', 'err'); return; }
+    if (!which) { log('Usage: boss <warden|bearclaw|bearclaw2|beatslayer|gardener>', 'err'); return; }
     const meta = BOSS_META[which];
     const state = meta.state();
     const blocked = meta.canSpawn ? !meta.canSpawn() : state !== 'inactive';
@@ -19216,6 +19243,10 @@ const DEVCONSOLE = (() => {
     // Keep console-only boss tests repeatable: die() carries this marker to
     // the boss drop, which lets an owned weapon be picked up again.
     boss.devSpawn = true;
+    if (typeof RUNSTATS !== 'undefined') {
+      const statId = which === 'boss' ? 'carrotWarden' : which === 'boss2' ? 'bearClaw' : which === 'boss2rematch' ? 'bearclaw2' : which === 'boss3' ? 'beatSlayer' : 'gardener';
+      RUNSTATS.markBossDev(statId);
+    }
     const pt = pointNear(4.5);
     boss.pos.copy(pt);
     boss.group.position.copy(pt);
