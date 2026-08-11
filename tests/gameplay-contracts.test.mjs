@@ -7,18 +7,25 @@ const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const questStart = html.indexOf('const QUEST = (() => {');
 const questEnd = html.indexOf('/* ============================== [GAME] =============================== */', questStart);
 const quest = html.slice(questStart, questEnd);
+const statsStart = html.indexOf('const RUNSTATS = (() => {');
+const statsEnd = html.indexOf('const QUEST = (() => {', statsStart);
+const runStatsSource = html.slice(statsStart, statsEnd);
 
-test('visible and runtime build labels identify v0.35', () => {
-  assert.match(html, /<title>The Withered Farm — v0\.35<\/title>/);
-  assert.match(html, /WC v0\.35/);
-  assert.match(html, /version: 'v0\.35'/);
-  assert.match(html, /branch: 'A-test-v0\.35-HANGAR-PILOT-EJECTION-LIVES'/);
-  assert.doesNotMatch(html, /WC v0\.34/);
+test('visible and runtime build labels identify v0.36', () => {
+  assert.match(html, /<title>The Withered Farm — v0\.36<\/title>/);
+  assert.match(html, /WC v0\.36/);
+  assert.match(html, /version: 'v0\.36'/);
+  assert.match(html, /branch: 'A-test-v0\.36-PAUSE-BARN-STATS'/);
+  assert.doesNotMatch(html, /WC v0\.35/);
 });
 
 function createQuestHarness() {
   const spawns = [];
-  const door = { open: false, changes: [] };
+  const accesses = {
+    south: { open: false, changes: [] },
+    west: { open: false, changes: [] },
+    hatch: { open: false, changes: [] }
+  };
   class Vector3 {
     constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
   }
@@ -39,10 +46,19 @@ function createQuestHarness() {
       singleCarrotWardenThreshold: 99, singleGardenerThreshold: 132
     } },
     GAME: { mode: 'single', complete() {} },
+    PLAYER: { layerId: 'surface' },
     ENEMY: enemy,
     LEVEL: {
-      setNorthBarnDoor(open) { door.open = !!open; door.changes.push(door.open); },
-      nearNorthBarnDoor() { return true; }, isNorthBarnDoorOpen() { return door.open; }
+      setNorthBarnAccess(id, open) {
+        accesses[id].open = !!open;
+        accesses[id].changes.push(accesses[id].open);
+      },
+      isNorthBarnAccessOpen(id) { return accesses[id].open; },
+      northBarnAccessAt(p) {
+        if (p.x < 36) return { id: 'west', label: 'west barn doors' };
+        if (p.x > 55 && p.z < -70) return { id: 'hatch', label: 'cellar hatch' };
+        return { id: 'south', label: 'south barn doors' };
+      }
     },
     UI: { toast() {}, setBoss() {} }, RUNSTATS: { milestone() {}, bossStart() {}, weapon() {} },
     WORLD: { groundAt() { return 0; } }, THREE: { Vector3 },
@@ -50,7 +66,25 @@ function createQuestHarness() {
     setTimeout() {}, console
   });
   vm.runInContext(quest + '\n;globalThis.__quest = QUEST;', context);
-  return { quest: context.__quest, enemy, spawns, door };
+  return { quest: context.__quest, enemy, spawns, accesses, game: context.GAME };
+}
+
+function createRunStatsHarness() {
+  let now = 100;
+  const clockSpan = { textContent: '' };
+  const runClock = { classList: { toggle() {} }, querySelector() { return clockSpan; } };
+  const report = { innerHTML: '' };
+  const context = vm.createContext({
+    performance: { now() { return now; } },
+    document: { getElementById(id) { return id === 'runClock' ? runClock : id === 'runStats' ? report : null; } },
+    GAME: { mode: 'single' },
+    CONFIG: { ultra: { active: true } },
+    HERO: { label: 'Larry' },
+    AVIATION_AVATAR: { enabled: false, tokenId: null },
+    console
+  });
+  vm.runInContext(runStatsSource + '\n;globalThis.__runStats = RUNSTATS;', context);
+  return { stats: context.__runStats, report, advance(ms) { now += ms; } };
 }
 
 test('single-player boss order is cumulative-quantity gated', () => {
@@ -105,7 +139,7 @@ test('quantity boundaries execute the real quest state machine exactly once', ()
 });
 
 test('boss defeat advances the stage without directly spawning the next encounter', () => {
-  const defeatBody = quest.slice(quest.indexOf('function bossDefeated('), quest.indexOf('function nearDoor('));
+  const defeatBody = quest.slice(quest.indexOf('function bossDefeated('), quest.indexOf('function nearAccess('));
   assert.match(defeatBody, /id === encounter\.id[\s\S]*state\.stage\+\+[\s\S]*state\.encounterSpawned = false/);
   assert.doesNotMatch(defeatBody, /spawnBoss|spawnGardener/);
   assert.match(html, /GAME\.mode !== 'single'[\s\S]*bossWiltThreshold/);
@@ -121,25 +155,45 @@ test('quest inventory is fixed, deduplicated, and multiplayer-gated', () => {
   assert.match(html, /if \(p\.runScoped\)[\s\S]*items\.splice\(i, 1\)/);
 });
 
-test('North Barn has a keyed animated door and authoritative collision blocker', () => {
+test('all North Barn entrances share the Barn Key but keep independent open states', () => {
   assert.match(html, /animated\.northBarnDoor = \{[\s\S]*collider: mainDoorSolid/);
+  assert.match(html, /animated\.northBarnWestDoor = \{[\s\S]*collider: westDoorSolid/);
+  assert.match(html, /animated\.northBarnHatch = hatch/);
   assert.match(html, /function nearNorthBarnDoor\([\s\S]*position\.z - door\.z/);
+  assert.match(html, /function nearNorthBarnWestDoor\([\s\S]*position\.z - door\.z/);
+  assert.match(html, /function nearNorthBarnHatch\([\s\S]*position\.z - hatch\.z/);
   assert.match(html, /door\.collider\.enabled = door\.target < 0\.5 && door\.openness < 0\.06/);
-  assert.match(quest, /function nearDoor\(p\) \{ return LEVEL\.nearNorthBarnDoor\(p, 'surface'\); \}/);
+  assert.match(html, /hatch\.ladder\.enabled = hatch\.target > 0\.5 && hatch\.openness > 0\.55/);
+  assert.match(html, /if \(!hatch\.keyed\) \{[\s\S]*hatch\.target = dx \* dx \+ dz \* dz/);
+  assert.match(quest, /function nearAccess\(p\)[\s\S]*LEVEL\.northBarnAccessAt/);
   assert.match(quest, /if \(!state\.barnKey\)[\s\S]*LOCKED — KEY REQUIRED/);
-  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setNorthBarnDoor\(true\)/);
+  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setNorthBarnAccess\(access\.id, true\)/);
   const collectBody = quest.slice(quest.indexOf('function collect('), quest.indexOf('function spawnGardener('));
-  assert.doesNotMatch(collectBody, /setNorthBarnDoor\(true/);
+  assert.doesNotMatch(collectBody, /setNorthBarnAccess/);
 
   const h = createQuestHarness();
   h.quest.start();
   assert.equal(h.quest.collect('barnKey'), true);
-  assert.equal(h.door.open, false, 'collecting the key must not open the door');
+  assert.deepEqual(Object.values(h.accesses).map(access => access.open), [false, false, false],
+    'collecting the key must not open any entrance');
   assert.equal(h.quest.interact({ x: 48, y: 0, z: -55 }), true);
   assert.equal(h.quest.state.barnUnlocked, true);
-  assert.equal(h.door.open, true, 'the first E interaction uses the key and opens the door');
+  assert.equal(h.accesses.south.open, true, 'the first E interaction uses the key and opens that entrance');
+  assert.equal(h.accesses.west.open, false, 'the west doors remain physically closed until used');
+  assert.equal(h.accesses.hatch.open, false, 'the cellar hatch remains physically closed until used');
+  h.quest.interact({ x: 33, y: 0, z: -66 });
+  assert.equal(h.accesses.west.open, true, 'the unlocked west doors open with E');
+  h.quest.interact({ x: 58, y: 0, z: -73.5 });
+  assert.equal(h.accesses.hatch.open, true, 'the unlocked cellar hatch opens with E');
   h.quest.interact({ x: 48, y: 0, z: -55 });
-  assert.equal(h.door.open, false, 'later E interactions toggle the unlocked door');
+  assert.equal(h.accesses.south.open, false, 'later E interactions toggle entrances independently');
+  h.quest.reset();
+  assert.deepEqual(Object.values(h.accesses).map(access => access.open), [false, false, false],
+    'a restart closes and relocks all three entrances');
+  h.game.mode = 'coop';
+  h.quest.start();
+  assert.deepEqual(Object.values(h.accesses).map(access => access.open), [true, true, true],
+    'non-solo modes bypass the solo key quest and remain traversable');
 });
 
 test('Gardener rolling and simultaneous summon caps are both four', () => {
@@ -163,7 +217,40 @@ test('run statistics count ammo after consumption and use monotonic time', () =>
   assert.ok(decrement >= 0 && event > decrement && event - decrement < 150);
   assert.match(html, /const now = \(\) => performance\.now\(\)/);
   assert.match(html, /schemaVersion: SCHEMA_VERSION/);
+  assert.match(html, /const SCHEMA_VERSION = 2/);
+  assert.match(html, /RUNSTATS\.down\(\)/);
+  assert.match(html, /RUNSTATS\.damage\(Math\.min/);
+  assert.match(html, /RUNSTATS\.defeat\(zone/);
+  assert.match(html, /class="run-report-grid"/);
   assert.match(html, /if \(!record \|\| !running\) return/);
+});
+
+test('end-of-run field report executes tracked combat values and renders the scorecard', () => {
+  const h = createRunStatsHarness();
+  h.stats.begin('single', 'local');
+  h.stats.start();
+  h.advance(1250);
+  h.stats.down();
+  h.stats.damage(87.5);
+  h.stats.defeat('head', false, false);
+  h.stats.ammo('pipePopper', 2);
+  h.stats.bossStart('beatSlayer', 'Beat Slayer', false);
+  h.advance(2750);
+  h.stats.damage(500);
+  h.stats.defeat('body', true, false);
+  h.stats.bossDefeat('beatSlayer');
+  h.stats.finalize('completed');
+  h.stats.render();
+  assert.equal(h.stats.record.schemaVersion, 2);
+  assert.equal(h.stats.record.downs, 1);
+  assert.equal(h.stats.record.combat.enemiesDefeated, 2);
+  assert.equal(h.stats.record.combat.bossesDefeated, 1);
+  assert.equal(h.stats.record.combat.headshotDefeats, 1);
+  assert.equal(h.stats.record.combat.damageDealt, 587.5);
+  assert.match(h.report.innerHTML, /Final Field Report/);
+  assert.match(h.report.innerHTML, /Headshots/);
+  assert.match(h.report.innerHTML, /Beat Slayer/);
+  assert.match(h.report.innerHTML, /Ultra difficulty/);
 });
 
 test('pause owns its options and clears transient input', () => {
@@ -171,6 +258,9 @@ test('pause owns its options and clears transient input', () => {
   assert.match(html, /const pauseButtons = \['resumeBtn', 'pauseOptionsBtn', 'pauseMapBtn', 'pauseRestartBtn', 'pauseMenuBtn'\]/);
   assert.match(html, /function clearTransientInput\(\)[\s\S]*mouseDX = mouseDY = 0/);
   assert.match(html, /QUEST\.update\(dt, simRunning\)/);
+  assert.match(html, /#options\{z-index:44;\}/);
+  assert.match(html, /id="options"[^>]*role="dialog"[^>]*aria-modal="true"/);
+  assert.match(html, /e\.code === 'Escape'[\s\S]*UI\.hideOptions\(\)/);
 });
 
 test('developer reset cannot poison later natural progression', () => {
