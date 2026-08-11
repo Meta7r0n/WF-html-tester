@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.34</title>
+<title>The Withered Farm — v0.35</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -214,11 +214,13 @@
   #buffJackrabbit b{background:#B08A2E;}
   #stunChip b{background:#8A2F2F;}
   #slowChip b{background:#3A5F73;}
+  #pilotLifeChip b{background:var(--blue-deep);min-width:48px;border-radius:14px;}
   #buffIronHide.on{color:#9FB4BE;}
   #buffHotSauce.on{color:#D1481F;}
   #buffJackrabbit.on{color:#E0B84A;}
   #stunChip.on{color:#D46A6A;}
   #slowChip.on{color:#7FB8D4;}
+  #pilotLifeChip.on{color:var(--blue);}
 
   #downedHud{
     position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
@@ -842,6 +844,8 @@
   .aviation-builder-launch b{display:block;color:var(--blue-deep);font:900 14px/1.15 "Rockwell",Georgia,serif;letter-spacing:.7px;text-transform:uppercase;}
   .aviation-builder-launch small{display:block;margin-top:4px;font:700 11px/1.35 "Rockwell",Georgia,serif;}
   .aviation-builder-launch .alt{margin:0;white-space:nowrap;}
+  #hangarPilotStartBtn{width:100%;justify-content:center;margin:12px 0 8px;background:var(--blue);}
+  #hangarPilotStartBtn[hidden],#heroChoices[hidden]{display:none;}
   #aviationBuilder{
     align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;
     -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
@@ -1124,6 +1128,7 @@
       <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
       <div class="buffChip" id="stunChip"><span>Stunned</span><b>0</b></div>
       <div class="buffChip" id="slowChip"><span>Slowed</span><b>0</b></div>
+      <div class="buffChip" id="pilotLifeChip"><span>Hangar Downs</span><b>0/3</b></div>
     </div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
   </div>
@@ -1203,7 +1208,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.34</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.35</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1261,8 +1266,8 @@
         <p class="opt-hint">Choose before the farm starts. Duplicate characters are allowed.</p>
       </div>
       <div class="aviation-builder-launch">
-        <span><b>Aviation Hat DAO Heads</b><small data-aviation-summary>Classic hero head active · 123 community heads available</small></span>
-        <button type="button" class="alt" data-open-aviation-builder>Customize head</button>
+        <span><b>Hangar Custom Pilot Builder</b><small data-aviation-summary>Classic hero active · 123 community pilots available</small></span>
+        <button type="button" class="alt" data-open-aviation-builder>Build pilot</button>
       </div>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
@@ -1286,8 +1291,8 @@
   <div id="playerSelect" class="veil hidden">
     <div class="card">
       <p class="eyebrow">Single-player &nbsp;·&nbsp; choose a farmhand</p>
-      <h1>Pick your<br/>special<span>Each hero has one emergency trick</span></h1>
-      <p class="sub">Your choice changes your low-health special. All five heroes keep the normal weapon and pickup inventory.</p>
+      <h1 id="playerSelectHeadline">Pick your<br/>special<span>Each hero has one emergency trick</span></h1>
+      <p class="sub" id="playerSelectSub">Your choice changes your low-health special. All five heroes keep the normal weapon and pickup inventory.</p>
       <div id="heroChoices">
         <button class="go hero-choice scout has-ref" id="scarfHeroBtn">
           <span class="hero-art">
@@ -1341,23 +1346,25 @@
         </button>
       </div>
       <div class="aviation-builder-launch">
-        <span><b>Aviation Hat DAO Builder</b><small data-aviation-summary>Classic hero head active · 123 community heads available</small></span>
-        <button type="button" class="alt" data-open-aviation-builder>Build farmhand</button>
+        <span><b>Hangar Custom Pilot Builder</b><small data-aviation-summary>Classic hero active · 123 community pilots available</small></span>
+        <button type="button" class="alt" data-open-aviation-builder>Build pilot</button>
       </div>
+      <button type="button" class="go" id="hangarPilotStartBtn" hidden>Launch Hangar Pilot →</button>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
     </div>
   </div>
 
   <div id="aviationBuilder" class="veil hidden" aria-hidden="true">
     <div class="card">
-      <p class="eyebrow">Community character lab &nbsp;·&nbsp; 123 / 123 scanned</p>
-      <h1>Aviation<br/>Builder<span>One shared hero rig · one unique DAO head</span></h1>
-      <p class="sub">Choose an approved aviation-hat character and a Wilted Farms hero body. The head is cosmetic; your selected hero special and gameplay stats stay unchanged.</p>
+      <p class="eyebrow">Community hangar &nbsp;·&nbsp; 123 / 123 pilots scanned</p>
+      <h1>Hangar Custom<br/>Pilot Builder<span>One shared hero rig · 123 token identities</span></h1>
+      <p class="sub">Choose an approved aviation-hat character and a Wilted Farms hero body. Every saved Hangar pilot gets Ejection Seat: a lethal hit launches you upward and restores 50% Pep. Your third down ends the run unless Extra Life pickups raise the limit.</p>
       <div class="aviation-builder-layout">
         <section class="aviation-preview-panel" aria-live="polite">
-          <div class="aviation-preview-frame"><img id="aviationBuilderPreview" alt="Selected aviation character rendered on the Wilted Farms hero rig" /></div>
-          <h2 id="aviationBuilderName">Aviation Farmhand</h2>
+          <div class="aviation-preview-frame"><img id="aviationBuilderPreview" alt="Selected Hangar pilot rendered face-forward on the Wilted Farms hero rig" /></div>
+          <h2 id="aviationBuilderName">Hangar Pilot</h2>
           <p id="aviationBuilderTraits"></p>
+          <p class="opt-hint">All 123 tokens have unique trait tuples and a unique seven-stitch brim code. Similar source traits intentionally share a procedural shape family.</p>
         </section>
         <section class="aviation-builder-controls">
           <span class="aviation-control-label">Hero body preset</span>
@@ -1370,7 +1377,7 @@
           </div>
           <label class="aviation-control-label" for="aviationSearch">Find by token number or trait</label>
           <input id="aviationSearch" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Try 6224, skeleton, anime, fox…" />
-          <div id="aviationTokenGrid" role="listbox" aria-label="Approved aviation characters"></div>
+          <div id="aviationTokenGrid" role="listbox" aria-label="Approved Hangar pilots"></div>
           <div class="aviation-pager">
             <button type="button" class="alt" id="aviationPrevBtn">← Previous</button>
             <span id="aviationPageLabel">1 / 1</span>
@@ -1379,8 +1386,8 @@
         </section>
       </div>
       <div class="aviation-builder-actions">
-        <button type="button" class="go" id="aviationUseBtn">Save &amp; use head</button>
-        <button type="button" class="alt" id="aviationRandomBtn">Random approved head</button>
+        <button type="button" class="go" id="aviationUseBtn">Save Hangar Pilot</button>
+        <button type="button" class="alt" id="aviationRandomBtn">Random approved pilot</button>
         <button type="button" class="alt" id="aviationClassicBtn">Use classic hero heads</button>
         <button type="button" class="alt" id="aviationBackBtn">Back</button>
       </div>
@@ -1515,8 +1522,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.34',
-  branch: 'A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER'
+  version: 'v0.35',
+  branch: 'A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -1813,6 +1820,15 @@ const CONFIG = {
     // the moment a hit brings health down through this fraction of max,
     // while he's still alive.
     knivesLowHealthPct: 10, knivesRadius: 6.5, knivesKillHealPct: 15
+  },
+  // Custom pilots saved in the Hangar Builder replace the selected body's
+  // emergency special with this shared baseline. The third down is terminal;
+  // every personal Extra Life pickup moves that terminal threshold up by one.
+  hangarPilot: {
+    baseDownLimit: 3,
+    ejectionHealPct: 50,
+    ejectionForce: 12.5,
+    ejectionInvuln: 3
   },
   // Insertion cutscene played once at the start of every run/match (not on
   // a mid-match respawn) — helicopter flies the crew in over the farm and
@@ -8229,6 +8245,28 @@ const PLAYER = (() => {
     UI.setShield(shield, C.maxShield);
   }
 
+  /* Ejection Seat keeps the current world position, exits any movement state
+     that could pin the player to geometry, and hands the normal gravity/ground
+     solver a clean upward launch. Landing therefore uses the same feet-first
+     collision path as a jump instead of a teleport or scripted cutscene. */
+  function launchUp(force) {
+    if (dead) return false;
+    climbing = false;
+    activeLadder = null;
+    ladderCooldown = Math.max(ladderCooldown, 0.45);
+    ladderNeedsRelease = true;
+    sliding = false;
+    slideTimer = 0;
+    crouching = false;
+    crouchAmount = 0;
+    currentHeight = C.height;
+    grounded = false;
+    wasGrounded = false;
+    pos.y += 0.04;
+    vel.y = Math.max(vel.y, Number(force) || C.jumpForce);
+    return true;
+  }
+
   /* Hero saves, revives, ladders, and Iron Hide use a true protection window
      separate from ordinary hit recovery. This only ever extends protection. */
   function grantInvuln(seconds) {
@@ -8620,7 +8658,7 @@ const PLAYER = (() => {
   }
 
   return {
-    init, update, respawn, forwardVector, damage, damageOverTime, applyBleed, heal, addShield, revive, reviveAt, finishDowned, setSpawnOffset, grantInvuln,
+    init, update, respawn, forwardVector, damage, damageOverTime, applyBleed, heal, addShield, revive, reviveAt, launchUp, finishDowned, setSpawnOffset, grantInvuln,
     applyIronHide, applySpeedBoost, grantStun, grantSlow,
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
@@ -10638,6 +10676,7 @@ const UI = (() => {
     el.boss3HudHint = document.getElementById('boss3HudHint');
     el.stunChip = document.getElementById('stunChip');
     el.slowChip = document.getElementById('slowChip');
+    el.pilotLifeChip = document.getElementById('pilotLifeChip');
     el.endGame = document.getElementById('endGame');
     el.endGameSummary = document.getElementById('endGameSummary');
     el.radar = document.getElementById('radar');
@@ -10992,6 +11031,20 @@ const UI = (() => {
     if (on) el.slowChip.querySelector('b').textContent = Math.ceil(remaining);
   }
 
+  function setPilotLives(active, downCount, limit, extraLives) {
+    if (!el.pilotLifeChip) return;
+    el.pilotLifeChip.classList.toggle('on', !!active);
+    if (!active) return;
+    const used = Math.max(0, Number(downCount) || 0);
+    const cap = Math.max(1, Number(limit) || 3);
+    const bonus = Math.max(0, Number(extraLives) || 0);
+    const label = el.pilotLifeChip.querySelector('span');
+    const value = el.pilotLifeChip.querySelector('b');
+    if (label) label.textContent = bonus ? 'Hangar Downs +' + bonus : 'Hangar Downs';
+    if (value) value.textContent = used + '/' + cap;
+    el.pilotLifeChip.title = 'Down ' + cap + ' is game over' + (bonus ? ' · ' + bonus + ' Extra Life' + (bonus === 1 ? '' : 's') : '');
+  }
+
   // Multiplayer can feed additional contacts later without changing the
   // radar renderer. Enemies are supplied by ENEMY.radarContacts() below.
   function setRadarContacts(contacts) {
@@ -11123,15 +11176,24 @@ const UI = (() => {
   /* Coop death isn't a run-ending "You Wilted" card — it's a short wait
      before rejoining the still-running farm, so the copy and the button's
      eventual click both need to read that way instead of single-player's. */
-  function setDeadCoopMode(active) {
+  function setDeadCoopMode(active, runOver) {
     if (!el.deadEyebrow) return;
-    if (active) {
+    if (runOver) {
+      el.deadEyebrow.textContent = 'Flight grounded';
+      if (el.deadHeadline) el.deadHeadline.innerHTML = 'Game<br/>Over<span>Ejection limit reached</span>';
+      if (el.deadSub) el.deadSub.textContent = active
+        ? 'Your Hangar pilot is out of seats. Return to the lobby and start a new match.'
+        : 'Your Hangar pilot is out of seats. Restart the run to fly again.';
+      if (el.againBtn) el.againBtn.textContent = active ? 'Return to Lobby →' : 'Restart Run →';
+    } else if (active) {
       el.deadEyebrow.textContent = 'Down for now';
       if (el.deadHeadline) el.deadHeadline.innerHTML = 'Back<br/>Soon<span>The farm keeps going without you</span>';
+      if (el.deadSub) el.deadSub.textContent = 'The farm keeps going without you.';
       if (el.againBtn) el.againBtn.textContent = 'Waiting…';
     } else {
       el.deadEyebrow.textContent = 'Well now';
       if (el.deadHeadline) el.deadHeadline.innerHTML = 'You<br/>Wilted<span>The corn saw everything</span>';
+      if (el.deadSub) el.deadSub.textContent = 'Dust yourself off. The gate’s where you left it, and so are they.';
       if (el.againBtn) el.againBtn.textContent = 'Get back up →';
     }
   }
@@ -11512,7 +11574,7 @@ const UI = (() => {
     init, setWeapon, setWeaponInventory, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast, setInteractionHint,
     showPause, hidePause, showMobileControls, hideLoading, update,
-    setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, hurtFlash, specialFlash, showDead, hideDead,
+    setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, setPilotLives, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showLockError, clearLockError,
@@ -11541,6 +11603,18 @@ const PICKUP = (() => {
   const handlers = {};
   const items = [];
   let scene = null;
+  // Mini-pilot Extra Lives are personal pickups. Each defeated mini-boss adds
+  // one to this local queue; only the queue head exists in the world, so two
+  // quick boss defeats can never clutter the map with multiple life models.
+  let pilotLifeQueue = 0;
+  let pilotLifePickup = null;
+  let lastPilotLifeAnchor = -1;
+  const PILOT_LIFE_ANCHORS = [
+    { x: -13.2, z: 0.5 }, { x: 19.2, z: -3.2 }, { x: -21.5, z: -21.0 },
+    { x: 14.5, z: -58.0 }, { x: 18.5, z: 11.0 }, { x: -1.5, z: -57.0 },
+    { x: 34.8, z: 18.5 }, { x: 44.0, z: -20.5 }, { x: 56.0, z: -32.5 },
+    { x: 42.5, z: -58.0 }, { x: 58.5, z: -60.0 }, { x: 1.5, z: -64.0 }
+  ];
 
   const spawns = [
     { id: 'tinSixerWeapon', x: -5.5, z: 24.8 },
@@ -11779,6 +11853,10 @@ const PICKUP = (() => {
     type: 'throwable', label: 'Golden Boombox', throwableId: 'boomboxThrowable',
     quantity: 1, color: PAL.mustard, respawn: 0
   });
+  define('pilotExtraLife', {
+    type: 'pilotLife', label: 'Extra Life', quantity: 1,
+    color: PAL.blue, respawn: 0
+  });
   define('mysteriousGreenShard', { type: 'quest', questId: 'greenShard', label: 'Mysterious Green Shard', color: PAL.jays, respawn: 0 });
   define('metalWeaponFragment', { type: 'quest', questId: 'metalFragment', label: 'Metal Weapon Fragment', color: PAL.blueGray, respawn: 0 });
   define('computerChip', { type: 'quest', questId: 'computerChip', label: 'Computer Chip', color: PAL.mustard, respawn: 0 });
@@ -11856,6 +11934,13 @@ const PICKUP = (() => {
   registerHandler('quest', def => {
     if (typeof QUEST === 'undefined' || !QUEST.isSinglePlayer()) return null;
     return QUEST.collect(def.questId) ? { message: def.label + ' collected' } : null;
+  });
+  registerHandler('pilotLife', () => {
+    if (typeof HERO === 'undefined' || !HERO.addExtraLife()) return null;
+    return {
+      message: 'EXTRA LIFE STACKED · ' + HERO.pilotRecoveriesRemaining +
+        ' EJECTION' + (HERO.pilotRecoveriesRemaining === 1 ? '' : 'S') + ' READY'
+    };
   });
 
   function labelSprite(text, color) {
@@ -12021,6 +12106,44 @@ const PICKUP = (() => {
     }
   }
 
+  function buildPilotLifeVisual(parent) {
+    // A literal miniature of the local Hangar pilot, including their selected
+    // DAO face and blue aviation cap, perched on a tiny blue ejection seat.
+    // CAST is declared later in source order but is fully initialized long
+    // before any boss can queue this runtime-only pickup.
+    const seat = new THREE.Group();
+    seat.position.y = 0.06;
+    parent.add(seat);
+    PRIM.box(0.34, 0.08, 0.30, MAT.toon(PAL.blueDeep), {
+      pos: [0, 0.14, 0.12], parent: seat, outline: 0.022, ray: false
+    });
+    PRIM.box(0.32, 0.46, 0.08, MAT.toon(PAL.blue), {
+      pos: [0, 0.37, 0.24], rot: [-0.08, 0, 0], parent: seat, outline: 0.024, ray: false
+    });
+    [-1, 1].forEach(side => PRIM.cyl(0.025, 0.025, 0.38, 7, MAT.toon(PAL.mustard), {
+      pos: [side * 0.16, 0.02, 0.18], parent: seat, outline: 0.01, ray: false
+    }));
+    try {
+      const castId = typeof AVIATION_AVATAR !== 'undefined'
+        ? AVIATION_AVATAR.soloCastId('playerBluecap') : 'playerBluecap';
+      const appearance = typeof AVIATION_AVATAR !== 'undefined'
+        ? AVIATION_AVATAR.appearance() : null;
+      const built = CAST.build(castId, appearance);
+      built.rig.root.scale.setScalar(0.42);
+      built.rig.root.position.set(0, 0.08, -0.02);
+      parent.add(built.rig.root);
+    } catch (err) {
+      // Keep the pickup readable even if a future CAST change makes a custom
+      // token fail: the blue cap/cream face fallback is still a mini pilot.
+      PRIM.sph(0.18, MAT.toon(PAL.cream), {
+        pos: [0, 0.62, -0.04], scale: [1, 1, 0.72], parent: parent, outline: 0.024, ray: false
+      });
+      PRIM.sph(0.15, MAT.toon(PAL.blue), {
+        pos: [0, 0.77, -0.02], scale: [1.15, 0.55, 0.92], parent: parent, outline: 0.022, ray: false
+      });
+    }
+  }
+
   function spawn(defId, position, options) {
     const def = definitions[defId];
     if (!def) throw new Error('PICKUP: unknown definition "' + defId + '"');
@@ -12048,6 +12171,7 @@ const PICKUP = (() => {
     else if (def.type === 'shield') buildShieldVisual(visual);
     else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
     else if (def.type === 'buff') buildBuffVisual(visual, def);
+    else if (def.type === 'pilotLife') buildPilotLifeVisual(visual);
     else if (def.type === 'quest') {
       if (def.questId === 'barnKey') {
         PRIM.torus(0.22, 0.055, MAT.toon(def.color), { parent: visual, outline: 0.02, ray: false });
@@ -12071,10 +12195,43 @@ const PICKUP = (() => {
       // PICKUP.reset() made old components and the Barn Key reappear at their
       // previous death locations and allowed the next run to skip progression.
       runScoped: options.runScoped === undefined ? def.type === 'quest' : !!options.runScoped,
-      respawn: options.respawn === undefined ? def.respawn : options.respawn
+      respawn: options.respawn === undefined ? def.respawn : options.respawn,
+      pilotLife: def.type === 'pilotLife'
     };
     items.push(p);
     return p;
+  }
+
+  function nextPilotLifeAnchor() {
+    if (!PILOT_LIFE_ANCHORS.length) return { x: 0, z: 20 };
+    let index = Math.floor(Math.random() * PILOT_LIFE_ANCHORS.length);
+    if (PILOT_LIFE_ANCHORS.length > 1 && index === lastPilotLifeAnchor) {
+      index = (index + 1 + Math.floor(Math.random() * (PILOT_LIFE_ANCHORS.length - 1))) % PILOT_LIFE_ANCHORS.length;
+    }
+    lastPilotLifeAnchor = index;
+    return PILOT_LIFE_ANCHORS[index];
+  }
+
+  function spawnNextPilotLife(announce) {
+    if (!scene || pilotLifePickup || pilotLifeQueue <= 0) return null;
+    pilotLifeQueue--;
+    const anchor = nextPilotLifeAnchor();
+    pilotLifePickup = spawn('pilotExtraLife', { x: anchor.x, z: anchor.z }, {
+      respawn: 0, runScoped: true
+    });
+    if (announce && typeof UI !== 'undefined') {
+      UI.toast('MINI PILOT DEPLOYED — FIND THE EXTRA LIFE', 2.4);
+    }
+    return pilotLifePickup;
+  }
+
+  function queuePilotLife(options) {
+    options = options || {};
+    if (options.devSpawn || typeof HERO === 'undefined' || !HERO.pilotActive) return false;
+    pilotLifeQueue++;
+    if (!pilotLifePickup) spawnNextPilotLife(true);
+    else if (typeof UI !== 'undefined') UI.toast('EXTRA LIFE QUEUED — COLLECT THE ACTIVE MINI PILOT', 2.1);
+    return true;
   }
 
   function collect(p) {
@@ -12091,6 +12248,13 @@ const PICKUP = (() => {
     // rather than multiplies (pickupRateMult < 1).
     const ultraPickupMult = CONFIG.ultra.active ? (1 / CONFIG.ultra.pickupRateMult) : 1;
     p.timer = (p.respawn || 0) * (coop ? C.coopRespawnMultiplier : 1) * ultraPickupMult;
+    if (p.pilotLife && pilotLifePickup === p) {
+      pilotLifePickup = null;
+      // A second boss defeat may already be queued. The collected model is
+      // hidden before this call, so the replacement is still the only visible
+      // mini pilot at every point in the frame.
+      spawnNextPilotLife(false);
+    }
     AUDIO.pickup(p.def.type);
     UI.toast(result.message || p.def.label, 1.55);
     return true;
@@ -12139,10 +12303,13 @@ const PICKUP = (() => {
       p.timer = 0;
       p.root.visible = true;
     }
+    pilotLifeQueue = 0;
+    pilotLifePickup = null;
+    lastPilotLifeAnchor = -1;
   }
 
   return {
-    init, update, reset, define, registerHandler, spawn,
+    init, update, reset, define, registerHandler, spawn, queuePilotLife,
     get definitions() { return definitions; },
     get items() { return items; }
   };
@@ -12617,6 +12784,7 @@ const GAME = (() => {
     document.getElementById('stonedHeroBtn').addEventListener('click', () => startSingleHero('stoned'));
     document.getElementById('pyroHeroBtn').addEventListener('click', () => startSingleHero('pyro'));
     document.getElementById('jeffHeroBtn').addEventListener('click', () => startSingleHero('jeff'));
+    document.getElementById('hangarPilotStartBtn').addEventListener('click', () => startSingleHero('scarf'));
     AVIATION_AVATAR.init(buildHeroPortraits);
     buildHeroPortraits();
     document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
@@ -12627,7 +12795,10 @@ const GAME = (() => {
     document.getElementById('coopCharacterChoices').addEventListener('click', e => {
       e.stopPropagation();
       const button = e.target.closest('[data-character]');
-      if (button) COOP.selectCharacter(button.getAttribute('data-character'));
+      if (button) {
+        const bodyId = button.getAttribute('data-character');
+        if (COOP.selectCharacter(bodyId) && AVIATION_AVATAR.enabled) AVIATION_AVATAR.selectBody(bodyId);
+      }
     });
     document.getElementById('hostBtn').addEventListener('click', () => COOP.host());
     document.getElementById('joinBtn').addEventListener('click', () => COOP.prepareJoin());
@@ -12695,7 +12866,9 @@ const GAME = (() => {
     }, true);
     document.getElementById('againBtn').addEventListener('click', e => {
       e.stopPropagation();
-      if (mode === 'coop') respawnAttempt(); else restart();
+      if (mode === 'coop' && HERO.runOver) returnToStart();
+      else if (mode === 'coop') respawnAttempt();
+      else restart();
     });
     document.getElementById('continueBtn').addEventListener('click', e => { e.stopPropagation(); continueAfterEnd(); });
     document.getElementById('startOverBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
@@ -12965,6 +13138,15 @@ const GAME = (() => {
     running = false;
     entered = false;
     COOP.openLobby();
+    // COOP.openLobby() resets its local slot to Larry. Keep a saved Hangar
+    // pilot's body choice attached to that slot so the lobby portrait,
+    // replicated CAST id, and builder summary all describe the same pilot.
+    // Jeff remains solo-only, so his preset starts co-op as Larry.
+    if (AVIATION_AVATAR.enabled) {
+      const bodyId = AVIATION_AVATAR.bodyId === 'pilot' ? 'playerBluecap' : AVIATION_AVATAR.bodyId;
+      COOP.selectCharacter(bodyId);
+      AVIATION_AVATAR.selectBody(bodyId);
+    }
     setLobbyMode('coop');
     UI.showCoopLobby();
     UI.setCoopStatus('Choose Host room or Join room to begin.');
@@ -13012,6 +13194,10 @@ const GAME = (() => {
      health. */
   function respawnAttempt() {
     if (!PLAYER.isDead) return;
+    if (HERO.runOver) {
+      UI.toast('Ejection limit reached · start a new match', 1.6);
+      return;
+    }
     const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
     const delay = deathmatch ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
     const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
@@ -13217,6 +13403,7 @@ const GAME = (() => {
     if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) {
       deathPending = true;
       RUNSTATS.death();
+      UI.setDeadCoopMode(mode === 'coop', HERO.runOver);
       KILLCAM.trigger(camera);
       // Reported once, right as the death happens — reportDeath() reads
       // whichever attacker last damaged this client, so it has to fire
@@ -13225,16 +13412,20 @@ const GAME = (() => {
     }
     if (deathPending && !PLAYER.isDowned && !UI.deadShown && !KILLCAM.active && PLAYER.deadTime > CONFIG.player.reviveDelay) {
       INPUT.releaseLock();
-      UI.setDeadCoopMode(mode === 'coop');
+      UI.setDeadCoopMode(mode === 'coop', HERO.runOver);
       UI.showDead();
     }
     if (mode === 'coop' && UI.deadShown && PLAYER.isDead) {
-      const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
-      const delay = deathmatch ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
-      const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
-      UI.setDeadHint(remain > 0
-        ? (deathmatch ? 'Eliminated · back up in ' + Math.ceil(remain) + 's' : 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's')
-        : 'Ready — tap to get back up.');
+      if (HERO.runOver) {
+        UI.setDeadHint('Ejection limit reached · return to the lobby and start a new match.');
+      } else {
+        const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
+        const delay = deathmatch ? CONFIG.multiplayer.ffaRespawnDelay : CONFIG.multiplayer.respawnDelay;
+        const remain = CONFIG.player.reviveDelay + delay - PLAYER.deadTime;
+        UI.setDeadHint(remain > 0
+          ? (deathmatch ? 'Eliminated · back up in ' + Math.ceil(remain) + 's' : 'The farm keeps going without you · back up in ' + Math.ceil(remain) + 's')
+          : 'Ready — tap to get back up.');
+      }
     }
 
     renderer.clear();
@@ -13278,9 +13469,10 @@ const GAME = (() => {
 
    Later expansion slots already wired through build(): `collar`, `hand`,
    `back`, `noPetals`, and per-part colour. Add `shirt` or `hat` the same way
-   HANDS/BACKS works. v0.34 also accepts { aviationTokenId } as an optional
+   HANDS/BACKS works. v0.35 also accepts { aviationTokenId } as an optional
    build appearance. That swaps only the head while preserving this rig,
-   body palette, animation joints, props, hitboxes, and hero special.
+   body palette, animation joints, props, and hitboxes. HERO separately owns
+   the Hangar pilot's Ejection Seat gameplay rule.
    =================================================================== */
 const CAST = (() => {
 
@@ -13358,13 +13550,12 @@ const CAST = (() => {
     front.build(group, { ray: false });
   }
 
-  /* The two player faces share the same cream rubber-hose skull, but use a
-     cap rather than the enemy petal ring. Keeping the cap in CAST means it
-     remains a normal Three.js character part instead of a multiplayer-only
-     billboard. */
-  function playerCap(group, skin, variant) {
-    const blue = MAT.toon(variant === 'muted' ? PAL.blueGray : PAL.blue);
-    const darkBlue = MAT.toon(variant === 'muted' ? PAL.blueGrayDk : PAL.blueDeep);
+  /* One canonical blue aviation cap for every classic hero except Pyro.
+     Keeping it here makes the rule apply identically to portraits, intro
+     rigs, local/remote multiplayer bodies, and future CAST consumers. */
+  function aviationCap(group) {
+    const blue = MAT.toon(PAL.blue);
+    const darkBlue = MAT.toon(PAL.blueDeep);
     PRIM.sph(0.225, blue, {
       pos: [0, 0.245, 0.015], scale: [1.16, 0.62, 0.92],
       parent: group, outline: 0.028, ray: false
@@ -13382,54 +13573,6 @@ const CAST = (() => {
         pos: [s * 0.285, 0.015, 0.01], scale: [0.62, 1.18, 0.72],
         parent: group, outline: 0.02, ray: false
       });
-    });
-  }
-
-  /* Floppy trapper hat with two ear flaps hanging past the temples. */
-  function trapperHat(group) {
-    const blue = MAT.toon(PAL.blue);
-    const darkBlue = MAT.toon(PAL.blueDeep);
-    PRIM.sph(0.235, blue, {
-      pos: [0, 0.235, 0.015], scale: [1.14, 0.58, 0.94],
-      parent: group, outline: 0.028, ray: false
-    });
-    PRIM.box(0.42, 0.05, 0.17, darkBlue, {
-      pos: [0, 0.155, -0.19], rot: [0.08, 0, 0],
-      parent: group, outline: 0.02, ray: false
-    });
-    [-1, 1].forEach(s => {
-      PRIM.box(0.13, 0.32, 0.07, blue, {
-        pos: [s * 0.245, 0.02, 0.07], rot: [0, 0, s * 0.08],
-        parent: group, outline: 0.022, ray: false
-      });
-    });
-  }
-
-  /* Flat cap cocked to one side, light blue with a darker underbrim and two
-     soft flared pieces standing up off the crown -- built from the
-     reference photo (blue cap worn at an angle, shutter shades, cigarette,
-     gold chain w/ dog-tag charm). */
-  function pilotCap(group) {
-    const blue = MAT.toon(PAL.blue);
-    const blueDeep = MAT.toon(PAL.blueDeep);
-    const cap = new THREE.Group();
-    cap.rotation.z = -0.2;
-    group.add(cap);
-    PRIM.sph(0.225, blue, {
-      pos: [0, 0.245, 0.01], scale: [1.1, 0.6, 0.92],
-      parent: cap, outline: 0.028, ray: false
-    });
-    PRIM.box(0.34, 0.055, 0.15, blueDeep, {
-      pos: [0.13, 0.195, -0.14], rot: [0.08, 0.35, 0],
-      parent: cap, outline: 0.02, ray: false
-    });
-    PRIM.sph(0.09, blue, {
-      pos: [-0.1, 0.4, 0.03], scale: [0.75, 1.3, 0.6], rot: [0, 0, -0.35],
-      parent: cap, outline: 0.02, ray: false
-    });
-    PRIM.sph(0.075, blue, {
-      pos: [0.15, 0.36, -0.02], scale: [0.7, 1.15, 0.55], rot: [0.15, 0, 0.4],
-      parent: cap, outline: 0.018, ray: false
     });
   }
 
@@ -13528,7 +13671,7 @@ const CAST = (() => {
     playerBluecap(group, skin) {
       const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
       const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
-      playerCap(group, skin, 'bright');
+      aviationCap(group);
       oval(light, 0.105, 0.065, 0.066, 0.085, -0.08, 0.055);
       oval(dark, 0.108, 0.058, 0.027, 0.046, -0.08, 0.062);
       oval(light, 0.116, 0.078, 0.009, 0.016, 0, 0.066);
@@ -13546,7 +13689,7 @@ const CAST = (() => {
       const light = new PRIM.Batch(MAT.toon(PAL.white), 0.012);
       const lid = new PRIM.Batch(MAT.toon(PAL.rust), 0.011);
       const mask = new PRIM.Batch(MAT.toon(PAL.blueGray), 0.012);
-      playerCap(group, skin, 'muted');
+      aviationCap(group);
       oval(light, -0.105, 0.075, 0.074, 0.092, 0.12);
       oval(light, 0.105, 0.075, 0.074, 0.092, -0.12);
       oval(dark, -0.105, 0.058, 0.043, 0.053, 0.12, 0.06);
@@ -13691,7 +13834,7 @@ const CAST = (() => {
       bar(dark, 0, -0.095, 0.19, 0.01, 0, 0.06);
       for (let i = -2; i <= 2; i++) bar(dark, i * 0.038, -0.095, 0.01, 0.05, 0, 0.064);
       dark.build(group, { ray: false });
-      trapperHat(group);
+      aviationCap(group);
     },
 
     /* Black cat/wolf farmhand: angry amber eyes, a snarling muzzle, pointed
@@ -13725,7 +13868,7 @@ const CAST = (() => {
        shutter shades, freckled scowl, cigarette with a rising smoke wisp. */
     pilot(group, skin) {
       const dark = new PRIM.Batch(MAT.toon(skin.ink), 0.012);
-      pilotCap(group);
+      aviationCap(group);
       pilotShades(group);
       pilotFreckles(group, skin);
       arc(dark, 0, -0.075, 0.075, 0.013, 1.55, Math.PI + 0.32);
@@ -14317,22 +14460,37 @@ const CAST = (() => {
      there's only one of them, which sequential reuse here guarantees. */
   let portraitRenderer = null, portraitScene = null, portraitCamera = null;
   function ensurePortraitRig(width, height) {
-    if (portraitRenderer) return;
-    const canvas = document.createElement('canvas');
-    portraitRenderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: true });
-    portraitRenderer.setPixelRatio(1);
+    if (!portraitRenderer) {
+      const canvas = document.createElement('canvas');
+      // The image is copied with toDataURL immediately after rendering. Some
+      // browsers clear a default WebGL drawing buffer before that snapshot,
+      // yielding a valid but fully transparent PNG; retain it explicitly.
+      portraitRenderer = new THREE.WebGLRenderer({
+        canvas: canvas, alpha: true, antialias: true, preserveDrawingBuffer: true
+      });
+      portraitRenderer.setPixelRatio(1);
+      portraitRenderer.setClearColor(0x000000, 0);
+      portraitScene = new THREE.Scene();
+      portraitCamera = new THREE.PerspectiveCamera(30, width / height, 0.05, 10);
+      // CAST faces are authored toward -Z (FZ above). The previous +Z camera
+      // photographed their backs, which was especially obvious in the large
+      // builder preview where the actual face appeared blank.
+      portraitCamera.position.set(0, 0.92, -2.05);
+      portraitCamera.lookAt(0, 0.82, 0);
+      // Same lighting recipe as the weapon viewmodel scene (see GAME.init) so
+      // the portrait's toon shading reads the same as it does in-game.
+      portraitScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.95));
+      const sun = new THREE.DirectionalLight(0xFFF4DC, 1.0);
+      sun.position.set(-1.2, 2.4, -2.0);
+      portraitScene.add(sun);
+      portraitScene.add(new THREE.AmbientLight(0xC9BAA9, 0.5));
+    }
+    // Hero thumbnails initialize this rig at 148×176, while the builder uses
+    // 280×330. Resize on every request so the reused renderer never keeps the
+    // first caller's buffer size/aspect ratio.
     portraitRenderer.setSize(width, height, false);
-    portraitScene = new THREE.Scene();
-    portraitCamera = new THREE.PerspectiveCamera(30, width / height, 0.05, 10);
-    portraitCamera.position.set(0, 0.92, 2.05);
-    portraitCamera.lookAt(0, 0.82, 0);
-    // Same lighting recipe as the weapon viewmodel scene (see GAME.init) so
-    // the portrait's toon shading reads the same as it does in-game.
-    portraitScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.95));
-    const sun = new THREE.DirectionalLight(0xFFF4DC, 1.0);
-    sun.position.set(-1.2, 2.4, 2.0);
-    portraitScene.add(sun);
-    portraitScene.add(new THREE.AmbientLight(0xC9BAA9, 0.5));
+    portraitCamera.aspect = width / height;
+    portraitCamera.updateProjectionMatrix();
   }
 
   function renderPortrait(id, width, height, appearance) {
@@ -14340,6 +14498,7 @@ const CAST = (() => {
     ensurePortraitRig(width, height);
     const built = build(id, appearance || null);
     portraitScene.add(built.rig.root);
+    portraitRenderer.clear();
     portraitRenderer.render(portraitScene, portraitCamera);
     const dataUrl = portraitRenderer.domElement.toDataURL('image/png');
     portraitScene.remove(built.rig.root);
@@ -14356,13 +14515,14 @@ const CAST = (() => {
 })();
 
 /* ======================== [AVIATION_AVATAR] ==========================
-   Cosmetic identity is intentionally separate from HERO. A player can keep
-   Larry's Double Barrel (or any other special) while using one of the 123
-   approved DAO heads and any existing hero body preset. Multiplayer sends
-   only the numeric token id; every client already owns the same manifest
-   and rebuilds the same deterministic Three.js geometry locally. */
+   Hangar pilot identity stays separate from the underlying CAST body data.
+   A saved pilot uses one of 123 approved DAO heads and any existing hero
+   body preset, while HERO replaces that body's emergency move with the
+   shared Ejection Seat baseline. Multiplayer sends only the numeric token
+   id; every client rebuilds the same deterministic Three.js geometry. */
 const AVIATION_AVATAR = (() => {
-  const STORAGE_KEY = 'wilted-farms.aviation-avatar.v1';
+  const STORAGE_KEY = 'wilted-farms.hangar-pilot.v1';
+  const LEGACY_STORAGE_KEY = 'wilted-farms.aviation-avatar.v1';
   const BODY_IDS = ['playerBluecap', 'playerMasked', 'playerStoned', 'playerPyro', 'pilot'];
   const PAGE_SIZE = 20;
   const pack = typeof AVIATION_HEAD_PACK !== 'undefined' ? AVIATION_HEAD_PACK : null;
@@ -14383,7 +14543,10 @@ const AVIATION_AVATAR = (() => {
 
   function load() {
     try {
-      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      const current = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      const legacy = !current && typeof localStorage !== 'undefined'
+        ? localStorage.getItem(LEGACY_STORAGE_KEY) : null;
+      const raw = current || legacy;
       if (!raw) return;
       const saved = JSON.parse(raw);
       const savedItem = pack && pack.get(saved.tokenId);
@@ -14393,6 +14556,9 @@ const AVIATION_AVATAR = (() => {
         bodyId: validBody(saved.bodyId)
       };
       working = Object.assign({}, state);
+      if (!current && legacy && typeof localStorage !== 'undefined') {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
     } catch (err) {}
   }
 
@@ -14420,9 +14586,43 @@ const AVIATION_AVATAR = (() => {
   function renderSummaries() {
     const item = state.enabled ? currentItem(false) : null;
     const text = item
-      ? `Goon #${item.tokenId} active · ${item.traits.eyes || 'unlisted'} eyes · ${item.traits.mouth || 'unlisted'} mouth`
-      : `Classic hero head active · ${pack ? pack.count : 0} community heads available`;
+      ? `Hangar Pilot #${item.tokenId} active · Ejection Seat · ${item.traits.eyes || 'unlisted'} eyes`
+      : `Classic hero active · ${pack ? pack.count : 0} community pilots available`;
     document.querySelectorAll('[data-aviation-summary]').forEach(node => { node.textContent = text; });
+    const heroChoices = document.getElementById('heroChoices');
+    const launch = document.getElementById('hangarPilotStartBtn');
+    const headline = document.getElementById('playerSelectHeadline');
+    const sub = document.getElementById('playerSelectSub');
+    const coopPicker = document.getElementById('coopCharacterPicker');
+    if (heroChoices) heroChoices.hidden = !!item;
+    if (launch) {
+      launch.hidden = !item;
+      if (item) launch.textContent = `Launch Hangar Pilot #${item.tokenId} →`;
+    }
+    if (headline) headline.innerHTML = item
+      ? 'Launch your<br/>pilot<span>Ejection Seat armed · body preset saved</span>'
+      : 'Pick your<br/>special<span>Each hero has one emergency trick</span>';
+    if (sub) sub.textContent = item
+      ? 'Your Hangar pilot launches with the saved head and body below. Use the builder to change either one, or switch back to the classic hero roster.'
+      : 'Your choice changes your low-health special. All five heroes keep the normal weapon and pickup inventory.';
+    if (coopPicker) {
+      const pickerLabel = coopPicker.querySelector('.mode-toggle-label');
+      if (pickerLabel) pickerLabel.textContent = item ? 'Choose pilot body preset' : 'Choose your farmhand';
+      coopPicker.querySelectorAll('.coop-character-choice small').forEach(node => {
+        if (!node.dataset.classicCopy) node.dataset.classicCopy = node.textContent;
+        node.textContent = item ? 'Ejection Seat' : node.dataset.classicCopy;
+      });
+    }
+  }
+
+  function selectBody(id) {
+    if (!state.enabled) return false;
+    state.bodyId = validBody(id);
+    working.bodyId = state.bodyId;
+    persist();
+    renderSummaries();
+    refreshHeroPortraits();
+    return true;
   }
 
   function renderPreview() {
@@ -14435,6 +14635,7 @@ const AVIATION_AVATAR = (() => {
       img.src = CAST.renderPortrait(validBody(working.bodyId), 280, 330, { aviationTokenId: item.tokenId });
     } catch (err) {
       img.removeAttribute('src');
+      console.warn('Hangar pilot preview could not be rendered.', err);
     }
     if (name) name.textContent = `Cryptoon Goon #${item.tokenId}`;
     if (traits) traits.textContent = [
@@ -14480,7 +14681,7 @@ const AVIATION_AVATAR = (() => {
       button.append(title, detail);
       grid.appendChild(button);
     });
-    if (label) label.textContent = `${page + 1} / ${pages} · ${results.length} heads`;
+    if (label) label.textContent = `${page + 1} / ${pages} · ${results.length} pilots`;
     if (prev) prev.disabled = page <= 0;
     if (next) next.disabled = page >= pages - 1;
   }
@@ -14544,6 +14745,7 @@ const AVIATION_AVATAR = (() => {
     persist();
     renderSummaries();
     refreshHeroPortraits();
+    if (typeof HERO !== 'undefined' && HERO.syncPilotHud) HERO.syncPilotHud();
     syncNetworkChoice(syncBody);
     close();
   }
@@ -14596,7 +14798,7 @@ const AVIATION_AVATAR = (() => {
   }
 
   return {
-    init, appearance, soloCastId, networkTokenId,
+    init, appearance, soloCastId, networkTokenId, selectBody,
     get enabled() { return state.enabled; },
     get tokenId() { return networkTokenId(); },
     get bodyId() { return state.bodyId; },
@@ -14970,6 +15172,9 @@ const HERO = (() => {
   let downedRestoreWeapon = null;
   let chainsawActive = false;
   let restoreWeapon = null;
+  let pilotDowns = 0;
+  let pilotExtraLives = 0;
+  let pilotRunOver = false;
   // Once per life (reset alongside everything else in resetRun) -- Jeff's
   // storm is a proactive low-health save, not a death-triggered one, so it
   // needs its own guard against firing again on every subsequent hit while
@@ -14982,6 +15187,31 @@ const HERO = (() => {
     return typeof GAME === 'undefined' || !GAME.isCoop;
   }
 
+  function pilotActive() {
+    return typeof AVIATION_AVATAR !== 'undefined' && AVIATION_AVATAR.enabled;
+  }
+
+  function pilotDownLimit() {
+    return CONFIG.hangarPilot.baseDownLimit + pilotExtraLives;
+  }
+
+  function pilotRecoveriesRemaining() {
+    return Math.max(0, pilotDownLimit() - pilotDowns - 1);
+  }
+
+  function syncPilotHud() {
+    if (typeof UI !== 'undefined' && UI.setPilotLives) {
+      UI.setPilotLives(pilotActive(), pilotDowns, pilotDownLimit(), pilotExtraLives);
+    }
+  }
+
+  function addExtraLife() {
+    if (!pilotActive() || pilotRunOver) return false;
+    pilotExtraLives++;
+    syncPilotHud();
+    return true;
+  }
+
   /* All four specials are active in single-player. In coop, Scarf/Masked
      stay off (their downed/chainsaw mechanics were never built with a
      shared world in mind) and Stoned/Pyro's are explicitly off in FFA — no
@@ -14989,6 +15219,10 @@ const HERO = (() => {
      Deathmatch keeps them on, same as coop -- teammates still benefit from
      an auto-revive or a heal-on-kill even with an enemy team on the map. */
   function activeHeroId() {
+    // A saved Hangar pilot keeps the selected body's look and stats, but its
+    // baseline emergency move is always Ejection Seat. Never let that body's
+    // classic special fire as a second simultaneous death-save.
+    if (pilotActive()) return null;
     if (typeof GAME !== 'undefined' && GAME.isCoop) {
       if (typeof COOP === 'undefined' || (COOP.matchMode !== 'coop' && COOP.matchMode !== 'teams')) return null;
       const heroId = CASTID_TO_HERO[COOP.localCharacterId];
@@ -15012,6 +15246,40 @@ const HERO = (() => {
     chainsawActive = false;
     restoreWeapon = null;
     knifeStormUsed = false;
+    pilotDowns = 0;
+    pilotExtraLives = 0;
+    pilotRunOver = false;
+    syncPilotHud();
+  }
+
+  function beginPilotEjection() {
+    pilotDowns++;
+    const limit = pilotDownLimit();
+    syncPilotHud();
+    if (pilotDowns >= limit) {
+      pilotRunOver = true;
+      UI.toast('DOWN ' + pilotDowns + '/' + limit + ' — EJECTION LIMIT REACHED', 2.8);
+      return false;
+    }
+
+    const C2 = CONFIG.hangarPilot;
+    const origin = PLAYER.position;
+    _pyroPoint.set(origin.x, origin.y + 0.15, origin.z);
+    PLAYER.reviveAt(C2.ejectionHealPct, false);
+    PLAYER.launchUp(C2.ejectionForce);
+    PLAYER.grantInvuln(C2.ejectionInvuln);
+    for (let i = 0; i < 10; i++) {
+      const angle = i / 10 * Math.PI * 2 + UTIL.rng(-0.18, 0.18);
+      _pyroFx.set(Math.cos(angle) * UTIL.rng(0.5, 1.8), UTIL.rng(-0.3, 0.8), Math.sin(angle) * UTIL.rng(0.5, 1.8));
+      FX.spawnParticle(_pyroPoint, _pyroFx, {
+        map: TEX.puff(i % 2 ? PAL.cream : PAL.blueGray),
+        s0: UTIL.rng(0.18, 0.34), s1: UTIL.rng(0.7, 1.2), life: UTIL.rng(0.45, 0.8), grav: -0.4
+      });
+    }
+    AUDIO.jump();
+    UI.specialFlash();
+    UI.toast('EJECTION SEAT — 50% PEP · DOWN ' + pilotDowns + '/' + limit, 2.4);
+    return true;
   }
 
   function beginScarfDowned() {
@@ -15118,6 +15386,7 @@ const HERO = (() => {
 
   function beginDowned() {
     if (downedActive) return false;
+    if (pilotActive()) return beginPilotEjection();
     const heroId = activeHeroId();
     if (heroId === 'scarf') return beginScarfDowned();
     if (heroId === 'stoned') return beginStonedDowned();
@@ -15183,12 +15452,18 @@ const HERO = (() => {
 
   return {
     definitions: DEFINITIONS, select, resetRun, beginDowned, endDowned, onDoubleBarrelShot, update,
-    checkLowHealthTrigger,
+    checkLowHealthTrigger, addExtraLife, syncPilotHud,
     get id() { return selected; },
     get castId() { return DEFINITIONS[selected].castId; },
     get label() { return DEFINITIONS[selected].label; },
     get downedActive() { return downedActive; },
     get chainsawActive() { return chainsawActive; },
+    get pilotActive() { return pilotActive(); },
+    get pilotDowns() { return pilotDowns; },
+    get pilotDownLimit() { return pilotDownLimit(); },
+    get pilotExtraLives() { return pilotExtraLives; },
+    get pilotRecoveriesRemaining() { return pilotRecoveriesRemaining(); },
+    get runOver() { return pilotRunOver; },
     get canActWhileDowned() { return downedActive && inSinglePlayer(); },
     get activeHeroId() { return activeHeroId(); }
   };
@@ -16486,6 +16761,7 @@ const ENEMY = (() => {
       UI.setBoss(false, 0, e.maxHp, 'defeated');
       UI.toast('THE GARDENER UPROOTED — FIND THE BARN KEY', 2.8);
       if (typeof PICKUP !== 'undefined') PICKUP.spawn('barnKey', { x:e.pos.x, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife({ devSpawn: !!e.devSpawn });
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('gardener', e);
       if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat('gardener');
     } else if (e.isBoss) {
@@ -16505,6 +16781,7 @@ const ENEMY = (() => {
         });
         if (typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('computerChip', { x:dropPos[0]+0.8, y:dropPos[1], z:dropPos[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife({ devSpawn: !!e.devSpawn });
       // die() only ever runs on the host or in single-player (a join never
       // reaches this point — its applyDamage relays out instead), so this is
       // the one authoritative place a boss kill can happen. Tell any joiners.
@@ -16544,6 +16821,7 @@ const ENEMY = (() => {
         });
         if (!isFinalDefeat && typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('metalWeaponFragment', { x:dropPos2[0]+0.8, y:dropPos2[1], z:dropPos2[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife({ devSpawn: !!e.devSpawn });
       if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2, dropId);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated(isFinalDefeat ? 'bearclaw2' : 'bearClaw', e);
       if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(isFinalDefeat ? 'bearclaw2' : B2.id);
@@ -16569,6 +16847,7 @@ const ENEMY = (() => {
         });
         if (typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('mysteriousGreenShard', { x:dropPos3[0]+0.8, y:dropPos3[1], z:dropPos3[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife({ devSpawn: !!e.devSpawn });
       if (typeof COOP !== 'undefined') COOP.broadcastBoss3Defeated(dropPos3);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('beatSlayer', e);
       if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(B3.id);
@@ -19165,6 +19444,7 @@ const COOP = (() => {
         PICKUP.spawn('carrotCannonWeapon',
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife();
       GAME.complete(message.kills || 0);
     } else if (message.type === 'boss2Defeated') {
       // Bear Claw isn't a win condition -- unlike bossDefeated above, this
@@ -19175,12 +19455,14 @@ const COOP = (() => {
         PICKUP.spawn(message.dropId || 'packOfSmokesThrowable',
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife();
     } else if (message.type === 'boss3Defeated') {
       // Beat Slayer, same "not a win condition, just drop the pickup" rule.
       if (message.point && typeof PICKUP !== 'undefined' && PICKUP.spawn) {
         PICKUP.spawn('goldenBoomboxThrowable',
           { x: message.point[0], y: message.point[1], z: message.point[2] }, { respawn: 0 });
       }
+      if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife();
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
     } else if (message.type === 'worldInteraction' && message.id === 'barn_stair_floor_gate') {

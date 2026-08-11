@@ -4,9 +4,27 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.34`
-- **Working branch:** `A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER`
-- **Baseline:** `A-test-v0.33-BOSS-QUANTITY-BARN-DOOR`
+- **Current alpha:** `v0.35`
+- **Working branch:** `A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES`
+- **Baseline:** `A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER`
+
+## What changed in v0.35
+
+- Renames the character tool to **Hangar Custom Pilot Builder** and fixes its
+  blank preview. The reusable portrait renderer now retains its drawing buffer,
+  resizes for the larger builder frame, and photographs the authored face side.
+- Standardizes the classic playable cast on one blue aviation cap. Larry,
+  Smoke, Stoned, and Jeff wear it; Pyro is the sole classic goggles character.
+- Gives every saved Hangar pilot **Ejection Seat** instead of the selected
+  body's classic emergency special. A lethal hit restores 50% Pep, launches the
+  pilot upward, and returns control through the normal gravity/landing solver.
+- Tracks Hangar downs across the run. Downs one and two eject; down three is
+  terminal and opens Game Over. A restart resets the counter.
+- Adds personal **Extra Life** pickups after natural mini-boss defeats. Each is
+  a miniature of the player's selected pilot on an ejection seat. Defeats queue
+  one reward each, only one mini pilot is visible at a time, and every collected
+  reward raises the terminal down threshold by one for that run.
+- Keeps old v0.34 saved selections through a one-time local-storage migration.
 
 ## What changed in v0.34
 
@@ -53,7 +71,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER
+git switch A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES
 python3 -m http.server 8000
 ```
 
@@ -99,6 +117,10 @@ joining clients. GitHub Pages remains a static client host.
 Co-op retains the established multiplayer thresholds: Carrot Warden at 33,
 Bear Claw at 66, its rematch at 99, and Beat Slayer at 132.
 
+When the local character is a saved Hangar pilot, each natural mini-boss defeat
+also queues one personal mini-pilot Extra Life at a randomized safe surface
+location. Developer-spawned bosses do not award lives.
+
 Boss visuals have procedural fallbacks. If a GLB or the GLTF loader cannot be
 loaded, the encounter remains playable.
 
@@ -112,12 +134,13 @@ loaded, the encounter remains playable.
 | Pyro | Dy-No-Mite death-save blast |
 | Jeff | Low-health Knife Storm |
 
-The multiplayer picker exposes Larry, Smoke, Stoned, and Pyro. The aviation
+The multiplayer picker exposes Larry, Smoke, Stoned, and Pyro. The Hangar
 builder exposes those same four synchronized bodies in its lobby context and
-also exposes Jeff when opened from single-player selection. The selected body
-remains separate from its custom head.
+also exposes Jeff when opened from single-player selection. A saved Hangar
+pilot uses the body's rig, palette, stats, and equipment, but replaces its
+classic emergency special with Ejection Seat.
 
-### Aviation head pack
+### Hangar pilot head pack
 
 The source roster is the community-approved
 [OpenSea `aviation_hat` filter](https://opensea.io/collection/badbad?traits=%5B%7B%22traitType%22%3A%22head%22%2C%22values%22%3A%5B%22aviation_hat%22%5D%7D%5D).
@@ -125,6 +148,12 @@ The approved roster is stored in `assets/aviation-heads/manifest.json` for
 tools and `manifest.js` for the static browser build. `aviation-head-pack.js`
 is an adapter-based geometry module: it receives Three.js and the game's
 primitive helpers from `CAST`, then returns only the selected head subtree.
+
+The 123 entries are 123 unique source trait tuples, not 123 unrelated sculpting
+systems. Across the approved set there are 11 body treatments, 42 eye traits,
+51 mouth traits, and 33 accessories. Closely related editorial traits can share
+a procedural geometry family, while the complete trait tuple and unique
+seven-stitch brim code keep every token identity distinct.
 
 To refresh the manifest from saved OpenSea collection pages:
 
