@@ -7473,6 +7473,10 @@ const INPUT = (() => {
     touchSprint = false;
     touchResetters.forEach(reset => reset());
   }
+  function clearTransientInput() {
+    clearActions();
+    mouseDX = mouseDY = 0;
+  }
 
   /* The single source of truth for "is the game receiving input". Desktop
      follows the browser's pointer-lock state; touch drives engagement from
@@ -7758,6 +7762,7 @@ const INPUT = (() => {
   }
 
   function releaseLock() {
+    clearTransientInput();
     if (mode === 'touch') { setEngaged(false); return; }
     if (document.pointerLockElement) document.exitPointerLock();
     else setEngaged(false);
@@ -7785,7 +7790,7 @@ const INPUT = (() => {
 
   return {
     init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
-    clearActions,
+    clearActions, clearTransientInput,
     rebind, resetKeymap, getBindings, applyBindings, codeLabel,
     get locked() { return locked; },
     get engaged() { return engaged; },
@@ -11160,6 +11165,7 @@ const UI = (() => {
   }
   function showPause() {
     clearLockError();
+    if (typeof INPUT !== 'undefined') INPUT.clearTransientInput();
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
@@ -11167,6 +11173,8 @@ const UI = (() => {
     if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     hideDowned();
     showMobileControls(false);
+    const resume = document.getElementById('resumeBtn');
+    if (resume) requestAnimationFrame(() => resume.focus({ preventScroll: true }));
   }
   function hidePause() {
     clearLockError();
@@ -12141,7 +12149,7 @@ const QUEST = (() => {
     }
   }
   return { reset, start, collect, interact, interactionHint, update, bossDefeated, spawnGardener, isSinglePlayer,
-    get state() { return state; }, get gardener() { return gardener; } };
+    get state() { return state; }, get gardener() { return gardener; }, get cutsceneActive() { return cutsceneTimer > 0; } };
 })();
 
 /* ============================== [GAME] =============================== */
@@ -12258,6 +12266,7 @@ const GAME = (() => {
     INPUT.on('unlock', () => {
       running = false;
       RUNSTATS.pause();
+      if (typeof QUEST !== 'undefined' && QUEST.cutsceneActive) { UI.hidePause(); return; }
       if (!entered) return;
       // A downed player must still get a clickable way back in. Showing only
       // the downed HUD here left the game with no overlay and no input at all.
@@ -12386,7 +12395,26 @@ const GAME = (() => {
       UI.hideCrewLeft();
       returnToStart();
     });
-    UI.el.pause.addEventListener('click', enter);
+    // Pause is an intentional menu with its own focus order. The old blanket
+    // overlay click handler treated any click (including stale pointer-up
+    // events and gaps between buttons) as Resume, causing click-through and
+    // immediate pointer-lock reacquisition.
+    const pauseButtons = ['resumeBtn', 'pauseOptionsBtn', 'pauseMapBtn', 'pauseRestartBtn', 'pauseMenuBtn']
+      .map(id => document.getElementById(id)).filter(Boolean);
+    let pauseIndex = 0, pauseNavAt = 0;
+    pauseButtons.forEach((button, index) => button.addEventListener('pointerenter', () => { pauseIndex = index; }));
+    document.addEventListener('keydown', e => {
+      if (!entered || !UI.el.pause || UI.el.pause.classList.contains('hidden') ||
+          !UI.el.options.classList.contains('hidden') || !UI.el.mapView.classList.contains('hidden')) return;
+      if (e.code === 'Escape') { e.preventDefault(); INPUT.clearTransientInput(); enter(false); return; }
+      if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        pauseIndex = (pauseIndex + (e.code === 'ArrowDown' ? 1 : -1) + pauseButtons.length) % pauseButtons.length;
+        pauseButtons[pauseIndex].focus({ preventScroll: true }); pauseNavAt = performance.now();
+      } else if ((e.code === 'Enter' || e.code === 'Space') && performance.now() - pauseNavAt > 120) {
+        e.preventDefault(); pauseButtons[pauseIndex].click();
+      }
+    }, true);
 
     COOP.on('status', (message, kind) => UI.setCoopStatus(message, kind));
     COOP.on('matchStart', playerCount => beginCoop(playerCount));
