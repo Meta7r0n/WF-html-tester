@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.28</title>
+<title>The Withered Farm — v0.29</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -1115,7 +1115,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.28</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.29</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1375,8 +1375,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.28',
-  branch: 'A-test-v0.28-README-CANVAS-BOSS-PRELOAD'
+  version: 'v0.29',
+  branch: 'A-test-v0.29-EAST-NORTH-BARN-EXPANSION'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -1469,27 +1469,21 @@ const CONFIG = {
     // breached cross-fence here, same trick northTransition already uses —
     // exact same value the old CONFIG.map.north used to be.
     siloTransition: -51.6,
-    // v0.22.01-EAST: the first expansion that pushes a SIDE boundary instead
-    // of the north edge -- east used to stop at 31.2 (still the value below).
-    // Rather than widen the whole north/south span, the new ground is a
-    // bump-out along the east edge, open only between eastBumpNorth and
-    // eastBumpSouth (see buildFences); everywhere else the map is exactly as
-    // wide as it always was.
+    // v0.29 extends the existing east wing all the way to the north boundary.
+    // eastTransition remains the old boundary so the west gate into the new
+    // barn yard can share Silo Row's fence line.
     eastTransition: 31.2,
-    eastBumpSouth: 25, eastBumpNorth: -51,
+    eastBumpSouth: 25, eastBumpNorth: -80,
     catwalkY: 3.5
   },
   enemy: {
-    // v0.22.01-EAST: the corn maze + horse stable add roughly +20% to the
-    // farm's developed footprint (see the buildCornMaze/buildHorseStable
-    // comments in LEVEL). v0.27 adds two more safe surface markers and raises
-    // the active roster from 10/13/16/19 to 12/16/20/23 for one through four
-    // players: +2 solo, +3 duo, and +4 for the larger crews.
-    count: 12,
+    // v0.29's north barn adds another large, two-level encounter space. Two
+    // enemies are reserved for it while the previous farm roster stays intact.
+    count: 14,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
     coopPerExtraPlayer: 4,
-    coopMax: 23,
+    coopMax: 25,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -3191,6 +3185,16 @@ const LEVEL = (() => {
       [
         [20, -46], [16, -48], [11, -50], [10, -53],            // feed shelter through the east
         [7, -57], [4, -61], [2, -64], [2, -67]                  // breach, orchard to silo base
+      ],
+      [
+        [48, -46], [48, -51], [48, -55], [48, -60], [48, -66]  // stable through south barn doors
+      ],
+      [
+        [30.5, -66], [35, -66], [39, -64], [43, -61], [48, -60] // Silo Row gate into barn
+      ],
+      [
+        [38, -53], [34, -48], [36, -43], [42, -40], [48, -40], // fenced yard loop around stable
+        [56, -41], [61, -46], [60, -52], [57, -54]
       ]
     ];
     routes.forEach(route => {
@@ -3323,10 +3327,9 @@ const LEVEL = (() => {
     const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
     const b = new PRIM.Batch(woodMat, 0.04);
     const M = CONFIG.map;
-    // v0.22.01-EAST: the east wing's bump-out range -- the existing 30/30.5
-    // decorative fence below (already continuous the whole north/south
-    // length) reads as the interior "old boundary" divider within this
-    // z-band for free; only the far outer fence + two caps are new.
+    // v0.29 carries the east wing from the corn maze to the farm's north
+    // boundary. Its old-boundary divider now contains a dedicated barn-yard
+    // gate in addition to the stable gate below.
     const bumpS = M.eastBumpSouth, bumpN = M.eastBumpNorth, oldEast = M.eastTransition;
 
     // perimeter, bowed so nothing reads as a square arena
@@ -3370,9 +3373,15 @@ const LEVEL = (() => {
     fenceRun(b, 8, M.siloTransition, -14, M.siloTransition, { bow: -0.35, wall: true });
     fenceRun(b, -20, M.siloTransition, -30, M.siloTransition, { bow: 0.3, wall: true });
 
-    // Silo Row approach: fresh outer perimeter continuing both sides from the
-    // old boundary to the new one, plus a new north cap.
-    fenceRun(b, 30.5, M.siloTransition, 30.5, M.north, { bow: 0.7, wall: true });
+    // Silo Row approach. The east run is split around a second broad, open
+    // barn-yard gate at z=-66; there is deliberately no collider in its gap.
+    const BARN_WEST_GATE_Z = -66;
+    const BARN_WEST_GATE_HALF = 3.6;
+    fenceRun(b, 30.5, M.siloTransition, 30.5,
+      BARN_WEST_GATE_Z + BARN_WEST_GATE_HALF, { bow: 0.25, wall: true });
+    fenceRun(b, 30.5, BARN_WEST_GATE_Z - BARN_WEST_GATE_HALF,
+      30.5, M.north, { bow: 0.25, wall: true });
+    addBoundaryGatePosts(BARN_WEST_GATE_Z, BARN_WEST_GATE_HALF);
     fenceRun(b, -30.5, M.siloTransition, -30.5, M.north, { bow: -0.7, wall: true });
     fenceRun(b, 30.5, M.north, -30.5, M.north, { bow: 1.0, wall: true });
 
@@ -3394,14 +3403,29 @@ const LEVEL = (() => {
     fenceRun(b, 11, 9, 24, 9.5, { bow: -1.1 });
     fenceRun(b, 24, 9.5, 24, 21, { bow: 1.0 });
 
-    // East wing: fresh outer perimeter for the corn-maze/horse-stable ground,
-    // plus two short caps sealing it back to the old boundary -- same "walk
-    // through the old cross-fence into fresh outer fencing" language as
-    // siloTransition/northTransition above, just running east/west instead
-    // of north/south.
+    // East wing: the outer perimeter now continues north around the new barn.
+    // The south cap still closes the corn-maze parcel; the north cap joins the
+    // Silo Row fence instead of ending at the former stable boundary.
     fenceRun(b, M.east, bumpS, M.east, bumpN, { bow: 0.6, wall: true });
     fenceRun(b, oldEast, bumpS, M.east, bumpS, { bow: -0.4, wall: true });
-    fenceRun(b, oldEast, bumpN, M.east, bumpN, { bow: 0.4, wall: true });
+    fenceRun(b, 30.5, bumpN, M.east, bumpN, { bow: 0.4, wall: true });
+
+    // A cross-fence just north of the maze encloses the stable and North Barn
+    // as one readable yard. Its 7.6 m center opening is the first new access
+    // gate; the z=-66 Silo Row opening above is the second.
+    const BARN_SOUTH_FENCE_Z = -40.2;
+    const BARN_SOUTH_GATE_X = 48;
+    const BARN_SOUTH_GATE_HALF = 3.8;
+    fenceRun(b, oldEast, BARN_SOUTH_FENCE_Z,
+      BARN_SOUTH_GATE_X - BARN_SOUTH_GATE_HALF, BARN_SOUTH_FENCE_Z,
+      { bow: -0.2, wall: true });
+    fenceRun(b, BARN_SOUTH_GATE_X + BARN_SOUTH_GATE_HALF, BARN_SOUTH_FENCE_Z,
+      M.east, BARN_SOUTH_FENCE_Z, { bow: 0.2, wall: true });
+    [-1, 1].forEach(side => {
+      const x = BARN_SOUTH_GATE_X + side * (BARN_SOUTH_GATE_HALF - 0.35);
+      b.box(0.24, 1.75, 0.24, x, 0.875, BARN_SOUTH_FENCE_Z, 0, 0, 0, 0.02);
+      WORLD.addFloor(x, 0, BARN_SOUTH_FENCE_Z, 0.34, 1.75, 0.34, 'fence_gatepost');
+    });
     b.build(parent);
 
     // No second hand-authored fence/bounds layer: all perimeter, transition,
@@ -4212,13 +4236,249 @@ const LEVEL = (() => {
     PROPS.hayBale(parent, CX - HW + 1.0, 0, CZ, -0.15);
     PROPS.hayBale(parent, CX + HW - 1.2, 0, CZ + HD - 1.2, 0.3);
     PROPS.crate(parent, CX + HW - 1.0, 0, CZ - HD + 1.4, 0.95, -0.3);
-    PROPS.barrel(parent, CX, CZ - HD + 1.0, { color: PAL.rust });
+    // Keep the new south-to-north barn lane open through the stable center.
+    PROPS.barrel(parent, CX + HW + 2.5, CZ - HD + 0.5, { color: PAL.rust });
     PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ - HD + 0.4, 0);
     PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ + HD - 0.4, 0);
-    PROPS.signPost(parent, CX, CZ - HD - 1.6, ['HORSE STABLE'], 0,
+    // Shifted west so the straight stable-to-North-Barn route stays clear.
+    PROPS.signPost(parent, CX - 7.0, CZ - HD - 1.2, ['HORSE STABLE'], 0.15,
       { w: 2.0, h: 0.8, bg: PAL.cream, fg: PAL.rustDeep, postH: 1.6 });
 
     WORLD.addSpawn(CX, 0, CZ, 'horse_stable');
+  }
+
+  /* ---------------- v0.29: North Barn ----------------
+     30 x 24 m = 720 m², versus the original barn's 16 x 14 m / 224 m²
+     footprint: 3.21x as large. The full upper deck is interrupted only by a
+     generous stairwell, so both levels are real combat and exploration space. */
+  function buildNorthBarn(parent) {
+    const X0 = 33, X1 = 63, Z0 = -79, Z1 = -55;
+    const CX = 48, CZ = -67, WALL = 0.48, TOP = 8.0, RIDGE = 12.6;
+    const UPPER_Y = 4.2;
+    const red = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 4) });
+    const shell = new PRIM.Batch(red, 0.055);
+
+    // South face: a broad double-door opening on the stable route.
+    shell.box(11.2, TOP, WALL, 38.6, TOP / 2, Z1, 0, 0, 0, 0.035);
+    shell.box(11.2, TOP, WALL, 57.4, TOP / 2, Z1, 0, 0, 0, 0.035);
+    shell.box(7.6, 3.0, WALL, CX, 6.5, Z1, 0, 0, 0, 0.03);
+    WORLD.add(38.6, TOP / 2, Z1, 11.2, TOP, WALL + 0.2, 'north_barn');
+    WORLD.add(57.4, TOP / 2, Z1, 11.2, TOP, WALL + 0.2, 'north_barn');
+    WORLD.add(CX, 6.5, Z1, 7.6, 3.0, WALL + 0.2, 'north_barn_header');
+
+    // West face: the side door lines up exactly with the open Silo Row gate.
+    shell.box(WALL, TOP, 10.0, X0, TOP / 2, -74.0, 0, 0, 0, 0.035);
+    shell.box(WALL, TOP, 8.0, X0, TOP / 2, -59.0, 0, 0, 0, 0.035);
+    shell.box(WALL, 3.0, 6.0, X0, 6.5, -66.0, 0, 0, 0, 0.03);
+    WORLD.add(X0, TOP / 2, -74.0, WALL + 0.2, TOP, 10.0, 'north_barn');
+    WORLD.add(X0, TOP / 2, -59.0, WALL + 0.2, TOP, 8.0, 'north_barn');
+    WORLD.add(X0, 6.5, -66.0, WALL + 0.2, 3.0, 6.0, 'north_barn_header');
+
+    // Solid rear and east walls shelter the future crafting corner upstairs.
+    shell.box(30.0, TOP, WALL, CX, TOP / 2, Z0, 0, 0, 0, 0.035);
+    shell.box(WALL, TOP, 24.0, X1, TOP / 2, CZ, 0, 0, 0, 0.035);
+    WORLD.add(CX, TOP / 2, Z0, 30.0, TOP, WALL + 0.2, 'north_barn');
+    WORLD.add(X1, TOP / 2, CZ, WALL + 0.2, TOP, 24.0, 'north_barn');
+
+    // Stepped gables preserve the game's hand-built cartoon silhouette.
+    const rise = RIDGE - TOP, gableSteps = 7;
+    for (let i = 0; i < gableSteps; i++) {
+      const w = 30 * (1 - (i + 0.4) / gableSteps);
+      const y = TOP + (i + 0.5) * (rise / gableSteps);
+      shell.box(w, rise / gableSteps + 0.03, WALL, CX, y, Z0, 0, 0, 0, 0.025);
+      shell.box(w, rise / gableSteps + 0.03, WALL, CX, y, Z1, 0, 0, 0, 0.025);
+    }
+    shell.build(parent);
+
+    // Deep charcoal roof, pitched across the full 30 m span.
+    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 5) });
+    const roof = new PRIM.Batch(roofMat, 0.06);
+    const roofAngle = Math.atan2(rise, 15);
+    const roofSlope = Math.hypot(15, rise) + 0.8;
+    roof.box(roofSlope, 0.42, 25.0, 40.5, TOP + rise / 2, CZ, 0, 0, roofAngle, 0.035);
+    roof.box(roofSlope, 0.42, 25.0, 55.5, TOP + rise / 2, CZ, 0, 0, -roofAngle, 0.035);
+    roof.box(0.8, 0.6, 25.2, CX, RIDGE + 0.12, CZ, 0, 0, 0, 0.025);
+    roof.build(parent);
+
+    // Weathered sliding doors sit open against the wall; neither occupies the
+    // doorway collider gap. The side door uses the same treatment.
+    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const doors = new PRIM.Batch(doorMat, 0.045);
+    doors.box(3.25, 4.75, 0.16, 42.25, 2.4, Z1 - 0.18, 0, 0, 0.025, 0.025);
+    doors.box(3.25, 4.75, 0.16, 53.75, 2.4, Z1 - 0.18, 0, 0, -0.025, 0.025);
+    doors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -70.35, 0, 0, 0.02, 0.025);
+    doors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -61.65, 0, 0, -0.02, 0.025);
+    doors.build(parent);
+    WORLD.addFloor(42.25, 0, Z1 - 0.18, 3.25, 4.75, 0.38, 'north_barn_door');
+    WORLD.addFloor(53.75, 0, Z1 - 0.18, 3.25, 4.75, 0.38, 'north_barn_door');
+    WORLD.addFloor(X0 - 0.18, 0, -70.35, 0.38, 4.7, 2.45, 'north_barn_door');
+    WORLD.addFloor(X0 - 0.18, 0, -61.65, 0.38, 4.7, 2.45, 'north_barn_door');
+
+    // Ground boards plus a nearly full second floor. The southeast cut-out is
+    // a real stairwell, not an invisible teleport or ladder.
+    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 6) });
+    const floor = new PRIM.Batch(floorMat, 0);
+    floor.plane(29.4, 23.4, CX, 0.025, CZ, -Math.PI / 2, 0, 0);
+    floor.build(parent, { ray: false });
+
+    const upperMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 5) });
+    const upper = new PRIM.Batch(upperMat, 0.045);
+    upper.box(29.2, 0.32, 13.2, CX, UPPER_Y - 0.16, -72.0, 0, 0, 0, 0.02);
+    upper.box(22.2, 0.32, 9.0, 44.5, UPPER_Y - 0.16, -60.0, 0, 0, 0, 0.02);
+    // Structural posts and cross-beams also provide useful ground-floor cover.
+    [[36, -64.8], [48, -64.8], [55.3, -64.8], [36, -76], [48, -76], [60, -76]].forEach(p => {
+      upper.box(0.34, UPPER_Y - 0.2, 0.34, p[0], (UPPER_Y - 0.2) / 2, p[1], 0, 0, 0, 0.018);
+      WORLD.addFloor(p[0], 0, p[1], 0.5, UPPER_Y - 0.2, 0.5, 'north_barn_post');
+    });
+    upper.box(26.0, 0.32, 0.34, CX - 1.0, UPPER_Y - 0.48, -65.2, 0, 0, 0, 0.018);
+
+    // Twelve broad steps rise north into the upper deck.
+    for (let i = 0; i < 12; i++) {
+      const top = (i + 1) * (UPPER_Y / 12);
+      const z = -56.2 - i * 0.82;
+      upper.box(3.6, top, 0.86, 59.0, top / 2, z, 0, 0, 0, 0.012);
+      WORLD.addFloor(59.0, 0, z, 3.6, top, 0.86, 'north_barn_stair');
+    }
+    // West edge of the stair opening: continuous rail, open at both ends.
+    for (let z = -64.2; z <= -57.0; z += 1.45) {
+      upper.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
+    }
+    upper.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
+    upper.build(parent);
+    WORLD.addFloor(CX, UPPER_Y - 0.32, -72.0, 29.2, 0.32, 13.2, 'north_barn_upper');
+    WORLD.addFloor(44.5, UPPER_Y - 0.32, -60.0, 22.2, 0.32, 9.0, 'north_barn_upper');
+    WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+
+    // A chunky, deliberately old tractor. The stripped variant omits its hood
+    // and front wheels, exposing an engine block and loose axle parts.
+    function oldTractor(x, z, rotation, stripped) {
+      const g = new THREE.Group();
+      g.position.set(x, 0, z); g.rotation.y = rotation || 0;
+      const bodyMat = MAT.toon(stripped ? PAL.blueGrayDk : PAL.oliveDeep, { map: TEX.metal() });
+      const metalMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      const tireMat = MAT.toon(PAL.charcoal);
+      const tb = new PRIM.Batch(bodyMat, 0.045);
+      tb.box(2.0, 0.72, 2.1, 0, 1.05, 0.25, 0, 0, 0, 0.025);
+      if (!stripped) tb.box(1.55, 0.9, 2.35, 0, 1.2, -1.75, 0, 0, -0.03, 0.025);
+      tb.box(1.3, 0.25, 1.0, 0, 1.88, 0.38, 0, 0, 0.02, 0.02);
+      tb.box(0.22, 1.5, 0.22, -0.72, 2.1, 0.55, 0, 0, -0.08, 0.015);
+      tb.build(g);
+      PRIM.box(1.25, 0.65, 1.15, metalMat,
+        { pos: [0, 1.13, -1.65], parent: g, outline: 0.04, warp: 0.02 });
+      PRIM.cyl(0.11, 0.14, 1.35, 8, metalMat,
+        { pos: [0.52, 2.05, -1.4], rot: [0, 0, -0.06], parent: g, outline: 0.03 });
+      const wheel = (wx, wy, wz, r, width) => PRIM.cyl(r, r, width, 12, tireMat,
+        { pos: [wx, wy, wz], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.05 });
+      wheel(-1.15, 0.85, 0.7, 0.85, 0.38); wheel(1.15, 0.85, 0.7, 0.85, 0.38);
+      if (!stripped) {
+        wheel(-0.92, 0.55, -2.1, 0.55, 0.3); wheel(0.92, 0.55, -2.1, 0.55, 0.3);
+      } else {
+        PRIM.box(2.3, 0.16, 0.16, metalMat,
+          { pos: [0, 0.48, -2.05], parent: g, outline: 0.03 });
+      }
+      parent.add(g);
+      PROPS.blobShadow(g, 0, 0, 2.0, 3.0);
+      WORLD.addFloor(x, 0, z, 3.2, 2.9, 5.6, stripped ? 'tractor_parts' : 'old_tractor');
+      return g;
+    }
+    oldTractor(38.5, -61.0, 0.06, false);
+    oldTractor(51.5, -73.0, -0.12, true);
+
+    // Hay storage on both floors, kept out of the central door lane and stair.
+    [[35.6, 0, -57.2, 0.1], [37.0, 0, -57.5, -0.2], [35.8, 0.85, -57.5, 0.05],
+     [42.0, 0, -76.8, 0.2], [43.4, 0, -76.7, -0.1], [42.6, 0.85, -76.8, 0.1],
+     [60.4, 0, -68.3, -0.2], [60.4, 0.85, -68.3, 0.15],
+     [35.8, UPPER_Y, -76.5, 0.1], [37.2, UPPER_Y, -76.4, -0.15],
+     [36.5, UPPER_Y + 0.85, -76.5, 0.05], [46.0, UPPER_Y, -68.0, 0.2],
+     [47.4, UPPER_Y, -68.0, -0.15], [46.7, UPPER_Y + 0.85, -68.0, 0.05],
+     [36.0, UPPER_Y, -58.0, -0.2], [37.4, UPPER_Y, -58.2, 0.1]]
+      .forEach(h => PROPS.hayBale(parent, h[0], h[1], h[2], h[3]));
+
+    // Tool rack: pitchfork, rake and shovel silhouettes against the east wall.
+    const tools = new THREE.Group();
+    tools.position.set(62.2, 0, -61.5);
+    const handleMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const toolMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    [-1.1, 0, 1.1].forEach((z, i) => {
+      PRIM.cyl(0.045, 0.045, 2.3, 7, handleMat,
+        { pos: [0, 1.15, z], rot: [0, 0, (i - 1) * 0.09], parent: tools, outline: 0.025 });
+    });
+    const toolBits = new PRIM.Batch(toolMat, 0.025);
+    toolBits.box(0.12, 0.55, 0.62, 0, 2.38, -1.1, 0, 0, 0.12);
+    toolBits.box(0.12, 0.12, 0.9, 0, 2.32, 0, 0, 0, -0.08);
+    [-0.36, -0.12, 0.12, 0.36].forEach(o => toolBits.box(0.08, 0.42, 0.08, 0, 2.52, o));
+    toolBits.box(0.12, 0.5, 0.5, 0, 2.4, 1.1, 0, 0, -0.12);
+    toolBits.build(tools);
+    parent.add(tools);
+
+    // Loose parts, crates and barrels break up long sightlines inside and out.
+    [[44.2, 0, -58.4, 1.05, 0.2], [60.0, 0, -76.4, 1.1, -0.2],
+     [35.5, 0, -72.4, 0.95, 0.1], [54.0, UPPER_Y, -76.0, 0.9, -0.15],
+     [41.0, UPPER_Y, -58.0, 1.0, 0.2]]
+      .forEach(c => PROPS.crate(parent, c[0], c[1], c[2], c[3], c[4]));
+    PROPS.barrel(parent, 60.3, -58.0, { color: PAL.rust });
+    PROPS.barrel(parent, 36.0, -70.0, { color: PAL.blueDeep });
+    PROPS.barrel(parent, 52.0, -58.0, { color: PAL.oliveDeep });
+    const parts = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.035);
+    parts.box(2.4, 0.72, 1.4, 57.8, 0.36, -62.0, 0, 0.3, 0.04, 0.02);
+    parts.box(1.7, 0.35, 1.0, 55.8, 0.18, -63.2, 0.08, -0.2, 0.03, 0.015);
+    parts.cyl(0.62, 0.62, 0.34, 12, 60.2, 0.64, -63.0, 0, 0, Math.PI / 2);
+    parts.cyl(0.5, 0.5, 0.3, 12, 34.8, 0.5, -52.0, Math.PI / 2, 0, 0);
+    parts.box(2.0, 0.55, 1.2, 59.0, 0.28, -48.2, 0, -0.18, 0.04, 0.02);
+    parts.build(parent);
+    WORLD.addFloor(57.8, 0, -62.4, 4.3, 0.9, 3.0, 'tractor_parts');
+    WORLD.addFloor(34.8, 0, -52.0, 1.3, 1.1, 1.3, 'tractor_wheel');
+    WORLD.addFloor(59.0, 0, -48.2, 2.3, 0.65, 1.5, 'yard_cover');
+
+    // Back-right upper corner: a deliberately dormant future crafting station.
+    const station = new THREE.Group();
+    station.position.set(58.3, UPPER_Y, -76.7);
+    station.name = 'NorthBarnFutureCraftingStation';
+    station.userData = {
+      id: 'north_barn_workbench', craftingStation: true,
+      status: 'offline', feature: 'special_weapons_coming_later'
+    };
+    const benchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const computerMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const wb = new PRIM.Batch(benchMat, 0.04);
+    wb.box(5.2, 0.18, 1.45, 0, 1.02, 0, 0, 0, 0.01, 0.018);
+    [[-2.25, -0.55], [2.25, -0.55], [-2.25, 0.55], [2.25, 0.55]].forEach(p =>
+      wb.box(0.18, 1.0, 0.18, p[0], 0.5, p[1], 0, 0, 0, 0.012));
+    wb.box(5.0, 0.14, 0.22, 0, 1.85, -0.55, 0, 0, 0, 0.012);
+    wb.build(station);
+    PRIM.box(1.45, 0.95, 0.72, computerMat,
+      { pos: [-0.6, 1.65, -0.05], parent: station, outline: 0.045, warp: 0.018 });
+    const screenTex = TEX.sign(['CRAFTING', 'OFFLINE'], PAL.oliveDeep, PAL.jaysLight, 256, 144);
+    PRIM.box(1.16, 0.62, 0.06, MAT.flat(0xffffff, { map: screenTex }),
+      { pos: [-0.6, 1.66, 0.34], parent: station, outline: 0.025, ray: false });
+    PRIM.box(1.25, 0.09, 0.52, computerMat,
+      { pos: [-0.6, 1.19, 0.52], rot: [-0.08, 0, 0], parent: station, outline: 0.03 });
+    PRIM.box(0.78, 1.15, 0.7, computerMat,
+      { pos: [1.55, 1.62, -0.05], parent: station, outline: 0.04, warp: 0.015 });
+    const glow = new THREE.PointLight(0x9BC75A, 0.55, 4.5, 2);
+    glow.position.set(-0.6, 1.65, 0.5); station.add(glow);
+    parent.add(station);
+    WORLD.addFloor(58.3, UPPER_Y, -76.7, 5.4, 1.12, 1.65, 'future_crafting_bench');
+    PROPS.lantern(parent, 58.3, UPPER_Y + 3.1, -75.8, 0.45);
+
+    // Cover outside the shell makes both gates defensible without blocking
+    // either 7+ metre route.
+    PROPS.hayBale(parent, 36.0, 0, -45.0, 0.2);
+    PROPS.hayBale(parent, 37.4, 0, -45.1, -0.15);
+    PROPS.hayBale(parent, 36.7, 0.85, -45.0, 0.05);
+    PROPS.crate(parent, 61.0, 0, -43.5, 1.15, 0.2);
+    PROPS.crate(parent, 61.0, 1.15, -43.5, 0.9, -0.1);
+    PROPS.barrel(parent, 56.8, -52.0, { color: PAL.mustardDk });
+    PROPS.signPost(parent, 39.2, -53.0, ['NORTH BARN', '2 FLOORS'], 0.12,
+      { w: 2.1, h: 0.95, bg: PAL.cream, fg: PAL.rustDeep, postH: 1.7 });
+
+    // Two barn enemies are explicitly reserved in ENEMY.spawnAdditional;
+    // the remaining markers support larger co-op/Ultra rosters.
+    WORLD.addSpawn(43.0, 0, -62.0, 'north_barn_ground_west');
+    WORLD.addSpawn(54.5, 0, -69.0, 'north_barn_ground_east');
+    WORLD.addSpawn(42.0, UPPER_Y, -73.5, 'north_barn_upper_west');
+    WORLD.addSpawn(51.0, UPPER_Y, -69.5, 'north_barn_upper_center');
+    WORLD.addSpawn(58.0, 0, -51.0, 'north_barn_yard_east');
   }
 
   /* ---------------- Silo Row: orchard approach ----------------
@@ -5379,6 +5639,7 @@ const LEVEL = (() => {
     buildNorthPasture(root);
     buildCornMaze(root);
     buildHorseStable(root);
+    buildNorthBarn(root);
     buildOrchard(root);
     buildSilo(root);
     buildCatwalks(root);
@@ -5450,13 +5711,16 @@ const MAPVIEW = (() => {
     [30, 32, 30.5, 21.75], [30.5, 15.25, 30.5, -43.15],
     [30.5, -48.85, 30.5, -51.6], [-30, -51.6, -30.5, 32],
     [30.5, -51.6, 14, -51.6], [8, -51.6, -14, -51.6], [-20, -51.6, -30, -51.6],
-    [30.5, -51.6, 30.5, -80], [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
+    [30.5, -51.6, 30.5, -62.4], [30.5, -69.6, 30.5, -80],
+    [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
     [30.5, -32, 14, -32], [8, -32, -14, -32], [-20, -32, -30, -32],
     [-8, 24, -12, 14], [9, 25, 13, 20],
     [4, 4, 4, -1], [11, 9, 24, 9.5], [24, 9.5, 24, 21],
-    // East wing (see buildFences' bumpS/bumpN/oldEast) -- fresh outer
-    // perimeter plus the two caps sealing it to the old boundary.
-    [65, 25, 65, -51], [31.2, 25, 65, 25], [31.2, -51, 65, -51]
+    // East wing now reaches the north boundary. The split cross-fence at
+    // z=-40.2 is the southern North Barn gate; the split x=30.5 run above is
+    // its Silo Row gate.
+    [65, 25, 65, -80], [31.2, 25, 65, 25], [30.5, -80, 65, -80],
+    [31.2, -40.2, 44.2, -40.2], [51.8, -40.2, 65, -40.2]
   ];
 
   const STRUCTURES = [
@@ -5465,7 +5729,8 @@ const MAPVIEW = (() => {
     { shape: 'circle', x: -17, z: -6.75, r: 2.6, label: 'Water Tower' },
     { shape: 'circle', x: -6, z: -26, r: 2.2, label: 'Windmill' },
     { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' },
-    { shape: 'rect', x: 43, z: -51, x2: 53, z2: -41, label: 'Horse Stable' }
+    { shape: 'rect', x: 43, z: -51, x2: 53, z2: -41, label: 'Horse Stable' },
+    { shape: 'rect', x: 33, z: -79, x2: 63, z2: -55, label: 'North Barn' }
   ];
 
   // Bounding outline of the corn maze (see buildCornMaze) -- drawn as a
@@ -5483,7 +5748,8 @@ const MAPVIEW = (() => {
     { x: 9.4, z: -35, label: 'North Pasture' },
     { x: -21.5, z: -35, label: 'Back Forty' },
     { x: -25, z: -25, label: 'Condemned Ruin' },
-    { x: 12.4, z: 10.2, label: 'Corn Field' }
+    { x: 12.4, z: 10.2, label: 'Corn Field' },
+    { x: 58.3, z: -76.7, label: 'Craft Bench (Offline)' }
   ];
 
   // Surface<->basement entrances -- same HATCHES array buildBasement reads,
@@ -10957,7 +11223,16 @@ const PICKUP = (() => {
     { id: 'grenadeBundle', x: 54.5, z: 14.5 },     // maze, south-east lane
     { id: 'shellBox', x: 45.5, z: -46.0 },         // horse stable, west stall
     { id: 'batteryPack', x: 51.5, z: -46.0 },      // horse stable, east stall
-    { id: 'shieldCell', x: 48.0, z: -46.0 }        // horse stable: the reward for reaching the north end
+    { id: 'shieldCell', x: 48.0, z: -46.0 },       // horse stable: the reward for reaching the north end
+
+    // v0.29 North Barn: resources on both floors plus the two-gate yard.
+    { id: 'shellBox', x: 44.0, z: -58.0 },
+    { id: 'carbineAmmo', x: 60.0, z: -60.0 },
+    { id: 'grenadeBundle', x: 35.0, z: -49.0 },
+    { id: 'healthTonic', x: 40.0, y: 4.2, z: -74.0 },
+    { id: 'batteryPack', x: 50.0, y: 4.2, z: -76.0 },
+    { id: 'shieldCell', x: 52.0, y: 4.2, z: -59.0 },
+    { id: 'jaysPack', x: 60.0, y: 4.2, z: -69.0 }
   ];
 
   function define(id, def) {
@@ -14687,9 +14962,9 @@ const ENEMY = (() => {
   const usedMarkerKinds = new Set();
 
   /* Spreads the cast across the spawn markers the level already publishes.
-     Maze markers are selected first so the solo enemy budget
-     cannot starve them merely because they were authored later in the file;
-     the remaining budget still reserves every available basement marker.
+     v0.29 reserves two North Barn markers, then keeps the previous maze and
+     basement reservations. The two-enemy roster increase therefore populates
+     the expansion without silently emptying an older encounter space.
      Fills up to `targetTotal` non-boss enemies total (not `targetTotal`
      *more* -- safe to call again with a bigger number to top up an already-
      populated roster). */
@@ -14699,12 +14974,16 @@ const ENEMY = (() => {
     const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard' && !usedMarkerKinds.has(m.kind));
     const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
     const mazeMarkers = eligible.filter(m => /^corn_maze_/.test(m.kind));
+    const northBarnMarkers = eligible.filter(m => /^north_barn_/.test(m.kind));
     const surfaceMarkers = eligible.filter(m =>
-      (m.layerId || 'surface') !== 'basement' && !/^corn_maze_/.test(m.kind));
-    const mazeReserve = Math.min(mazeMarkers.length, need);
-    const basementReserve = Math.min(basementMarkers.length, need - mazeReserve);
-    const surfaceSlots = Math.max(0, need - mazeReserve - basementReserve);
-    const markers = mazeMarkers.slice(0, mazeReserve)
+      (m.layerId || 'surface') !== 'basement' &&
+      !/^corn_maze_/.test(m.kind) && !/^north_barn_/.test(m.kind));
+    const northBarnReserve = Math.min(2, northBarnMarkers.length, need);
+    const mazeReserve = Math.min(mazeMarkers.length, need - northBarnReserve);
+    const basementReserve = Math.min(basementMarkers.length, need - northBarnReserve - mazeReserve);
+    const surfaceSlots = Math.max(0, need - northBarnReserve - mazeReserve - basementReserve);
+    const markers = northBarnMarkers.slice(0, northBarnReserve)
+      .concat(mazeMarkers.slice(0, mazeReserve))
       .concat(surfaceMarkers.slice(0, surfaceSlots))
       .concat(basementMarkers.slice(0, basementReserve));
     markers.forEach(m => {
@@ -17315,7 +17594,7 @@ const COOP = (() => {
     try {
       next = peer.connect(code, {
         reliable: true, serialization: 'json',
-        metadata: { game: 'wf-html-tester', version: '0.08.00', characterId: requestedCharacterId }
+        metadata: { game: 'wf-html-tester', version: BUILD.version, characterId: requestedCharacterId }
       });
     } catch (err) {
       failJoin(peerErrorText(err));

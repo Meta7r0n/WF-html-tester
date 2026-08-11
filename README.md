@@ -4,27 +4,30 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.28`
-- **Working branch:** `A-test-v0.28-README-CANVAS-BOSS-PRELOAD`
-- **Baseline:** `A-test-v0.27-BOSS-HITBOX-SPAWN-SCALE`
+- **Current alpha:** `v0.29`
+- **Working branch:** `A-test-v0.29-EAST-NORTH-BARN-EXPANSION`
+- **Baseline:** `A-test-v0.28-README-CANVAS-BOSS-PRELOAD`
 
-## What changed in v0.28
+## What changed in v0.29
 
-- Replaced the obsolete v0.07 README with current setup, gameplay, controls,
-  multiplayer, boss, and testing documentation.
-- Standardized the browser title and every menu card on `v0.28`.
-- Locked the WebGL canvas to the fixed app shell. CSS now controls its visible
-  size while Three.js changes only the drawing buffer, preventing fractional
-  viewport measurements from creating page-level scrollbars.
-- Added resize coverage for desktop resizing, orientation changes, mobile
-  visual viewport changes, and app-shell `ResizeObserver` changes.
-- Starts loading all four mini-boss models as soon as the renderer is ready,
-  in parallel with construction of the farm.
-- GPU-warms every boss model in a tiny off-screen render target so shader,
-  geometry, material, and texture setup happens during startup instead of on
-  an encounter frame.
-- Builds the Carrot Warden, Bear Claw, and Beat Slayer encounter rigs at
-  startup and parks them hidden/non-raycastable until their spawn thresholds.
+- Extended the east wing north from the horse stable to the farm boundary.
+- Added the two-floor **North Barn**, with a `30 × 24 m` (`720 m²`) footprint.
+  That is 3.21 times the original barn's `16 × 14 m` (`224 m²`) footprint.
+- Added broad south and west doors, a twelve-step interior staircase, a nearly
+  full upper floor, railings, structural cover, and clear routes on both levels.
+- Filled the barn with stacked hay, crates, barrels, old tools, one intact old
+  tractor, one stripped tractor, and loose engines, axles, wheels, and parts.
+- Added an explicitly dormant crafting station in the rear upper corner. Its
+  workbench, CRT computer, keyboard, tower, light, map POI, and metadata are in
+  place for special-weapon crafting in a later build.
+- Enclosed the stable/North Barn yard with fencing and two wide, collider-free
+  gates: a south entrance from the corn-maze route and a west entrance from
+  Silo Row. Exterior hay, crates, barrels, and machinery provide added cover.
+- Added North Barn pickups and spawn markers, reserving two of the new markers
+  in normal encounters. Enemy targets are now 14/18/22/25 for one to four
+  co-op players.
+- Updated the in-game farm map, browser/menu version labels, and documentation
+  for `v0.29`.
 
 ## Run the game
 
@@ -34,7 +37,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.28-README-CANVAS-BOSS-PRELOAD
+git switch A-test-v0.29-EAST-NORTH-BARN-EXPANSION
 python3 -m http.server 8000
 ```
 
@@ -57,8 +60,8 @@ joining clients. GitHub Pages remains a static client host.
 
 ## Current run
 
-- Explore the surface farm, barn, corn maze, stable, silo region, vertical
-  routes, and underground network.
+- Explore the surface farm, original barn, corn maze, stable, two-floor North
+  Barn, silo region, vertical routes, and underground network.
 - Fight four regular enemy roles with different sight, range, damage, and
   behavior rules.
 - Collect weapons, ammo, throwables, buffs, Jays healing items, and boss drops.
