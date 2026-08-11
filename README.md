@@ -1,89 +1,191 @@
-# WF-html-tester
+# The Withered Farm
 
-## v0.07.00 Co-op Foundation
+Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
+single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
+modes.
 
-The current build opens on a mode menu with:
+- **Current alpha:** `v0.28`
+- **Working branch:** `A-test-v0.28-README-CANVAS-BOSS-PRELOAD`
+- **Baseline:** `A-test-v0.27-BOSS-HITBOX-SPAWN-SCALE`
 
-- **Single-player** — the complete v0.06.08-BM farm run.
-- **Online co-op** — a two-player direct WebRTC lobby. One player hosts, the
-  other joins, and they share a short room code through the lobby. Once
-  connected, both clients see the other farmhand and gunfire is relayed
-  through the host before being resolved locally.
+## What changed in v0.28
 
-The GitHub Pages client remains static. PeerJS Cloud handles only the initial
-WebRTC signaling handshake; gameplay data still travels peer-to-peer after the
-connection opens. The transport seam can later point at a Lobster Labz-owned
-PeerServer, while the shared enemy simulation can move to an authoritative
-match server in a later multiplayer milestone.
+- Replaced the obsolete v0.07 README with current setup, gameplay, controls,
+  multiplayer, boss, and testing documentation.
+- Standardized the browser title and every menu card on `v0.28`.
+- Locked the WebGL canvas to the fixed app shell. CSS now controls its visible
+  size while Three.js changes only the drawing buffer, preventing fractional
+  viewport measurements from creating page-level scrollbars.
+- Added resize coverage for desktop resizing, orientation changes, mobile
+  visual viewport changes, and app-shell `ResizeObserver` changes.
+- Starts loading all four mini-boss models as soon as the renderer is ready,
+  in parallel with construction of the farm.
+- GPU-warms every boss model in a tiny off-screen render target so shader,
+  geometry, material, and texture setup happens during startup instead of on
+  an encounter frame.
+- Builds the Carrot Warden, Bear Claw, and Beat Slayer encounter rigs at
+  startup and parks them hidden/non-raycastable until their spawn thresholds.
 
-### First co-op test
+## Run the game
 
-1. Open the build in two browser tabs or devices.
-2. On the first, choose **Online co-op → Host room →** and wait for the six-character room code.
-3. Share that one code with the second screen (the **Share room code** button uses the phone’s share sheet when available, or copies it).
-4. On the second, choose **Online co-op → Join room →**, enter the code, and tap **Join room**.
+The deployed build can run from GitHub Pages. For local testing, serve the
+repository over HTTP so browsers can load GLB and audio files correctly:
 
-Both screens should enter the farm, show the other farmhand on the radar, and
-relay gunfire through the host. Enemy movement, pickups, revival, and shared
-completion remain single-client systems until the authoritative match layer is
-added.
+```bash
+git clone https://github.com/Meta7r0n/WF-html-tester.git
+cd WF-html-tester
+git switch A-test-v0.28-README-CANVAS-BOSS-PRELOAD
+python3 -m http.server 8000
+```
 
-## v0.07.01 Carrot Rogue Boss Visual
+Then open `http://localhost:8000/`.
 
-The Carrot Warden now loads the supplied `assets/carrot_rogue_character.glb`
-with its embedded materials and `IdleBob` / `RunCycle` animations. Boss
-collision, headshots, melee, seed blasts, radar, and the endgame trigger remain
-separate from the visual asset. If the optional loader or asset is unavailable,
-the procedural boss visual remains as a fallback.
+Opening `index.html` directly through a `file://` URL is not recommended.
 
-## v0.07.02 Co-op Lobby
+## Game modes
 
-The manual multi-kilobyte SDP offer/answer exchange has been removed from the
-normal path. Rooms now use a six-character `WF••••` code, with clear states for
-opening the lobby, waiting for a teammate, connecting, missing rooms, and
-timeouts. The prior direct game-message seam is preserved so future server
-authority can be added without changing the farm gameplay modules.
+| Mode | Players | Current behavior |
+| --- | ---: | --- |
+| Single-player | 1 | Full farm, enemy roster, bosses, drops, hero specials, and progression |
+| Online co-op | Up to 4 | Host-authoritative enemy simulation with shared farm combat |
+| Free-for-all | Up to 4 | Player-only PvP with ring spawns, scoring, kill feed, and respawns |
+| Team Deathmatch | 2 vs 2 | Team-scored PvP with friendly-fire handling |
 
-## v0.07.03 Player Cast
+Multiplayer uses PeerJS for room discovery/signaling and WebRTC data channels
+between players. The host owns the authoritative enemy state and relays it to
+joining clients. GitHub Pages remains a static client host.
 
-Co-op farmhands now use two distinct original Three.js rigs instead of the
-generic enemy silhouette. The host appears as the **Bluecap Scout** with a
-blue cap, striped scarf, patched rust shorts, bright boots, and a compact
-field rifle. The joining farmhand appears as the **Masked Runner** with a
-muted cap, tired orange-lidded eyes, gray face covering, gold chain, patched
-shorts, large rust boots, and a red backpack. Character identity, movement,
-climbing, sprinting, and dead state are sent with the existing co-op messages;
-enemy and combat logic remain separate.
+## Current run
 
-## v0.07.04 Hero Specials
+- Explore the surface farm, barn, corn maze, stable, silo region, vertical
+  routes, and underground network.
+- Fight four regular enemy roles with different sight, range, damage, and
+  behavior rules.
+- Collect weapons, ammo, throwables, buffs, Jays healing items, and boss drops.
+- Choose Normal or Ultra difficulty from the main menu.
+- Continue exploring after the first completion goal to reach later encounters.
+- Use the farm map, proximity radar, options, rebindable controls, text chat,
+  and optional push-to-talk voice chat.
 
-Single-player now opens a hero picker. The Scarf Scout gets a downed-only
-double-barrel recovery weapon: two wide-spread, high-damage shots revive the
-player at 25% health. The Masked Runner has a chainsaw-hand special that
-auto-equips at 25% health and stows after recovering above 55%. Co-op keeps its
-host/join farmhand roles.
+### Mini-boss progression
 
-Enemy spawning now uses an explicit sunflower-only roster, so playable heroes
-cannot appear as enemies. Jays pickups add a five-item consumable stack; press
-`J` (or tap **Jays** on mobile) to regenerate 5 Pep per second for five
-seconds, switching to slower Guard regeneration when Pep is full.
+| Wilted count | Encounter | Behavior / reward |
+| ---: | --- | --- |
+| 33 | Carrot Warden | Main completion encounter; ranged seed pressure and the Carrot Cannon drop |
+| 66 | Bear Claw | Long-reach claw fight with smoke-and-retreat behavior |
+| 99 | Bear Claw rematch | Longbone model, stronger rematch stats, and The Claw drop |
+| 132 | Beat Slayer | Ranged/kiting boombox encounter and Golden Boombox drop |
 
-### Hero/pickup polish
+Boss visuals have procedural fallbacks. If a GLB or the GLTF loader cannot be
+loaded, the encounter remains playable.
 
-The Jays world pickup now uses a green, hop-like fluffy cluster visual. Public
-surface and basement supplies are spaced across their rooms and routes without
-changing their quantities; the hidden cache also contains a Jays pack and a
-grenade bundle.
+### Playable farmhands
 
-The Scarf Scout's downed special now uses a clearly separated two-barrel,
-break-action view model. The Masked Runner's low-health special is a temporary,
-aimable chainsaw weapon swap with a visible guide bar and high-damage melee;
-holding the fire surface repeats the melee swing, including on mobile.
+| Farmhand | Emergency special |
+| --- | --- |
+| Larry | Downed-only Double Barrel recovery |
+| Smoke | Low-health Chainsaw Hand |
+| Stoned | Secret Stash automatic recovery |
+| Pyro | Dy-No-Mite death-save blast |
+| Jeff | Low-health Knife Storm |
 
-## v0.07.05 Pause Menu
+The multiplayer picker currently exposes Larry, Smoke, Stoned, and Pyro.
 
-The in-game pause card now includes a mobile-friendly **Main menu** action. It
-resets the active run through the same safe path as the end-game start-screen
-button, stops any co-op transport, releases input capture, and returns to the
-single-player / online co-op mode selector without changing the current run on
-the branch until the player chooses a new one.
+## Controls
+
+All keyboard bindings can be changed under **Options → Controls**.
+
+| Input | Action |
+| --- | --- |
+| `W A S D` | Move |
+| Mouse | Look |
+| `Space` | Jump |
+| `Shift` | Sprint |
+| `Ctrl` | Crouch; crouch while sprinting to slide |
+| Left click | Fire / use equipped melee weapon |
+| Right click | Aim down sights |
+| `V` | Quick melee |
+| `R` | Reload |
+| `1–8` | Select weapon slot |
+| `G` | Throw selected throwable |
+| `J` | Use Jays |
+| `F` | Toggle lantern |
+| `B` | Hold to talk when voice chat is enabled |
+| `Enter` | Open/send multiplayer text chat |
+| `Esc` | Release pointer lock / pause |
+| Backtick | Open the single-player developer console |
+
+Touch devices receive a movement stick, drag-to-look zone, combat/action
+buttons, throwable switching, chat, pause, crouch, aim, and push-to-talk
+controls. Gameplay canvas gestures are captured so they do not scroll the page.
+
+## Developer console
+
+The console is available only during an active single-player run. Press
+backtick, type a command, and press `Enter`.
+
+```text
+help
+list
+spawn <id>
+enemy [reaper|howler|gaper|grinner] [count]
+boss <warden|bearclaw|bearclaw2|beatslayer>
+killenemies
+resetenemies
+clear
+close
+```
+
+`spawn <id>` accepts registered weapon, ammo, pickup, throwable, consumable,
+and buff identifiers. Use `list` for the current registry.
+
+## Project layout
+
+```text
+index.html   Complete game client, UI, gameplay systems, and networking
+assets/      GLB characters, hero reference art, and menu/gameplay music
+README.md    Current build and testing documentation
+```
+
+The code is intentionally kept in one HTML entry point for rapid alpha
+iteration and GitHub Pages deployment. Major systems are marked with searchable
+module headers such as `[CONFIG]`, `[LEVEL]`, `[PLAYER]`, `[ENEMY]`, `[COOP]`,
+and `[GAME]`.
+
+### Runtime dependencies
+
+The page currently loads these browser libraries from CDNs:
+
+- Three.js r128
+- Three.js `GLTFLoader` r128
+- PeerJS 1.5.4
+
+An internet connection is therefore required even when serving the repository
+locally unless those dependencies are vendored in a future build.
+
+## Boss asset startup pipeline
+
+1. Start every GLB request as soon as the WebGL renderer exists.
+2. Build the farm while model downloads and parsing continue.
+3. Warm shared geometry, materials, shaders, and textures through an off-screen
+   WebGL render.
+4. Create boss rigs, animation mixers, hit proxies, and shadows once.
+5. Keep staged bosses invisible and non-raycastable until progression or a
+   developer-console command activates them.
+
+Assets covered by this pipeline:
+
+- `assets/carrot_rogue_character.glb`
+- `assets/skeleton_lobster.glb`
+- `assets/longbone_bear_claw.glb`
+- `assets/boombox_cat.glb`
+
+## Alpha notes
+
+- Use HTTPS (GitHub Pages) or localhost for microphone permission and the most
+  reliable multiplayer/browser behavior.
+- Room availability depends on PeerJS signaling and successful WebRTC
+  connectivity between players.
+- The host remains the authority for PvE state; this is not yet a dedicated
+  authoritative game-server architecture.
+- This is an active test branch, not a production release.

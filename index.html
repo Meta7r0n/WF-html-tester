@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.07.05 Pause Menu</title>
+<title>The Withered Farm — v0.28</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -22,10 +22,11 @@
 
   *{box-sizing:border-box;}
   html,body{
-    margin:0;padding:0;height:100%;overflow:hidden;background:var(--ink);
-    overscroll-behavior:none;
+    margin:0;padding:0;width:100%;height:100%;min-width:0;min-height:0;
+    overflow:hidden;background:var(--ink);overscroll-behavior:none;
   }
   body{
+    position:fixed;inset:0;
     font-family:"Rockwell","Courier New",Georgia,serif;
     color:var(--ink);
     -webkit-font-smoothing:antialiased;
@@ -34,7 +35,14 @@
   }
   canvas{display:block;}
 
-  #app{position:fixed;inset:0;}
+  /* The WebGL canvas is sized internally by GAME.onResize(), while CSS owns
+     its on-screen dimensions. Keeping those jobs separate prevents rounded
+     visualViewport values from creating a one-pixel document overflow. */
+  #app{position:fixed;inset:0;overflow:hidden;overflow:clip;overscroll-behavior:none;}
+  #app > canvas{
+    position:absolute;inset:0;width:100% !important;height:100% !important;
+    max-width:none;max-height:none;touch-action:none;
+  }
 
   /* ---------- Film / paper layers ---------- */
   #grain{
@@ -700,6 +708,11 @@
     box-shadow:12px 14px 0 rgba(22,18,15,.55);
     transform:rotate(-.6deg);
   }
+  .veil .card::before{
+    content:attr(data-build-version);position:absolute;top:11px;right:16px;z-index:2;
+    color:var(--rust-deep);font:900 10px/1 "Courier New",monospace;
+    letter-spacing:1.5px;text-transform:uppercase;pointer-events:none;
+  }
   .card:after{
     content:"";position:absolute;inset:7px;border:2px dashed rgba(22,18,15,.28);
     border-radius:20px 26px 18px 24px;pointer-events:none;
@@ -1102,9 +1115,9 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.09</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.28</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
-      <p class="sub">The farm is ready for one player or two farmhands. Single-player keeps the full current run; online co-op opens a two-player room and shares the first multiplayer layer.</p>
+      <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
         <li><kbd>W A S D</kbd> Move</li>
         <li><kbd>Mouse</kbd> Look</li>
@@ -1181,7 +1194,7 @@
     <div class="card">
       <p class="eyebrow">Single-player &nbsp;·&nbsp; choose a farmhand</p>
       <h1>Pick your<br/>special<span>Each hero has one emergency trick</span></h1>
-      <p class="sub">Your choice changes your low-health special. All four heroes keep the normal weapon and pickup inventory.</p>
+      <p class="sub">Your choice changes your low-health special. All five heroes keep the normal weapon and pickup inventory.</p>
       <div id="heroChoices">
         <button class="go hero-choice scout has-ref" id="scarfHeroBtn">
           <span class="hero-art">
@@ -1359,6 +1372,16 @@
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script>
 "use strict";
+
+/* One source of truth for every menu card and runtime version label. */
+const BUILD = Object.freeze({
+  version: 'v0.28',
+  branch: 'A-test-v0.28-README-CANVAS-BOSS-PRELOAD'
+});
+document.title = 'The Withered Farm — ' + BUILD.version;
+document.querySelectorAll('.veil .card').forEach(card => {
+  card.setAttribute('data-build-version', BUILD.version);
+});
 
 /* =====================================================================
    THE WITHERED FARM — Phase 1
@@ -11399,11 +11422,28 @@ const GAME = (() => {
   let last = 0, time = 0, running = false, entered = false;
   let deathPending = false, lastKills = 0, endShown = false, mode = 'single';
   let crewLeftPending = false;
+  let viewportObserver = null, resizeFrame = 0;
 
   function fail(msg) {
     const e = document.getElementById('err');
     e.style.display = 'block';
     e.textContent = String(msg);
+  }
+
+  /* Measure the fixed app shell instead of trusting visualViewport's
+     fractional values. The shell is the actual CSS box the canvas fills,
+     so its integer client size is the only size that cannot overflow it. */
+  function viewportSize() {
+    const app = document.getElementById('app');
+    const rect = app ? app.getBoundingClientRect() : null;
+    const width = rect && rect.width ? rect.width
+      : (document.documentElement.clientWidth || window.innerWidth || 1);
+    const height = rect && rect.height ? rect.height
+      : (document.documentElement.clientHeight || window.innerHeight || 1);
+    return {
+      width: Math.max(1, Math.floor(width)),
+      height: Math.max(1, Math.floor(height))
+    };
   }
 
   async function init() {
@@ -11414,8 +11454,9 @@ const GAME = (() => {
     CONSUMABLE.sync();
 
     renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    const initialViewport = viewportSize();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
-    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setSize(initialViewport.width, initialViewport.height, false);
     renderer.setClearColor(PAL.peach, 1);
     renderer.autoClear = false;
     if ('outputEncoding' in renderer && THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
@@ -11424,7 +11465,7 @@ const GAME = (() => {
     // ---- world scene ----
     scene = new THREE.Scene();
     scene.fog = new THREE.Fog(PAL.peach, CONFIG.render.fogNear, CONFIG.render.fogFar);
-    camera = new THREE.PerspectiveCamera(CONFIG.render.fov, window.innerWidth / window.innerHeight,
+    camera = new THREE.PerspectiveCamera(CONFIG.render.fov, initialViewport.width / initialViewport.height,
       CONFIG.render.near, CONFIG.render.far);
     camera.rotation.order = 'YXZ';
 
@@ -11436,12 +11477,17 @@ const GAME = (() => {
 
     // ---- viewmodel scene, drawn on top with a cleared depth buffer ----
     viewScene = new THREE.Scene();
-    viewCamera = new THREE.PerspectiveCamera(58, window.innerWidth / window.innerHeight, 0.01, 12);
+    viewCamera = new THREE.PerspectiveCamera(58, initialViewport.width / initialViewport.height, 0.01, 12);
     viewScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.9));
     const vsun = new THREE.DirectionalLight(0xFFF4DC, 0.95);
     vsun.position.set(-1.2, 2.0, 1.6);
     viewScene.add(vsun);
     viewScene.add(new THREE.AmbientLight(0xC9BAA9, 0.4));
+
+    // Begin every mini-boss request as soon as the renderer and loader exist.
+    // Level construction continues while the browser downloads/parses GLBs.
+    if (UI.el.loading) UI.el.loading.textContent = 'Loading mini-boss crew…';
+    const bossAssetTask = ENEMY.prepareAssets();
 
     // ---- content ----
     LEVEL.build(scene);
@@ -11449,8 +11495,9 @@ const GAME = (() => {
     PLAYER.init(camera);
     WEAPON.build(viewScene);
     THROWABLE.init(scene);
-    if (UI.el.loading) UI.el.loading.textContent = 'Loading Carrot Rogue…';
-    await ENEMY.prepareAssets();
+    await bossAssetTask;
+    if (UI.el.loading) UI.el.loading.textContent = 'Warming mini-boss crew…';
+    ENEMY.warmAssets(renderer);
     // ENEMY.init runs last so its line-of-sight snapshot contains level
     // geometry only, with no viewmodel or enemy proxies mixed in.
     const spawned = ENEMY.init(scene);
@@ -11689,7 +11736,13 @@ const GAME = (() => {
 
     window.addEventListener('resize', onResize);
     if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
-    onResize();
+    window.addEventListener('orientationchange', onResize);
+    const appShell = document.getElementById('app');
+    if (window.ResizeObserver && appShell) {
+      viewportObserver = new ResizeObserver(onResize);
+      viewportObserver.observe(appShell);
+    }
+    resizeRendererToViewport();
     if (UI.el.loading) UI.el.loading.textContent = 'Inking the farm…';
     UI.hideLoading();
     armSplash();
@@ -11974,14 +12027,24 @@ const GAME = (() => {
     UI.showStart();
   }
 
-  function onResize() {
-    const viewport = window.visualViewport;
-    const w = Math.max(1, Math.round(viewport ? viewport.width : window.innerWidth));
-    const h = Math.max(1, Math.round(viewport ? viewport.height : window.innerHeight));
+  function resizeRendererToViewport() {
+    resizeFrame = 0;
+    if (!renderer || !camera || !viewCamera) return;
+    const size = viewportSize();
+    const w = size.width, h = size.height;
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
-    renderer.setSize(w, h);
+    // false leaves the canvas CSS at 100% x 100%; only its drawing buffer
+    // changes. That separation is what prevents document-level scrollbars.
+    renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     viewCamera.aspect = w / h; viewCamera.updateProjectionMatrix();
+  }
+
+  function onResize() {
+    if (resizeFrame) cancelAnimationFrame(resizeFrame);
+    // Let dynamic viewport units and mobile browser chrome settle before the
+    // fixed app shell is measured.
+    resizeFrame = requestAnimationFrame(resizeRendererToViewport);
   }
 
   function loop(now) {
@@ -13972,6 +14035,7 @@ const ENEMY = (() => {
   let bossAsset = null;
   let bossAssetAnimations = [];
   let bossAssetPromise = null;
+  let bossAssetsWarmed = false;
   // Bear Claw has two independent GLB slots: the current skeleton-lobster
   // visual for the first fight and the elongated Longbone visual for the
   // rematch. Both assets carry authored idle/walk/claw-snap clips; the
@@ -14000,7 +14064,7 @@ const ENEMY = (() => {
     return markTex;
   }
 
-  /* Shared by both boss GLB slots -- loads `url`, calls onLoaded(gltf) on
+  /* Shared by all boss GLB slots -- loads `url`, calls onLoaded(gltf) on
      success, and always resolves (never rejects) so Promise.all in
      prepareAssets() can't have one boss's failure/timeout hold up the
      other. The procedural boss visual remains the fallback either way. */
@@ -14038,9 +14102,9 @@ const ENEMY = (() => {
     });
   }
 
-  /* Load both supplied GLBs before enemies are created. Either one missing,
-     blocked, or slow just falls back to that boss's own procedural visual
-     -- never blocks the other, and never blocks the match from starting. */
+  /* Load all supplied GLBs before enemies are created. Any model missing,
+     blocked, or slow falls back to that boss's own procedural visual without
+     holding up the other asset requests or blocking the match indefinitely. */
   function prepareAssets() {
     if (bossAssetPromise) return bossAssetPromise;
     bossAssetPromise = Promise.all([
@@ -14086,6 +14150,76 @@ const ENEMY = (() => {
       })
     ]);
     return bossAssetPromise;
+  }
+
+  /* GLTFLoader parsing fills CPU-side caches, but the first visible render
+     can still pay for shader compilation, geometry upload, and texture
+     upload. Render shared-resource clones into a tiny off-screen target once
+     during startup so encounter frames only need to reveal prepared models. */
+  function warmAssets(renderer) {
+    if (bossAssetsWarmed) return true;
+    const sources = [bossAsset, bearClawAsset, bearClawSecondAsset, beatSlayerAsset].filter(Boolean);
+    if (!renderer || !sources.length || !THREE.WebGLRenderTarget) {
+      bossAssetsWarmed = true;
+      return false;
+    }
+
+    const warmScene = new THREE.Scene();
+    warmScene.add(new THREE.HemisphereLight(0xDCE9F2, 0x5A4638, 1));
+    const warmSun = new THREE.DirectionalLight(0xFFF4DC, 1);
+    warmSun.position.set(-2, 3, 4);
+    warmScene.add(warmSun);
+    const warmCamera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+    warmCamera.position.set(0, 0, 3.2);
+    warmCamera.lookAt(new THREE.Vector3());
+    const target = new THREE.WebGLRenderTarget(32, 32, {
+      depthBuffer: true,
+      stencilBuffer: false
+    });
+    const previousTarget = renderer.getRenderTarget ? renderer.getRenderTarget() : null;
+    const previousAutoClear = renderer.autoClear;
+    const previousClearColor = renderer.getClearColor(new THREE.Color()).clone();
+    const previousClearAlpha = renderer.getClearAlpha();
+
+    try {
+      renderer.autoClear = true;
+      renderer.setClearColor(0x000000, 0);
+      renderer.setRenderTarget(target);
+      sources.forEach(source => {
+        // Object3D clones share geometry, materials, and textures with the
+        // encounter model, which is exactly what lets this upload warm the
+        // real resources without reparenting or mutating their transforms.
+        const wrapper = new THREE.Group();
+        const model = source.clone(true);
+        wrapper.add(model);
+        warmScene.add(wrapper);
+        model.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(model);
+        if (!box.isEmpty()) {
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          model.position.sub(center);
+          wrapper.scale.setScalar(1.6 / Math.max(size.x, size.y, size.z, 0.001));
+        }
+        wrapper.updateMatrixWorld(true);
+        if (renderer.compile) renderer.compile(warmScene, warmCamera);
+        renderer.clear(true, true, true);
+        renderer.render(warmScene, warmCamera);
+        warmScene.remove(wrapper);
+      });
+      bossAssetsWarmed = true;
+      return true;
+    } catch (error) {
+      // A warm-up failure is cosmetic/performance-only; parsed assets remain
+      // available and the existing procedural fallbacks stay intact.
+      console.warn('Mini-boss GPU warm-up failed; encounters can still continue.', error);
+      return false;
+    } finally {
+      renderer.setRenderTarget(previousTarget);
+      renderer.setClearColor(previousClearColor, previousClearAlpha);
+      renderer.autoClear = previousAutoClear;
+      target.dispose();
+    }
   }
 
   function buildBossAssetRig() {
@@ -14591,6 +14725,27 @@ const ENEMY = (() => {
     return create(rosterId, marker);
   }
 
+  /* Construct each encounter once during startup, then park it invisible
+     and non-raycastable. Spawn thresholds now revive an existing rig instead
+     of allocating mixers, hit proxies, shadows, and GLB scene graphs in the
+     middle of an active combat frame. */
+  function stageBoss(id, spec, kind, options) {
+    const marker = {
+      layerId: 'surface',
+      kind: kind,
+      position: new THREE.Vector3(spec.spawn.x, spec.spawn.y, spec.spawn.z)
+    };
+    const e = create(id, marker, options);
+    e.alive = false;
+    e.hp = e.maxHp;
+    e.respawnAt = 0;
+    e.headProxy.raycast = NO_RAY;
+    e.bodyProxy.raycast = NO_RAY;
+    if (e.mark) e.mark.visible = false;
+    e.group.visible = false;
+    return e;
+  }
+
   function init(mainScene) {
     scene = mainScene;
     boss = null;
@@ -14609,6 +14764,9 @@ const ENEMY = (() => {
     currentTarget = C.count * (CONFIG.ultra.active ? CONFIG.ultra.enemyCountMult : 1);
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
     spawnAdditional(Math.round(currentTarget), roster);
+    stageBoss(B.id, B, 'mini_boss', { isBoss: true });
+    stageBoss(B2.id, B2, 'mini_boss_2', { isBoss2: true });
+    stageBoss(B3.id, B3, 'mini_boss_3', { isBoss3: true });
     UI.setBoss(false, 0, B.hp, bossState);
     UI.setBoss2(false, 0, B2.hp, bossState2);
     UI.setBoss3(false, 0, B3.hp, bossState3);
@@ -16389,20 +16547,22 @@ const ENEMY = (() => {
         z: Math.round(e.pos.z * 100) / 100, yaw: Math.round(e.yaw * 1000) / 1000,
         hp: Math.round(e.hp), alive: e.alive, state: e.state, layerId: e.layerId
       })),
-      boss: boss ? {
+      // Staged bosses must remain network-invisible until their encounter
+      // state has actually left inactive, matching the pre-v0.28 snapshots.
+      boss: boss && bossState !== 'inactive' ? {
         x: Math.round(boss.pos.x * 100) / 100, y: Math.round(boss.pos.y * 100) / 100,
         z: Math.round(boss.pos.z * 100) / 100, yaw: Math.round(boss.yaw * 1000) / 1000,
         hp: Math.round(boss.hp), maxHp: boss.maxHp, alive: boss.alive,
         state: boss.state, layerId: boss.layerId
       } : null,
-      boss2: boss2 ? {
+      boss2: boss2 && bossState2 !== 'inactive' ? {
         x: Math.round(boss2.pos.x * 100) / 100, y: Math.round(boss2.pos.y * 100) / 100,
         z: Math.round(boss2.pos.z * 100) / 100, yaw: Math.round(boss2.yaw * 1000) / 1000,
         hp: Math.round(boss2.hp), maxHp: boss2.maxHp, alive: boss2.alive,
         state: boss2.state, layerId: boss2.layerId,
         appearanceIndex: boss2.appearanceIndex
       } : null,
-      boss3: boss3 ? {
+      boss3: boss3 && bossState3 !== 'inactive' ? {
         x: Math.round(boss3.pos.x * 100) / 100, y: Math.round(boss3.pos.y * 100) / 100,
         z: Math.round(boss3.pos.z * 100) / 100, yaw: Math.round(boss3.yaw * 1000) / 1000,
         hp: Math.round(boss3.hp), maxHp: boss3.maxHp, alive: boss3.alive,
@@ -16643,7 +16803,7 @@ const ENEMY = (() => {
   }
 
   return {
-    init, prepareAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
+    init, prepareAssets, warmAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
     get list() { return list; },
