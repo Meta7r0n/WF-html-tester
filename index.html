@@ -2013,19 +2013,20 @@ const CONFIG = {
     hoverPos: { x: 3, y: 14, z: 24 },
     endPos: { x: 50, y: 23, z: -16 }
   },
-  // A quick beat right after the crew lands, before control unlocks -- the
-  // pilot checks a text from "drewbie". gap is the pause (seconds) after that
-  // bubble appears before the next one lands, roughly scaled to reading time.
-  // PHONESCENE never auto-advances to gameplay -- it waits for the player's
-  // own click/keypress. That's deliberate, not just pacing: it's also what
-  // that final INPUT.requestLock() call (in enterNow()) needs to succeed --
+  // A quick beat right as the match starts, before the helicopter cutscene
+  // even begins -- the pilot checks a text from "drewbie". gap is the pause
+  // (seconds) after that bubble appears before the next one lands, roughly
+  // scaled to reading time. PHONESCENE never auto-advances -- it waits for
+  // the player's own click/keypress. That's deliberate, not just pacing:
+  // it's also what INTRO's own eventual INPUT.requestLock() call (in
+  // enterNow(), once INTRO finishes after this) needs to succeed --
   // browsers only honor pointer-lock requests within a short window of a
   // real user gesture ("transient activation"), and a timer-driven handoff
-  // (the intro cutscene's own duration, plus this scene running on top of
-  // it) blows well past that window, so the lock request gets silently
-  // rejected and the player lands straight on the "mouse lock failed" pause
-  // card the instant control would have unlocked. Ending on the player's own
-  // gesture keeps requestLock() inside that same gesture's call stack.
+  // blows well past that window, silently getting the request rejected and
+  // dropping the player onto the "mouse lock failed" pause card the instant
+  // control would have unlocked. Every cutscene in this chain (this one,
+  // then INTRO) only ever ends on the player's own gesture, so whichever one
+  // finishes last keeps requestLock() inside that same gesture's call stack.
   phoneScene: {
     avatar: 'assets/drewbie_avatar.png',
     startDelay: 0.9,   // beat after the veil appears before the first bubble lands
@@ -8443,6 +8444,10 @@ const PLAYER = (() => {
   // spawn protection, ladders, Iron Hide, and hero saves still block every
   // kind of damage through protectionTimer.
   let hitInvuln = 0, protectionTimer = 0, regenTimer = 0, shake = 0;
+  // Dev-console-only, single-player toggle (see DEVCONSOLE's "god" command)
+  // -- kept separate from protectionTimer so it never expires and never
+  // lights up any of the real invuln-source HUD chips (Iron Hide, etc).
+  let devGodMode = false;
   // KILLCAM-only: whichever attacker most recently damaged the player, so a
   // fatal hit can be traced back to who/what threw it. Either a real ENEMY
   // entity (PvE) or a small { pvp: true, id } marker (PvP -- COOP.getRemote
@@ -8542,7 +8547,7 @@ const PLAYER = (() => {
     options = options || {};
     amount = Number(amount);
     const pvpHit = !!(attacker && attacker.pvp);
-    if (dead || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
+    if (dead || devGodMode || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
         !Number.isFinite(amount) || amount <= 0) return false;
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
@@ -8687,6 +8692,8 @@ const PLAYER = (() => {
   function grantInvuln(seconds) {
     protectionTimer = Math.max(protectionTimer, seconds || 0);
   }
+
+  function setDevGodMode(on) { devGodMode = !!on; }
 
   /* Bear Claw's stun-chance claw swipe. Only ever extends an already-running
      stun (same convention as grantInvuln/applySpeedBoost above), so a
@@ -9074,7 +9081,8 @@ const PLAYER = (() => {
 
   return {
     init, update, respawn, forwardVector, damage, damageOverTime, applyBleed, heal, addShield, revive, reviveAt, launchUp, finishDowned, setSpawnOffset, grantInvuln,
-    applyIronHide, applySpeedBoost, grantStun, grantSlow,
+    applyIronHide, applySpeedBoost, grantStun, grantSlow, setDevGodMode,
+    get devGodMode() { return devGodMode; },
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
     get stunned() { return stunTimer > 0; },
@@ -10194,6 +10202,20 @@ const WEAPON = (() => {
     };
   }
 
+  // Dev-console-only support (see DEVCONSOLE's "refillammo" command): top
+  // every currently-owned gun/flame weapon back up to max mag+reserve in
+  // one shot, for playtesting without hunting down ammo pickups.
+  function refillAll() {
+    let n = 0;
+    Object.keys(DEFS).forEach(id => {
+      const d = DEFS[id], s = inventory[id];
+      if (!s.owned || (d.kind !== 'gun' && d.kind !== 'flame')) return;
+      s.mag = d.magSize; s.reserve = d.maxReserve; n++;
+    });
+    if (n > 0) syncHUD();
+    return n;
+  }
+
   function beginHeroSpecial(id) {
     const d = DEFS[id], s = inventory[id];
     if (!d || !s || !d.specialOnly) return false;
@@ -10428,7 +10450,7 @@ const WEAPON = (() => {
   }
 
   return {
-    build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon,
+    build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon, refillAll,
     beginHeroSpecial, endHeroSpecial, applyDamageBoost,
     hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
     get currentId() { return currentId; },
@@ -13781,10 +13803,9 @@ const GAME = (() => {
     AUDIO.resume();
     UI.hideMenus();
     if (playIntro === false || typeof INTRO === 'undefined') { enterNow(); return; }
-    const afterIntro = typeof PHONESCENE === 'undefined'
-      ? enterNow
-      : () => PHONESCENE.play(enterNow);
-    INTRO.play(camera, afterIntro);
+    const afterPhone = () => INTRO.play(camera, enterNow);
+    if (typeof PHONESCENE === 'undefined') { afterPhone(); return; }
+    PHONESCENE.play(afterPhone);
   }
 
   function startSingle() {
@@ -15982,14 +16003,15 @@ const INTRO = (() => {
 })();
 
 /* ============================ [PHONESCENE] ============================
-   The pilot checks a text the instant the crew's boots hit the ground --
-   plays between INTRO.finish() and GAME's enterNow(), so control stays
-   locked out until the player ends it themselves. Pure 2D DOM overlay, not
-   Three.js -- there's no camera/render work here, just a scripted reveal of
-   a fixed message thread. Mirrors INTRO's own play/skip/finish shape so
-   GAME's call site reads the same way for both cutscenes, but deliberately
-   has no auto-finish timer -- see CONFIG.phoneScene's comment for why a
-   real click/keypress has to be what triggers the handoff. */
+   The pilot checks a text from "drewbie" the instant the match starts --
+   plays before INTRO, so the "go take care of it" order lands right before
+   the crew boards up and flies in, not after they've already landed. Pure
+   2D DOM overlay, not Three.js -- there's no camera/render work here, just
+   a scripted reveal of a fixed message thread. Mirrors INTRO's own
+   play/skip/finish shape so GAME's call site reads the same way for both
+   cutscenes, but deliberately has no auto-finish timer -- see
+   CONFIG.phoneScene's comment for why a real click/keypress has to be what
+   triggers the handoff. */
 const PHONESCENE = (() => {
   const C = CONFIG.phoneScene;
   let el = null, threadEl = null;
@@ -21134,6 +21156,11 @@ const DEVCONSOLE = (() => {
     log('killenemies       instantly kill every non-boss enemy on the map');
     log('wilted <count>    set the regular-enemy total to test quantity triggers');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
+    log('god               toggle invulnerability (alias: invuln, godmode)');
+    log('heal              restore health to full');
+    log('refillammo        top every owned weapon back up to max mag+reserve (alias: ammo)');
+    log('tp <x> <z>        teleport to coordinates on your current layer (alias: teleport)');
+    log('craftall          grant all 3 crafting components + the Barn Key');
     log('list              list every spawnable id, enemy type and boss name');
     log('clear             clear this log');
     log('close             close the console (backtick/Escape also work)');
@@ -21224,9 +21251,52 @@ const DEVCONSOLE = (() => {
     log('Enemy/boss state reset (kills back to 0)', 'ok');
   }
 
+  function cmdGod() {
+    const on = !PLAYER.devGodMode;
+    PLAYER.setDevGodMode(on);
+    log('God mode ' + (on ? 'ON' : 'OFF'), 'ok');
+  }
+
+  function cmdHeal() {
+    const restored = PLAYER.heal(99999);
+    log(restored > 0 ? ('Healed ' + Math.round(restored) + ' HP') : 'Already at full health', 'ok');
+  }
+
+  function cmdRefillAmmo() {
+    const n = WEAPON.refillAll();
+    log(n > 0 ? ('Refilled ' + n + ' owned weapon' + (n === 1 ? '' : 's') + ' to max') : 'No owned guns to refill', 'ok');
+  }
+
+  function cmdTp(args) {
+    const x = parseFloat(args[0]), z = parseFloat(args[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) {
+      log('Usage: tp <x> <z> -- current position: ' +
+        PLAYER.position.x.toFixed(1) + ', ' + PLAYER.position.z.toFixed(1), 'err');
+      return;
+    }
+    const y = WORLD.groundAt(x, z, PLAYER.position.y + 0.8, PLAYER.layerId);
+    PLAYER.position.set(x, y, z);
+    PLAYER.velocity.set(0, 0, 0);
+    log('Teleported to ' + x.toFixed(1) + ', ' + z.toFixed(1), 'ok');
+  }
+
+  // Grants the barn key + all 3 crafting components -- the actual grind
+  // (up to 132 kills across 3 bosses) skipped, but the North Barn still
+  // has to be physically unlocked and the workbench still has to be
+  // physically used, same as a real run, so that part of the flow still
+  // gets exercised rather than short-circuited too.
+  function cmdCraftAll() {
+    if (typeof QUEST === 'undefined') { log('QUEST module unavailable', 'err'); return; }
+    ['greenShard', 'metalFragment', 'computerChip', 'barnKey'].forEach(id => QUEST.collect(id));
+    log('Granted all 3 crafting components + Barn Key -- unlock the North Barn and reach the workbench to craft', 'ok');
+  }
+
   const COMMANDS = {
     help: cmdHelp, list: cmdList, spawn: cmdSpawn, enemy: cmdEnemy, boss: cmdBoss,
     killenemies: cmdKillEnemies, wilted: cmdWilted, resetenemies: cmdResetEnemies,
+    god: cmdGod, invuln: cmdGod, godmode: cmdGod,
+    heal: cmdHeal, refillammo: cmdRefillAmmo, ammo: cmdRefillAmmo,
+    tp: cmdTp, teleport: cmdTp, craftall: cmdCraftAll,
     clear: function () { if (typeof UI !== 'undefined') UI.clearDevConsoleLog(); },
     close: close, exit: close, quit: close
   };
