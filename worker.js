@@ -1,3 +1,4 @@
+// Deployment checkpoint: CFP v0.31 / 2026-08-11.
 /*
  * Lobster Labz Alpha Lab server-side access gate.
  *
