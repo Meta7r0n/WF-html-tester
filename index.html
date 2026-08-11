@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.32</title>
+<title>The Withered Farm — v0.33</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -1144,7 +1144,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.31</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.33</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1157,14 +1157,14 @@
         <li><kbd>Click</kbd> Fire / punch</li>
         <li><kbd>V</kbd> Quick melee</li>
         <li><kbd>RMB</kbd> Aim — steadier, slower</li>
-        <li><kbd>1–8</kbd> Switch weapon</li>
+        <li><kbd>1–9</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
         <li><kbd>G</kbd> Throw grenade</li>
-        <li><kbd>E</kbd> Interact / barn stair gate</li>
+        <li><kbd>E</kbd> Interact / use Barn Key / gates</li>
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
-      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Tap a weapon in the inventory strip to equip it. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them, and <b>Use</b> to operate the original barn stair gate.</div>
+      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Tap a weapon in the inventory strip to equip it. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them, and <b>Use</b> for keys, doors, gates, and workbenches.</div>
       <div id="ultraModeToggle">
         <span class="mode-toggle-label">Difficulty</span>
         <button class="mode-toggle-btn active" id="ultraOffBtn" data-ultra="off">Normal</button>
@@ -1407,8 +1407,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.31',
-  branch: 'A-test-v0.31-ORIGINAL-BARN-GATE-SILO-TUNNEL'
+  version: 'v0.33',
+  branch: 'A-test-v0.33-BOSS-QUANTITY-BARN-DOOR'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -1526,6 +1526,15 @@ const CONFIG = {
     respawnDelay: 18            // 0 to leave the farm quiet once cleared
   },
   progress: {
+    // Single-player keeps v0.32's requested encounter order, but each fight
+    // now waits for its own cumulative regular-enemy quantity. Bearclaw2 is
+    // deliberately absent: the Barn Key -> workbench -> Portal Gun sequence
+    // remains its explicit trigger instead of another Wilted threshold.
+    singleBeatSlayerThreshold: 33,
+    singleBearClawThreshold: 66,
+    singleCarrotWardenThreshold: 99,
+    singleGardenerThreshold: 132,
+    // Multiplayer preserves the established pre-quest encounter mapping.
     bossWiltThreshold: 33,
     endOnBossDefeat: true,
     // Bear Claw: a mid-match mini-boss, not a win condition -- see
@@ -3142,7 +3151,8 @@ const LEVEL = (() => {
   let root = null;
   const animated = {
     windmillFan: null, vane: null, sails: [], hangers: [],
-    basementHatch: null, basementHatches: [], barnStairGate: null
+    basementHatch: null, basementHatches: [], barnStairGate: null,
+    northBarnDoor: null
   };
 
   /* soft-edged dirt blob used to paint the footpaths */
@@ -4367,19 +4377,53 @@ const LEVEL = (() => {
     roof.box(0.8, 0.6, 25.2, CX, RIDGE + 0.12, CZ, 0, 0, 0, 0.025);
     roof.build(parent);
 
-    // Weathered sliding doors sit open against the wall; neither occupies the
-    // doorway collider gap. The side door uses the same treatment.
+    // The west service door remains parked open on the wall for the existing
+    // Silo Row traversal route. The broad SOUTH opening is now a real hinged
+    // double door: QUEST owns the Barn Key check, while this level object owns
+    // the visible leaves and the one authoritative collision blocker.
     const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
-    const doors = new PRIM.Batch(doorMat, 0.045);
-    doors.box(3.25, 4.75, 0.16, 42.25, 2.4, Z1 - 0.18, 0, 0, 0.025, 0.025);
-    doors.box(3.25, 4.75, 0.16, 53.75, 2.4, Z1 - 0.18, 0, 0, -0.025, 0.025);
-    doors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -70.35, 0, 0, 0.02, 0.025);
-    doors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -61.65, 0, 0, -0.02, 0.025);
-    doors.build(parent);
-    WORLD.addFloor(42.25, 0, Z1 - 0.18, 3.25, 4.75, 0.38, 'north_barn_door');
-    WORLD.addFloor(53.75, 0, Z1 - 0.18, 3.25, 4.75, 0.38, 'north_barn_door');
+    const parkedSideDoors = new PRIM.Batch(doorMat, 0.045);
+    parkedSideDoors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -70.35, 0, 0, 0.02, 0.025);
+    parkedSideDoors.box(0.16, 4.7, 2.45, X0 - 0.18, 2.38, -61.65, 0, 0, -0.02, 0.025);
+    parkedSideDoors.build(parent);
     WORLD.addFloor(X0 - 0.18, 0, -70.35, 0.38, 4.7, 2.45, 'north_barn_door');
     WORLD.addFloor(X0 - 0.18, 0, -61.65, 0.38, 4.7, 2.45, 'north_barn_door');
+
+    const doorMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const leafW = 3.72, leafH = 4.72, hingeZ = Z1 - 0.12;
+    function northBarnDoorLeaf(hingeX, inwardSign) {
+      const pivot = new THREE.Group();
+      pivot.position.set(hingeX, 0, hingeZ);
+      parent.add(pivot);
+      PRIM.box(leafW, leafH, 0.22, doorMat, {
+        pos: [inwardSign * leafW * 0.5, leafH * 0.5, 0],
+        parent: pivot, outline: 0.052
+      });
+      const brace = new PRIM.Batch(doorMetal, 0.022);
+      [-1.58, 0, 1.58].forEach(y =>
+        brace.box(leafW - 0.28, 0.12, 0.08, inwardSign * leafW * 0.5, leafH * 0.5 + y, -0.15));
+      [0.18, leafW - 0.18].forEach(offset =>
+        brace.box(0.12, leafH - 0.25, 0.08, inwardSign * offset, leafH * 0.5, -0.15));
+      brace.build(pivot);
+      return pivot;
+    }
+    const westMainDoor = northBarnDoorLeaf(CX - 3.78, 1);
+    const eastMainDoor = northBarnDoorLeaf(CX + 3.78, -1);
+    // A visible lock plate lives on the west leaf and moves with it.
+    PRIM.box(0.34, 0.52, 0.09, doorMetal, {
+      pos: [leafW - 0.28, 2.35, -0.18], parent: westMainDoor, outline: 0.025
+    });
+    PRIM.torus(0.065, 0.025, MAT.toon(PAL.mustard), {
+      pos: [leafW - 0.28, 2.35, -0.24], rot: [Math.PI / 2, 0, 0],
+      parent: westMainDoor, outline: 0.012, ray: false
+    });
+    const mainDoorSolid = WORLD.addFloor(CX, 0, Z1 - 0.06, 7.5, leafH, 0.52,
+      'north_barn_main_door');
+    animated.northBarnDoor = {
+      id: 'north_barn_main_door', x: CX, z: Z1,
+      open: false, target: 0, openness: 0,
+      west: westMainDoor, east: eastMainDoor, collider: mainDoorSolid
+    };
 
     // Ground boards plus a nearly full second floor. The southeast cut-out is
     // once again the original north/south stairwell from v0.29.
@@ -5790,6 +5834,38 @@ const LEVEL = (() => {
     return true;
   }
 
+  function nearNorthBarnDoor(position, layerId) {
+    const door = animated.northBarnDoor;
+    if (!door || !position || (layerId && layerId !== 'surface')) return false;
+    if (position.y < -0.4 || position.y > 2.25) return false;
+    return Math.abs(position.x - door.x) <= 4.7 && Math.abs(position.z - door.z) <= 3.2;
+  }
+
+  function poseNorthBarnDoor(door) {
+    if (!door) return;
+    const angle = door.openness * Math.PI * 0.5;
+    // Both leaves swing north into the barn and park against the inside wall.
+    door.west.rotation.y = angle;
+    door.east.rotation.y = -angle;
+    // Opening removes collision immediately; closing restores it only once
+    // the visible leaves are almost fully seated, preventing invisible snags.
+    door.collider.enabled = door.target < 0.5 && door.openness < 0.06;
+  }
+
+  function setNorthBarnDoor(open, immediate) {
+    const door = animated.northBarnDoor;
+    if (!door) return false;
+    door.open = !!open;
+    door.target = door.open ? 1 : 0;
+    if (immediate) door.openness = door.target;
+    poseNorthBarnDoor(door);
+    return true;
+  }
+
+  function isNorthBarnDoorOpen() {
+    return !!(animated.northBarnDoor && animated.northBarnDoor.open);
+  }
+
   function tryInteract(position, layerId) {
     if (!nearBarnStairGate(position, layerId)) return null;
     const open = !animated.barnStairGate.open;
@@ -5856,11 +5932,18 @@ const LEVEL = (() => {
       gate.collider.enabled = gate.target < 0.5 && gate.openness < 0.06;
       gate.portal.enabled = gate.openness > 0.55;
     }
+    const northDoor = animated.northBarnDoor;
+    if (northDoor) {
+      northDoor.openness = UTIL.damp(northDoor.openness, northDoor.target,
+        northDoor.target > 0.5 ? 6.8 : 5.6, dt);
+      poseNorthBarnDoor(northDoor);
+    }
   }
 
   return {
     build, update, animated, tryInteract, interactionHint,
-    setBarnStairGate, worldState, applyWorldState
+    setBarnStairGate, worldState, applyWorldState,
+    nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen
   };
 })();
 
@@ -11853,6 +11936,10 @@ const PICKUP = (() => {
       def: def, root: root, visual: visual, ring: ring, label: label,
       active: true, timer: 0, phase: UTIL.rng(0, Math.PI * 2),
       devSpawn: !!options.devSpawn,
+      // Boss-dropped quest pieces belong to one run. Without removing them,
+      // PICKUP.reset() made old components and the Barn Key reappear at their
+      // previous death locations and allowed the next run to skip progression.
+      runScoped: options.runScoped === undefined ? def.type === 'quest' : !!options.runScoped,
       respawn: options.respawn === undefined ? def.respawn : options.respawn
     };
     items.push(p);
@@ -11910,11 +11997,17 @@ const PICKUP = (() => {
   }
 
   function reset() {
-    items.forEach(p => {
+    for (let i = items.length - 1; i >= 0; i--) {
+      const p = items[i];
+      if (p.runScoped) {
+        if (p.root && p.root.parent) p.root.parent.remove(p.root);
+        items.splice(i, 1);
+        continue;
+      }
       p.active = true;
       p.timer = 0;
       p.root.visible = true;
-    });
+    }
   }
 
   return {
@@ -12020,8 +12113,17 @@ const RUNSTATS = (() => {
 
 const QUEST = (() => {
   const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
-  const state = { components: {}, barnKey: false, barnUnlocked: false, crafted: false, cutscenePlayed: false, stage: 0 };
-  let gardener = null, cutsceneTimer = 0, cutsceneCallback = null, portalEffect = null;
+  const ENCOUNTERS = Object.freeze([
+    { stage: 1, id: 'beatSlayer', name: 'Beat Slayer', threshold: CONFIG.progress.singleBeatSlayerThreshold },
+    { stage: 2, id: 'bearClaw', name: 'Bear Claw', threshold: CONFIG.progress.singleBearClawThreshold },
+    { stage: 3, id: 'carrotWarden', name: 'Carrot Warden', threshold: CONFIG.progress.singleCarrotWardenThreshold },
+    { stage: 4, id: 'gardener', name: 'The Gardener', threshold: CONFIG.progress.singleGardenerThreshold }
+  ]);
+  const state = {
+    components: {}, barnKey: false, barnUnlocked: false,
+    crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false
+  };
+  let gardener = null, cutsceneTimer = 0, portalEffect = null;
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
   function syncHud() {
@@ -12035,15 +12137,28 @@ const QUEST = (() => {
     });
   }
   function reset() {
+    if (typeof ENEMY !== 'undefined' && ENEMY.clearQuestEnemies) ENEMY.clearQuestEnemies();
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
-    state.crafted = false; state.cutscenePlayed = false; state.stage = 0;
-    gardener = null; cutsceneTimer = 0; cutsceneCallback = null;
+    state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
+    gardener = null; cutsceneTimer = 0;
     if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
-    portalEffect = null; syncHud();
+    portalEffect = null;
+    if (typeof LEVEL !== 'undefined') LEVEL.setNorthBarnDoor(false, true);
+    syncHud();
   }
   function start() {
-    if (!isSinglePlayer() || state.stage !== 0) { syncHud(); return; }
-    state.stage = 1; ENEMY.spawnBoss3(); syncHud();
+    if (!isSinglePlayer()) {
+      // The key quest is solo-only; keep the barn traversable in co-op/PvP.
+      if (typeof LEVEL !== 'undefined') LEVEL.setNorthBarnDoor(true, true);
+      syncHud();
+      return;
+    }
+    if (state.stage !== 0) { syncHud(); return; }
+    state.stage = 1;
+    state.encounterSpawned = false;
+    LEVEL.setNorthBarnDoor(false, true);
+    UI.toast('WILT ' + CONFIG.progress.singleBeatSlayerThreshold + ' ENEMIES TO DRAW OUT BEAT SLAYER', 2.8);
+    syncHud();
   }
   function collect(id) {
     if (!isSinglePlayer()) return false;
@@ -12056,7 +12171,7 @@ const QUEST = (() => {
     if (COMPONENTS.every(key => state.components[key])) UI.toast('ALL COMPONENTS FOUND — USE THE SECOND-FLOOR WORKBENCH', 3.2);
     return true;
   }
-  function spawnGardener(devSpawn) {
+  function spawnGardener(devSpawn, announcement) {
     if (gardener && gardener.alive) return gardener;
     const p = new THREE.Vector3(48, WORLD.groundAt(48, -52, 2, 'surface'), -52);
     gardener = ENEMY.spawnGrunt('gaper', p);
@@ -12071,32 +12186,77 @@ const QUEST = (() => {
     gardener.gardenerAttackTimer = 4; gardener.gardenerSeedTimer = 2.5;
     UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
     RUNSTATS.bossStart('gardener', 'The Gardener', !!devSpawn);
-    UI.toast('THE GARDENER TAKES ROOT', 2.8);
+    UI.toast(announcement || 'THE GARDENER TAKES ROOT', 2.8);
     return gardener;
+  }
+  function encounterForStage(stage) {
+    return ENCOUNTERS.find(encounter => encounter.stage === stage) || null;
+  }
+  function spawnEncounter(encounter) {
+    const announcement = encounter.threshold + ' WILTED — ' +
+      (encounter.id === 'beatSlayer' ? 'BEAT SLAYER DROPS IN' :
+       encounter.id === 'bearClaw' ? 'BEAR CLAW EMERGES' :
+       encounter.id === 'carrotWarden' ? 'CARROT WARDEN AWAKES' : 'THE GARDENER TAKES ROOT');
+    if (encounter.id === 'beatSlayer') return ENEMY.spawnBoss3({ announcement: announcement });
+    if (encounter.id === 'bearClaw') return ENEMY.spawnBoss2(1, { announcement: announcement });
+    if (encounter.id === 'carrotWarden') return ENEMY.spawnBoss({ announcement: announcement });
+    return spawnGardener(false, announcement);
+  }
+  function updateProgress(wilted) {
+    if (!isSinglePlayer() || state.encounterSpawned) return false;
+    const encounter = encounterForStage(state.stage);
+    if (!encounter || wilted < encounter.threshold) return false;
+    // Set the guard first so a failed asset/fallback path cannot invoke the
+    // same spawn repeatedly on consecutive frames.
+    state.encounterSpawned = true;
+    spawnEncounter(encounter);
+    return true;
   }
   function bossDefeated(id, entity) {
     if (!isSinglePlayer() || (entity && entity.devSpawn)) return;
-    if (id === 'beatSlayer' && state.stage === 1) { state.stage = 2; ENEMY.spawnBoss2(1); }
-    else if (id === 'bearClaw' && state.stage === 2) { state.stage = 3; ENEMY.spawnBoss(); }
-    else if (id === 'carrotWarden' && state.stage === 3) { state.stage = 4; spawnGardener(false); }
-    else if (id === 'gardener' && state.stage === 4) { state.stage = 5; }
+    const encounter = encounterForStage(state.stage);
+    if (encounter && id === encounter.id) {
+      state.stage++;
+      state.encounterSpawned = false;
+      const next = encounterForStage(state.stage);
+      if (next && ENEMY.kills < next.threshold) {
+        UI.toast('NEXT ENCOUNTER AT ' + next.threshold + ' WILTED — ' + next.name.toUpperCase(), 2.6);
+      }
+    }
     else if (id === 'bearclaw2' && state.stage === 6) { state.stage = 7; if (GAME.complete) GAME.complete(); }
   }
-  function nearDoor(p) { return p && p.y < 2 && Math.hypot(p.x - 48, p.z + 42.2) < 4.5; }
+  function nearDoor(p) { return LEVEL.nearNorthBarnDoor(p, 'surface'); }
   function nearStation(p) { return p && p.y > 3.2 && Math.hypot(p.x - 58.3, p.z + 76.7) < 4.2; }
   function missing() { return COMPONENTS.filter(id => !state.components[id]); }
+  function interactionKey() {
+    if (typeof INPUT === 'undefined') return 'E';
+    if (INPUT.mobile) return 'USE';
+    const bindings = INPUT.getBindings();
+    return INPUT.codeLabel(bindings.interact) || 'E';
+  }
   function interactionHint(p) {
     if (!isSinglePlayer()) return '';
-    if (nearDoor(p)) return 'E · ' + (state.barnUnlocked ? 'Open / close barn doors' : state.barnKey ? 'Unlock north barn' : 'Locked — key required');
-    if (nearStation(p)) return state.barnUnlocked ? 'E · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
+    const key = interactionKey();
+    if (nearDoor(p)) return key + ' · ' + (state.barnUnlocked
+      ? (LEVEL.isNorthBarnDoorOpen() ? 'Close north barn doors' : 'Open north barn doors')
+      : state.barnKey ? 'Use Barn Key to unlock north barn' : 'Locked — Barn Key required');
+    if (nearStation(p)) return state.barnUnlocked ? key + ' · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
     return '';
   }
   function interact(p) {
     if (!isSinglePlayer()) return false;
     if (nearDoor(p)) {
       if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
-      if (!state.barnUnlocked) { state.barnUnlocked = true; RUNSTATS.milestone('barn_unlocked', 'northBarn'); UI.toast('NORTH BARN UNLOCKED', 2.2); }
-      else UI.toast('NORTH BARN DOORS OPERATED', 1.2);
+      if (!state.barnUnlocked) {
+        state.barnUnlocked = true;
+        LEVEL.setNorthBarnDoor(true);
+        RUNSTATS.milestone('barn_unlocked', 'northBarn');
+        UI.toast('BARN KEY USED — NORTH BARN UNLOCKED', 2.2);
+      } else {
+        const open = !LEVEL.isNorthBarnDoorOpen();
+        LEVEL.setNorthBarnDoor(open);
+        UI.toast('NORTH BARN DOORS ' + (open ? 'OPENING' : 'CLOSING'), 1.2);
+      }
       return true;
     }
     if (!nearStation(p)) return false;
@@ -12123,8 +12283,9 @@ const QUEST = (() => {
     if (GAME.scene) GAME.scene.add(portalEffect);
     UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
   }
-  function update(dt) {
-    if (gardener && gardener.alive) {
+  function update(dt, simulationActive) {
+    if (simulationActive) updateProgress(ENEMY.kills);
+    if (simulationActive && gardener && gardener.alive) {
       const now = performance.now() / 1000;
       gardener.gardenerSummons = gardener.gardenerSummons.filter(e => e && e.alive);
       gardener.gardenerSpawnTimes = gardener.gardenerSpawnTimes.filter(t => now - t < 60);
@@ -12173,8 +12334,9 @@ const QUEST = (() => {
       if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
     }
   }
-  return { reset, start, collect, interact, interactionHint, update, bossDefeated, spawnGardener, isSinglePlayer,
-    get state() { return state; }, get gardener() { return gardener; }, get cutsceneActive() { return cutsceneTimer > 0; } };
+  return { reset, start, collect, interact, interactionHint, update, updateProgress, bossDefeated, spawnGardener, isSinglePlayer,
+    get state() { return state; }, get encounters() { return ENCOUNTERS; },
+    get gardener() { return gardener; }, get cutsceneActive() { return cutsceneTimer > 0; } };
 })();
 
 /* ============================== [GAME] =============================== */
@@ -12767,9 +12929,9 @@ const GAME = (() => {
     WEAPON.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
+    QUEST.reset();
     ENEMY.reset();
     PICKUP.reset();
-    QUEST.reset();
     UI.setKills(0);
     UI.hideDead();
     UI.hideEndGame();
@@ -12805,9 +12967,9 @@ const GAME = (() => {
     WEAPON.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
+    QUEST.reset();
     ENEMY.reset();
     PICKUP.reset();
-    QUEST.reset();
     ANNOUNCER.reset();
     UI.setKills(0);
     UI.hideFfaScoreboard();
@@ -12900,7 +13062,7 @@ const GAME = (() => {
     HERO.update(dt, running);
     if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
-    QUEST.update(dt);
+    QUEST.update(dt, simRunning);
     LEVEL.update(dt, time);
     UI.setInteractionHint(running && !PLAYER.isDead
       ? (QUEST.interactionHint(PLAYER.position) || LEVEL.interactionHint(PLAYER.position, PLAYER.layerId)) : '');
@@ -15367,7 +15529,8 @@ const ENEMY = (() => {
     return e;
   }
 
-  function spawnBoss() {
+  function spawnBoss(options) {
+    options = options || {};
     if (bossState !== 'inactive') return boss;
     const marker = {
       layerId: 'surface', kind: 'mini_boss',
@@ -15389,7 +15552,7 @@ const ENEMY = (() => {
     bossState = 'active';
     if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(B.id, B.name, !!boss.devSpawn);
     UI.setBoss(true, boss.hp, boss.maxHp, bossState);
-    UI.toast('33 WILTED — CARROT WARDEN AWAKES', 3.2);
+    UI.toast(options.announcement || '33 WILTED — CARROT WARDEN AWAKES', 3.2);
     AUDIO.enemyAlert(boss.def.voice.pitch);
     return boss;
   }
@@ -15402,7 +15565,12 @@ const ENEMY = (() => {
      tracks which. Blocked while he's actively mid-fight, but unlike
      spawnBoss() a 'defeated' bossState2 doesn't block re-entry, since
      that's exactly the rematch's own resting state between fights. */
-  function spawnBoss2(requestedAppearance) {
+  function spawnBoss2(requestedAppearance, options) {
+    if (requestedAppearance && typeof requestedAppearance === 'object') {
+      options = requestedAppearance;
+      requestedAppearance = undefined;
+    }
+    options = options || {};
     if (bossState2 === 'active') return boss2;
     // Developer console can jump straight to the rematch without first
     // fighting/killing the original. Normal progression passes no argument
@@ -15451,7 +15619,9 @@ const ENEMY = (() => {
     bossState2 = 'active';
     if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(isSecond ? 'bearclaw2' : B2.id, isSecond ? 'Bearclaw2' : B2.name, !!boss2.devSpawn);
     UI.setBoss2(true, boss2.hp, boss2.maxHp, bossState2);
-    UI.toast(isSecond ? '99 WILTED — BEAR CLAW RETURNS, ANGRIER' : '66 WILTED — BEAR CLAW EMERGES', 3.2);
+    UI.toast(options.announcement || (isSecond
+      ? '99 WILTED — BEAR CLAW RETURNS, ANGRIER'
+      : '66 WILTED — BEAR CLAW EMERGES'), 3.2);
     AUDIO.enemyAlert(boss2.def.voice.pitch);
     return boss2;
   }
@@ -15460,7 +15630,8 @@ const ENEMY = (() => {
      Carrot Warden and Bear Claw, same "not a win condition" rule. Only ever
      one appearance (unlike Bear Claw's rematch), so no appearance-index
      stat scaling to worry about. */
-  function spawnBoss3() {
+  function spawnBoss3(options) {
+    options = options || {};
     if (bossState3 !== 'inactive') return boss3;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_3',
@@ -15483,7 +15654,7 @@ const ENEMY = (() => {
     bossState3 = 'active';
     if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(B3.id, B3.name, !!boss3.devSpawn);
     UI.setBoss3(true, boss3.hp, boss3.maxHp, bossState3);
-    UI.toast('132 WILTED — BEAT SLAYER DROPS IN', 3.2);
+    UI.toast(options.announcement || '132 WILTED — BEAT SLAYER DROPS IN', 3.2);
     AUDIO.enemyAlert(boss3.def.voice.pitch);
     return boss3;
   }
@@ -15919,6 +16090,10 @@ const ENEMY = (() => {
       // the one authoritative place a boss kill can happen. Tell any joiners.
       if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills, dropPos);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('carrotWarden', e);
+      // v0.32 moved single-player completion to Bearclaw2, but that must not
+      // erase the established multiplayer Carrot Warden completion/continue
+      // loop. Joins receive the broadcast above; the host completes here.
+      if (typeof GAME !== 'undefined' && GAME.mode !== 'single' && GAME.complete) GAME.complete(kills);
       if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(B.id);
     } else if (e.isBoss2) {
       bossState2 = 'defeated';
@@ -15985,7 +16160,11 @@ const ENEMY = (() => {
       // half of the post-continue +5% (currentTarget covers the "qty" half).
       // Ultra Mode's own +25% spawn rate stacks on top of that the same way.
       const ultraSpawnMult = CONFIG.ultra.active ? CONFIG.ultra.spawnRateMult : 1;
-      if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay / bossEscalation / ultraSpawnMult;
+      // Gardener summons are encounter-scoped adds. Letting the ordinary
+      // respawn pool revive them after they had fallen out of the Gardener's
+      // live-cap array created permanent extra enemies every 18 seconds.
+      if (e.gardenerSummon) e.respawnAt = 0;
+      else if (C.respawnDelay > 0) e.respawnAt = C.respawnDelay / bossEscalation / ultraSpawnMult;
     }
   }
 
@@ -16174,7 +16353,36 @@ const ENEMY = (() => {
     e.group.visible = true;
   }
 
+  function clearQuestEnemies() {
+    let removed = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      if (!e.isGardener && !e.gardenerSummon) continue;
+      const nodes = new Set();
+      if (e.group && e.group.traverse) e.group.traverse(node => nodes.add(node));
+      for (let j = RAY_TARGETS.length - 1; j >= 0; j--) {
+        if (nodes.has(RAY_TARGETS[j])) RAY_TARGETS.splice(j, 1);
+      }
+      for (let j = LOS_TARGETS.length - 1; j >= 0; j--) {
+        if (nodes.has(LOS_TARGETS[j])) LOS_TARGETS.splice(j, 1);
+      }
+      if (e.group && e.group.parent) e.group.parent.remove(e.group);
+      list.splice(i, 1);
+      removed++;
+    }
+    return removed;
+  }
+
+  function setKillsForDev(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return kills;
+    kills = Math.max(0, Math.floor(parsed));
+    UI.setKills(kills);
+    return kills;
+  }
+
   function reset() {
+    clearQuestEnemies();
     kills = 0;
     bossState = 'inactive';
     bossState2 = 'inactive';
@@ -16215,6 +16423,9 @@ const ENEMY = (() => {
         e.stunTimer = 0;
         e.beatSlayerThrowCooldown = 0;
         e.beatSlayerRushTimer = 0;
+        // A console-spawned encounter must not remain marked as a test boss
+        // after reset or its next natural defeat cannot advance QUEST.
+        e.devSpawn = false;
       } else {
         e.maxHp = e.def.stats.hp * ultraHealthMult;
         revive(e);
@@ -17372,7 +17583,9 @@ const ENEMY = (() => {
   // The same boss-exclusion filter is used both when the host packages a
   // snapshot and when it resolves a join's melee/blast index, so the two
   // stay index-compatible no matter when spawnBoss() happened to run.
-  function nonBossList() { return list.filter(e => !e.isBoss && !e.isBoss2 && !e.isBoss3); }
+  function nonBossList() {
+    return list.filter(e => !e.isBoss && !e.isBoss2 && !e.isBoss3 && !e.isGardener);
+  }
 
   /* Host/single-player only: a plain-data read of the current authoritative
      state, cheap enough to call every network tick. No side effects. */
@@ -17646,6 +17859,7 @@ const ENEMY = (() => {
     init, prepareAssets, warmAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
+    clearQuestEnemies, setKillsForDev,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -19191,6 +19405,7 @@ const DEVCONSOLE = (() => {
     log('enemy [type] [n]  spawn n (default 1, max 10) grunts near you');
     log('boss <name>       spawn a mini boss (warden/bearclaw/bearclaw2/beatslayer/gardener)');
     log('killenemies       instantly kill every non-boss enemy on the map');
+    log('wilted <count>    set the regular-enemy total to test quantity triggers');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
     log('list              list every spawnable id, enemy type and boss name');
     log('clear             clear this log');
@@ -19257,7 +19472,7 @@ const DEVCONSOLE = (() => {
     let n = 0;
     const dir = new THREE.Vector3(0, 0, 1);
     ENEMY.list.forEach(e => {
-      if (e.alive && !e.isBoss && !e.isBoss2 && !e.isBoss3) {
+      if (e.alive && !e.isBoss && !e.isBoss2 && !e.isBoss3 && !e.isGardener) {
         ENEMY.applyDamage(e, 99999, e.pos, dir, 'body');
         n++;
       }
@@ -19265,14 +19480,26 @@ const DEVCONSOLE = (() => {
     log('Killed ' + n + ' enem' + (n === 1 ? 'y' : 'ies'), 'ok');
   }
 
+  function cmdWilted(args) {
+    if (!args.length || !/^\d+$/.test(args[0])) {
+      log('Usage: wilted <non-negative count>', 'err');
+      return;
+    }
+    const total = ENEMY.setKillsForDev(args[0]);
+    log('Wilted count set to ' + total + '; the eligible encounter triggers on the next frame.', 'ok');
+  }
+
   function cmdResetEnemies() {
+    QUEST.reset();
     ENEMY.reset();
+    PICKUP.reset();
+    QUEST.start();
     log('Enemy/boss state reset (kills back to 0)', 'ok');
   }
 
   const COMMANDS = {
     help: cmdHelp, list: cmdList, spawn: cmdSpawn, enemy: cmdEnemy, boss: cmdBoss,
-    killenemies: cmdKillEnemies, resetenemies: cmdResetEnemies,
+    killenemies: cmdKillEnemies, wilted: cmdWilted, resetenemies: cmdResetEnemies,
     clear: function () { if (typeof UI !== 'undefined') UI.clearDevConsoleLog(); },
     close: close, exit: close, quit: close
   };
