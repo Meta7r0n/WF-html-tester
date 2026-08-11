@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.36</title>
+<title>The Withered Farm — v0.37</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -989,7 +989,7 @@
   #startFarmBtn{margin-top:14px;}
   #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   #matchModeToggle.hidden{display:none;}
-  #ultraModeToggle, #voiceModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
+  #ultraModeToggle, #voiceModeToggle, #autoEquipToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   .mode-toggle-label{font:800 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--rust-deep);width:100%;}
   .mode-toggle-btn{
     flex:1 1 200px;padding:9px 12px;text-align:center;cursor:pointer;
@@ -1090,6 +1090,19 @@
   .opt-row span{flex:0 0 84px;font-weight:700;}
   .opt-row input[type="range"]{flex:1 1 auto;accent-color:var(--rust);}
   .opt-row b{flex:0 0 42px;text-align:right;font:800 12px/1 "Rockwell",Georgia,serif;color:var(--ink);}
+  .spray-tag-editor{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
+  .spray-tag-preview{
+    flex:0 0 94px;width:94px;height:94px;display:grid;place-items:center;overflow:hidden;
+    border:3px solid var(--ink);border-radius:12px 9px 13px 10px;background:var(--blue-gray,#7D8B94);
+    background-image:linear-gradient(45deg,rgba(246,233,210,.18) 25%,transparent 25%),linear-gradient(-45deg,rgba(246,233,210,.18) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(246,233,210,.18) 75%),linear-gradient(-45deg,transparent 75%,rgba(246,233,210,.18) 75%);
+    background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;
+    box-shadow:3px 4px 0 rgba(22,18,15,.4);transform:rotate(-1deg);
+  }
+  .spray-tag-preview img{display:block;width:100%;height:100%;object-fit:contain;image-rendering:auto;}
+  .spray-tag-actions{display:flex;flex:1 1 250px;gap:8px;flex-wrap:wrap;align-items:center;}
+  .spray-tag-actions .alt{display:inline-block;margin:0;}
+  #optSprayTagFile{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;}
+  #optSprayTagStatus.bad{color:var(--rust-deep);font-weight:800;}
   .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:7px;}
   .opt-controls li{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -1263,7 +1276,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.36</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.37</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1481,6 +1494,27 @@
         <label class="opt-row"><span>Brightness</span><input type="range" id="optBrightness" min="60" max="140" step="1" /><b id="optBrightnessVal"></b></label>
       </div>
       <div class="opt-section">
+        <p class="opt-heading">Weapon Pickups</p>
+        <div id="autoEquipToggle" role="group" aria-label="Auto-equip newly acquired weapons">
+          <button type="button" class="mode-toggle-btn active" id="autoEquipOnBtn">Auto-equip On</button>
+          <button type="button" class="mode-toggle-btn" id="autoEquipOffBtn">Keep current weapon</button>
+        </div>
+        <p class="opt-hint">Only affects newly found normal weapons. Hero specials and scripted quest weapons still equip when required.</p>
+      </div>
+      <div class="opt-section">
+        <p class="opt-heading">Spray Torch Signature</p>
+        <div class="spray-tag-editor">
+          <div class="spray-tag-preview"><img id="optSprayTagPreview" alt="Current local spray tag" /></div>
+          <div class="spray-tag-actions">
+            <button type="button" class="alt" id="optSprayTagChoose">Choose PNG / JPEG</button>
+            <button type="button" class="alt" id="optSprayTagReset">Use built-in tag</button>
+            <input id="optSprayTagFile" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
+          </div>
+        </div>
+        <p class="opt-hint" id="optSprayTagStatus" aria-live="polite">Stored only in this browser. Maximum source size 512 KB; images are resized to 256 × 256.</p>
+        <p class="opt-hint">Equip the Spray Torch and press <b>V</b> (or Melee on touch) near a wall or floor to tag it without using fuel.</p>
+      </div>
+      <div class="opt-section">
         <p class="opt-heading">Controls</p>
         <ul id="optControlsList" class="opt-controls"></ul>
         <button class="alt" id="optResetControls">Reset controls to default</button>
@@ -1584,8 +1618,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.36',
-  branch: 'A-test-v0.36-PAUSE-BARN-STATS'
+  version: 'v0.37',
+  branch: 'A-test-v0.37-PICKUP-VIEWMODEL-SPRAY-TAGS'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -2028,7 +2062,8 @@ const CONFIG = {
       fireInterval: 0, reloadTime: 1.3, automatic: true,
       tickInterval: 0.1, damage: 9, minDamage: 3, range: 7, arc: 0.82,
       recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58,
-      adsArcMult: 0.6, adsRangeMult: 1.3, adsDamageMult: 1.3
+      adsArcMult: 0.6, adsRangeMult: 1.3, adsDamageMult: 1.3,
+      tagRange: 4.0, tagSize: 0.92, tagInterval: 0.7
     },
     portalGun: {
       id: 'portalGun', name: 'Portal Gun', slot: 9, kind: 'gun', ammoType: 'portalCell',
@@ -2197,7 +2232,8 @@ const SETTINGS = (() => {
   const DEFAULTS = {
     master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music,
     wind: CONFIG.audio.wind, voice: CONFIG.audio.voice,
-    brightness: 100, ultra: CONFIG.ultra.active, keymap: {}
+    brightness: 100, ultra: CONFIG.ultra.active,
+    autoEquipPickups: true, sprayTagImage: null, keymap: {}
   };
   let current = Object.assign({}, DEFAULTS);
 
@@ -2242,6 +2278,12 @@ const SETTINGS = (() => {
   // the start-screen toggle buttons -- this just persists the choice.
   function setUltra(v) { current.ultra = !!v; save(); }
   function setBrightness(v) { current.brightness = v; save(); applyBrightness(); }
+  function setAutoEquipPickups(v) { current.autoEquipPickups = !!v; save(); }
+  function setSprayTagImage(dataUrl) {
+    current.sprayTagImage = typeof dataUrl === 'string' && dataUrl.indexOf('data:image/png;base64,') === 0
+      ? dataUrl : null;
+    save();
+  }
 
   /* current.keymap is just a cached snapshot of INPUT's live bindings for
      persistence — INPUT.getBindings() stays the source of truth, this never
@@ -2265,14 +2307,20 @@ const SETTINGS = (() => {
   load();
 
   return {
-    applyAll, setMaster, setSfx, setMusic, setWind, setVoice, setUltra, setBrightness, setBinding, resetBindings,
+    applyAll, setMaster, setSfx, setMusic, setWind, setVoice, setUltra, setBrightness,
+    setAutoEquipPickups, setSprayTagImage, setBinding, resetBindings,
     get master() { return current.master; },
     get voice() { return current.voice; },
     get sfx() { return current.sfx; },
     get music() { return current.music; },
     get wind() { return current.wind; },
     get ultra() { return current.ultra; },
-    get brightness() { return current.brightness; }
+    get brightness() { return current.brightness; },
+    get autoEquipPickups() { return current.autoEquipPickups !== false; },
+    get sprayTagImage() {
+      return typeof current.sprayTagImage === 'string' && current.sprayTagImage.indexOf('data:image/png;base64,') === 0
+        ? current.sprayTagImage : null;
+    }
   };
 })();
 
@@ -2479,8 +2527,9 @@ const TEX = (() => {
     return cache[key];
   }
 
-  // Spray Torch decal foundation: a rough painted-on placeholder blob until
-  // CONFIG.fx.sprayImage points at a real asset (see FX.loadSprayTexture).
+  // Built-in Spray Torch signature. Players can replace this locally with
+  // a normalized PNG/JPEG through Options; the rough WF mark remains the
+  // no-download, no-account fallback.
   function spray() {
     if (cache.spray) return cache.spray;
     const w = 160, c = cv(w, w), x = c.getContext('2d');
@@ -2513,6 +2562,22 @@ const TEX = (() => {
       x.lineTo(dx * w * 0.3 + 3, w * (0.32 + UTIL.rng(0, 0.1)));
       x.closePath(); x.fill();
     });
+    x.globalAlpha = 1;
+    x.save();
+    x.rotate(-0.12);
+    x.textAlign = 'center';
+    x.textBaseline = 'middle';
+    x.lineJoin = 'round';
+    x.font = '900 italic 62px Arial Black, Impact, sans-serif';
+    x.lineWidth = 12;
+    x.strokeStyle = hex(PAL.ink);
+    x.strokeText('WF', 0, -3);
+    x.lineWidth = 4;
+    x.strokeStyle = hex(PAL.cream);
+    x.strokeText('WF', 0, -3);
+    x.fillStyle = hex(PAL.mustard);
+    x.fillText('WF', 0, -3);
+    x.restore();
     x.globalAlpha = 1;
     cache.spray = new THREE.CanvasTexture(c);
     return cache.spray;
@@ -6691,11 +6756,13 @@ const FX = (() => {
   // Spray Torch decal foundation.
   const sprayDecals = [];
   let sprayIdx = 0;
-  let sprayTexture = null, sprayTextureRequested = false;
+  let sprayTexture = null, sprayTextureSource = null, sprayTexturePendingSource = null, sprayTextureLoadToken = 0;
 
   const _v = new THREE.Vector3();
   const _v2 = new THREE.Vector3();
+  const _v3 = new THREE.Vector3();
   const _q = new THREE.Quaternion();
+  const _basis = new THREE.Matrix4();
   const UP = new THREE.Vector3(0, 1, 0);
 
   /* Scrap Railgun's comic payload -- built once per pool slot (see init),
@@ -6973,28 +7040,80 @@ const FX = (() => {
     j.spin.set(UTIL.rng(-16, 16), UTIL.rng(-16, 16), UTIL.rng(-16, 16));
   }
 
-  /* Spray Torch decal foundation. Loads CONFIG.fx.sprayImage once it's a
-     real path (fires exactly once; a missing/broken asset just leaves the
-     procedural placeholder in permanent use, no retry loop). */
-  function loadSprayTexture() {
-    if (sprayTexture || sprayTextureRequested || !CONFIG.fx.sprayImage) return;
-    sprayTextureRequested = true;
-    if (!THREE.TextureLoader) return;
-    new THREE.TextureLoader().load(CONFIG.fx.sprayImage, tex => { sprayTexture = tex; }, undefined, () => {});
+  function applySprayTexture(tex, source) {
+    if (sprayTexture && sprayTexture !== tex && sprayTexture.dispose) sprayTexture.dispose();
+    sprayTexture = tex || null;
+    sprayTextureSource = source || null;
+    if (sprayTexture && 'encoding' in sprayTexture && THREE.sRGBEncoding) sprayTexture.encoding = THREE.sRGBEncoding;
+    for (let i = 0; i < sprayDecals.length; i++) {
+      sprayDecals[i].material.map = sprayTexture || TEX.spray();
+      sprayDecals[i].material.needsUpdate = true;
+    }
   }
-  function sprayDecal(point, normal, scale) {
+
+  /* A custom signature is a local data URL produced by GAME.importSprayTag.
+     Loading it through Three's texture loader never uploads it; it only
+     decodes the browser-local value into the existing decal material pool. */
+  function setSprayImage(source) {
+    source = source || null;
+    if (source === sprayTextureSource && sprayTexture) return;
+    if (source && source === sprayTexturePendingSource) return;
+    const token = ++sprayTextureLoadToken;
+    if (!source) {
+      sprayTexturePendingSource = null;
+      applySprayTexture(null, null);
+      return;
+    }
+    if (!THREE.TextureLoader) return;
+    sprayTexturePendingSource = source;
+    new THREE.TextureLoader().load(source, tex => {
+      if (token !== sprayTextureLoadToken) { if (tex.dispose) tex.dispose(); return; }
+      sprayTexturePendingSource = null;
+      applySprayTexture(tex, source);
+    }, undefined, () => {
+      if (token === sprayTextureLoadToken) {
+        sprayTexturePendingSource = null;
+        applySprayTexture(null, null);
+      }
+    });
+  }
+
+  function loadSprayTexture() {
+    const source = (typeof SETTINGS !== 'undefined' && SETTINGS.sprayTagImage) || CONFIG.fx.sprayImage || null;
+    if (source && (source !== sprayTextureSource || !sprayTexture)) setSprayImage(source);
+  }
+
+  function sprayTag(point, normal, scale, upHint) {
     loadSprayTexture();
     const m = sprayDecals[sprayIdx = (sprayIdx + 1) % sprayDecals.length];
-    m.position.copy(point).addScaledVector(normal, 0.026);
-    _v.copy(point).add(normal);
-    m.lookAt(_v);
-    m.rotation.z = UTIL.rng(0, 6.28);
-    const sc = scale || UTIL.rng(0.62, 0.86);
+    _v.copy(normal).normalize();
+    m.position.copy(point).addScaledVector(_v, 0.026);
+
+    // Keep wall tags upright. On floors/ceilings, use the player's look
+    // direction as the image's top edge so the signature has stable,
+    // intentional framing instead of receiving a random roll.
+    _v2.copy(UP).addScaledVector(_v, -UP.dot(_v));
+    if (_v2.lengthSq() < 0.001) {
+      _v2.copy(upHint || new THREE.Vector3(0, 0, -1));
+      _v2.addScaledVector(_v, -_v2.dot(_v));
+    }
+    if (_v2.lengthSq() < 0.001) _v2.set(0, 0, -1);
+    _v2.normalize();
+    _v3.copy(_v2).cross(_v).normalize();
+    _basis.makeBasis(_v3, _v2, _v);
+    m.quaternion.setFromRotationMatrix(_basis);
+
+    const sc = scale || 0.92;
     m.scale.set(sc, sc, sc);
     m.material.map = sprayTexture || TEX.spray();
     m.material.needsUpdate = true;
     m.material.opacity = 1;
     m.visible = true;
+  }
+
+  function clearSprayTags() {
+    for (let i = 0; i < sprayDecals.length; i++) sprayDecals[i].visible = false;
+    sprayIdx = 0;
   }
 
   function update(dt, t) {
@@ -7126,7 +7245,7 @@ const FX = (() => {
 
   return {
     init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler,
-    launchJunk, sprayDecal
+    launchJunk, sprayTag, clearSprayTags, setSprayImage
   };
 })();
 
@@ -9378,10 +9497,14 @@ const WEAPON = (() => {
       PRIM.box(0.15, 0.11, 0.3, bootMat, { pos: [0, 0, -0.04], parent: b, warp: 0.012, outline: 0.014, ray: false });
       PRIM.box(0.16, 0.045, 0.32, MAT.toon(PAL.mustardDk), { pos: [0, -0.07, -0.04], parent: b, outline: 0.013, ray: false });
       PRIM.box(0.13, 0.13, 0.12, bootMat, { pos: [0, 0.09, 0.06], parent: b, outline: 0.013, ray: false });
-      PRIM.cyl(0.055, 0.055, 0.22, 8, MAT.toon(PAL.charcoal), { pos: [0, 0.24, 0.07], parent: b, outline: 0.013, ray: false });
       boots.add(b);
     });
-    boots.position.set(0, -1.35, -0.62);
+    // Only shoe tips are authored here. The old shin cylinders plus a large
+    // pitch translation exposed two complete lower legs when looking down.
+    // update() now keeps these cropped below frame until the final few
+    // degrees of downward look.
+    boots.position.set(0, -0.7, -0.62);
+    boots.visible = false;
     rig.add(boots);
   }
 
@@ -9443,6 +9566,25 @@ const WEAPON = (() => {
     });
   }
 
+  function primeViewModel(model, id) {
+    if (!model || !model.root) return;
+    const base = model.base || [0, 0, 0];
+    const rot = model.rot || [0, 0, 0];
+    model.root.position.set(base[0], base[1], base[2]);
+    model.root.rotation.set(rot[0], rot[1], rot[2]);
+    model.root.scale.set(1, 1, 1);
+    if (model.forend) model.forend.position.z = id === 'pipePopper' ? -0.44 : id === 'sprayTorch' ? -0.28 : -0.52;
+    if (model.lighterPivot) {
+      const rest = model.lighterRestPos;
+      model.readyK = 0;
+      model.lighterPivot.position.set(rest[0], rest[1], rest[2]);
+    }
+    if (armedHands) {
+      armedHands.position.set(0, 0, 0);
+      armedHands.rotation.set(0, 0, 0);
+    }
+  }
+
   function syncHUD() {
     const d = defFor(), s = stateFor();
     UI.setWeaponInventory(ownedWeaponList(), currentId);
@@ -9469,8 +9611,14 @@ const WEAPON = (() => {
     chargeTimer = 0;
     flameTickTimer = 0;
     flameDry = false;
+    flashTimer = 0;
     setMuzzleVisible(false);
     Object.keys(models).forEach(k => { models[k].root.visible = k === id; });
+    // PICKUP.update runs after WEAPON.update. Without priming here, a newly
+    // acquired model becomes visible at (0,0,0) for the remainder of that
+    // frame and fills the view like a momentary FOV zoom. Give it its held
+    // transform synchronously before the same frame can render.
+    primeViewModel(models[id], id);
     // Spray Torch builds its own asymmetric pair of hands (lighter left,
     // can right, see buildSprayTorch) instead of the generic two-fisted
     // rifle grip every other gun shares.
@@ -9691,13 +9839,17 @@ const WEAPON = (() => {
      frame it's held; the actual fuel/damage tick (ENEMY.coneDamage,
      PvE-only for now -- see the module doc comment at the top of ENEMY)
      only lands every tickInterval seconds, independent of frame rate. Any
-     tick that lines up with a wall rather than an enemy leaves a spray
-     decal there too -- it's still paint, lit or not (see FX.sprayDecal,
-     the foundation for a future custom tag image). */
+     tick resolves damage only. Signature tags belong exclusively to the
+     no-ammo melee action below, so normal flame use cannot stamp a player's
+     image dozens of times or make the tag cost fuel. */
   function fireFlame(camera, dt) {
     const d = defFor(), s = stateFor(), model = models[currentId];
-    if (reloading) return;
+    if (reloading) {
+      if (model.flash) { model.flash.visible = false; if (model.flash2) model.flash2.visible = false; }
+      return;
+    }
     if (s.mag <= 0) {
+      if (model.flash) { model.flash.visible = false; if (model.flash2) model.flash2.visible = false; }
       if (!flameDry) { AUDIO.dryFire(); flameDry = true; }
       UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
       if (s.reserve > 0) startReload();
@@ -9743,13 +9895,45 @@ const WEAPON = (() => {
     ENEMY.coneDamage(_o, _d, {
       range: flameRange, arc: flameArc, damage: flameDamage, minDamage: flameMinDamage, force: 0.6
     });
-    const wallHit = FX.trace(_o, _d, flameRange);
-    if (wallHit && !(wallHit.object.userData && (wallHit.object.userData.enemyHit || wallHit.object.userData.playerHit))) {
-      const n = wallHit.face ? wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld)
-                              : _d.clone().negate();
-      FX.sprayDecal(wallHit.point, n);
-    }
     if (s.mag <= 0) UI.showReloadHint(true, s.reserve > 0 ? 'Press R to reload' : 'Out of ammo');
+  }
+
+  function beginSprayTag(camera) {
+    const d = defFor();
+    if (currentId !== 'sprayTorch' || meleeTimer > 0 || fireTimer > 0.08) return false;
+    reloading = false;
+    reloadTimer = 0;
+    meleeTimer = d.tagInterval;
+    meleeSide *= -1;
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    const hit = FX.trace(_o, _d, d.tagRange);
+    const hitData = hit && hit.object ? hit.object.userData : null;
+    const validSurface = hit && !(hitData && (hitData.enemyHit || hitData.playerHit));
+    if (!validSurface) {
+      AUDIO.melee('gun', false);
+      UI.toast('Move closer to a wall or floor to tag it', 1.0);
+      return true;
+    }
+    const normal = hit.face
+      ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
+      : _d.clone().negate();
+    FX.sprayTag(hit.point, normal, d.tagSize, _d);
+    for (let i = 0; i < 6; i++) {
+      _t.copy(normal).multiplyScalar(UTIL.rng(0.16, 0.5));
+      _t.x += UTIL.rng(-0.22, 0.22);
+      _t.y += UTIL.rng(-0.16, 0.24);
+      _t.z += UTIL.rng(-0.22, 0.22);
+      FX.spawnParticle(hit.point, _t, {
+        map: TEX.puff(PAL.hotSauce), s0: UTIL.rng(0.05, 0.11), s1: 0.015,
+        life: UTIL.rng(0.18, 0.32), grav: 0.3, spin: UTIL.rng(-5, 5)
+      });
+    }
+    AUDIO.gunshot('sprayTorch');
+    UI.crosshairKick();
+    recoilVel += 1.6;
+    squashVel += 2.2;
+    return true;
   }
 
   function beginMelee(camera) {
@@ -9833,7 +10017,7 @@ const WEAPON = (() => {
       }
       ammoAdded = (s.mag - beforeMag) + (s.reserve - beforeReserve);
     }
-    if (newlyOwned) setCurrent(id, true);
+    if (newlyOwned && SETTINGS.autoEquipPickups) setCurrent(id, true);
     else syncHUD();
     if (newlyOwned && typeof RUNSTATS !== 'undefined') RUNSTATS.weapon('acquired', id);
     return {
@@ -9884,7 +10068,10 @@ const WEAPON = (() => {
       if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
       const pressedFire = INPUT.consumePress('fire');
       const d = defFor();
-      if (INPUT.consumePress('melee')) beginMelee(camera);
+      if (INPUT.consumePress('melee')) {
+        if (d.id === 'sprayTorch') beginSprayTag(camera);
+        else beginMelee(camera);
+      }
       // The emergency chainsaw is a real temporary weapon: its fire surface
       // can be tapped or held just like a normal weapon. Keeping the held
       // state here also makes it usable with the mobile fire/aim drag.
@@ -9897,6 +10084,15 @@ const WEAPON = (() => {
       else if (d.kind === 'flame' && INPUT.actions.fire) fireFlame(camera, dt);
       else if (d.kind === 'flame') flameDry = false;
       if (INPUT.consumePress('reload')) startReload();
+    }
+
+    // fireFlame owns this spark directly rather than using flashTimer. Turn
+    // it off on the first frame the trigger is released—and while paused—so
+    // the lighter cannot remain visibly lit while idle or merely aiming.
+    const flameModel = models[currentId];
+    if ((!active || !INPUT.actions.fire) && flameModel && flameModel.flash && defFor().kind === 'flame') {
+      flameModel.flash.visible = false;
+      if (flameModel.flash2) flameModel.flash2.visible = false;
     }
 
     let reloadPitch = 0, reloadRoll = 0, reloadDrop = 0, forendZ = 0;
@@ -10018,8 +10214,12 @@ const WEAPON = (() => {
     }
 
     rig.position.set(0, 0, 0);
-    boots.position.y = -1.34 - PLAYER.pitch * 1.75;
-    boots.position.z = -0.62 + PLAYER.pitch * 0.25;
+    const bootRevealRaw = UTIL.clamp((-PLAYER.pitch - 1.12) / Math.max(0.01, CONFIG.player.pitchLimit - 1.12), 0, 1);
+    const bootReveal = bootRevealRaw * bootRevealRaw * (3 - 2 * bootRevealRaw);
+    boots.visible = bootReveal > 0.015;
+    boots.position.y = UTIL.lerp(-0.7, -0.42, bootReveal);
+    boots.position.z = -0.62;
+    boots.scale.setScalar(UTIL.lerp(0.88, 1, bootReveal));
     boots.children[0].position.z = Math.sin(bobPhase) * 0.07;
     boots.children[1].position.z = -Math.sin(bobPhase) * 0.07;
 
@@ -10058,6 +10258,7 @@ const WEAPON = (() => {
     chargeTimer = 0;
     flameTickTimer = 0;
     flameDry = false;
+    if (typeof FX !== 'undefined' && FX.clearSprayTags) FX.clearSprayTags();
     setCurrent('pipePopper', true, true);
   }
 
@@ -10822,6 +11023,13 @@ const UI = (() => {
     el.voiceHint = document.getElementById('voiceHint');
     el.optBrightness = document.getElementById('optBrightness');
     el.optBrightnessVal = document.getElementById('optBrightnessVal');
+    el.autoEquipOnBtn = document.getElementById('autoEquipOnBtn');
+    el.autoEquipOffBtn = document.getElementById('autoEquipOffBtn');
+    el.optSprayTagChoose = document.getElementById('optSprayTagChoose');
+    el.optSprayTagReset = document.getElementById('optSprayTagReset');
+    el.optSprayTagFile = document.getElementById('optSprayTagFile');
+    el.optSprayTagPreview = document.getElementById('optSprayTagPreview');
+    el.optSprayTagStatus = document.getElementById('optSprayTagStatus');
     el.optControlsList = document.getElementById('optControlsList');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
@@ -11710,6 +11918,28 @@ const UI = (() => {
     if (el.optWind) { const v = Math.round(SETTINGS.wind * 100); el.optWind.value = v; el.optWindVal.textContent = v + '%'; }
     if (el.optVoice) { const v = Math.round(SETTINGS.voice * 100); el.optVoice.value = v; el.optVoiceVal.textContent = v + '%'; }
     if (el.optBrightness) { el.optBrightness.value = SETTINGS.brightness; el.optBrightnessVal.textContent = SETTINGS.brightness + '%'; }
+    if (el.autoEquipOnBtn) {
+      el.autoEquipOnBtn.classList.toggle('active', SETTINGS.autoEquipPickups);
+      el.autoEquipOnBtn.setAttribute('aria-pressed', SETTINGS.autoEquipPickups ? 'true' : 'false');
+    }
+    if (el.autoEquipOffBtn) {
+      el.autoEquipOffBtn.classList.toggle('active', !SETTINGS.autoEquipPickups);
+      el.autoEquipOffBtn.setAttribute('aria-pressed', SETTINGS.autoEquipPickups ? 'false' : 'true');
+    }
+    if (el.optSprayTagPreview) {
+      let builtIn = '';
+      try {
+        const canvas = TEX.spray().image;
+        builtIn = canvas && canvas.toDataURL ? canvas.toDataURL('image/png') : '';
+      } catch (err) {}
+      el.optSprayTagPreview.src = SETTINGS.sprayTagImage || builtIn;
+    }
+    if (el.optSprayTagStatus) {
+      el.optSprayTagStatus.classList.remove('bad');
+      el.optSprayTagStatus.textContent = SETTINGS.sprayTagImage
+        ? 'Custom tag stored only in this browser · normalized to a 256 × 256 PNG.'
+        : 'Using the built-in WF tag. Choose a PNG or JPEG up to 512 KB.';
+    }
     const voiceOn = typeof VOICE !== 'undefined' && VOICE.enabled;
     if (el.voiceOffBtn) el.voiceOffBtn.classList.toggle('active', !voiceOn);
     if (el.voiceOnBtn) el.voiceOnBtn.classList.toggle('active', voiceOn);
@@ -11719,6 +11949,11 @@ const UI = (() => {
     }
     rebindingAction = null;
     renderControlsList();
+  }
+  function setSprayTagStatus(message, bad) {
+    if (!el.optSprayTagStatus) return;
+    el.optSprayTagStatus.textContent = message || '';
+    el.optSprayTagStatus.classList.toggle('bad', !!bad);
   }
   function showOptions() {
     optionsReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -11804,7 +12039,7 @@ const UI = (() => {
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showLockError, clearLockError,
-    showOptions, hideOptions, syncOptionsUI, renderControlsList, setRebinding, showMap, hideMap,
+    showOptions, hideOptions, syncOptionsUI, setSprayTagStatus, renderControlsList, setRebinding, showMap, hideMap,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showKillcam, hideKillcam,
@@ -12989,6 +13224,7 @@ const GAME = (() => {
     // ---- content ----
     LEVEL.build(scene);
     FX.init(scene, viewScene);
+    FX.setSprayImage(SETTINGS.sprayTagImage || CONFIG.fx.sprayImage || null);
     PLAYER.init(camera);
     WEAPON.build(viewScene);
     THROWABLE.init(scene);
@@ -13117,6 +13353,21 @@ const GAME = (() => {
       UI.syncOptionsUI(); // reflect the pending state immediately too
     });
     document.getElementById('optBrightness').addEventListener('input', e => { SETTINGS.setBrightness(Number(e.target.value)); UI.syncOptionsUI(); });
+    document.getElementById('autoEquipOnBtn').addEventListener('click', e => {
+      e.stopPropagation(); SETTINGS.setAutoEquipPickups(true); UI.syncOptionsUI();
+    });
+    document.getElementById('autoEquipOffBtn').addEventListener('click', e => {
+      e.stopPropagation(); SETTINGS.setAutoEquipPickups(false); UI.syncOptionsUI();
+    });
+    document.getElementById('optSprayTagChoose').addEventListener('click', e => {
+      e.stopPropagation(); document.getElementById('optSprayTagFile').click();
+    });
+    document.getElementById('optSprayTagReset').addEventListener('click', e => {
+      e.stopPropagation(); resetSprayTag();
+    });
+    document.getElementById('optSprayTagFile').addEventListener('change', e => {
+      importSprayTag(e.target.files && e.target.files[0]);
+    });
     document.getElementById('mobileChat').addEventListener('click', e => { e.stopPropagation(); CHAT.promptSend(); });
     document.getElementById('optControlsList').addEventListener('click', e => {
       const btn = e.target.closest('[data-rebind]');
@@ -13467,6 +13718,87 @@ const GAME = (() => {
     UI.setCoopLobbyStep(COOP.role, 'connected');
     UI.setCoopStatus('Connected. Starting the farm…', 'good');
     enter();
+  }
+
+  const SPRAY_TAG_MAX_BYTES = 512 * 1024;
+  const SPRAY_TAG_EDGE = 256;
+  let sprayTagImportToken = 0;
+
+  async function importSprayTag(file) {
+    if (!file) return false;
+    const importToken = ++sprayTagImportToken;
+    const type = String(file.type || '').toLowerCase();
+    const name = String(file.name || '').toLowerCase();
+    const supported = type === 'image/png' || type === 'image/jpeg' ||
+      (!type && /\.(png|jpe?g)$/.test(name));
+    if (!supported) {
+      UI.setSprayTagStatus('That file is not a PNG or JPEG.', true);
+      if (UI.el.optSprayTagFile) UI.el.optSprayTagFile.value = '';
+      return false;
+    }
+    if (file.size > SPRAY_TAG_MAX_BYTES) {
+      UI.setSprayTagStatus('That image is over 512 KB. Choose a smaller PNG or JPEG.', true);
+      if (UI.el.optSprayTagFile) UI.el.optSprayTagFile.value = '';
+      return false;
+    }
+
+    let localUrl = '';
+    try {
+      localUrl = URL.createObjectURL(file);
+      const img = await new Promise((resolve, reject) => {
+        const localImage = new Image();
+        localImage.onload = () => resolve(localImage);
+        localImage.onerror = () => reject(new Error('The browser could not decode that image.'));
+        localImage.src = localUrl;
+      });
+      const sourceWidth = img.naturalWidth || img.width;
+      const sourceHeight = img.naturalHeight || img.height;
+      if (!sourceWidth || !sourceHeight) throw new Error('That image has no readable pixels.');
+      if (sourceWidth > 4096 || sourceHeight > 4096) {
+        throw new Error('That image is too large in dimensions. Keep each side at 4096 px or less.');
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = SPRAY_TAG_EDGE;
+      canvas.height = SPRAY_TAG_EDGE;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('This browser cannot prepare the tag canvas.');
+      ctx.clearRect(0, 0, SPRAY_TAG_EDGE, SPRAY_TAG_EDGE);
+      const fit = Math.min((SPRAY_TAG_EDGE - 16) / sourceWidth, (SPRAY_TAG_EDGE - 16) / sourceHeight);
+      const width = Math.max(1, Math.round(sourceWidth * fit));
+      const height = Math.max(1, Math.round(sourceHeight * fit));
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, Math.round((SPRAY_TAG_EDGE - width) / 2), Math.round((SPRAY_TAG_EDGE - height) / 2), width, height);
+      const dataUrl = canvas.toDataURL('image/png');
+      if (!dataUrl || dataUrl.length > SPRAY_TAG_MAX_BYTES) {
+        throw new Error('The normalized tag is still too complex. Try a simpler or smaller image.');
+      }
+      if (importToken !== sprayTagImportToken) return false;
+
+      SETTINGS.setSprayTagImage(dataUrl);
+      FX.setSprayImage(dataUrl);
+      UI.syncOptionsUI();
+      UI.setSprayTagStatus('Custom signature ready · saved only in this browser as a 256 × 256 PNG.', false);
+      return true;
+    } catch (err) {
+      if (importToken === sprayTagImportToken) {
+        UI.setSprayTagStatus(err && err.message ? err.message : 'That image could not be imported.', true);
+      }
+      return false;
+    } finally {
+      if (localUrl) URL.revokeObjectURL(localUrl);
+      if (importToken === sprayTagImportToken && UI.el.optSprayTagFile) UI.el.optSprayTagFile.value = '';
+    }
+  }
+
+  function resetSprayTag() {
+    sprayTagImportToken++;
+    if (UI.el.optSprayTagFile) UI.el.optSprayTagFile.value = '';
+    SETTINGS.setSprayTagImage(null);
+    FX.setSprayImage(CONFIG.fx.sprayImage || null);
+    UI.syncOptionsUI();
+    UI.setSprayTagStatus('Built-in WF signature restored.', false);
   }
 
   /* Coop/deathmatch "Get back up": gated by the same respawn window shown
