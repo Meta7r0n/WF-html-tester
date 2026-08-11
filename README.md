@@ -4,30 +4,28 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.29`
-- **Working branch:** `A-test-v0.29-EAST-NORTH-BARN-EXPANSION`
-- **Baseline:** `A-test-v0.28-README-CANVAS-BOSS-PRELOAD`
+- **Current alpha:** `v0.30`
+- **Working branch:** `A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH`
+- **Baseline:** `A-test-v0.29-EAST-NORTH-BARN-EXPANSION`
 
-## What changed in v0.29
+## What changed in v0.30
 
-- Extended the east wing north from the horse stable to the farm boundary.
-- Added the two-floor **North Barn**, with a `30 × 24 m` (`720 m²`) footprint.
-  That is 3.21 times the original barn's `16 × 14 m` (`224 m²`) footprint.
-- Added broad south and west doors, a twelve-step interior staircase, a nearly
-  full upper floor, railings, structural cover, and clear routes on both levels.
-- Filled the barn with stacked hay, crates, barrels, old tools, one intact old
-  tractor, one stripped tractor, and loose engines, axles, wheels, and parts.
-- Added an explicitly dormant crafting station in the rear upper corner. Its
-  workbench, CRT computer, keyboard, tower, light, map POI, and metadata are in
-  place for special-weapon crafting in a later build.
-- Enclosed the stable/North Barn yard with fencing and two wide, collider-free
-  gates: a south entrance from the corn-maze route and a west entrance from
-  Silo Row. Exterior hay, crates, barrels, and machinery provide added cover.
-- Added North Barn pickups and spawn markers, reserving two of the new markers
-  in normal encounters. Enemy targets are now 14/18/22/25 for one to four
-  co-op players.
-- Updated the in-game farm map, browser/menu version labels, and documentation
-  for `v0.29`.
+- Rebuilt the North Barn stairwell: the twelve steps now run east/west and exit
+  into the broad center of the upper deck.
+- Added a two-leaf **floor gate** over the stairs. Press `E` (or tap **Use**) to
+  open or close it. Closed leaves restore a real walkable upper floor; open
+  leaves expose the stair route and stand upright as visible guards.
+- Made the floor gate host-authoritative in online modes. Its state is relayed
+  to the room and included for late joiners.
+- Cleared the two full-depth stable dividers and moved remaining cover out of
+  the central lanes, improving movement for players and enemies.
+- Added two stable roof routes: a step-height-safe exterior stair for every
+  actor and a faster hay-bale jump route for players.
+- Added a North Barn hatch and a new `28 × 20 m` underground cellar. The room
+  connects directly to the existing northeast room, with cover, lighting,
+  enemy markers, pickups, and matching surface/underground map entries.
+- Updated browser/menu version labels, controls, the farm map, and this README
+  for `v0.30`.
 
 ## Run the game
 
@@ -37,7 +35,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.29-EAST-NORTH-BARN-EXPANSION
+git switch A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH
 python3 -m http.server 8000
 ```
 
@@ -112,6 +110,7 @@ All keyboard bindings can be changed under **Options → Controls**.
 | `1–8` | Select weapon slot |
 | `G` | Throw selected throwable |
 | `J` | Use Jays |
+| `E` | Interact with the North Barn floor gate |
 | `F` | Toggle lantern |
 | `B` | Hold to talk when voice chat is enabled |
 | `Enter` | Open/send multiplayer text chat |
@@ -119,8 +118,9 @@ All keyboard bindings can be changed under **Options → Controls**.
 | Backtick | Open the single-player developer console |
 
 Touch devices receive a movement stick, drag-to-look zone, combat/action
-buttons, throwable switching, chat, pause, crouch, aim, and push-to-talk
-controls. Gameplay canvas gestures are captured so they do not scroll the page.
+buttons, a **Use** interaction button, throwable switching, chat, pause,
+crouch, aim, and push-to-talk controls. Gameplay canvas gestures are captured
+so they do not scroll the page.
 
 ## Developer console
 

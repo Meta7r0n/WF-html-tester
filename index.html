@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.29</title>
+<title>The Withered Farm — v0.30</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -85,6 +85,16 @@
   #crosshair .d{left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;}
   #crosshair.kick{transform:scale(1.35);}
   #crosshair{transition:opacity .18s ease, transform .09s ease;}
+  #interactHint{
+    position:fixed;left:50%;top:calc(50% + 44px);z-index:33;
+    transform:translate(-50%,7px) rotate(-.5deg);opacity:0;pointer-events:none;
+    padding:7px 11px;border:2px solid var(--ink);border-radius:8px 6px 9px 7px;
+    background:rgba(246,233,210,.92);box-shadow:3px 4px 0 rgba(22,18,15,.36);
+    color:var(--rust-deep);font:900 11px/1 "Rockwell",Georgia,serif;
+    letter-spacing:1.2px;text-transform:uppercase;white-space:nowrap;
+    transition:opacity .14s ease,transform .14s ease;
+  }
+  #interactHint.on{opacity:1;transform:translate(-50%,0) rotate(-.5deg);}
 
   /* ---------- Weapon + ammo ---------- */
   #weaponName{
@@ -323,6 +333,7 @@
      so !important is the simplest reliable way to force them off for the
      cutaway without touching that unrelated toggle logic. */
   body.killcam-active #crosshair,
+  body.killcam-active #interactHint,
   body.killcam-active #weaponName,
   body.killcam-active #weaponInventory,
   body.killcam-active #ammo,
@@ -588,6 +599,10 @@
     font-size:clamp(10px,1.5vw,13px);
   }
   #mobileADS.active{background:var(--mustard);color:var(--ink);text-shadow:none;}
+  #mobileInteract{
+    right:clamp(80px,13vw,108px);bottom:clamp(196px,30vw,230px);
+    background:rgba(232,163,61,.92);color:var(--ink);
+  }
   #mobilePause{
     right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
     z-index:4;width:44px;border-radius:9px;font-size:15px;letter-spacing:0;
@@ -1010,6 +1025,7 @@
   <div id="app"></div>
 
   <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
+  <div id="interactHint" aria-live="polite"></div>
 
   <div id="weaponName">Pipe Popper</div>
   <div id="weaponInventory" aria-label="Weapon inventory"></div>
@@ -1092,6 +1108,7 @@
       <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
       <button type="button" class="mobile-btn" id="mobileTalk" aria-label="Hold to talk">Talk</button>
       <button type="button" class="mobile-btn" id="mobileADS" aria-label="Aim: steadier and more accurate, slower to move">Aim</button>
+      <button type="button" class="mobile-btn" id="mobileInteract" aria-label="Interact">Use</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
     <button type="button" class="mobile-btn" id="mobileChat" aria-label="Send a chat message">Chat</button>
@@ -1115,7 +1132,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.29</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.30</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1131,10 +1148,11 @@
         <li><kbd>1–8</kbd> Switch weapon</li>
         <li><kbd>R</kbd> Reload</li>
         <li><kbd>G</kbd> Throw grenade</li>
+        <li><kbd>E</kbd> Interact / floor gate</li>
         <li><kbd>Esc</kbd> Free the mouse</li>
         <li><kbd>F</kbd> Flashlight lantern</li>
       </ul>
-      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Tap a weapon in the inventory strip to equip it. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them.</div>
+      <div class="touch-help"><b>Left stick</b> moves and runs; push up/down while on a ladder to climb. Drag anywhere on the right to look. Tap a weapon in the inventory strip to equip it. Hold <b>Fire</b> and drag to aim while shooting. Tap <b>Throw</b> to use a grenade once you find them, and <b>Use</b> to interact with the North Barn floor gate.</div>
       <div id="ultraModeToggle">
         <span class="mode-toggle-label">Difficulty</span>
         <button class="mode-toggle-btn active" id="ultraOffBtn" data-ultra="off">Normal</button>
@@ -1375,8 +1393,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.29',
-  branch: 'A-test-v0.29-EAST-NORTH-BARN-EXPANSION'
+  version: 'v0.30',
+  branch: 'A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -2653,7 +2671,8 @@ const WORLD = {
       minX: cx - w / 2, maxX: cx + w / 2,
       minY: cy - h / 2, maxY: cy + h / 2,
       minZ: cz - d / 2, maxZ: cz + d / 2,
-      tag: tag || ''
+      tag: tag || '',
+      enabled: true
     };
     this.solids.push(s);
     return s;
@@ -2806,6 +2825,7 @@ const WORLD = {
       pos[which] += amount;
       for (let i = 0; i < solids.length; i++) {
         const s = solids[i];
+        if (s.enabled === false) continue;
         if (pos.y + h <= s.minY || pos.y + 0.06 >= s.maxY) continue;
         if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
         if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
@@ -2831,6 +2851,7 @@ const WORLD = {
     let groundY = this.defaultGroundAt(pos.x, pos.z, opt.layerId);
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
+      if (s.enabled === false) continue;
       if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
       if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
       if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
@@ -2854,6 +2875,7 @@ const WORLD = {
     const solids = this.solids;
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
+      if (s.enabled === false) continue;
       if (layerId && layerId !== 'surface' && s.minY >= -0.2) continue;
       if (s.tag && s.tag.indexOf('ceiling') !== -1) continue;
       if (x <= s.minX || x >= s.maxX || z <= s.minZ || z >= s.maxZ) continue;
@@ -3094,7 +3116,7 @@ const LEVEL = (() => {
   let root = null;
   const animated = {
     windmillFan: null, vane: null, sails: [], hangers: [],
-    basementHatch: null, basementHatches: []
+    basementHatch: null, basementHatches: [], northBarnGate: null
   };
 
   /* soft-edged dirt blob used to paint the footpaths */
@@ -4204,10 +4226,10 @@ const LEVEL = (() => {
   }
 
   /* ---------------- East wing: horse stable ----------------
-     North end of the corn maze, inside the same new bump-out -- an open-
-     sided structure (roof + posts, partial stall dividers, hay/crate cover)
-     rather than a sealed building, so it reads as a real firefight arena
-     instead of another loot room. */
+     The old full-depth stall dividers turned this open shelter into two long
+     collision traps. v0.30 keeps the roof and perimeter posts, clears the
+     center for players/enemies, and adds both a walkable enemy stair and a
+     shorter hay-bale jump route to the roof. */
   function buildHorseStable(parent) {
     const CX = 48, CZ = -46, HW = 5, HD = 5, POST_H = 3.1, ROOF_Y = 3.35;
     const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
@@ -4224,20 +4246,41 @@ const LEVEL = (() => {
     b.build(parent);
     WORLD.add(CX, ROOF_Y, CZ, HW * 2 + 0.6, 0.3, HD * 2 + 0.6, 'stable_roof');
 
-    // A pair of low stall dividers -- waist-high cover, not sightline blockers.
-    const rail = new PRIM.Batch(timber, 0.04);
-    rail.box(0.16, 1.05, HD * 2 - 1.0, CX - HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
-    rail.box(0.16, 1.05, HD * 2 - 1.0, CX + HW * 0.5, 0.53, CZ, 0, 0, 0, 0.02);
-    rail.build(parent);
-    WORLD.addFloor(CX - HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
-    WORLD.addFloor(CX + HW * 0.5, 0, CZ, 0.4, 1.05, HD * 2 - 1.0, 'stable_rail');
+    // Eight overlapping rises stay under both controllers' step limits, so
+    // enemies can follow players onto the roof instead of collecting against
+    // a ladder or a jump-only prop stack.
+    const access = new PRIM.Batch(timber, 0.035);
+    const accessX0 = 61.5, accessZ = -46.0, accessStep = 0.94;
+    for (let i = 0; i < 8; i++) {
+      const top = (i + 1) * (ROOF_Y + 0.15) / 8;
+      const x = accessX0 - i * accessStep;
+      access.box(1.0, top, 2.4, x, top / 2, accessZ, 0, 0, 0, 0.012);
+      WORLD.addFloor(x, 0, accessZ, 1.0, top, 2.4, 'stable_roof_stair');
+    }
+    // The landing overlaps the roof edge, eliminating the shoulder-width gap
+    // that made the earlier ad-hoc climb fail at full sprint speed.
+    access.box(2.8, 0.28, 3.0, 53.9, ROOF_Y + 0.01, accessZ, 0, 0, 0, 0.014);
+    WORLD.addFloor(53.9, ROOF_Y - 0.13, accessZ, 2.8, 0.28, 3.0, 'stable_roof_landing');
+    // One visual handrail on the exposed side; it deliberately has no thin
+    // collider to snag actors using the full stair width.
+    access.box(0.12, 1.0, 0.12, 53.75, 3.9, -44.72);
+    access.box(8.25, 0.12, 0.12, 57.7, 2.45, -44.72, 0, 0, -0.40);
+    access.build(parent);
+
+    // Optional player shortcut: three overlapping hay terraces make a clear
+    // jump/mantle silhouette on the west side while the stable center stays
+    // completely open for combat circulation.
+    PROPS.hayBale(parent, 40.15, 0, CZ, 0.08);
+    PROPS.hayBale(parent, 41.2, 0, CZ, -0.10);
+    PROPS.hayBale(parent, 41.2, 0.85, CZ, 0.06);
+    PROPS.hayBale(parent, 42.2, 0, CZ, 0.12);
+    PROPS.hayBale(parent, 42.2, 0.85, CZ, -0.08);
+    PROPS.hayBale(parent, 42.2, 1.70, CZ, 0.04);
 
     PROPS.hayBale(parent, CX - HW + 1.2, 0, CZ - HD + 1.2, 0.2);
-    PROPS.hayBale(parent, CX - HW + 1.0, 0, CZ, -0.15);
-    PROPS.hayBale(parent, CX + HW - 1.2, 0, CZ + HD - 1.2, 0.3);
     PROPS.crate(parent, CX + HW - 1.0, 0, CZ - HD + 1.4, 0.95, -0.3);
     // Keep the new south-to-north barn lane open through the stable center.
-    PROPS.barrel(parent, CX + HW + 2.5, CZ - HD + 0.5, { color: PAL.rust });
+    PROPS.barrel(parent, CX + HW + 3.8, CZ - HD + 0.5, { color: PAL.rust });
     PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ - HD + 0.4, 0);
     PROPS.lantern(parent, CX, ROOF_Y - 0.2, CZ + HD - 0.4, 0);
     // Shifted west so the straight stable-to-North-Barn route stays clear.
@@ -4245,6 +4288,7 @@ const LEVEL = (() => {
       { w: 2.0, h: 0.8, bg: PAL.cream, fg: PAL.rustDeep, postH: 1.6 });
 
     WORLD.addSpawn(CX, 0, CZ, 'horse_stable');
+    WORLD.addSpawn(CX, ROOF_Y + 0.15, CZ, 'horse_stable_roof');
   }
 
   /* ---------------- v0.29: North Barn ----------------
@@ -4314,8 +4358,10 @@ const LEVEL = (() => {
     WORLD.addFloor(X0 - 0.18, 0, -70.35, 0.38, 4.7, 2.45, 'north_barn_door');
     WORLD.addFloor(X0 - 0.18, 0, -61.65, 0.38, 4.7, 2.45, 'north_barn_door');
 
-    // Ground boards plus a nearly full second floor. The southeast cut-out is
-    // a real stairwell, not an invisible teleport or ladder.
+    // Ground boards plus a nearly full second floor. v0.30 rotates the stairs
+    // east/west and closes the old permanent hole with a two-leaf floor gate.
+    // Closed leaves are a real walkable floor; opening them removes that
+    // collider and exposes the stairwell below.
     const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 6) });
     const floor = new PRIM.Batch(floorMat, 0);
     floor.plane(29.4, 23.4, CX, 0.025, CZ, -Math.PI / 2, 0, 0);
@@ -4323,8 +4369,10 @@ const LEVEL = (() => {
 
     const upperMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 5) });
     const upper = new PRIM.Batch(upperMat, 0.045);
-    upper.box(29.2, 0.32, 13.2, CX, UPPER_Y - 0.16, -72.0, 0, 0, 0, 0.02);
-    upper.box(22.2, 0.32, 9.0, 44.5, UPPER_Y - 0.16, -60.0, 0, 0, 0, 0.02);
+    // Three fixed slabs surround a 10.8 x 5 m stairwell on the east side.
+    upper.box(29.2, 0.32, 15.1, CX, UPPER_Y - 0.16, -71.05, 0, 0, 0, 0.02);
+    upper.box(29.2, 0.32, 3.0, CX, UPPER_Y - 0.16, -57.0, 0, 0, 0, 0.02);
+    upper.box(18.4, 0.32, 5.0, 42.6, UPPER_Y - 0.16, -61.0, 0, 0, 0, 0.02);
     // Structural posts and cross-beams also provide useful ground-floor cover.
     [[36, -64.8], [48, -64.8], [55.3, -64.8], [36, -76], [48, -76], [60, -76]].forEach(p => {
       upper.box(0.34, UPPER_Y - 0.2, 0.34, p[0], (UPPER_Y - 0.2) / 2, p[1], 0, 0, 0, 0.018);
@@ -4332,22 +4380,58 @@ const LEVEL = (() => {
     });
     upper.box(26.0, 0.32, 0.34, CX - 1.0, UPPER_Y - 0.48, -65.2, 0, 0, 0, 0.018);
 
-    // Twelve broad steps rise north into the upper deck.
+    // Twelve broad steps now rise westward: the low entrance is against the
+    // east wall and the high landing exits into the broad center deck.
+    const topStepSolids = [];
     for (let i = 0; i < 12; i++) {
       const top = (i + 1) * (UPPER_Y / 12);
-      const z = -56.2 - i * 0.82;
-      upper.box(3.6, top, 0.86, 59.0, top / 2, z, 0, 0, 0, 0.012);
-      WORLD.addFloor(59.0, 0, z, 3.6, top, 0.86, 'north_barn_stair');
+      const x = 61.4 - i * 0.82;
+      upper.box(0.86, top, 3.6, x, top / 2, -61.0, 0, 0, 0, 0.012);
+      const stairSolid = WORLD.addFloor(x, 0, -61.0, 0.86, top, 3.6, 'north_barn_stair');
+      if (i >= 10) topStepSolids.push(stairSolid);
     }
-    // West edge of the stair opening: continuous rail, open at both ends.
-    for (let z = -64.2; z <= -57.0; z += 1.45) {
-      upper.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
-    }
-    upper.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
     upper.build(parent);
-    WORLD.addFloor(CX, UPPER_Y - 0.32, -72.0, 29.2, 0.32, 13.2, 'north_barn_upper');
-    WORLD.addFloor(44.5, UPPER_Y - 0.32, -60.0, 22.2, 0.32, 9.0, 'north_barn_upper');
-    WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+    WORLD.addFloor(CX, UPPER_Y - 0.32, -71.05, 29.2, 0.32, 15.1, 'north_barn_upper');
+    WORLD.addFloor(CX, UPPER_Y - 0.32, -57.0, 29.2, 0.32, 3.0, 'north_barn_upper');
+    WORLD.addFloor(42.6, UPPER_Y - 0.32, -61.0, 18.4, 0.32, 5.0, 'north_barn_upper');
+
+    // Hinges sit on the north/south edges. Each half folds upward, becoming a
+    // visible guard at the open stairwell instead of disappearing. The fixed
+    // west edge stays clear because that is the upper stair landing.
+    const gateWood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 3) });
+    const gateMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    function floorGateLeaf(hingeZ, openSign) {
+      const pivot = new THREE.Group();
+      pivot.position.set(57.2, UPPER_Y, hingeZ);
+      parent.add(pivot);
+      PRIM.box(10.65, 0.16, 2.42, gateWood, {
+        pos: [0, -0.08, openSign * 1.25], parent: pivot, outline: 0.04
+      });
+      const frame = new PRIM.Batch(gateMetal, 0.018);
+      [0.12, 1.22, 2.38].forEach(offset =>
+        frame.box(10.55, 0.07, 0.10, 0, 0.045, openSign * offset));
+      [-5.18, 0, 5.18].forEach(x =>
+        frame.box(0.10, 0.07, 2.30, x, 0.045, openSign * 1.25));
+      frame.build(pivot);
+      return pivot;
+    }
+    const northGateLeaf = floorGateLeaf(-63.5, 1);
+    const southGateLeaf = floorGateLeaf(-58.5, -1);
+    const floorGateSolid = WORLD.addFloor(57.2, UPPER_Y - 0.18, -61.0,
+      10.8, 0.18, 5.0, 'north_barn_floor_gate');
+    topStepSolids.forEach(s => { s.enabled = false; });
+    animated.northBarnGate = {
+      id: 'north_barn_floor_gate', x: 57.2, z: -61.0,
+      open: false, target: 0, openness: 0,
+      north: northGateLeaf, south: southGateLeaf,
+      collider: floorGateSolid, topStepSolids: topStepSolids
+    };
+
+    // A fixed placard tells players why this patch of loft floor is framed in
+    // metal. The live HUD supplies the current Open/Close verb and bound key.
+    PRIM.box(0.08, 0.72, 1.85, MAT.toon(0xffffff, {
+      map: TEX.sign(['E', 'FLOOR GATE'], PAL.cream, PAL.rustDeep, 220, 130)
+    }), { pos: [62.55, UPPER_Y + 1.0, -61.0], parent: parent, outline: 0.025, ray: false });
 
     // A chunky, deliberately old tractor. The stripped variant omits its hood
     // and front wheels, exposing an engine block and loose axle parts.
@@ -4416,17 +4500,17 @@ const LEVEL = (() => {
      [35.5, 0, -72.4, 0.95, 0.1], [54.0, UPPER_Y, -76.0, 0.9, -0.15],
      [41.0, UPPER_Y, -58.0, 1.0, 0.2]]
       .forEach(c => PROPS.crate(parent, c[0], c[1], c[2], c[3], c[4]));
-    PROPS.barrel(parent, 60.3, -58.0, { color: PAL.rust });
+    PROPS.barrel(parent, 55.0, -56.6, { color: PAL.rust });
     PROPS.barrel(parent, 36.0, -70.0, { color: PAL.blueDeep });
     PROPS.barrel(parent, 52.0, -58.0, { color: PAL.oliveDeep });
     const parts = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.035);
-    parts.box(2.4, 0.72, 1.4, 57.8, 0.36, -62.0, 0, 0.3, 0.04, 0.02);
-    parts.box(1.7, 0.35, 1.0, 55.8, 0.18, -63.2, 0.08, -0.2, 0.03, 0.015);
-    parts.cyl(0.62, 0.62, 0.34, 12, 60.2, 0.64, -63.0, 0, 0, Math.PI / 2);
+    parts.box(2.4, 0.72, 1.4, 57.8, 0.36, -65.5, 0, 0.3, 0.04, 0.02);
+    parts.box(1.7, 0.35, 1.0, 55.8, 0.18, -66.7, 0.08, -0.2, 0.03, 0.015);
+    parts.cyl(0.62, 0.62, 0.34, 12, 60.2, 0.64, -64.8, 0, 0, Math.PI / 2);
     parts.cyl(0.5, 0.5, 0.3, 12, 34.8, 0.5, -52.0, Math.PI / 2, 0, 0);
     parts.box(2.0, 0.55, 1.2, 59.0, 0.28, -48.2, 0, -0.18, 0.04, 0.02);
     parts.build(parent);
-    WORLD.addFloor(57.8, 0, -62.4, 4.3, 0.9, 3.0, 'tractor_parts');
+    WORLD.addFloor(57.8, 0, -65.8, 4.3, 0.9, 3.0, 'tractor_parts');
     WORLD.addFloor(34.8, 0, -52.0, 1.3, 1.1, 1.3, 'tractor_wheel');
     WORLD.addFloor(59.0, 0, -48.2, 2.3, 0.65, 1.5, 'yard_cover');
 
@@ -4853,7 +4937,8 @@ const LEVEL = (() => {
       { id: 'seed_store', x: -24.0, z: 16.0,  normalZ: 1 },
       { id: 'windmill',   x: -7.6,  z: -30.0, normalZ: 1 },
       { id: 'northwest',  x: -18.5, z: -44.8, normalZ: 1 },
-      { id: 'northeast',  x: 24.0,  z: -72.0, normalZ: 1 }
+      { id: 'northeast',  x: 24.0,  z: -72.0, normalZ: 1 },
+      { id: 'north_barn_cellar', x: 58.0, z: -73.5, normalZ: 1 }
     ];
     // Comfortably clears the 1.75 x 1.55 ladder collision box.
     const HATCH_HALF = 1.15;
@@ -5335,7 +5420,9 @@ const LEVEL = (() => {
        into root_cellar -- rather than one long shared trunk. */
     addSlab(21, -73, 12, 12, 'northeast_room');
     addWall(21, -79.15, 12.3, 0.30, 'northeast_room');
-    addWall(27.15, -73, 0.30, 12.3, 'northeast_room');
+    // East wall now opens into the North Barn cellar connector at z=-72.
+    addWall(27.15, -76.475, 0.30, 5.35, 'northeast_room');
+    addWall(27.15, -68.525, 0.30, 3.35, 'northeast_room');
     // South wall split around the relay_room tunnel doorway at x=20.
     addWall(16.525, -66.85, 3.35, 0.30, 'northeast_room');
     addWall(24.475, -66.85, 5.35, 0.30, 'northeast_room');
@@ -5343,6 +5430,17 @@ const LEVEL = (() => {
     addWall(14.85, -75.975, 0.30, 6.35, 'northeast_room');
     addWall(14.85, -68.025, 0.30, 2.35, 'northeast_room');
     WORLD.addSpawn(21, FLOOR_Y, -73, 'basement_northeast', 'basement');
+
+    /* ---- v0.30 North Barn cellar ----
+       A 28 x 20 m room sits directly under the new barn. A short full-width
+       connector joins the existing northeast room, so its new surface hatch
+       is an entrance to the same traversal network rather than a dead-end
+       teleport room. The union perimeter sealer supplies every outer wall and
+       leaves the exact connector overlap open. */
+    addSlab(30.5, -72.0, 7.0, 3.6, 'north_barn_cellar_link');
+    addSlab(48.0, -67.0, 28.0, 20.0, 'north_barn_cellar');
+    WORLD.addSpawn(40.0, FLOOR_Y, -61.5, 'basement_north_barn_south', 'basement');
+    WORLD.addSpawn(54.0, FLOOR_Y, -70.0, 'basement_north_barn_north', 'basement');
 
     // West branch: a straight run down into relay_room's newly split north wall.
     // Both ends now terminate on the relay_room and northeast_room floor
@@ -5363,6 +5461,9 @@ const LEVEL = (() => {
     addWall(3.8, -52.6, 0.30, 33.2, 'northeast_link_south_b');
 
     PROPS.lantern(parent, 21, -0.78, -75, 0);
+    PROPS.lantern(parent, 30.5, -0.78, -72.0, 0);
+    PROPS.lantern(parent, 40.0, -0.78, -62.0, 0);
+    PROPS.lantern(parent, 55.0, -0.78, -69.0, 0);
     PROPS.lantern(parent, 20, -0.78, -59, 0);
     PROPS.lantern(parent, 8, -0.78, -71, 0);
     PROPS.lantern(parent, 2, -0.78, -52.8, 0);
@@ -5466,6 +5567,8 @@ const LEVEL = (() => {
     doorwayFrame(-18.50, -38.32, true);
     doorwayFrame(20, -66.85, true);
     doorwayFrame(14.85, -71, false);
+    doorwayFrame(27.15, -72, false, 1.80);
+    doorwayFrame(34.0, -72, false, 1.80);
     doorwayFrame(20, -50.65, true);
     doorwayFrame(2, -36.15, true, 1.80);
     // No frame at (-16.75, 9.2) either: well_shaft <-> south_tunnel is now
@@ -5506,6 +5609,12 @@ const LEVEL = (() => {
     machinery.box(3.0, 1.25, 1.15, 12.0, FLOOR_Y + 0.625, -40.6, 0, -0.05, 0, 0.014);
     machinery.box(2.8, 1.25, 1.15, 21.2, FLOOR_Y + 0.625, -47.2, 0, 0.08, 0, 0.014);
     machinery.box(1.1, 0.75, 2.6, 22.0, FLOOR_Y + 0.375, -40.5, 0, -0.04, 0, 0.012);
+    // Old pumps, a parts table, and a stripped motor give the North Barn
+    // cellar three useful cover islands without pinching its outer loop,
+    // connector mouth, or hatch landing.
+    machinery.box(4.0, 1.35, 1.35, 40.0, FLOOR_Y + 0.675, -75.0, 0, 0.05, 0, 0.015);
+    machinery.box(1.45, 1.85, 3.2, 58.5, FLOOR_Y + 0.925, -61.0, 0, -0.04, 0, 0.015);
+    machinery.box(3.0, 0.82, 1.25, 48.0, FLOOR_Y + 0.410, -65.5, 0, 0.08, 0, 0.012);
     machinery.build(parent);
     WORLD.addFloor(-21.8, FLOOR_Y, -15.8, 3.8, 1.35, 1.45, 'utility_cover');
     WORLD.addFloor(-22.2, FLOOR_Y, -7.4, 1.6, 1.9, 1.6, 'utility_cover');
@@ -5516,6 +5625,9 @@ const LEVEL = (() => {
     WORLD.addFloor(12.0, FLOOR_Y, -40.6, 3.2, 1.25, 1.35, 'relay_cover');
     WORLD.addFloor(21.2, FLOOR_Y, -47.2, 3.0, 1.25, 1.35, 'relay_cover');
     WORLD.addFloor(22.0, FLOOR_Y, -40.5, 1.3, 0.75, 2.8, 'relay_cover');
+    WORLD.addFloor(40.0, FLOOR_Y, -75.0, 4.2, 1.35, 1.55, 'north_barn_cellar_cover');
+    WORLD.addFloor(58.5, FLOOR_Y, -61.0, 1.65, 1.85, 3.4, 'north_barn_cellar_cover');
+    WORLD.addFloor(48.0, FLOOR_Y, -65.5, 3.2, 0.82, 1.45, 'north_barn_cellar_cover');
 
     // Two low service platforms add deliberate vertical play without putting
     // the player's head into the ceiling. Every step is at or below 0.5 m.
@@ -5559,6 +5671,10 @@ const LEVEL = (() => {
     PROPS.crate(parent, -25.2, FLOOR_Y, -45.4, 0.90, 0.22);
     PROPS.crate(parent, -24.1, FLOOR_Y, -45.0, 0.72, -0.28);
     PROPS.hayBale(parent, -18.2, FLOOR_Y, -45.2, 0.18);
+    PROPS.crate(parent, 36.2, FLOOR_Y, -59.2, 0.92, 0.18);
+    PROPS.crate(parent, 37.3, FLOOR_Y, -59.3, 0.76, -0.22);
+    PROPS.hayBale(parent, 60.2, FLOOR_Y, -75.7, 0.14);
+    PROPS.hayBale(parent, 58.8, FLOOR_Y, -76.0, -0.12);
 
     PROPS.lantern(parent, -2.0, -0.78, -11.5, 0);
     PROPS.lantern(parent, -18.5, -0.78, -11.5, 0);
@@ -5648,6 +5764,52 @@ const LEVEL = (() => {
     return root;
   }
 
+  function nearNorthBarnGate(position, layerId) {
+    const gate = animated.northBarnGate;
+    if (!gate || !position || (layerId && layerId !== 'surface')) return false;
+    if (position.y < -0.25 || position.y > 5.7) return false;
+    const dx = position.x - gate.x, dz = position.z - gate.z;
+    return dx * dx + dz * dz <= 5.5 * 5.5;
+  }
+
+  function setNorthBarnGate(open) {
+    const gate = animated.northBarnGate;
+    if (!gate) return false;
+    gate.open = !!open;
+    gate.target = gate.open ? 1 : 0;
+    return true;
+  }
+
+  function tryInteract(position, layerId) {
+    if (!nearNorthBarnGate(position, layerId)) return null;
+    const open = !animated.northBarnGate.open;
+    setNorthBarnGate(open);
+    UI.toast('NORTH BARN FLOOR GATE — ' + (open ? 'OPENING' : 'CLOSING'), 1.15);
+    return { id: 'north_barn_floor_gate', open: open };
+  }
+
+  function interactionHint(position, layerId) {
+    if (!nearNorthBarnGate(position, layerId)) return '';
+    let key = 'E';
+    if (typeof INPUT !== 'undefined') {
+      if (INPUT.mobile) key = 'USE';
+      else {
+        const bindings = INPUT.getBindings();
+        key = INPUT.codeLabel(bindings.interact) || 'E';
+      }
+    }
+    return key + ' · ' + (animated.northBarnGate.open ? 'Close floor gate' : 'Open floor gate');
+  }
+
+  function worldState() {
+    return { northBarnGateOpen: !!(animated.northBarnGate && animated.northBarnGate.open) };
+  }
+
+  function applyWorldState(state) {
+    if (!state || typeof state.northBarnGateOpen !== 'boolean') return;
+    setNorthBarnGate(state.northBarnGateOpen);
+  }
+
   function update(dt, t) {
     if (animated.windmillFan) {
       animated.windmillFan.rotation.z += dt * (0.9 + Math.sin(t * 0.23) * 0.35);
@@ -5672,9 +5834,25 @@ const LEVEL = (() => {
       hatch.openness = UTIL.damp(hatch.openness, hatch.target, hatch.target ? 8.5 : 5.0, dt);
       hatch.pivot.rotation.x = -hatch.openness * 1.42 * hatch.openSign;
     }
+    const gate = animated.northBarnGate;
+    if (gate) {
+      gate.openness = UTIL.damp(gate.openness, gate.target, gate.target > 0.5 ? 7.5 : 6.2, dt);
+      gate.north.rotation.x = -gate.openness * Math.PI * 0.5;
+      gate.south.rotation.x = gate.openness * Math.PI * 0.5;
+      // Remove the walkable floor as soon as it starts opening, then restore
+      // it only after both leaves are essentially flat again. The last two
+      // stair steps follow the opposite rule, preventing the controller's
+      // step-up assist from climbing through a closed gate from below.
+      gate.collider.enabled = gate.target < 0.5 && gate.openness < 0.06;
+      const stairsUsable = gate.openness > 0.55;
+      gate.topStepSolids.forEach(s => { s.enabled = stairsUsable; });
+    }
   }
 
-  return { build, update, animated };
+  return {
+    build, update, animated, tryInteract, interactionHint,
+    setNorthBarnGate, worldState, applyWorldState
+  };
 })();
 
 /* ============================== [MAPVIEW] =============================
@@ -5760,7 +5938,8 @@ const MAPVIEW = (() => {
     { x: -24.0, z: 16.0, label: 'Seed Store Hatch' },
     { x: -7.6, z: -30.0, label: 'Windmill Hatch' },
     { x: -18.5, z: -44.8, label: 'Northwest Hatch' },
-    { x: 24.0, z: -72.0, label: 'Northeast Hatch' }
+    { x: 24.0, z: -72.0, label: 'Northeast Hatch' },
+    { x: 58.0, z: -73.5, label: 'North Barn Hatch' }
   ];
 
   // Real staircase (not a hatch) -- center of buildBasement's stairOpening,
@@ -5784,6 +5963,7 @@ const MAPVIEW = (() => {
     { x: 9, z: -50.5, x2: 25, z2: -37.5, label: 'Relay Room' },
     { x: 25, z: -47, x2: 30, z2: -41, label: 'Secret Cache' },
     { x: 15, z: -79, x2: 27, z2: -67, label: 'Northeast Room' },
+    { x: 34, z: -77, x2: 62, z2: -57, label: 'North Barn Cellar' },
     { x: 1.8, z: 8.8, x2: 4.2, z2: 11.2, label: 'Well Shaft' },
     { x: -12, z: -13.1, x2: 8, z2: -9.9 },
     { x: -5.7, z: -24, x2: -2.3, z2: -13.1 },
@@ -5795,6 +5975,7 @@ const MAPVIEW = (() => {
     { x: 18.2, z: -67, x2: 21.8, z2: -50.5 },
     { x: 0.2, z: -72.8, x2: 15, z2: -69.2 },
     { x: 0.2, z: -69.2, x2: 3.8, z2: -36 },
+    { x: 27, z: -73.8, x2: 34, z2: -70.2 },
     { x: -16.8, z: 7, x2: -10, z2: 10 }
   ];
 
@@ -7144,7 +7325,7 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, throwable: false, switchThrowable: false, useJays: false, nextWeapon: false, pause: false,
+    melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, pause: false,
     crouch: false, voiceTalk: false, ads: false,
     slot1: false, slot2: false, slot3: false, slot4: false,
     slot5: false, slot6: false, slot7: false, slot8: false
@@ -7183,6 +7364,7 @@ const INPUT = (() => {
     'KeyG': 'throwable',
     'KeyT': 'switchThrowable',
     'KeyJ': 'useJays',
+    'KeyE': 'interact',
     'KeyB': 'voiceTalk',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
@@ -7205,7 +7387,7 @@ const INPUT = (() => {
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
-    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'voiceTalk',
+    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk',
     'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8'
   ];
 
@@ -7356,7 +7538,7 @@ const INPUT = (() => {
     }
     const action = KEYMAP[e.code];
     if (!action) return;
-    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     setAction(action, down);
   }
 
@@ -7511,6 +7693,7 @@ const INPUT = (() => {
     bindTouchButton('mobileCrouch', 'crouch');
     bindTouchButton('mobileTalk', 'voiceTalk');
     bindTouchButton('mobileADS', 'ads');
+    bindTouchButton('mobileInteract', 'interact');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
   }
@@ -7701,6 +7884,7 @@ const PLAYER = (() => {
     const solids = WORLD.solids;
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
+      if (s.enabled === false) continue;
       if (y + C.height <= s.minY || y + 0.06 >= s.maxY) continue;
       if (x + r <= s.minX || x - r >= s.maxX) continue;
       if (z + r <= s.minZ || z - r >= s.maxZ) continue;
@@ -7893,6 +8077,7 @@ const PLAYER = (() => {
     const solids = WORLD.solids;
     for (let i = 0; i < solids.length; i++) {
       const s = solids[i];
+      if (s.enabled === false) continue;
       if (pos.y + h <= s.minY || pos.y + 0.06 >= s.maxY) continue;
       if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
       if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
@@ -8141,6 +8326,7 @@ const PLAYER = (() => {
       const solids = WORLD.solids;
       for (let i = 0; i < solids.length; i++) {
         const s = solids[i];
+        if (s.enabled === false) continue;
         if (pos.x + r <= s.minX || pos.x - r >= s.maxX) continue;
         if (pos.z + r <= s.minZ || pos.z - r >= s.maxZ) continue;
         if (s.maxY > groundY && s.maxY <= prevY + 0.02) groundY = s.maxY;
@@ -9696,6 +9882,7 @@ const THROWABLE = (() => {
     p[axis] += amount;
     for (let i = 0; i < WORLD.solids.length; i++) {
       const s = WORLD.solids[i];
+      if (s.enabled === false) continue;
       if (p.y + r <= s.minY || p.y - r >= s.maxY) continue;
       if (p.x + r <= s.minX || p.x - r >= s.maxX) continue;
       if (p.z + r <= s.minZ || p.z - r >= s.maxZ) continue;
@@ -9721,6 +9908,7 @@ const THROWABLE = (() => {
     if (v.y > 0) {
       for (let i = 0; i < WORLD.solids.length; i++) {
         const s = WORLD.solids[i];
+        if (s.enabled === false) continue;
         if (p.x + r <= s.minX || p.x - r >= s.maxX) continue;
         if (p.z + r <= s.minZ || p.z - r >= s.maxZ) continue;
         if (prevY + r <= s.minY + 0.01 && p.y + r >= s.minY) {
@@ -10182,6 +10370,7 @@ const UI = (() => {
     el.optControlsList = document.getElementById('optControlsList');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
+    el.interactHint = document.getElementById('interactHint');
     el.weaponName = document.getElementById('weaponName');
     el.weaponInventory = document.getElementById('weaponInventory');
     el.ammo = document.getElementById('ammo');
@@ -10667,6 +10856,13 @@ const UI = (() => {
     toastTimer = seconds || 1.45;
   }
 
+  function setInteractionHint(message) {
+    if (!el.interactHint) return;
+    const text = message || '';
+    if (el.interactHint.textContent !== text) el.interactHint.textContent = text;
+    el.interactHint.classList.toggle('on', !!text);
+  }
+
   let hurtTimer = 0;
   function hurtFlash(strength) {
     hurtTimer = 0.42;
@@ -10955,6 +11151,7 @@ const UI = (() => {
     el.pause.classList.remove('hidden');
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
+    setInteractionHint('');
     if (el.weaponInventory) el.weaponInventory.classList.remove('on');
     hideDowned();
     showMobileControls(false);
@@ -10979,7 +11176,7 @@ const UI = (() => {
   const CONTROL_LABELS = {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
     jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
-    throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays',
+    throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays', interact: 'Interact',
     voiceTalk: 'Push to Talk',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4',
     slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
@@ -11082,7 +11279,7 @@ const UI = (() => {
 
   return {
     init, setWeapon, setWeaponInventory, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
-    setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast,
+    setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast, setInteractionHint,
     showPause, hidePause, showMobileControls, hideLoading, update,
     setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
@@ -11231,8 +11428,14 @@ const PICKUP = (() => {
     { id: 'grenadeBundle', x: 35.0, z: -49.0 },
     { id: 'healthTonic', x: 40.0, y: 4.2, z: -74.0 },
     { id: 'batteryPack', x: 50.0, y: 4.2, z: -76.0 },
-    { id: 'shieldCell', x: 52.0, y: 4.2, z: -59.0 },
-    { id: 'jaysPack', x: 60.0, y: 4.2, z: -69.0 }
+    { id: 'shieldCell', x: 48.0, y: 4.2, z: -59.0 },
+    { id: 'jaysPack', x: 60.0, y: 4.2, z: -69.0 },
+
+    // v0.30 North Barn cellar: rewards at opposite corners keep the new
+    // underground room worth circling instead of using only as a hatch exit.
+    { id: 'batteryPack', x: 37.5, y: -4.0, z: -74.0 },
+    { id: 'healthTonic', x: 59.5, y: -4.0, z: -66.0 },
+    { id: 'grenadeBundle', x: 43.0, y: -4.0, z: -59.5 }
   ];
 
   function define(id, def) {
@@ -12006,6 +12209,10 @@ const GAME = (() => {
     scene.add(camera);
     INPUT.on('press', a => {
       if (a === 'lantern') lampKey.intensity = lampKey.intensity > 0 ? 0 : 1.35;
+      if (a === 'interact' && running && !PLAYER.isDead) {
+        const interaction = LEVEL.tryInteract(PLAYER.position, PLAYER.layerId);
+        if (interaction && mode === 'coop') COOP.sendWorldInteraction(interaction.id, interaction.open);
+      }
       if (a === 'pause' && INPUT.engaged && !PLAYER.isDead) INPUT.releaseLock();
     });
 
@@ -12336,6 +12543,7 @@ const GAME = (() => {
       INPUT.consumeMouse();
       INTRO.update(dt);
       LEVEL.update(dt, time);
+      UI.setInteractionHint('');
       FX.update(dt, time);
       AUDIO.update(dt);
       UI.update(dt);
@@ -12378,6 +12586,8 @@ const GAME = (() => {
     if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
     LEVEL.update(dt, time);
+    UI.setInteractionHint(running && !PLAYER.isDead
+      ? LEVEL.interactionHint(PLAYER.position, PLAYER.layerId) : '');
     COOP.update(dt, simRunning && !PLAYER.isDead);
     VOICE.update();
     UI.setVoiceChip(VOICE.enabled, VOICE.talking);
@@ -17632,7 +17842,8 @@ const COOP = (() => {
       const roster = rosterList();
       sendTo(peerId, {
         type: 'welcome', id: localId, characterId: characterId,
-        roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers, matchMode: matchMode
+        roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers, matchMode: matchMode,
+        worldState: (typeof LEVEL !== 'undefined' && LEVEL.worldState) ? LEVEL.worldState() : null
       });
       // Tell everyone ELSE a new farmhand joined, so their remote list grows too.
       broadcast({ type: 'playerJoined', id: peerId, characterId: characterId }, peerId);
@@ -17849,6 +18060,12 @@ const COOP = (() => {
       registerKill(message.killerId, fromId);
     } else if (message.type === 'teamHealUse') {
       resolveTeamHeal(fromId, message.heal, message.shield, message.radius);
+    } else if (message.type === 'worldInteraction' && message.id === 'north_barn_floor_gate') {
+      const open = !!message.open;
+      LEVEL.setNorthBarnGate(open);
+      // Host owns the final shared state. Echo to every join, including the
+      // requester, so simultaneous toggles converge instead of diverging.
+      broadcast({ type: 'worldInteraction', id: message.id, open: open });
     } else if (message.type === 'chat' && message.text) {
       // Relay to every OTHER joiner (never back to the sender -- their own
       // CHAT module already echoed it locally the instant they hit Enter)
@@ -17870,6 +18087,7 @@ const COOP = (() => {
       }
       matchRunning = !!message.matchRunning;
       matchMode = (message.matchMode === 'ffa' || message.matchMode === 'teams') ? message.matchMode : 'coop';
+      if (message.worldState) LEVEL.applyWorldState(message.worldState);
       applyRoster(message.roster);
       UI.setCoopLobbyStep(role, phase);
       // A late join has no record of the real starting count -- roster.length
@@ -17924,6 +18142,8 @@ const COOP = (() => {
       }
     } else if (message.type === 'worldReset') {
       ENEMY.applyRemoteReset();
+    } else if (message.type === 'worldInteraction' && message.id === 'north_barn_floor_gate') {
+      LEVEL.setNorthBarnGate(!!message.open);
     } else if (message.type === 'playerDamage' && message.targetId === localId) {
       const attackerId = message.attackerId || null;
       const applied = PLAYER.damage(message.amount, message.source, attackerId ? { pvp: true, id: attackerId } : null);
@@ -18081,6 +18301,25 @@ const COOP = (() => {
     if (role === 'host') broadcast(message);
     else send(message);
     return true;
+  }
+
+  /* Shared, host-authoritative level interaction. Joins update optimistically
+     in LEVEL.tryInteract for responsive animation, then the host echoes its
+     accepted state to the whole room. Late joiners receive the same value in
+     `welcome.worldState` above. */
+  function sendWorldInteraction(id, open) {
+    if (id !== 'north_barn_floor_gate') return false;
+    LEVEL.setNorthBarnGate(!!open);
+    const message = { type: 'worldInteraction', id: id, open: !!open };
+    if (role === 'host') {
+      if (connected) broadcast(message);
+      return true;
+    }
+    if (role === 'join' && connected) {
+      send(message);
+      return true;
+    }
+    return false;
   }
   /* Called once by GAME when this client's own player just died — reports
      who killed them (if known) so the host can credit the right scoreboard
@@ -18324,7 +18563,7 @@ const COOP = (() => {
     init, on, openLobby, host, prepareJoin, selectCharacter, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
     broadcastBossDefeated, broadcastBoss2Defeated, broadcastBoss3Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
-    sendChat, displayNameFor, setLocalVoiceStream,
+    sendChat, sendWorldInteraction, displayNameFor, setLocalVoiceStream,
     get role() { return role; },
     get connected() { return connected; },
     get active() { return connected; },
