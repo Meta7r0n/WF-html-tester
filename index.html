@@ -132,6 +132,11 @@
     opacity:0;transition:opacity .2s ease;user-select:none;
   }
   #ammo.on{opacity:1;}
+  #runClock{position:fixed;right:18px;top:16px;z-index:12;padding:7px 12px;background:rgba(246,233,210,.92);border:3px solid var(--ink);border-radius:8px;box-shadow:3px 4px 0 rgba(22,18,15,.55);font:900 13px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;opacity:0;transition:opacity .18s;pointer-events:none;}
+  #runClock.on{opacity:1} #runClock small{display:block;font-size:8px;letter-spacing:2px;color:var(--rust-deep)}
+  #componentHud{position:fixed;left:50%;bottom:18px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
+  #componentHud.on{opacity:1}.component-slot{width:min(25vw,145px);padding:6px 8px;background:rgba(22,18,15,.84);border:2px solid var(--cream);border-radius:7px;color:var(--cream-dim);font:900 9px/1.15 "Rockwell",Georgia,serif;text-align:center}.component-slot.collected{background:var(--olive);color:var(--cream);border-color:var(--mustard)}.component-slot.assembled{opacity:.55;text-decoration:line-through}
+  #runStats{max-height:min(48vh,410px);overflow:auto;margin:12px 0;padding:10px;text-align:left;background:rgba(22,18,15,.82);color:var(--cream);border-radius:8px;font:700 12px/1.45 system-ui,sans-serif}#runStats h3{margin:8px 0 3px;color:var(--mustard);font:900 13px Rockwell,Georgia,serif}#runStats ul{margin:3px 0 8px;padding-left:20px}
   #shells{display:flex;gap:5px;align-items:flex-end;}
   #shells span{
     width:11px;height:26px;border:3px solid var(--ink);border-radius:3px 3px 5px 5px;
@@ -654,6 +659,7 @@
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
   body.touch-device #boss3Hud{top:max(92px,calc(env(safe-area-inset-top) + 80px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.5deg);transform-origin:top center;}
+  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -1033,6 +1039,12 @@
     <div id="shells"></div>
     <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
   </div>
+  <div id="runClock" aria-label="Active run time"><small>RUN TIME</small><span>00:00.000</span></div>
+  <div id="componentHud" aria-label="Portal Gun components">
+    <div class="component-slot" data-component="greenShard">Green Shard</div>
+    <div class="component-slot" data-component="metalFragment">Weapon Fragment</div>
+    <div class="component-slot" data-component="computerChip">Computer Chip</div>
+  </div>
   <div id="reloadTag">Press R to reload</div>
   <div id="throwableHud" aria-live="polite">
     <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
@@ -1338,9 +1350,10 @@
       <h1>Hold<br/>Still<span>Mouse released</span></h1>
       <p class="sub" id="pauseHint">Click anywhere to grab the mouse again and get back to the farm.</p>
       <button class="go" id="resumeBtn">Back to it →</button>
-      <button class="go compact" id="pauseMenuBtn">Main menu</button>
       <button class="alt" id="pauseOptionsBtn">Options</button>
       <button class="alt" id="pauseMapBtn">Farm Map</button>
+      <button class="alt" id="pauseRestartBtn">Restart Run</button>
+      <button class="go compact" id="pauseMenuBtn">Return to Main Menu</button>
     </div>
   </div>
 
@@ -1358,6 +1371,7 @@
       <p class="eyebrow">Single-player goal complete</p>
       <h1>Warden<br/>Wilted<span>The barn is yours</span></h1>
       <p class="sub" id="endGameSummary">The Carrot Warden is down. The farm has gone quiet.</p>
+      <div id="runStats" aria-label="Run statistics"></div>
       <button class="go" id="continueBtn">Keep exploring →</button>
       <button class="alt" id="startOverBtn">Return to start screen</button>
     </div>
@@ -1570,9 +1584,9 @@ const CONFIG = {
     // while preserving its intentionally lankier proportions.
     secondAssetScale: 0.25,
     spawn: { x: 8.0, y: 0, z: -56.0 },
-    hp: 520, radius: 0.58, height: 2.0, eyeHeight: 1.5,
+    hp: 650, radius: 0.58, height: 2.0, eyeHeight: 1.5,
     stepHeight: 0.5, gravity: 27, speed: 3.6, reach: 3.1,
-    damage: 20, windup: 0.5, recover: 0.62, weight: 4.2,
+    damage: 26, windup: 0.5, recover: 0.62, weight: 4.2,
     stunChance: 0.02, stunDuration: 2,
     headMultiplier: 1.4, visualScale: 1.0,
     // Smoke-and-reposition: after this many hits land without a long-enough
@@ -1584,8 +1598,10 @@ const CONFIG = {
     // separate stat block -- mirrors how ENEMY.escalateAfterBoss already
     // compounds Carrot Warden's post-continue difficulty instead of
     // authoring a whole new tier by hand.
-    secondHpMult: 1.45, secondDamageMult: 1.2, secondSpeedMult: 1.1,
+    secondHpMult: 1.7, secondDamageMult: 1.35, secondSpeedMult: 1.1,
     secondStunChance: 0.03,
+    portalHeadshotCritMultiplier: 1.5, portalHeadshotStunChance: 0.25,
+    portalHeadshotStunDuration: 2.0, portalStunImmunity: 3.0,
     // The first GLB is ~1.91 x 2.05 m at game scale; Longbone is ~2.41 x
     // 2.01 m. These remain world-sized even though their render roots use
     // 0.34 and 0.25 scale respectively (see ENEMY.syncBossHitboxes).
@@ -1610,18 +1626,18 @@ const CONFIG = {
     assetForwardCorrection: 0,
     assetScale: 0.34,
     spawn: { x: 20.0, y: 0, z: -25.0 },
-    hp: 420, radius: 0.5, height: 1.9, eyeHeight: 1.45,
+    hp: 520, radius: 0.5, height: 1.9, eyeHeight: 1.45,
     stepHeight: 0.5, gravity: 27,
     // Kiting band: flees once the player closes inside evadeRange, holds
     // and throws once there's real distance, drifts back in if the player
     // gets too far away to hit at all (throwRange).
-    speed: 4.4, evadeRange: 8.5, throwRange: 18,
-    throwCooldown: 3.5, throwWindup: 0.5, throwRecover: 0.45,
+    speed: 5.0, evadeRange: 8.5, throwRange: 18,
+    throwCooldown: 3.0, throwWindup: 0.5, throwRecover: 0.4,
     // Rush-and-punch, only entered once THROWABLE.playerInBoomboxZone is
     // true -- faster than the kiting speed above, since it's chasing someone
     // who's slowed by the very blast that triggered the rush.
     rushSpeedMult: 1.3, rushTimeout: 6,
-    reach: 1.85, damage: 18, windup: 0.35, recover: 0.45, weight: 3.4,
+    reach: 1.85, damage: 22, windup: 0.32, recover: 0.4, weight: 3.4,
     headMultiplier: 1.4, visualScale: 1.0,
     hitbox: {
       head: { x: 0, y: 1.78, z: -0.09, radius: 0.48 },
@@ -1818,6 +1834,14 @@ const CONFIG = {
       tickInterval: 0.1, damage: 9, minDamage: 3, range: 7, arc: 0.82,
       recoilBack: 0, meleeDamage: 30, meleeRange: 2.2, meleeArc: 0.58,
       adsArcMult: 0.6, adsRangeMult: 1.3, adsDamageMult: 1.3
+    },
+    portalGun: {
+      id: 'portalGun', name: 'Portal Gun', slot: 9, kind: 'gun', ammoType: 'portalCell',
+      magSize: 6, startMag: 0, startReserve: 0, maxReserve: 24,
+      fireInterval: 0.72, reloadTime: 1.8, automatic: false,
+      pellets: 1, damage: 86, spread: 0.004, range: 150,
+      recoilBack: 0.24, meleeDamage: 34, meleeRange: 2.2, meleeArc: 0.58,
+      critMultiplier: 1.5, adsSpreadMult: 0.45
     },
     // Bear Claw's second drop (bearClawThreshold2 rematch). A "ranged
     // melee" -- fires through the exact same beginMelee()/ENEMY.melee()
@@ -7312,7 +7336,7 @@ const INPUT = (() => {
     melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, pause: false,
     crouch: false, voiceTalk: false, ads: false,
     slot1: false, slot2: false, slot3: false, slot4: false,
-    slot5: false, slot6: false, slot7: false, slot8: false
+    slot5: false, slot6: false, slot7: false, slot8: false, slot9: false
   };
   const pressed = {};
   const touchResetters = [];
@@ -7357,7 +7381,8 @@ const INPUT = (() => {
     'Digit5': 'slot5', 'Numpad5': 'slot5',
     'Digit6': 'slot6', 'Numpad6': 'slot6',
     'Digit7': 'slot7', 'Numpad7': 'slot7',
-    'Digit8': 'slot8', 'Numpad8': 'slot8'
+    'Digit8': 'slot8', 'Numpad8': 'slot8',
+    'Digit9': 'slot9', 'Numpad9': 'slot9'
   };
   // Snapshot of the defaults, taken before anything can rebind KEYMAP, so
   // Options -> Controls has something to reset back to.
@@ -7367,12 +7392,12 @@ const INPUT = (() => {
   const PERMANENT_CODES = new Set([
     'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'ShiftRight',
     'Numpad1', 'Numpad2', 'Numpad3', 'Numpad4',
-    'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8'
+    'Numpad5', 'Numpad6', 'Numpad7', 'Numpad8', 'Numpad9'
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
     'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk',
-    'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8'
+    'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8', 'slot9'
   ];
 
   function primaryCodeFor(action) {
@@ -9127,6 +9152,7 @@ const WEAPON = (() => {
     const relayHost = COOP.shouldHostRelayShots();
     const deathmatch = COOP.matchMode === 'ffa' || COOP.matchMode === 'teams';
     const shotMeta = {
+      weaponId: currentId,
       damage: d.damage * damageMult, range: d.range, headMultiplier: CONFIG.enemy.headMultiplier,
       critChance: d.critChance || 0, critMultiplier: d.critMultiplier || 1,
       headshotStunChance: d.headshotStunChance || 0, headshotStunDuration: d.headshotStunDuration || 0
@@ -9405,7 +9431,7 @@ const WEAPON = (() => {
     }
 
     if (active) {
-      for (let slot = 1; slot <= 8; slot++) {
+      for (let slot = 1; slot <= 9; slot++) {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
       if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
@@ -11532,6 +11558,10 @@ const PICKUP = (() => {
     type: 'throwable', label: 'Golden Boombox', throwableId: 'boomboxThrowable',
     quantity: 1, color: PAL.mustard, respawn: 0
   });
+  define('mysteriousGreenShard', { type: 'quest', questId: 'greenShard', label: 'Mysterious Green Shard', color: PAL.jays, respawn: 0 });
+  define('metalWeaponFragment', { type: 'quest', questId: 'metalFragment', label: 'Metal Weapon Fragment', color: PAL.blueGray, respawn: 0 });
+  define('computerChip', { type: 'quest', questId: 'computerChip', label: 'Computer Chip', color: PAL.mustard, respawn: 0 });
+  define('barnKey', { type: 'quest', questId: 'barnKey', label: 'Barn Key', color: PAL.mustard, respawn: 0 });
 
   registerHandler('weapon', (def, pickup) => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity, {
@@ -11601,6 +11631,10 @@ const PICKUP = (() => {
       return { message: 'Rally Horn · +' + C.rallyHornHeal + ' Pep, +' + C.rallyHornShield + ' Guard' };
     }
     return null;
+  });
+  registerHandler('quest', def => {
+    if (typeof QUEST === 'undefined' || !QUEST.isSinglePlayer()) return null;
+    return QUEST.collect(def.questId) ? { message: def.label + ' collected' } : null;
   });
 
   function labelSprite(text, color) {
@@ -11793,6 +11827,12 @@ const PICKUP = (() => {
     else if (def.type === 'shield') buildShieldVisual(visual);
     else if (def.type === 'throwable') THROWABLE.buildPickupVisual(visual, def.throwableId);
     else if (def.type === 'buff') buildBuffVisual(visual, def);
+    else if (def.type === 'quest') {
+      if (def.questId === 'barnKey') {
+        PRIM.torus(0.22, 0.055, MAT.toon(def.color), { parent: visual, outline: 0.02, ray: false });
+        PRIM.box(0.5, 0.1, 0.1, MAT.toon(def.color), { pos: [0.35, 0, 0], parent: visual, outline: 0.018, ray: false });
+      } else PRIM.mesh(new THREE.OctahedronGeometry(0.32, 0), MAT.toon(def.color), { parent: visual, outline: 0.035 });
+    }
     else PRIM.sph(0.3, MAT.toon(def.color), { parent: visual, outline: 0.035, ray: false });
 
     const ring = PRIM.torus(0.5, 0.045, MAT.toon(def.color), {
@@ -11875,6 +11915,141 @@ const PICKUP = (() => {
     get definitions() { return definitions; },
     get items() { return items; }
   };
+})();
+
+/* ============================== [GAME] =============================== */
+const QUEST = (() => {
+  const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
+  const state = { components: {}, barnKey: false, barnUnlocked: false, crafted: false, cutscenePlayed: false, stage: 0 };
+  let gardener = null, cutsceneTimer = 0, cutsceneCallback = null;
+
+  function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
+  function syncHud() {
+    const hud = document.getElementById('componentHud');
+    if (!hud) return;
+    hud.classList.toggle('on', isSinglePlayer() && !state.crafted);
+    hud.querySelectorAll('[data-component]').forEach(el => {
+      const id = el.getAttribute('data-component');
+      el.classList.toggle('collected', !!state.components[id]);
+      el.classList.toggle('assembled', !!state.crafted);
+    });
+  }
+  function reset() {
+    state.components = {}; state.barnKey = false; state.barnUnlocked = false;
+    state.crafted = false; state.cutscenePlayed = false; state.stage = 0;
+    gardener = null; cutsceneTimer = 0; cutsceneCallback = null; syncHud();
+  }
+  function start() {
+    if (!isSinglePlayer() || state.stage !== 0) { syncHud(); return; }
+    state.stage = 1; ENEMY.spawnBoss3(); syncHud();
+  }
+  function collect(id) {
+    if (!isSinglePlayer()) return false;
+    if (id === 'barnKey') {
+      if (state.barnKey) return false;
+      state.barnKey = true; UI.toast('BARN KEY COLLECTED — RETURN TO THE NORTH BARN', 2.6); return true;
+    }
+    if (COMPONENTS.indexOf(id) < 0 || state.components[id]) return false;
+    state.components[id] = true; syncHud();
+    if (COMPONENTS.every(key => state.components[key])) UI.toast('ALL COMPONENTS FOUND — USE THE SECOND-FLOOR WORKBENCH', 3.2);
+    return true;
+  }
+  function spawnGardener(devSpawn) {
+    if (gardener && gardener.alive) return gardener;
+    const p = new THREE.Vector3(48, WORLD.groundAt(48, -52, 2, 'surface'), -52);
+    gardener = ENEMY.spawnGrunt('gaper', p);
+    gardener.isGardener = true; gardener.devSpawn = !!devSpawn;
+    gardener.def = Object.assign({}, gardener.def, { name: 'The Gardener', stats: Object.assign({}, gardener.def.stats, {
+      hp: 780, speed: 2.7, damage: 22, reach: 3.4, windup: 0.75, recover: 0.9, weight: 6
+    }) });
+    gardener.maxHp = gardener.hp = 780;
+    gardener.group.scale.setScalar(2.15);
+    gardener.headProxy.scale.multiplyScalar(1.45); gardener.bodyProxy.scale.multiplyScalar(1.75);
+    gardener.gardenerSummons = []; gardener.gardenerSpawnTimes = [];
+    gardener.gardenerAttackTimer = 4; gardener.gardenerSeedTimer = 2.5;
+    UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
+    UI.toast('THE GARDENER TAKES ROOT', 2.8);
+    return gardener;
+  }
+  function bossDefeated(id, entity) {
+    if (!isSinglePlayer() || (entity && entity.devSpawn)) return;
+    if (id === 'beatSlayer' && state.stage === 1) { state.stage = 2; ENEMY.spawnBoss2(1); }
+    else if (id === 'bearClaw' && state.stage === 2) { state.stage = 3; ENEMY.spawnBoss(); }
+    else if (id === 'carrotWarden' && state.stage === 3) { state.stage = 4; spawnGardener(false); }
+    else if (id === 'gardener' && state.stage === 4) { state.stage = 5; }
+    else if (id === 'bearclaw2' && state.stage === 6) { state.stage = 7; if (GAME.complete) GAME.complete(); }
+  }
+  function nearDoor(p) { return p && p.y < 2 && Math.hypot(p.x - 48, p.z + 42.2) < 4.5; }
+  function nearStation(p) { return p && p.y > 3.2 && Math.hypot(p.x - 58.3, p.z + 76.7) < 4.2; }
+  function missing() { return COMPONENTS.filter(id => !state.components[id]); }
+  function interactionHint(p) {
+    if (!isSinglePlayer()) return '';
+    if (nearDoor(p)) return 'E · ' + (state.barnUnlocked ? 'Open / close barn doors' : state.barnKey ? 'Unlock north barn' : 'Locked — key required');
+    if (nearStation(p)) return state.barnUnlocked ? 'E · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
+    return '';
+  }
+  function interact(p) {
+    if (!isSinglePlayer()) return false;
+    if (nearDoor(p)) {
+      if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
+      if (!state.barnUnlocked) { state.barnUnlocked = true; UI.toast('NORTH BARN UNLOCKED', 2.2); }
+      else UI.toast('NORTH BARN DOORS OPERATED', 1.2);
+      return true;
+    }
+    if (!nearStation(p)) return false;
+    if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
+    if (state.crafted) { UI.toast('PORTAL GUN ALREADY ASSEMBLED', 1.4); return true; }
+    const need = missing();
+    if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
+    state.crafted = true; syncHud();
+    WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
+    UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
+  }
+  function beginCutscene() {
+    if (state.cutscenePlayed) return;
+    state.cutscenePlayed = true; cutsceneTimer = 5.2;
+    INPUT.clearActions(); INPUT.releaseLock();
+    UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
+  }
+  function update(dt) {
+    if (gardener && gardener.alive) {
+      const now = performance.now() / 1000;
+      gardener.gardenerSummons = gardener.gardenerSummons.filter(e => e && e.alive);
+      gardener.gardenerSpawnTimes = gardener.gardenerSpawnTimes.filter(t => now - t < 60);
+      gardener.gardenerAttackTimer -= dt;
+      gardener.gardenerSeedTimer -= dt;
+      if (gardener.gardenerAttackTimer <= 0) {
+        gardener.gardenerAttackTimer = 16;
+        UI.toast('THE GARDENER RAISES THE WATERING CAN', 1.35);
+        const capacity = Math.min(2, 4 - gardener.gardenerSummons.length, 4 - gardener.gardenerSpawnTimes.length);
+        for (let i = 0; i < capacity; i++) {
+          const a = i * Math.PI + Math.random();
+          const p = new THREE.Vector3(gardener.pos.x + Math.cos(a) * 3, gardener.pos.y, gardener.pos.z + Math.sin(a) * 3);
+          const summon = ENEMY.spawnGrunt(i % 2 ? 'gaper' : 'reaper', p);
+          summon.gardenerSummon = true; summon.respawnAt = 0;
+          gardener.gardenerSummons.push(summon); gardener.gardenerSpawnTimes.push(now);
+        }
+      }
+      if (gardener.gardenerSeedTimer <= 0 && !PLAYER.isDead && gardener.layerId === PLAYER.layerId) {
+        gardener.gardenerSeedTimer = 5.5;
+        UI.toast('SEED BURST — MOVE!', 0.9);
+        const distance = Math.hypot(PLAYER.position.x - gardener.pos.x, PLAYER.position.z - gardener.pos.z);
+        if (distance < 19 && Math.random() < 0.7) PLAYER.damage(8, gardener.pos, gardener);
+      }
+      UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
+    }
+    if (!cutsceneTimer) return;
+    cutsceneTimer = Math.max(0, cutsceneTimer - dt);
+    if (cutsceneTimer === 0) {
+      state.stage = 6;
+      const boss = ENEMY.spawnBoss2(2);
+      if (boss) { boss.pos.set(55, WORLD.groundAt(55, -75, 2, 'surface'), -75); boss.group.position.copy(boss.pos); }
+      UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+    }
+  }
+  return { reset, start, collect, interact, interactionHint, update, bossDefeated, spawnGardener, isSinglePlayer,
+    get state() { return state; }, get gardener() { return gardener; } };
 })();
 
 /* ============================== [GAME] =============================== */
@@ -12047,6 +12222,7 @@ const GAME = (() => {
       UI.showStart();
     });
     document.getElementById('resumeBtn').addEventListener('click', e => { e.stopPropagation(); enter(false); });
+    document.getElementById('pauseRestartBtn').addEventListener('click', e => { e.stopPropagation(); restart(); });
     document.getElementById('pauseMenuBtn').addEventListener('click', e => { e.stopPropagation(); returnToStart(); });
 
     // Options is a veil layered over whichever screen opened it (see UI's
@@ -12193,6 +12369,7 @@ const GAME = (() => {
     INPUT.on('press', a => {
       if (a === 'lantern') lampKey.intensity = lampKey.intensity > 0 ? 0 : 1.35;
       if (a === 'interact' && running && !PLAYER.isDead) {
+        if (QUEST.interact(PLAYER.position)) return;
         const interaction = LEVEL.tryInteract(PLAYER.position, PLAYER.layerId);
         if (interaction && mode === 'coop') COOP.sendWorldInteraction(interaction.id, interaction.open);
       }
@@ -12271,6 +12448,7 @@ const GAME = (() => {
     AUDIO.stopMenuMusic();
     AUDIO.playGameMusic();
     UI.showHud();
+    QUEST.start();
     INPUT.requestLock();
   }
 
@@ -12442,6 +12620,7 @@ const GAME = (() => {
     CONSUMABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
+    QUEST.reset();
     UI.setKills(0);
     UI.hideDead();
     UI.hideEndGame();
@@ -12476,6 +12655,7 @@ const GAME = (() => {
     CONSUMABLE.reset();
     ENEMY.reset();
     PICKUP.reset();
+    QUEST.reset();
     ANNOUNCER.reset();
     UI.setKills(0);
     UI.hideFfaScoreboard();
@@ -12568,9 +12748,10 @@ const GAME = (() => {
     HERO.update(dt, running);
     if (simRunning) ENEMY.update(dt, time);
     PICKUP.update(dt, time, running && !PLAYER.isDead);
+    QUEST.update(dt);
     LEVEL.update(dt, time);
     UI.setInteractionHint(running && !PLAYER.isDead
-      ? LEVEL.interactionHint(PLAYER.position, PLAYER.layerId) : '');
+      ? (QUEST.interactionHint(PLAYER.position) || LEVEL.interactionHint(PLAYER.position, PLAYER.layerId)) : '');
     COOP.update(dt, simRunning && !PLAYER.isDead);
     VOICE.update();
     UI.setVoiceChip(VOICE.enabled, VOICE.talking);
@@ -12616,8 +12797,9 @@ const GAME = (() => {
     }
   }
 
+  function resumeAfterQuestCutscene() { if (entered && !PLAYER.isDead) enter(false); }
   return {
-    init, complete,
+    init, complete, resumeAfterQuestCutscene,
     get mode() { return mode; },
     get isCoop() { return mode === 'coop'; },
     get scene() { return scene; },
@@ -15551,7 +15733,13 @@ const ENEMY = (() => {
         map: TEX.puff(PAL.cream), s0: 0.3, s1: 0.9, life: 0.7, grav: -1
       });
     }
-    if (e.isBoss) {
+    if (e.isGardener) {
+      e.respawnAt = 0;
+      UI.setBoss(false, 0, e.maxHp, 'defeated');
+      UI.toast('THE GARDENER UPROOTED — FIND THE BARN KEY', 2.8);
+      if (typeof PICKUP !== 'undefined') PICKUP.spawn('barnKey', { x:e.pos.x, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
+      if (typeof QUEST !== 'undefined') QUEST.bossDefeated('gardener', e);
+    } else if (e.isBoss) {
       bossState = 'defeated';
       e.respawnAt = 0;
       UI.setBoss(false, 0, e.maxHp, bossState);
@@ -15566,12 +15754,13 @@ const ENEMY = (() => {
         PICKUP.spawn('carrotCannonWeapon', { x: dropPos[0], y: dropPos[1], z: dropPos[2] }, {
           respawn: 0, devSpawn: !!e.devSpawn
         });
+        if (typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('computerChip', { x:dropPos[0]+0.8, y:dropPos[1], z:dropPos[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
       // die() only ever runs on the host or in single-player (a join never
       // reaches this point — its applyDamage relays out instead), so this is
       // the one authoritative place a boss kill can happen. Tell any joiners.
       if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills, dropPos);
-      if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
+      if (typeof QUEST !== 'undefined') QUEST.bossDefeated('carrotWarden', e);
     } else if (e.isBoss2) {
       bossState2 = 'defeated';
       e.respawnAt = 0;
@@ -15599,8 +15788,10 @@ const ENEMY = (() => {
         PICKUP.spawn(dropId, { x: dropPos2[0], y: dropPos2[1], z: dropPos2[2] }, {
           respawn: 0, devSpawn: !!e.devSpawn
         });
+        if (!isFinalDefeat && typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('metalWeaponFragment', { x:dropPos2[0]+0.8, y:dropPos2[1], z:dropPos2[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2, dropId);
+      if (typeof QUEST !== 'undefined') QUEST.bossDefeated(isFinalDefeat ? 'bearclaw2' : 'bearClaw', e);
       // Bear Claw is a mid-match mini-boss, not a win condition -- no
       // GAME.complete() here, and defeating it does not increment `kills`
       // (same convention as the Carrot Warden above).
@@ -15621,8 +15812,10 @@ const ENEMY = (() => {
         PICKUP.spawn('goldenBoomboxThrowable', { x: dropPos3[0], y: dropPos3[1], z: dropPos3[2] }, {
           respawn: 0, devSpawn: !!e.devSpawn
         });
+        if (typeof GAME !== 'undefined' && GAME.mode === 'single') PICKUP.spawn('mysteriousGreenShard', { x:dropPos3[0]+0.8, y:dropPos3[1], z:dropPos3[2] }, { respawn:0, devSpawn:!!e.devSpawn });
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss3Defeated(dropPos3);
+      if (typeof QUEST !== 'undefined') QUEST.bossDefeated('beatSlayer', e);
       // Beat Slayer is also a mid-match mini-boss, not a win condition --
       // no GAME.complete(), no `kills` increment, same as Bear Claw above.
     } else {
@@ -15645,13 +15838,22 @@ const ENEMY = (() => {
     const range = shot.range || 95;
     const falloff = UTIL.clamp(1 - distance / range, 0.22, 1);
     const base = shot.damage === undefined ? C.pelletDamage : shot.damage;
-    const head = e.isBoss ? B.headMultiplier : (e.isBoss2 ? B2.headMultiplier :
+    const portalHeadshot = e.isBoss2 && e.appearanceIndex >= 2 && info.zone === 'head' && shot.weaponId === 'portalGun';
+    const head = portalHeadshot ? B2.portalHeadshotCritMultiplier : e.isBoss ? B.headMultiplier : (e.isBoss2 ? B2.headMultiplier :
       (e.isBoss3 ? B3.headMultiplier : (shot.headMultiplier === undefined ? C.headMultiplier : shot.headMultiplier)));
     // Per-pellet crit roll (Carrot Cannon): each connecting pellet gets its
     // own independent chance, not one roll for the whole shot.
     const isCrit = !!shot.critChance && Math.random() < shot.critChance;
     const dmg = base * falloff * (info.zone === 'head' ? head : 1) * (isCrit ? (shot.critMultiplier || 1) : 1);
     applyDamage(e, dmg, point, dir, info.zone);
+    if (e.alive && portalHeadshot) {
+      UI.toast('PORTAL CRITICAL' + (e.portalStunImmunity > 0 ? '' : ' — STUN CHANCE'), 0.9);
+      if (!(e.portalStunImmunity > 0) && Math.random() < B2.portalHeadshotStunChance) {
+        stunEntity(e, B2.portalHeadshotStunDuration);
+        e.portalStunImmunity = B2.portalHeadshotStunDuration + B2.portalStunImmunity;
+        UI.toast('BEARCLAW2 STUNNED — 2.0s', 1.5);
+      }
+    }
     // Pipe Popper's headshot-only weakness against Beat Slayer -- every
     // other stun source (theClaw etc.) is melee-only and already generic
     // via melee()'s opts.stunChance, so this is the one ranged exception.
@@ -16183,6 +16385,7 @@ const ENEMY = (() => {
      mean threading isBoss2 branches through nearly every line of it. */
   function updateBearClaw(e, dt, t) {
     e.assetDelta = dt;
+    e.portalStunImmunity = Math.max(0, (e.portalStunImmunity || 0) - dt);
     e.timer += dt;
     if (!e.alive) {
       if (e.timer > C.corpseTime) e.group.visible = false;
@@ -17193,10 +17396,14 @@ const ENEMY = (() => {
       updateGhosts(dt, t);
       return;
     }
-    if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
-    if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
-    else if (bossState2 === 'defeated' && bearClawAppearances < 2 && kills >= CONFIG.progress.bearClawThreshold2) spawnBoss2();
-    if (bossState3 === 'inactive' && kills >= CONFIG.progress.beatSlayerThreshold) spawnBoss3();
+    // Single-player owns an explicit, non-skippable quest sequence (QUEST).
+    // Preserve the established kill-threshold encounters for multiplayer.
+    if (typeof GAME === 'undefined' || GAME.mode !== 'single') {
+      if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
+      if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
+      else if (bossState2 === 'defeated' && bearClawAppearances < 2 && kills >= CONFIG.progress.bearClawThreshold2) spawnBoss2();
+      if (bossState3 === 'inactive' && kills >= CONFIG.progress.beatSlayerThreshold) spawnBoss3();
+    }
     for (let i = 0; i < list.length; i++) updateOne(list[i], dt, t);
   }
 
