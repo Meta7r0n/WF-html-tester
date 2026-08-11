@@ -4,9 +4,31 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.35`
-- **Working branch:** `A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES`
-- **Baseline:** `A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER`
+- **Current alpha:** `v0.36`
+- **Working branch:** `A-test-v0.36-PAUSE-BARN-STATS`
+- **Baseline:** `A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES`
+
+## What changed in v0.36
+
+- Makes **Options** a real child modal above the pause card. Opening it from
+  Pause now covers and blocks the pause controls, owns keyboard focus, closes
+  with `Esc`, and returns focus to the button that opened it.
+- Reframes Hangar pilot portraits from the selected rig's measured bounds so
+  tall hats and short body presets cannot be clipped. The builder now includes
+  switchable **Full Pilot** and **Head Detail** views and renders the large
+  preview at a higher resolution.
+- Replaces the North Barn's decorative, parked-open west panels with a second
+  animated double door and authoritative world blocker.
+- Makes the North Barn cellar hatch a keyed, interactive route. Its ladder is
+  disabled while the lid is shut for both players and enemies, while the cellar
+  itself remains reachable through the underground room and tunnel network.
+- The Barn Key can be used at the south doors, west doors, or cellar hatch.
+  The first use unlocks the barn; each entrance then keeps its own open/closed
+  state and toggles with `E` or **Use**.
+- Replaces the plain completion dump with a dark end-of-match field report
+  inspired by survival-mode scorecards. It shows total enemies wilted,
+  headshot finishes, downs, boss defeats, damage, ammo fired, active/elapsed
+  time, and an expandable boss/loadout breakdown.
 
 ## What changed in v0.35
 
@@ -71,7 +93,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES
+git switch A-test-v0.36-PAUSE-BARN-STATS
 python3 -m http.server 8000
 ```
 
@@ -111,7 +133,7 @@ joining clients. GitHub Pages remains a static client host.
 | 33 | Beat Slayer | Ranged/kiting boombox encounter, Golden Boombox, and Green Shard |
 | 66 | Bear Claw | Long-reach claw fight, Pack of Smokes, and Metal Weapon Fragment |
 | 99 | Carrot Warden | Ranged seed pressure, Carrot Cannon, and Computer Chip |
-| 132 | The Gardener | Drops the Barn Key; use it at the North Barn door with `E` |
+| 132 | The Gardener | Drops the Barn Key; use it at a North Barn door or cellar hatch with `E` |
 | Portal Gun crafted | Bearclaw2 | Longbone rematch and the final single-player completion encounter |
 
 Co-op retains the established multiplayer thresholds: Carrot Warden at 33,
@@ -182,7 +204,7 @@ All keyboard bindings can be changed under **Options → Controls**.
 | `1–9` | Select weapon slot |
 | `G` | Throw selected throwable |
 | `J` | Use Jays |
-| `E` | Interact; use the Barn Key, operate barn doors/gates, or use the workbench |
+| `E` | Interact; use the Barn Key, operate both North Barn doors, the cellar hatch, gates, or the workbench |
 | `F` | Toggle lantern |
 | `B` | Hold to talk when voice chat is enabled |
 | `Enter` | Open/send multiplayer text chat |
