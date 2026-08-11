@@ -9122,6 +9122,7 @@ const WEAPON = (() => {
     }
 
     s.mag--;
+    if (typeof RUNSTATS !== 'undefined') RUNSTATS.ammo(currentId, 1);
     fireTimer = d.fireInterval;
     syncHUD();
     UI.crosshairKick();
@@ -9389,6 +9390,7 @@ const WEAPON = (() => {
     }
     if (newlyOwned) setCurrent(id, true);
     else syncHUD();
+    if (newlyOwned && typeof RUNSTATS !== 'undefined') RUNSTATS.weapon('acquired', id);
     return {
       consumed: newlyOwned || ammoAdded > 0 || !!options.repeatPickup,
       newlyOwned: newlyOwned,
@@ -11094,8 +11096,8 @@ const UI = (() => {
   }
   function getSignalInput() { return el.signalInput ? el.signalInput.value.trim() : ''; }
   function showEndGame(wilted) {
-    el.endGameSummary.textContent = 'The Carrot Warden is down after ' + (wilted || 0) +
-      ' wilted activations. Continue exploring, or start this run over.';
+    el.endGameSummary.textContent = 'Bearclaw2 is down after ' + (wilted || 0) +
+      ' wilted farmhands. Review this run, continue exploring, or start over.';
     el.endGame.classList.remove('hidden');
     el.start.classList.add('hidden');
     el.pause.classList.add('hidden');
@@ -11918,6 +11920,94 @@ const PICKUP = (() => {
 })();
 
 /* ============================== [GAME] =============================== */
+const RUNSTATS = (() => {
+  const SCHEMA_VERSION = 1;
+  let record = null, activeSince = 0, activeAccumulated = 0, running = false;
+  const now = () => performance.now();
+  function seconds(ms) { return Math.max(0, ms) / 1000; }
+  function activeTime() { return activeAccumulated + (running ? now() - activeSince : 0); }
+  function timestamp() { return seconds(activeTime()); }
+  function begin(mode, playerId) {
+    if (record && !record.finalizedAt) finalize('abandoned');
+    record = {
+      schemaVersion: SCHEMA_VERSION,
+      runId: 'run-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+      playerId: playerId || 'local', mode: mode || 'single', outcome: 'in_progress',
+      startedAt: null, finalizedAt: null, activeGameplayTime: 0, totalElapsedTime: 0,
+      deaths: [], bossEncounters: [], ammoUsed: { total: 0, byWeapon: {} },
+      weapons: { acquired: [], crafted: [], unlocked: [] }, milestones: []
+    };
+    activeSince = 0; activeAccumulated = 0; running = false; updateHud(); return record;
+  }
+  function start() {
+    if (!record) begin('single');
+    if (!record.startedAt) record.startedAt = now();
+    resume();
+  }
+  function pause() { if (!record || !running) return; activeAccumulated += now() - activeSince; running = false; updateHud(); }
+  function resume() { if (!record || record.finalizedAt || running) return; activeSince = now(); running = true; }
+  function milestone(type, id, data) {
+    if (!record) return;
+    const onceKey = type + ':' + id;
+    if (record.milestones.some(m => m.onceKey === onceKey)) return;
+    record.milestones.push(Object.assign({ onceKey, type, id, at: timestamp() }, data || {}));
+  }
+  function death() { if (record) record.deaths.push({ at: timestamp() }); }
+  function ammo(weaponId, amount) {
+    if (!record || !(amount > 0)) return;
+    record.ammoUsed.total += amount;
+    record.ammoUsed.byWeapon[weaponId] = (record.ammoUsed.byWeapon[weaponId] || 0) + amount;
+  }
+  function weapon(type, id) {
+    if (!record || !record.weapons[type] || record.weapons[type].some(e => e.id === id)) return;
+    record.weapons[type].push({ id, at: timestamp() }); milestone('weapon_' + type, id);
+  }
+  function bossStart(id, name, devSpawn) {
+    if (!record) return;
+    const active = record.bossEncounters.find(e => e.id === id && e.outcome === 'active');
+    if (active) return;
+    record.bossEncounters.push({ id, name, devSpawn: !!devSpawn, startedAt: timestamp(), defeatedAt: null, duration: null, outcome: 'active' });
+  }
+  function bossDefeat(id) {
+    if (!record) return;
+    const encounter = [...record.bossEncounters].reverse().find(e => e.id === id && e.outcome === 'active');
+    if (!encounter) return;
+    encounter.defeatedAt = timestamp(); encounter.duration = Math.max(0, encounter.defeatedAt - encounter.startedAt); encounter.outcome = 'defeated';
+  }
+  function finalize(outcome) {
+    if (!record || record.finalizedAt) return record;
+    pause(); record.outcome = outcome || 'completed'; record.finalizedAt = now();
+    record.activeGameplayTime = seconds(activeAccumulated);
+    record.totalElapsedTime = record.startedAt ? seconds(record.finalizedAt - record.startedAt) : 0;
+    updateHud(); return record;
+  }
+  function format(value) {
+    const ms = Math.max(0, Math.floor(value * 1000)), minutes = Math.floor(ms / 60000), secs = Math.floor(ms / 1000) % 60;
+    return String(minutes).padStart(2,'0') + ':' + String(secs).padStart(2,'0') + '.' + String(ms % 1000).padStart(3,'0');
+  }
+  function updateHud() {
+    const el = document.getElementById('runClock'); if (!el) return;
+    el.classList.toggle('on', !!record && !record.finalizedAt && typeof GAME !== 'undefined' && GAME.mode === 'single');
+    const span = el.querySelector('span'); if (span) span.textContent = format(seconds(activeTime()));
+  }
+  function render() {
+    const el = document.getElementById('runStats'); if (!el || !record) return;
+    const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    const bosses = record.bossEncounters.filter(e => !e.devSpawn);
+    const list = values => values.length ? '<ul>' + values.map(v => '<li>' + v + '</li>').join('') + '</ul>' : '<p>None</p>';
+    el.innerHTML = '<h3>' + esc(record.outcome.toUpperCase()) + '</h3>' +
+      '<p>Active ' + format(record.activeGameplayTime || seconds(activeTime())) + ' · Total ' + format(record.totalElapsedTime || (record.startedAt ? seconds(now()-record.startedAt) : 0)) + '<br>Deaths ' + record.deaths.length + ' · Ammo used ' + record.ammoUsed.total + '</p>' +
+      '<h3>Ammo by weapon</h3>' + list(Object.keys(record.ammoUsed.byWeapon).map(id => esc(id) + ': ' + record.ammoUsed.byWeapon[id])) +
+      '<h3>Bosses</h3>' + list(bosses.map(b => esc(b.name) + ' — ' + esc(b.outcome) + (b.duration === null ? '' : ' in ' + format(b.duration)))) +
+      '<h3>Weapons acquired</h3>' + list(record.weapons.acquired.map(w => esc(w.id) + ' @ ' + format(w.at))) +
+      '<h3>Weapons crafted</h3>' + list(record.weapons.crafted.map(w => esc(w.id) + ' @ ' + format(w.at))) +
+      '<h3>Milestones</h3>' + list(record.milestones.map(m => esc(m.type + ': ' + m.id) + ' @ ' + format(m.at)));
+  }
+  function update() { if (record && !record.finalizedAt) updateHud(); }
+  return { begin, start, pause, resume, death, ammo, weapon, milestone, bossStart, bossDefeat, finalize, render, update, format,
+    get record() { return record; }, get schemaVersion() { return SCHEMA_VERSION; } };
+})();
+
 const QUEST = (() => {
   const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
   const state = { components: {}, barnKey: false, barnUnlocked: false, crafted: false, cutscenePlayed: false, stage: 0 };
@@ -11947,10 +12037,10 @@ const QUEST = (() => {
     if (!isSinglePlayer()) return false;
     if (id === 'barnKey') {
       if (state.barnKey) return false;
-      state.barnKey = true; UI.toast('BARN KEY COLLECTED — RETURN TO THE NORTH BARN', 2.6); return true;
+      state.barnKey = true; RUNSTATS.milestone('barn_key_collected', 'barnKey'); UI.toast('BARN KEY COLLECTED — RETURN TO THE NORTH BARN', 2.6); return true;
     }
     if (COMPONENTS.indexOf(id) < 0 || state.components[id]) return false;
-    state.components[id] = true; syncHud();
+    state.components[id] = true; syncHud(); RUNSTATS.milestone('component_collected', id);
     if (COMPONENTS.every(key => state.components[key])) UI.toast('ALL COMPONENTS FOUND — USE THE SECOND-FLOOR WORKBENCH', 3.2);
     return true;
   }
@@ -11968,6 +12058,7 @@ const QUEST = (() => {
     gardener.gardenerSummons = []; gardener.gardenerSpawnTimes = [];
     gardener.gardenerAttackTimer = 4; gardener.gardenerSeedTimer = 2.5;
     UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
+    RUNSTATS.bossStart('gardener', 'The Gardener', !!devSpawn);
     UI.toast('THE GARDENER TAKES ROOT', 2.8);
     return gardener;
   }
@@ -11992,7 +12083,7 @@ const QUEST = (() => {
     if (!isSinglePlayer()) return false;
     if (nearDoor(p)) {
       if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
-      if (!state.barnUnlocked) { state.barnUnlocked = true; UI.toast('NORTH BARN UNLOCKED', 2.2); }
+      if (!state.barnUnlocked) { state.barnUnlocked = true; RUNSTATS.milestone('barn_unlocked', 'northBarn'); UI.toast('NORTH BARN UNLOCKED', 2.2); }
       else UI.toast('NORTH BARN DOORS OPERATED', 1.2);
       return true;
     }
@@ -12003,6 +12094,7 @@ const QUEST = (() => {
     if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
     state.crafted = true; syncHud();
     WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
+    RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
     UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
   }
   function beginCutscene() {
@@ -12149,6 +12241,7 @@ const GAME = (() => {
     // shared mouse/touch engagement wiring
     INPUT.on('lock', () => {
       running = true;
+      RUNSTATS.resume();
       UI.hidePause();
       AUDIO.resume();
       AUDIO.unduckGameMusic();
@@ -12164,6 +12257,7 @@ const GAME = (() => {
     });
     INPUT.on('unlock', () => {
       running = false;
+      RUNSTATS.pause();
       if (!entered) return;
       // A downed player must still get a clickable way back in. Showing only
       // the downed HUD here left the game with no overlay and no input at all.
@@ -12448,6 +12542,7 @@ const GAME = (() => {
     AUDIO.stopMenuMusic();
     AUDIO.playGameMusic();
     UI.showHud();
+    RUNSTATS.start();
     QUEST.start();
     INPUT.requestLock();
   }
@@ -12614,6 +12709,7 @@ const GAME = (() => {
 
   /* Back on your feet: heal up, put the farm back the way it was. */
   function restart() {
+    RUNSTATS.begin(mode, mode === 'coop' && COOP.localId ? COOP.localId : 'local');
     PLAYER.revive();
     WEAPON.reset();
     THROWABLE.reset();
@@ -12634,9 +12730,11 @@ const GAME = (() => {
     endShown = true;
     running = false;
     INPUT.releaseLock();
+    RUNSTATS.finalize('completed');
     // A join hears about the boss dying over the network rather than from
     // its own (nonexistent, under host authority) local kill count.
     UI.showEndGame(killsOverride !== undefined ? killsOverride : ENEMY.kills);
+    RUNSTATS.render();
   }
 
   function continueAfterEnd() {
@@ -12649,6 +12747,7 @@ const GAME = (() => {
   }
 
   function returnToStart() {
+    RUNSTATS.finalize(endShown ? 'completed' : 'abandoned');
     PLAYER.revive();
     WEAPON.reset();
     THROWABLE.reset();
@@ -12759,6 +12858,7 @@ const GAME = (() => {
     AUDIO.update(dt);
     UI.update(dt);
     ANNOUNCER.update(dt);
+    RUNSTATS.update();
 
     if (lastKills !== ENEMY.kills) { lastKills = ENEMY.kills; UI.setKills(lastKills); }
     if (mode === 'coop' && (COOP.matchMode === 'ffa' || COOP.matchMode === 'teams') && running) UI.updateFfaScoreboard(COOP.scores);
@@ -12767,6 +12867,7 @@ const GAME = (() => {
     if (!PLAYER.isDead) deathPending = false;
     if (PLAYER.isDead && !PLAYER.isDowned && !deathPending) {
       deathPending = true;
+      RUNSTATS.death();
       KILLCAM.trigger(camera);
       // Reported once, right as the death happens — reportDeath() reads
       // whichever attacker last damaged this client, so it has to fire
@@ -15233,6 +15334,7 @@ const ENEMY = (() => {
     boss.bossSeedTimer = B.seedInterval;
     boss.group.visible = true;
     bossState = 'active';
+    if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(B.id, B.name, !!boss.devSpawn);
     UI.setBoss(true, boss.hp, boss.maxHp, bossState);
     UI.toast('33 WILTED — CARROT WARDEN AWAKES', 3.2);
     AUDIO.enemyAlert(boss.def.voice.pitch);
@@ -15294,6 +15396,7 @@ const ENEMY = (() => {
     boss2.stunTimer = 0;
     boss2.group.visible = true;
     bossState2 = 'active';
+    if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(isSecond ? 'bearclaw2' : B2.id, isSecond ? 'Bearclaw2' : B2.name, !!boss2.devSpawn);
     UI.setBoss2(true, boss2.hp, boss2.maxHp, bossState2);
     UI.toast(isSecond ? '99 WILTED — BEAR CLAW RETURNS, ANGRIER' : '66 WILTED — BEAR CLAW EMERGES', 3.2);
     AUDIO.enemyAlert(boss2.def.voice.pitch);
@@ -15325,6 +15428,7 @@ const ENEMY = (() => {
     boss3.stunTimer = 0;
     boss3.group.visible = true;
     bossState3 = 'active';
+    if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(B3.id, B3.name, !!boss3.devSpawn);
     UI.setBoss3(true, boss3.hp, boss3.maxHp, bossState3);
     UI.toast('132 WILTED — BEAT SLAYER DROPS IN', 3.2);
     AUDIO.enemyAlert(boss3.def.voice.pitch);
@@ -15739,6 +15843,7 @@ const ENEMY = (() => {
       UI.toast('THE GARDENER UPROOTED — FIND THE BARN KEY', 2.8);
       if (typeof PICKUP !== 'undefined') PICKUP.spawn('barnKey', { x:e.pos.x, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('gardener', e);
+      if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat('gardener');
     } else if (e.isBoss) {
       bossState = 'defeated';
       e.respawnAt = 0;
@@ -15761,6 +15866,7 @@ const ENEMY = (() => {
       // the one authoritative place a boss kill can happen. Tell any joiners.
       if (typeof COOP !== 'undefined') COOP.broadcastBossDefeated(kills, dropPos);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('carrotWarden', e);
+      if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(B.id);
     } else if (e.isBoss2) {
       bossState2 = 'defeated';
       e.respawnAt = 0;
@@ -15792,6 +15898,7 @@ const ENEMY = (() => {
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss2Defeated(dropPos2, dropId);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated(isFinalDefeat ? 'bearclaw2' : 'bearClaw', e);
+      if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(isFinalDefeat ? 'bearclaw2' : B2.id);
       // Bear Claw is a mid-match mini-boss, not a win condition -- no
       // GAME.complete() here, and defeating it does not increment `kills`
       // (same convention as the Carrot Warden above).
@@ -15816,6 +15923,7 @@ const ENEMY = (() => {
       }
       if (typeof COOP !== 'undefined') COOP.broadcastBoss3Defeated(dropPos3);
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('beatSlayer', e);
+      if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat(B3.id);
       // Beat Slayer is also a mid-match mini-boss, not a win condition --
       // no GAME.complete(), no `kills` increment, same as Bear Claw above.
     } else {
