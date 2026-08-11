@@ -1146,6 +1146,55 @@
   .map-legend-swatch.teammate{background:var(--blue-deep);border-radius:50%;}
   .map-live-hint{margin:8px 0 0;font-size:12px;line-height:1.35;color:var(--ink-soft);}
   @media (max-width:900px){#mapCanvases{flex-direction:column;}}
+
+  /* ---------- Phone text scene (see PHONESCENE) ---------- */
+  #phoneScene{z-index:45;}
+  .phone-frame{
+    position:relative;width:min(380px,88vw);max-height:82vh;
+    background:var(--ink);border:5px solid var(--ink);border-radius:34px;
+    padding:14px 10px 18px;box-shadow:12px 14px 0 rgba(22,18,15,.55);
+    display:flex;flex-direction:column;transform:rotate(-.4deg);
+  }
+  .phone-notch{
+    width:84px;height:16px;margin:0 auto 8px;background:var(--ink-soft);
+    border-radius:0 0 12px 12px;
+  }
+  .phone-header{
+    display:flex;align-items:center;gap:10px;padding:6px 10px 12px;
+    border-bottom:2px solid rgba(246,233,210,.18);
+  }
+  .phone-header img{
+    width:38px;height:38px;border-radius:50%;object-fit:cover;
+    border:2px solid var(--mustard);flex:0 0 auto;
+  }
+  .phone-header-text{display:flex;flex-direction:column;line-height:1.25;}
+  .phone-header-name{
+    font:800 15px/1 "Rockwell",Georgia,serif;color:var(--cream);letter-spacing:.3px;
+  }
+  .phone-header-status{font:600 10px/1 "Courier New",monospace;color:var(--blue);margin-top:3px;}
+  .phone-thread{
+    flex:1 1 auto;min-height:220px;max-height:48vh;overflow-y:auto;
+    padding:14px 8px 4px;display:flex;flex-direction:column;gap:10px;
+  }
+  .phone-row{display:flex;align-items:flex-end;gap:7px;opacity:0;transform:translateY(8px);transition:opacity .28s ease,transform .28s ease;}
+  .phone-row.show{opacity:1;transform:translateY(0);}
+  .phone-row.out{justify-content:flex-end;}
+  .phone-row.in{justify-content:flex-start;}
+  .phone-bubble-avatar{
+    width:24px;height:24px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+    border:2px solid var(--mustard);
+  }
+  .phone-bubble{
+    max-width:74%;padding:9px 13px;border-radius:17px;
+    font:600 14px/1.32 "Courier New",monospace;word-wrap:break-word;
+    box-shadow:2px 3px 0 rgba(22,18,15,.3);
+  }
+  .phone-row.in .phone-bubble{background:var(--cream);color:var(--ink);border-bottom-left-radius:5px;}
+  .phone-row.out .phone-bubble{background:var(--blue-deep);color:var(--cream);border-bottom-right-radius:5px;}
+  .phone-skip-hint{
+    margin:12px 4px 0;text-align:center;font:700 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;color:rgba(246,233,210,.5);
+  }
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -1605,6 +1654,21 @@
     </div>
   </div>
 
+  <div id="phoneScene" class="veil hidden">
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-header">
+        <img src="assets/drewbie_avatar.png" alt="drewbie" />
+        <div class="phone-header-text">
+          <span class="phone-header-name">drewbie</span>
+          <span class="phone-header-status">iMessage</span>
+        </div>
+      </div>
+      <div class="phone-thread" id="phoneSceneThread"></div>
+      <p class="phone-skip-hint">Tap or press any key to skip</p>
+    </div>
+  </div>
+
   <div id="loading">Inking the farm…</div>
   <div id="err"></div>
 
@@ -1948,6 +2012,24 @@ const CONFIG = {
     startPos: { x: -54, y: 25, z: 18 },
     hoverPos: { x: 3, y: 14, z: 24 },
     endPos: { x: 50, y: 23, z: -16 }
+  },
+  // A quick beat right after the crew lands, before control unlocks -- the
+  // pilot checks a text from "drewbie". gap is the pause (seconds) after that
+  // bubble appears before the next one lands, roughly scaled to reading time.
+  // This runs entirely over real time the player would otherwise spend
+  // staring at a loading state anyway, so it doubles as extra headroom for
+  // ENEMY.prepareAssets()/warmAssets() (already kicked off at boot, well
+  // before this ever plays) to be fully settled before gameplay input unlocks.
+  phoneScene: {
+    avatar: 'assets/drewbie_avatar.png',
+    startDelay: 0.7,   // beat after the veil appears before the first bubble lands
+    holdAfter: 2.2,    // pause after the last bubble before handing off to gameplay
+    messages: [
+      { from: 'drewbie', text: 'hey fucker wyd?', gap: 1.6 },
+      { from: 'pilot', text: 'not much just rollin up, wbu?', gap: 1.8 },
+      { from: 'drewbie', text: "I'm trying to get these orders out, but the farm called and said some wonky shits been going on. Go take care of it yeah?", gap: 2.6 },
+      { from: 'pilot', text: '🫡', gap: 0 }
+    ]
   },
   // A short cinematic cutaway on every death (PvE or PvP) -- pulls out from
   // first-person into a slow orbit around the fallen local player's ragdoll,
@@ -13241,6 +13323,7 @@ const GAME = (() => {
     INPUT.init(renderer.domElement);
     COOP.init(scene);
     INTRO.init(scene, camera);
+    PHONESCENE.init();
     KILLCAM.init(scene);
 
     // shared mouse/touch engagement wiring
@@ -13615,7 +13698,10 @@ const GAME = (() => {
     AUDIO.resume();
     UI.hideMenus();
     if (playIntro === false || typeof INTRO === 'undefined') { enterNow(); return; }
-    INTRO.play(camera, enterNow);
+    const afterIntro = typeof PHONESCENE === 'undefined'
+      ? enterNow
+      : () => PHONESCENE.play(enterNow);
+    INTRO.play(camera, afterIntro);
   }
 
   function startSingle() {
@@ -15788,6 +15874,102 @@ const INTRO = (() => {
     init, play, skip, update,
     get active() { return active; },
     get camera() { return camera; }
+  };
+})();
+
+/* ============================ [PHONESCENE] ============================
+   The pilot checks a text the instant the crew's boots hit the ground --
+   plays between INTRO.finish() and GAME's enterNow(), so control stays
+   locked out until the exchange (or a skip) hands off. Pure 2D DOM overlay,
+   not Three.js -- there's no camera/render work here, just a scripted
+   reveal of a fixed message thread. Mirrors INTRO's own play/skip/finish
+   shape so GAME's call site reads the same way for both cutscenes. */
+const PHONESCENE = (() => {
+  const C = CONFIG.phoneScene;
+  let el = null, threadEl = null;
+  let active = false;
+  let onDone = null;
+  let timers = [];
+  let skipHandler = null;
+
+  function init() {
+    el = document.getElementById('phoneScene');
+    threadEl = document.getElementById('phoneSceneThread');
+  }
+
+  function clearTimers() {
+    timers.forEach(id => clearTimeout(id));
+    timers = [];
+  }
+
+  function appendBubble(msg) {
+    if (!threadEl) return;
+    const row = document.createElement('div');
+    row.className = 'phone-row ' + (msg.from === 'drewbie' ? 'in' : 'out');
+    if (msg.from === 'drewbie') {
+      const avatar = document.createElement('img');
+      avatar.className = 'phone-bubble-avatar';
+      avatar.src = C.avatar;
+      avatar.alt = '';
+      row.appendChild(avatar);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'phone-bubble';
+    bubble.textContent = msg.text;
+    row.appendChild(bubble);
+    threadEl.appendChild(row);
+    threadEl.scrollTop = threadEl.scrollHeight;
+    // Added off-screen (see .phone-row's base opacity/transform in CSS) so
+    // the .show class flip on the next frame actually transitions in,
+    // instead of the browser coalescing both style states into one paint.
+    requestAnimationFrame(() => row.classList.add('show'));
+  }
+
+  function attachSkipListener() {
+    if (skipHandler) return;
+    skipHandler = () => skip();
+    window.addEventListener('pointerdown', skipHandler, { once: true });
+    window.addEventListener('keydown', skipHandler, { once: true });
+  }
+
+  function detachSkipListener() {
+    if (!skipHandler) return;
+    window.removeEventListener('pointerdown', skipHandler);
+    window.removeEventListener('keydown', skipHandler);
+    skipHandler = null;
+  }
+
+  function play(onCompleteFn) {
+    if (active) return;
+    if (!el || !threadEl) { if (onCompleteFn) onCompleteFn(); return; }
+    active = true;
+    onDone = onCompleteFn;
+    threadEl.innerHTML = '';
+    el.classList.remove('hidden');
+    let t = C.startDelay;
+    C.messages.forEach(msg => {
+      timers.push(setTimeout(() => appendBubble(msg), t * 1000));
+      t += msg.gap || 0;
+    });
+    timers.push(setTimeout(finish, (t + C.holdAfter) * 1000));
+    attachSkipListener();
+  }
+
+  function skip() { finish(); }
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    clearTimers();
+    detachSkipListener();
+    if (el) el.classList.add('hidden');
+    const cb = onDone; onDone = null;
+    if (cb) cb();
+  }
+
+  return {
+    init, play, skip,
+    get active() { return active; }
   };
 })();
 
