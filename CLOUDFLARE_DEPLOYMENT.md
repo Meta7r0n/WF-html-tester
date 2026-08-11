@@ -5,7 +5,7 @@ This branch is the protected Cloudflare Worker build for Lobster Labz alpha test
 ## Production layout
 
 - Worker project: `alpha-wf-tester`
-- Git production branch: `CFP-V0.27-stable`
+- Git production branch: `CFP-V0.31-stable`
 - Custom domain: `alpha.lobsterlabz.com`
 - Static game files: `public/`
 - Worker entry point: `worker.js`
@@ -26,7 +26,7 @@ Do not commit `.dev.vars`, `.env`, either secret, or screenshots containing thei
 - Build command: leave blank
 - Deploy command: `npx wrangler deploy`
 - Root/path: `/`
-- Production branch: `CFP-V0.27-stable`
+- Production branch: `CFP-V0.31-stable`
 - Non-production branch builds: off
 
 The `workers.dev` hostname and preview URLs are disabled in `wrangler.jsonc`. Add `alpha.lobsterlabz.com` as the Worker's Custom Domain after the first deployment and after both secrets have been configured.
