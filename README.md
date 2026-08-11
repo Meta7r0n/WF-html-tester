@@ -4,28 +4,28 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.30`
-- **Working branch:** `A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH`
-- **Baseline:** `A-test-v0.29-EAST-NORTH-BARN-EXPANSION`
+- **Current alpha:** `v0.31`
+- **Working branch:** `A-test-v0.31-ORIGINAL-BARN-GATE-SILO-TUNNEL`
+- **Baseline:** `A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH`
 
-## What changed in v0.30
+## What changed in v0.31
 
-- Rebuilt the North Barn stairwell: the twelve steps now run east/west and exit
-  into the broad center of the upper deck.
-- Added a two-leaf **floor gate** over the stairs. Press `E` (or tap **Use**) to
-  open or close it. Closed leaves restore a real walkable upper floor; open
-  leaves expose the stair route and stand upright as visible guards.
-- Made the floor gate host-authoritative in online modes. Its state is relayed
-  to the room and included for late joiners.
-- Cleared the two full-depth stable dividers and moved remaining cover out of
-  the central lanes, improving movement for players and enemies.
-- Added two stable roof routes: a step-height-safe exterior stair for every
-  actor and a faster hay-bale jump route for players.
-- Added a North Barn hatch and a new `28 × 20 m` underground cellar. The room
-  connects directly to the existing northeast room, with cover, lighting,
-  enemy markers, pickups, and matching surface/underground map entries.
-- Updated browser/menu version labels, controls, the farm map, and this README
-  for `v0.30`.
+- Restored the two-floor North Barn's original v0.29 north/south staircase,
+  upper-floor cutout, and safety rail. Loose machinery remains moved away from
+  the stair lane.
+- Rotated the **original barn's basement stairs** north/south and rebuilt their
+  ceiling opening, shaft walls, handrails, directional portal, and floor mask.
+- Moved the two-leaf interactive floor gate onto those original-barn stairs.
+  Press `E` (or tap **Use**) to open or close it: shut leaves are a walkable
+  barn floor, while open leaves expose the descent and become guard rails.
+- Kept the barn stair gate host-authoritative in co-op, including late-join
+  synchronization.
+- Relocated the former northeast hatch to the exact center beneath the main
+  silo. Its compact underground room connects east to the North Barn cellar
+  and south to the existing basement network.
+- Updated underground cover, rewards, doorway frames, surface/underground map
+  entries, browser/menu version labels, and this README for `v0.31`.
+- Retained v0.30's stable traversal/roof routes and the North Barn cellar.
 
 ## Run the game
 
@@ -35,7 +35,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.30-NORTH-BARN-TRAVERSAL-HATCH
+git switch A-test-v0.31-ORIGINAL-BARN-GATE-SILO-TUNNEL
 python3 -m http.server 8000
 ```
 
@@ -110,7 +110,7 @@ All keyboard bindings can be changed under **Options → Controls**.
 | `1–8` | Select weapon slot |
 | `G` | Throw selected throwable |
 | `J` | Use Jays |
-| `E` | Interact with the North Barn floor gate |
+| `E` | Open or close the original barn stair gate |
 | `F` | Toggle lantern |
 | `B` | Hold to talk when voice chat is enabled |
 | `Enter` | Open/send multiplayer text chat |
