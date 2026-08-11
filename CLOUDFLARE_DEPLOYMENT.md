@@ -31,6 +31,11 @@ Do not commit `.dev.vars`, `.env`, either secret, or screenshots containing thei
 
 The `workers.dev` hostname and preview URLs are disabled in `wrangler.jsonc`. Add `alpha.lobsterlabz.com` as the Worker's Custom Domain after the first deployment and after both secrets have been configured.
 
+## Deployment checkpoint
+
+- Protected build: `v0.31`
+- Git-triggered: `2026-08-11`
+
 ## Session behavior
 
 A successful login creates a signed, `HttpOnly`, `Secure`, host-only cookie lasting 24 hours. The tester can keep playing for hours without interruption. Rotating `LAB_PIN` blocks new logins; rotating `SESSION_SECRET` also invalidates all existing sessions immediately.
