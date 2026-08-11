@@ -11,12 +11,12 @@ const statsStart = html.indexOf('const RUNSTATS = (() => {');
 const statsEnd = html.indexOf('const QUEST = (() => {', statsStart);
 const runStatsSource = html.slice(statsStart, statsEnd);
 
-test('visible and runtime build labels identify v0.36', () => {
-  assert.match(html, /<title>The Withered Farm — v0\.36<\/title>/);
-  assert.match(html, /WC v0\.36/);
-  assert.match(html, /version: 'v0\.36'/);
-  assert.match(html, /branch: 'A-test-v0\.36-PAUSE-BARN-STATS'/);
-  assert.doesNotMatch(html, /WC v0\.35/);
+test('visible and runtime build labels identify v0.38', () => {
+  assert.match(html, /<title>The Withered Farm — v0\.38<\/title>/);
+  assert.match(html, /WC v0\.38/);
+  assert.match(html, /version: 'v0\.38'/);
+  assert.match(html, /branch: 'A-test-v0\.38-BARN-CRAFTING-FIX'/);
+  assert.doesNotMatch(html, /WC v0\.37/);
 });
 
 function createQuestHarness() {

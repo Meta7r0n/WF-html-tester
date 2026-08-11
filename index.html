@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.37</title>
+<title>The Withered Farm — v0.38</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -1276,7 +1276,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.37</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.38</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1618,8 +1618,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.37',
-  branch: 'A-test-v0.37-PICKUP-VIEWMODEL-SPRAY-TAGS'
+  version: 'v0.38',
+  branch: 'A-test-v0.38-BARN-CRAFTING-FIX'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -9464,6 +9464,83 @@ const WEAPON = (() => {
     };
   }
 
+  /* Portal Gun (barn crafting reward): the only weapon assembled in front
+     of the player rather than found in the world, so its shape is the
+     payoff for the three components (see CRAFT.COMPONENTS) that built it --
+     scrap plating for the chassis, a salvaged circuit board wired in on
+     the side, and the green shard itself socketed up top as the visible
+     "engine," glowing the same 0x67e8a5 as CRAFT's portal ring so the prop
+     reads as the thing that opens it. */
+  function buildPortalGun() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const tape = MAT.toon(PAL.creamDim);
+    const wire = MAT.toon(PAL.charcoal);
+    const boardMat = MAT.toon(PAL.charcoal);
+    const traceMat = MAT.toon(PAL.jaysLight);
+    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal() });
+    const portalGreen = 0x67e8a5;
+
+    // Chassis -- the scrap-metal fragment, plated straight onto a boxy
+    // receiver like the rest of the salvaged arsenal.
+    PRIM.box(0.21, 0.22, 0.34, steel, { pos: [0, 0, -0.03], parent: g, warp: 0.008, outline: 0.014, ray: false });
+    PRIM.box(0.16, 0.07, 0.18, steelLight, { pos: [0, 0.1, 0.03], parent: g, outline: 0.011, ray: false });
+
+    // Stubby emitter barrel, capped with a glowing ring instead of a bore --
+    // this is what actually fires the portal, not a bullet.
+    PRIM.cyl(0.05, 0.06, 0.42, 10, steelLight, { pos: [0, 0.015, -0.44], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.062, 0.02, socketMat, { pos: [0, 0.015, -0.66], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.01, ray: false });
+    const emitterCore = new THREE.Mesh(new THREE.CircleGeometry(0.05, 12),
+      new THREE.MeshBasicMaterial({ color: portalGreen, transparent: true, opacity: 0.92, side: THREE.DoubleSide, fog: false }));
+    emitterCore.position.set(0, 0.015, -0.665);
+    g.add(emitterCore);
+
+    // The green shard, socketed in a claw-mount up top like a held gem --
+    // the crafted component itself, not just a color callback.
+    const socket = new THREE.Group();
+    socket.position.set(0, 0.155, -0.08);
+    g.add(socket);
+    [-1, 1].forEach(s => {
+      PRIM.torus(0.06, 0.012, socketMat, { pos: [s * 0.04, 0, 0], rot: [0, 0, Math.PI / 2 + s * 0.3], parent: socket, outline: 0.008, ray: false });
+    });
+    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.075),
+      new THREE.MeshBasicMaterial({ color: portalGreen, transparent: true, opacity: 0.88, fog: false }));
+    shard.scale.set(0.85, 1.3, 0.85);
+    socket.add(shard);
+
+    // Salvaged circuit board, taped to the side -- the computer chip
+    // component, wired up to the shard socket with loose scrap cabling.
+    const board = new THREE.Group();
+    board.position.set(0.115, 0.03, -0.14);
+    board.rotation.set(0, 0.5, 0.06);
+    g.add(board);
+    PRIM.box(0.14, 0.09, 0.012, boardMat, { parent: board, outline: 0.009, ray: false });
+    [[-0.04, 0.025], [0.02, 0.025], [-0.01, -0.01], [0.045, -0.015]].forEach(t =>
+      PRIM.box(0.028, 0.006, 0.004, traceMat, { pos: [t[0], t[1], 0.009], parent: board, outline: false, ray: false })
+    );
+    PRIM.cyl(0.012, 0.012, 0.02, 6, MAT.toon(PAL.mustardDk), { pos: [-0.045, -0.03, 0.014], parent: board, outline: 0.005, ray: false });
+    PRIM.box(0.16, 0.03, 0.02, tape, { pos: [0.115, 0.02, -0.13], rot: [0, 0.5, 0.06], parent: g, outline: 0.008, ray: false });
+    PRIM.hose(new THREE.Vector3(0.13, 0.06, -0.18), new THREE.Vector3(0.03, 0.14, -0.1),
+      0.22, 0.014, wire, { parent: g, outline: 0.005, ray: false });
+
+    // Grip + trigger, same convention as the rest of the salvaged lineup.
+    PRIM.box(0.1, 0.2, 0.12, MAT.toon(PAL.rustDeep), { pos: [0, -0.19, 0.05], rot: [0.24, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.05, 0.011, MAT.toon(PAL.charcoal), { pos: [0, -0.08, -0.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+
+    const forend = new THREE.Group();
+    forend.position.set(0, -0.02, -0.52);
+    g.add(forend);
+    PRIM.box(0.14, 0.09, 0.16, tape, { parent: forend, warp: 0.01, outline: 0.011, ray: false });
+
+    const fx = flashes(g, 0.015, -0.86, 0.85);
+    models.portalGun = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2, emitterCore: emitterCore,
+      base: [0.27, -0.27, -0.5], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
   function buildHandsAndBoots() {
     const black = MAT.toon(PAL.charcoal);
     armedHands = new THREE.Group();
@@ -9533,6 +9610,7 @@ const WEAPON = (() => {
     buildChainsaw();
     buildSprayTorch();
     buildTheClaw();
+    buildPortalGun();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -15493,6 +15571,9 @@ const INTRO = (() => {
   let active = false;
   let t = 0;
   let onDone = null;
+  // Set once t reaches C.duration -- see update()'s comment for why the
+  // cutscene freezes here instead of finishing itself.
+  let awaitingContinue = false;
 
   let heliRoot = null, rotorHub = null, tailRotorHub = null, pilotRig = null;
   const crew = [];
@@ -15649,6 +15730,7 @@ const INTRO = (() => {
     onDone = onCompleteFn;
     t = 0;
     active = true;
+    awaitingContinue = false;
 
     camera.aspect = mainCamera.aspect;
     camera.updateProjectionMatrix();
@@ -15694,6 +15776,7 @@ const INTRO = (() => {
   function finish() {
     if (!active) return;
     active = false;
+    awaitingContinue = false;
     detachSkipListener();
     disposeGroup(heliRoot);
     crew.forEach(c => { disposeGroup(c.root); disposeGroup(c.lineMesh); });
@@ -15773,15 +15856,31 @@ const INTRO = (() => {
     camera.lookAt(_blendLook);
   }
 
+  /* onDone is enterNow(), which ends in INPUT.requestLock() -- browsers only
+     honor a pointer-lock request within a real user gesture's own call
+     stack (or its short sticky-activation window), and this update() runs
+     off the render loop's own rAF, not a gesture. Auto-calling finish() the
+     instant t hits C.duration used to blow straight past that window
+     (C.duration alone, 6.4s, is already longer than Chrome's ~5s sticky
+     activation), so the request landed just far enough outside it to get
+     silently rejected -- dropping the player straight onto the "mouse lock
+     failed" pause card the instant the cutscene would have handed off.
+     Freezing on the last frame and waiting for the player's own
+     click/keypress (the skip listener attached in play(), still armed)
+     keeps finish() -- and the requestLock() it triggers -- inside that
+     gesture's call stack instead. */
   function update(dt) {
-    if (!active) return;
+    if (!active || awaitingContinue) return;
     t += dt;
     if (rotorHub) rotorHub.rotation.y += dt * C.rotorSpeed;
     if (tailRotorHub) tailRotorHub.rotation.x += dt * C.rotorSpeed * 1.4;
     updateHelicopterFlight();
     updateCrew();
     updateCamera();
-    if (t >= C.duration) finish();
+    if (t >= C.duration) {
+      awaitingContinue = true;
+      UI.toast('PRESS ANY KEY TO DROP IN', 8);
+    }
   }
 
   return {
