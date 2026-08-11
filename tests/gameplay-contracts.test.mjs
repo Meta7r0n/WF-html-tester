@@ -8,11 +8,12 @@ const questStart = html.indexOf('const QUEST = (() => {');
 const questEnd = html.indexOf('/* ============================== [GAME] =============================== */', questStart);
 const quest = html.slice(questStart, questEnd);
 
-test('visible and runtime build labels identify v0.33', () => {
-  assert.match(html, /<title>The Withered Farm — v0\.33<\/title>/);
-  assert.match(html, /version: 'v0\.33'/);
-  assert.match(html, /branch: 'A-test-v0\.33-BOSS-QUANTITY-BARN-DOOR'/);
-  assert.doesNotMatch(html, /WC v0\.31/);
+test('visible and runtime build labels identify v0.34', () => {
+  assert.match(html, /<title>The Withered Farm — v0\.34<\/title>/);
+  assert.match(html, /WC v0\.34/);
+  assert.match(html, /version: 'v0\.34'/);
+  assert.match(html, /branch: 'A-test-v0\.34-AVIATION-DAO-CHARACTER-BUILDER'/);
+  assert.doesNotMatch(html, /WC v0\.33/);
 });
 
 function createQuestHarness() {

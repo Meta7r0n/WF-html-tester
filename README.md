@@ -4,9 +4,29 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
-- **Current alpha:** `v0.33`
-- **Working branch:** `A-test-v0.33-BOSS-QUANTITY-BARN-DOOR`
-- **Baseline:** `A-test-v0.32-BARN-CRAFTING-PORTAL-GUN`
+- **Current alpha:** `v0.34`
+- **Working branch:** `A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER`
+- **Baseline:** `A-test-v0.33-BOSS-QUANTITY-BARN-DOOR`
+
+## What changed in v0.34
+
+- Adds a procedural Three.js head pack for all 123 community-approved
+  `aviation_hat` characters in the badbad (formerly Cryptoon Goonz)
+  collection. The source manifest keeps the token ID, item link, reference
+  image link, and complete available trait metadata for each approved entry.
+- Builds each selected head on demand from its body, eyes, mouth, and accessory
+  traits. A seven-stitch brim code guarantees a distinct generated head for
+  every approved token, including traits that share a broader procedural style.
+- Adds an Aviation Farmhand builder to single-player character selection and
+  the multiplayer lobby, with token/trait search, pagination, random selection,
+  and Larry, Smoke, Stoned, Pyro, or Jeff body presets.
+- Keeps the aviation head cosmetic: the existing hero rig, animation,
+  equipment, hitboxes, gameplay stats, and selected emergency special remain
+  unchanged.
+- Saves the local choice in the browser and synchronizes the approved token ID
+  in PeerJS roster, join, state, chat, kill-feed, scoreboard, and intro data.
+  The game never fetches marketplace art while running.
+- Preserves v0.33's cumulative mini-boss quantities and keyed North Barn door.
 
 ## What changed in v0.33
 
@@ -33,7 +53,7 @@ repository over HTTP so browsers can load GLB and audio files correctly:
 ```bash
 git clone https://github.com/Meta7r0n/WF-html-tester.git
 cd WF-html-tester
-git switch A-test-v0.33-BOSS-QUANTITY-BARN-DOOR
+git switch A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER
 python3 -m http.server 8000
 ```
 
@@ -92,7 +112,28 @@ loaded, the encounter remains playable.
 | Pyro | Dy-No-Mite death-save blast |
 | Jeff | Low-health Knife Storm |
 
-The multiplayer picker currently exposes Larry, Smoke, Stoned, and Pyro.
+The multiplayer picker exposes Larry, Smoke, Stoned, and Pyro. The aviation
+builder exposes those same four synchronized bodies in its lobby context and
+also exposes Jeff when opened from single-player selection. The selected body
+remains separate from its custom head.
+
+### Aviation head pack
+
+The source roster is the community-approved
+[OpenSea `aviation_hat` filter](https://opensea.io/collection/badbad?traits=%5B%7B%22traitType%22%3A%22head%22%2C%22values%22%3A%5B%22aviation_hat%22%5D%7D%5D).
+The approved roster is stored in `assets/aviation-heads/manifest.json` for
+tools and `manifest.js` for the static browser build. `aviation-head-pack.js`
+is an adapter-based geometry module: it receives Three.js and the game's
+primitive helpers from `CAST`, then returns only the selected head subtree.
+
+To refresh the manifest from saved OpenSea collection pages:
+
+```bash
+node tools/import-aviation-heads.mjs --html-dir=/path/to/saved/pages
+```
+
+The importer asserts that the result contains exactly 123 unique approved
+characters and rejects anything outside the `head=aviation_hat` filter.
 
 ## Controls
 
@@ -148,9 +189,12 @@ and buff identifiers. Use `list` for the current registry.
 ## Project layout
 
 ```text
-index.html   Complete game client, UI, gameplay systems, and networking
-assets/      GLB characters, hero reference art, and menu/gameplay music
-README.md    Current build and testing documentation
+index.html                       Complete game client, UI, gameplay, and networking
+assets/aviation-heads/           Approved manifest and procedural Three.js head pack
+assets/                          GLB characters, hero reference art, and music
+tools/import-aviation-heads.mjs  Reproducible OpenSea manifest importer
+tests/                           Progression and aviation-pack contract tests
+README.md                        Current build and testing documentation
 ```
 
 The code is intentionally kept in one HTML entry point for rapid alpha

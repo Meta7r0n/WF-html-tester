@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.33</title>
+<title>The Withered Farm — v0.34</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -834,8 +834,67 @@
   .hero-choice.stoner{background:var(--jays);}
   .hero-choice.pyro{background:var(--rust);}
   .hero-choice.jeff{background:var(--blue-deep);}
+  .aviation-builder-launch{
+    display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+    margin:18px 0 8px;padding:14px 16px;background:rgba(85,164,191,.18);
+    border:3px dashed var(--blue-deep);border-radius:14px;color:var(--ink-soft);
+  }
+  .aviation-builder-launch b{display:block;color:var(--blue-deep);font:900 14px/1.15 "Rockwell",Georgia,serif;letter-spacing:.7px;text-transform:uppercase;}
+  .aviation-builder-launch small{display:block;margin-top:4px;font:700 11px/1.35 "Rockwell",Georgia,serif;}
+  .aviation-builder-launch .alt{margin:0;white-space:nowrap;}
+  #aviationBuilder{
+    align-items:flex-start;justify-content:center;overflow-x:hidden;overflow-y:auto;
+    -webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;
+    padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right))
+      max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  }
+  #aviationBuilder .card{max-width:1020px;flex:0 0 auto;margin:0 auto;transform:none;}
+  .aviation-builder-layout{display:grid;grid-template-columns:minmax(240px,.8fr) minmax(0,1.7fr);gap:20px;margin-top:16px;}
+  .aviation-preview-panel{display:flex;flex-direction:column;gap:10px;min-width:0;}
+  .aviation-preview-frame{
+    display:grid;place-items:center;min-height:330px;background:var(--blue);
+    border:4px solid var(--ink);border-radius:18px;box-shadow:5px 6px 0 var(--ink);overflow:hidden;
+  }
+  #aviationBuilderPreview{display:block;width:100%;height:330px;object-fit:contain;image-rendering:auto;}
+  #aviationBuilderName{margin:6px 0 0;color:var(--ink);font:900 20px/1 "Rockwell",Georgia,serif;}
+  #aviationBuilderTraits{margin:0;color:var(--ink-soft);font:700 11px/1.4 "Courier New",monospace;overflow-wrap:anywhere;}
+  .aviation-builder-controls{min-width:0;}
+  .aviation-control-label{display:block;margin:0 0 7px;color:var(--rust-deep);font:900 11px/1.1 "Rockwell",Georgia,serif;letter-spacing:1.4px;text-transform:uppercase;}
+  #aviationBodyChoices{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:15px;}
+  .aviation-body-choice,.aviation-token-choice{
+    cursor:pointer;background:var(--cream);border:3px solid var(--ink);border-radius:9px;
+    color:var(--ink-soft);font:800 11px/1.15 "Rockwell",Georgia,serif;box-shadow:0 3px 0 var(--ink);
+  }
+  .aviation-body-choice{padding:8px 10px;}
+  .aviation-body-choice.active,.aviation-token-choice.active{background:var(--mustard);color:var(--ink);transform:translateY(-1px);box-shadow:0 4px 0 var(--ink);}
+  #aviationSearch{
+    width:100%;height:42px;margin-bottom:9px;padding:8px 11px;background:var(--peach);
+    border:3px solid var(--ink);border-radius:9px;color:var(--ink);font:800 13px/1 "Courier New",monospace;
+  }
+  #aviationSearch:focus{outline:3px solid var(--blue-deep);outline-offset:2px;}
+  #aviationTokenGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;min-height:285px;align-content:start;}
+  .aviation-token-choice{min-width:0;padding:8px;text-align:left;}
+  .aviation-token-choice b{display:block;color:inherit;font-size:12px;}
+  .aviation-token-choice small{display:block;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:700 9px/1.2 "Courier New",monospace;opacity:.78;}
+  .aviation-token-empty{grid-column:1/-1;margin:12px 0;color:var(--ink-soft);font:800 13px/1.4 "Rockwell",Georgia,serif;}
+  .aviation-pager{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:10px;}
+  #aviationPageLabel{font:800 11px/1 "Courier New",monospace;color:var(--ink-soft);}
+  .aviation-builder-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:18px;}
+  .aviation-builder-actions .go{font-size:15px;padding:12px 18px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
+  .aviation-builder-actions .alt{margin:0;}
   @media (max-width:720px){#heroChoices{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media (max-width:460px){#heroChoices{grid-template-columns:1fr;} .hero-art{aspect-ratio:16/9;}}
+  @media (max-width:760px){
+    .aviation-builder-layout{grid-template-columns:1fr;}
+    .aviation-preview-frame,#aviationBuilderPreview{min-height:250px;height:250px;}
+    #aviationTokenGrid{grid-template-columns:repeat(3,minmax(0,1fr));min-height:0;}
+  }
+  @media (max-width:460px){
+    #aviationBuilder .card{padding:22px 18px 20px;}
+    #aviationTokenGrid{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .aviation-builder-launch{align-items:stretch;}
+    .aviation-builder-launch .alt{width:100%;}
+  }
   @media (prefers-reduced-motion: reduce){.hero-ref{transition:none;}}
   .go.mode-coop{background:var(--blue);}
   .go.compact{padding:11px 18px;font-size:14px;border-width:4px;box-shadow:0 6px 0 var(--ink);}
@@ -1144,7 +1203,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.33</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.34</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1200,6 +1259,10 @@
           <button type="button" class="coop-character-choice" data-character="playerPyro" aria-pressed="false"><b>Pyro</b><small>Dy-No-Mite</small></button>
         </div>
         <p class="opt-hint">Choose before the farm starts. Duplicate characters are allowed.</p>
+      </div>
+      <div class="aviation-builder-launch">
+        <span><b>Aviation Hat DAO Heads</b><small data-aviation-summary>Classic hero head active · 123 community heads available</small></span>
+        <button type="button" class="alt" data-open-aviation-builder>Customize head</button>
       </div>
       <div id="coopRoles">
         <button class="go" id="hostBtn">Host room →</button>
@@ -1277,7 +1340,50 @@
           </span>
         </button>
       </div>
+      <div class="aviation-builder-launch">
+        <span><b>Aviation Hat DAO Builder</b><small data-aviation-summary>Classic hero head active · 123 community heads available</small></span>
+        <button type="button" class="alt" data-open-aviation-builder>Build farmhand</button>
+      </div>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
+    </div>
+  </div>
+
+  <div id="aviationBuilder" class="veil hidden" aria-hidden="true">
+    <div class="card">
+      <p class="eyebrow">Community character lab &nbsp;·&nbsp; 123 / 123 scanned</p>
+      <h1>Aviation<br/>Builder<span>One shared hero rig · one unique DAO head</span></h1>
+      <p class="sub">Choose an approved aviation-hat character and a Wilted Farms hero body. The head is cosmetic; your selected hero special and gameplay stats stay unchanged.</p>
+      <div class="aviation-builder-layout">
+        <section class="aviation-preview-panel" aria-live="polite">
+          <div class="aviation-preview-frame"><img id="aviationBuilderPreview" alt="Selected aviation character rendered on the Wilted Farms hero rig" /></div>
+          <h2 id="aviationBuilderName">Aviation Farmhand</h2>
+          <p id="aviationBuilderTraits"></p>
+        </section>
+        <section class="aviation-builder-controls">
+          <span class="aviation-control-label">Hero body preset</span>
+          <div id="aviationBodyChoices" role="group" aria-label="Choose hero body preset">
+            <button type="button" class="aviation-body-choice" data-aviation-body="playerBluecap">Larry</button>
+            <button type="button" class="aviation-body-choice" data-aviation-body="playerMasked">Smoke</button>
+            <button type="button" class="aviation-body-choice" data-aviation-body="playerStoned">Stoned</button>
+            <button type="button" class="aviation-body-choice" data-aviation-body="playerPyro">Pyro</button>
+            <button type="button" class="aviation-body-choice" data-aviation-body="pilot">Jeff</button>
+          </div>
+          <label class="aviation-control-label" for="aviationSearch">Find by token number or trait</label>
+          <input id="aviationSearch" type="search" inputmode="search" autocomplete="off" spellcheck="false" placeholder="Try 6224, skeleton, anime, fox…" />
+          <div id="aviationTokenGrid" role="listbox" aria-label="Approved aviation characters"></div>
+          <div class="aviation-pager">
+            <button type="button" class="alt" id="aviationPrevBtn">← Previous</button>
+            <span id="aviationPageLabel">1 / 1</span>
+            <button type="button" class="alt" id="aviationNextBtn">Next →</button>
+          </div>
+        </section>
+      </div>
+      <div class="aviation-builder-actions">
+        <button type="button" class="go" id="aviationUseBtn">Save &amp; use head</button>
+        <button type="button" class="alt" id="aviationRandomBtn">Random approved head</button>
+        <button type="button" class="alt" id="aviationClassicBtn">Use classic hero heads</button>
+        <button type="button" class="alt" id="aviationBackBtn">Back</button>
+      </div>
     </div>
   </div>
 
@@ -1402,13 +1508,15 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="assets/aviation-heads/manifest.js"></script>
+<script src="assets/aviation-heads/aviation-head-pack.js"></script>
 <script>
 "use strict";
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.33',
-  branch: 'A-test-v0.33-BOSS-QUANTITY-BARN-DOOR'
+  version: 'v0.34',
+  branch: 'A-test-v0.34-AVIATION-DAO-CHARACTER-BUILDER'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -6302,8 +6410,10 @@ const MAPVIEW = (() => {
         const remote = COOP.getRemote(player.id);
         const target = remote && remote.target;
         if (!target) return;
-        const label = typeof CAST !== 'undefined' && CAST.ROSTER[player.characterId]
-          ? CAST.ROSTER[player.characterId].label : 'TEAM';
+        const label = typeof COOP !== 'undefined' && COOP.displayNameFor
+          ? COOP.displayNameFor(player.characterId, player.aviationTokenId)
+          : (typeof CAST !== 'undefined' && CAST.ROSTER[player.characterId]
+            ? CAST.ROSTER[player.characterId].label : 'TEAM');
         actors.push({
           id: player.id, label: label, local: false,
           x: target.x, z: target.z, layerId: target.layerId || 'surface'
@@ -10426,6 +10536,7 @@ const UI = (() => {
     el.start = document.getElementById('start');
     el.coopLobby = document.getElementById('coopLobby');
     el.playerSelect = document.getElementById('playerSelect');
+    el.aviationBuilder = document.getElementById('aviationBuilder');
     el.coopInstructions = document.getElementById('coopInstructions');
     el.signalInput = document.getElementById('signalInput');
     el.signalOutput = document.getElementById('signalOutput');
@@ -10661,7 +10772,9 @@ const UI = (() => {
     const teams = COOP.matchMode === 'teams';
     return COOP.roster.map(p => ({
       id: p.id,
-      label: (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId,
+      label: (typeof COOP !== 'undefined' && COOP.displayNameFor)
+        ? COOP.displayNameFor(p.characterId, p.aviationTokenId)
+        : ((typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId),
       score: (scores && scores[p.id]) || 0,
       team: teams ? COOP.teamOf(p.id) : null
     })).sort((a, b) => b.score - a.score);
@@ -11056,6 +11169,10 @@ const UI = (() => {
     el.start.classList.add('hidden');
     el.coopLobby.classList.add('hidden');
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
+    if (el.aviationBuilder) {
+      el.aviationBuilder.classList.add('hidden');
+      el.aviationBuilder.setAttribute('aria-hidden', 'true');
+    }
     el.endGame.classList.add('hidden');
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
@@ -11086,6 +11203,10 @@ const UI = (() => {
     el.start.classList.add('hidden');
     el.coopLobby.classList.remove('hidden');
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
+    if (el.aviationBuilder) {
+      el.aviationBuilder.classList.add('hidden');
+      el.aviationBuilder.setAttribute('aria-hidden', 'true');
+    }
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     el.endGame.classList.add('hidden');
@@ -11101,7 +11222,9 @@ const UI = (() => {
     const roster = (typeof COOP !== 'undefined' && COOP.roster) ? COOP.roster : [];
     const teams = typeof COOP !== 'undefined' && COOP.matchMode === 'teams';
     el.coopRoster.innerHTML = roster.map(p => {
-      const label = (typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId;
+      const label = (typeof COOP !== 'undefined' && COOP.displayNameFor)
+        ? COOP.displayNameFor(p.characterId, p.aviationTokenId)
+        : ((typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId]) ? CAST.ROSTER[p.characterId].label : p.characterId);
       const team = teams ? COOP.teamOf(p.id) : null;
       const classes = [];
       if (p.isHost) classes.push('host');
@@ -11219,6 +11342,10 @@ const UI = (() => {
     setCoopLobbyStep(null, 'idle');
     el.start.classList.remove('hidden');
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
+    if (el.aviationBuilder) {
+      el.aviationBuilder.classList.add('hidden');
+      el.aviationBuilder.setAttribute('aria-hidden', 'true');
+    }
     el.pause.classList.add('hidden');
     el.dead.classList.add('hidden');
     hideDowned();
@@ -11238,6 +11365,10 @@ const UI = (() => {
   function showPlayerSelect() {
     el.start.classList.add('hidden');
     el.coopLobby.classList.add('hidden');
+    if (el.aviationBuilder) {
+      el.aviationBuilder.classList.add('hidden');
+      el.aviationBuilder.setAttribute('aria-hidden', 'true');
+    }
     if (el.playerSelect) el.playerSelect.classList.remove('hidden');
   }
   function hidePlayerSelect() {
@@ -12486,6 +12617,7 @@ const GAME = (() => {
     document.getElementById('stonedHeroBtn').addEventListener('click', () => startSingleHero('stoned'));
     document.getElementById('pyroHeroBtn').addEventListener('click', () => startSingleHero('pyro'));
     document.getElementById('jeffHeroBtn').addEventListener('click', () => startSingleHero('jeff'));
+    AVIATION_AVATAR.init(buildHeroPortraits);
     buildHeroPortraits();
     document.getElementById('backToStartBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
     document.getElementById('coopBtn').addEventListener('click', openCoopLobby);
@@ -12633,8 +12765,8 @@ const GAME = (() => {
       const roster = COOP.roster;
       const label = id => {
         const p = roster.find(r => r.id === id);
-        return (p && typeof CAST !== 'undefined' && CAST.ROSTER[p.characterId])
-          ? CAST.ROSTER[p.characterId].label : 'Someone';
+        return p && typeof COOP !== 'undefined' && COOP.displayNameFor
+          ? COOP.displayNameFor(p.characterId, p.aviationTokenId) : 'Someone';
       };
       const line = !ev.killerId
         ? label(ev.victimId) + ' went out on their own'
@@ -12792,7 +12924,9 @@ const GAME = (() => {
       const img = document.getElementById(heroId + 'Portrait');
       if (!img) return;
       try {
-        img.src = CAST.renderPortrait(HERO.definitions[heroId].castId);
+        const classicCastId = HERO.definitions[heroId].castId;
+        const castId = AVIATION_AVATAR.soloCastId(classicCastId);
+        img.src = CAST.renderPortrait(castId, 148, 176, AVIATION_AVATAR.appearance());
       } catch (err) {
         // A portrait failing to render is cosmetic -- the hero button still
         // works without it, so this is worth swallowing rather than
@@ -13144,7 +13278,9 @@ const GAME = (() => {
 
    Later expansion slots already wired through build(): `collar`, `hand`,
    `back`, `noPetals`, and per-part colour. Add `shirt` or `hat` the same way
-   HANDS/BACKS works.
+   HANDS/BACKS works. v0.34 also accepts { aviationTokenId } as an optional
+   build appearance. That swaps only the head while preserving this rig,
+   body palette, animation joints, props, hitboxes, and hero special.
    =================================================================== */
 const CAST = (() => {
 
@@ -14070,7 +14206,7 @@ const CAST = (() => {
     return g;
   }
 
-  function buildBody(def, skin) {
+  function buildBody(def, skin, appearance) {
     const root = new THREE.Group();
 
     const bob = new THREE.Group();          // vertical bounce + squash/stretch
@@ -14097,12 +14233,24 @@ const CAST = (() => {
     });
     if (def.back && BACKS[def.back]) BACKS[def.back](torso, skin);
 
-    // head
+    // head — DAO aviation cosmetics replace only this local subtree. The
+    // shared body/animation rig below remains byte-for-byte identical.
     const head = new THREE.Group();
     head.position.set(0, 0.50, 0);
     torso.add(head);
-    headBase(head, skin, { noPetals: !!def.noPetals });
-    (HEADS[def.head] || HEADS.gaper)(head, skin);
+    const aviationItem = appearance && typeof AVIATION_HEAD_PACK !== 'undefined'
+      ? AVIATION_HEAD_PACK.get(appearance.aviationTokenId) : null;
+    const headSkin = aviationItem
+      ? AVIATION_HEAD_PACK.headSkin(aviationItem.tokenId, skin) : skin;
+    headBase(head, headSkin, { noPetals: aviationItem ? true : !!def.noPetals });
+    if (aviationItem) {
+      AVIATION_HEAD_PACK.buildHead(aviationItem.tokenId, head, headSkin, {
+        THREE: THREE, PRIM: PRIM, MAT: MAT, PAL: PAL,
+        helpers: { disc: disc, oval: oval, bar: bar, arc: arc }
+      });
+    } else {
+      (HEADS[def.head] || HEADS.gaper)(head, skin);
+    }
     if (def.collar && COLLARS[def.collar]) COLLARS[def.collar](head, skin);
 
     // arms
@@ -14148,12 +14296,16 @@ const CAST = (() => {
   }
 
   /* Build a character. Returns { rig, def, skin }. */
-  function build(id) {
+  function build(id, appearance) {
     const def = ROSTER[id];
     if (!def) throw new Error('CAST: unknown character "' + id + '"');
     const skin = Object.assign({}, DEFAULT_SKIN, def.skin || {});
-    const rig = buildBody(def, skin);
+    const rig = buildBody(def, skin, appearance || null);
     rig.root.userData.character = id;
+    if (appearance && appearance.aviationTokenId && typeof AVIATION_HEAD_PACK !== 'undefined') {
+      const aviationItem = AVIATION_HEAD_PACK.get(appearance.aviationTokenId);
+      if (aviationItem) rig.root.userData.aviationTokenId = aviationItem.tokenId;
+    }
     return { rig: rig, def: def, skin: skin };
   }
 
@@ -14183,10 +14335,10 @@ const CAST = (() => {
     portraitScene.add(new THREE.AmbientLight(0xC9BAA9, 0.5));
   }
 
-  function renderPortrait(id, width, height) {
+  function renderPortrait(id, width, height, appearance) {
     width = width || 148; height = height || 176;
     ensurePortraitRig(width, height);
-    const built = build(id);
+    const built = build(id, appearance || null);
     portraitScene.add(built.rig.root);
     portraitRenderer.render(portraitScene, portraitCamera);
     const dataUrl = portraitRenderer.domElement.toDataURL('image/png');
@@ -14201,6 +14353,255 @@ const CAST = (() => {
   }
 
   return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list, renderPortrait };
+})();
+
+/* ======================== [AVIATION_AVATAR] ==========================
+   Cosmetic identity is intentionally separate from HERO. A player can keep
+   Larry's Double Barrel (or any other special) while using one of the 123
+   approved DAO heads and any existing hero body preset. Multiplayer sends
+   only the numeric token id; every client already owns the same manifest
+   and rebuilds the same deterministic Three.js geometry locally. */
+const AVIATION_AVATAR = (() => {
+  const STORAGE_KEY = 'wilted-farms.aviation-avatar.v1';
+  const BODY_IDS = ['playerBluecap', 'playerMasked', 'playerStoned', 'playerPyro', 'pilot'];
+  const PAGE_SIZE = 20;
+  const pack = typeof AVIATION_HEAD_PACK !== 'undefined' ? AVIATION_HEAD_PACK : null;
+  const first = pack && pack.list().length ? pack.list()[0] : null;
+  let state = { enabled: false, tokenId: first ? first.tokenId : null, bodyId: 'playerBluecap' };
+  let working = Object.assign({}, state);
+  let results = pack ? pack.list() : [];
+  let page = 0;
+  let returnVeil = null;
+  let refreshHeroPortraits = function () {};
+  let initialized = false;
+
+  function validBody(id) { return BODY_IDS.indexOf(id) >= 0 ? id : 'playerBluecap'; }
+  function validToken(value) {
+    const item = pack && pack.get(value);
+    return item ? item.tokenId : (first ? first.tokenId : null);
+  }
+
+  function load() {
+    try {
+      const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      const savedItem = pack && pack.get(saved.tokenId);
+      state = {
+        enabled: !!saved.enabled && !!savedItem,
+        tokenId: savedItem ? savedItem.tokenId : (first ? first.tokenId : null),
+        bodyId: validBody(saved.bodyId)
+      };
+      working = Object.assign({}, state);
+    } catch (err) {}
+  }
+
+  function persist() {
+    try {
+      if (typeof localStorage !== 'undefined') localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (err) {}
+  }
+
+  function currentItem(useWorking) {
+    return pack ? pack.get((useWorking ? working : state).tokenId) : null;
+  }
+
+  function appearance() {
+    const item = state.enabled ? currentItem(false) : null;
+    return item ? { aviationTokenId: item.tokenId } : null;
+  }
+
+  function soloCastId(fallback) { return state.enabled ? validBody(state.bodyId) : fallback; }
+  function networkTokenId() {
+    const item = state.enabled ? currentItem(false) : null;
+    return item ? item.tokenId : null;
+  }
+
+  function renderSummaries() {
+    const item = state.enabled ? currentItem(false) : null;
+    const text = item
+      ? `Goon #${item.tokenId} active · ${item.traits.eyes || 'unlisted'} eyes · ${item.traits.mouth || 'unlisted'} mouth`
+      : `Classic hero head active · ${pack ? pack.count : 0} community heads available`;
+    document.querySelectorAll('[data-aviation-summary]').forEach(node => { node.textContent = text; });
+  }
+
+  function renderPreview() {
+    const item = currentItem(true);
+    const img = document.getElementById('aviationBuilderPreview');
+    const name = document.getElementById('aviationBuilderName');
+    const traits = document.getElementById('aviationBuilderTraits');
+    if (!item || !img) return;
+    try {
+      img.src = CAST.renderPortrait(validBody(working.bodyId), 280, 330, { aviationTokenId: item.tokenId });
+    } catch (err) {
+      img.removeAttribute('src');
+    }
+    if (name) name.textContent = `Cryptoon Goon #${item.tokenId}`;
+    if (traits) traits.textContent = [
+      `body:${item.traits.body}`, `eyes:${item.traits.eyes || 'unlisted'}`,
+      `mouth:${item.traits.mouth || 'unlisted'}`, `hat-pin:${item.traits.accessory}`
+    ].join(' · ');
+    document.querySelectorAll('[data-aviation-body]').forEach(button => {
+      const active = button.getAttribute('data-aviation-body') === working.bodyId;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function renderGrid() {
+    const grid = document.getElementById('aviationTokenGrid');
+    const label = document.getElementById('aviationPageLabel');
+    const prev = document.getElementById('aviationPrevBtn');
+    const next = document.getElementById('aviationNextBtn');
+    if (!grid) return;
+    const pages = Math.max(1, Math.ceil(results.length / PAGE_SIZE));
+    page = Math.max(0, Math.min(page, pages - 1));
+    grid.textContent = '';
+    const visible = results.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+    if (!visible.length) {
+      const empty = document.createElement('p');
+      empty.className = 'aviation-token-empty';
+      empty.textContent = 'No approved head matches that token or trait.';
+      grid.appendChild(empty);
+    }
+    visible.forEach(item => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'aviation-token-choice';
+      button.setAttribute('data-aviation-token', String(item.tokenId));
+      button.setAttribute('role', 'option');
+      const active = item.tokenId === working.tokenId;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', active ? 'true' : 'false');
+      const title = document.createElement('b');
+      title.textContent = `#${item.tokenId}`;
+      const detail = document.createElement('small');
+      detail.textContent = `${item.traits.body} · ${item.traits.eyes || 'unlisted'} · ${item.traits.mouth || 'unlisted'}`;
+      button.append(title, detail);
+      grid.appendChild(button);
+    });
+    if (label) label.textContent = `${page + 1} / ${pages} · ${results.length} heads`;
+    if (prev) prev.disabled = page <= 0;
+    if (next) next.disabled = page >= pages - 1;
+  }
+
+  function renderBuilder() { renderGrid(); renderPreview(); }
+
+  function open(event) {
+    if (!pack || !pack.count) return;
+    if (event) event.stopPropagation();
+    const trigger = event && event.currentTarget;
+    returnVeil = trigger ? trigger.closest('.veil') : document.getElementById('playerSelect');
+    if (returnVeil) returnVeil.classList.add('hidden');
+    const overlay = document.getElementById('aviationBuilder');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.setAttribute('aria-hidden', 'false');
+    }
+    working = Object.assign({}, state);
+    const multiplayerBuilder = !!(returnVeil && returnVeil.id === 'coopLobby');
+    if (multiplayerBuilder && typeof COOP !== 'undefined' && COOP.localCharacterId) {
+      working.bodyId = validBody(COOP.localCharacterId);
+    }
+    const pilotBody = document.querySelector('[data-aviation-body="pilot"]');
+    // Jeff remains a single-player-only hero in this branch. The co-op
+    // builder mirrors the four bodies that COOP can actually synchronize.
+    if (pilotBody) pilotBody.hidden = multiplayerBuilder;
+    if (!working.tokenId) working.tokenId = first ? first.tokenId : null;
+    results = pack.list();
+    page = Math.max(0, Math.floor(Math.max(0, results.findIndex(item => item.tokenId === working.tokenId)) / PAGE_SIZE));
+    const searchInput = document.getElementById('aviationSearch');
+    if (searchInput) searchInput.value = '';
+    renderBuilder();
+  }
+
+  function close(event) {
+    if (event) event.stopPropagation();
+    const overlay = document.getElementById('aviationBuilder');
+    if (overlay) {
+      overlay.classList.add('hidden');
+      overlay.setAttribute('aria-hidden', 'true');
+    }
+    if (returnVeil) returnVeil.classList.remove('hidden');
+    returnVeil = null;
+  }
+
+  function syncNetworkChoice(syncBody) {
+    if (typeof COOP === 'undefined') return;
+    if (syncBody && state.enabled && COOP.selectCharacter) COOP.selectCharacter(validBody(state.bodyId));
+    if (COOP.selectAviationToken) COOP.selectAviationToken(networkTokenId());
+  }
+
+  function commit(enabled, event) {
+    if (event) event.stopPropagation();
+    const syncBody = !!(enabled && returnVeil && returnVeil.id === 'coopLobby');
+    state = {
+      enabled: !!enabled && !!currentItem(true),
+      tokenId: validToken(working.tokenId),
+      bodyId: validBody(working.bodyId)
+    };
+    working = Object.assign({}, state);
+    persist();
+    renderSummaries();
+    refreshHeroPortraits();
+    syncNetworkChoice(syncBody);
+    close();
+  }
+
+  function init(onPortraitsChanged) {
+    if (initialized) return;
+    initialized = true;
+    if (typeof onPortraitsChanged === 'function') refreshHeroPortraits = onPortraitsChanged;
+    load();
+    renderSummaries();
+    syncNetworkChoice();
+    document.querySelectorAll('[data-open-aviation-builder]').forEach(button => button.addEventListener('click', open));
+    const grid = document.getElementById('aviationTokenGrid');
+    if (grid) grid.addEventListener('click', event => {
+      const button = event.target.closest('[data-aviation-token]');
+      if (!button) return;
+      event.stopPropagation();
+      working.tokenId = validToken(button.getAttribute('data-aviation-token'));
+      renderBuilder();
+    });
+    const bodies = document.getElementById('aviationBodyChoices');
+    if (bodies) bodies.addEventListener('click', event => {
+      const button = event.target.closest('[data-aviation-body]');
+      if (!button) return;
+      event.stopPropagation();
+      working.bodyId = validBody(button.getAttribute('data-aviation-body'));
+      renderPreview();
+    });
+    const searchInput = document.getElementById('aviationSearch');
+    if (searchInput) searchInput.addEventListener('input', event => {
+      results = pack.search(event.target.value);
+      page = 0;
+      renderGrid();
+    });
+    document.getElementById('aviationPrevBtn').addEventListener('click', event => { event.stopPropagation(); page -= 1; renderGrid(); });
+    document.getElementById('aviationNextBtn').addEventListener('click', event => { event.stopPropagation(); page += 1; renderGrid(); });
+    document.getElementById('aviationRandomBtn').addEventListener('click', event => {
+      event.stopPropagation();
+      const all = pack.list();
+      if (!all.length) return;
+      working.tokenId = all[Math.floor(Math.random() * all.length)].tokenId;
+      results = all;
+      page = Math.floor(all.findIndex(item => item.tokenId === working.tokenId) / PAGE_SIZE);
+      if (searchInput) searchInput.value = '';
+      renderBuilder();
+    });
+    document.getElementById('aviationUseBtn').addEventListener('click', event => commit(true, event));
+    document.getElementById('aviationClassicBtn').addEventListener('click', event => commit(false, event));
+    document.getElementById('aviationBackBtn').addEventListener('click', close);
+  }
+
+  return {
+    init, appearance, soloCastId, networkTokenId,
+    get enabled() { return state.enabled; },
+    get tokenId() { return networkTokenId(); },
+    get bodyId() { return state.bodyId; },
+    get item() { return currentItem(false); }
+  };
 })();
 
 /* ============================== [INTRO] ===============================
@@ -14314,17 +14715,28 @@ const INTRO = (() => {
   function crewCastIds() {
     if (typeof GAME !== 'undefined' && GAME.isCoop && typeof COOP !== 'undefined') {
       const roster = COOP.roster;
-      const ids = (roster || []).map(p => p.characterId).filter(id => CAST.ROSTER[id]);
+      const ids = (roster || []).filter(p => CAST.ROSTER[p.characterId]).map(p => ({
+        castId: p.characterId,
+        aviationTokenId: p.aviationTokenId || null
+      }));
       if (ids.length) return ids;
-      if (CAST.ROSTER[COOP.localCharacterId]) return [COOP.localCharacterId];
+      if (CAST.ROSTER[COOP.localCharacterId]) return [{
+        castId: COOP.localCharacterId,
+        aviationTokenId: COOP.localAviationTokenId || null
+      }];
     }
-    return [HERO.castId];
+    return [{
+      castId: AVIATION_AVATAR.soloCastId(HERO.castId),
+      aviationTokenId: AVIATION_AVATAR.tokenId || null
+    }];
   }
 
   function buildCrew(landCenter, castIds) {
     const n = castIds.length;
-    castIds.forEach((castId, i) => {
-      const built = CAST.build(castId);
+    castIds.forEach((entry, i) => {
+      const castId = typeof entry === 'string' ? entry : entry.castId;
+      const aviationTokenId = typeof entry === 'string' ? null : entry.aviationTokenId;
+      const built = CAST.build(castId, aviationTokenId ? { aviationTokenId: aviationTokenId } : null);
       const root = built.rig.root;
       root.visible = false;
       scene.add(root);
@@ -14813,7 +15225,15 @@ const KILLCAM = (() => {
     if (typeof GAME !== 'undefined' && GAME.isCoop && typeof COOP !== 'undefined' && COOP.localCharacterId) {
       return COOP.localCharacterId;
     }
-    return (typeof HERO !== 'undefined') ? HERO.castId : 'playerBluecap';
+    const fallback = (typeof HERO !== 'undefined') ? HERO.castId : 'playerBluecap';
+    return typeof AVIATION_AVATAR !== 'undefined' ? AVIATION_AVATAR.soloCastId(fallback) : fallback;
+  }
+
+  function resolveAppearance() {
+    if (typeof GAME !== 'undefined' && GAME.isCoop && typeof COOP !== 'undefined') {
+      return COOP.localAviationTokenId ? { aviationTokenId: COOP.localAviationTokenId } : null;
+    }
+    return typeof AVIATION_AVATAR !== 'undefined' ? AVIATION_AVATAR.appearance() : null;
   }
 
   /* Re-read live every frame rather than snapshotted once at trigger time --
@@ -14834,7 +15254,7 @@ const KILLCAM = (() => {
     if (!a) return '';
     if (a.pvp) {
       const remote = (typeof COOP !== 'undefined' && COOP.getRemote) ? COOP.getRemote(a.id) : null;
-      return remote ? COOP.displayNameFor(remote.characterId) : 'Another Farmhand';
+      return remote ? COOP.displayNameFor(remote.characterId, remote.aviationTokenId) : 'Another Farmhand';
     }
     if (a.isBoss) return CONFIG.boss.name;
     if (a.isBoss2) return CONFIG.bearClaw.name;
@@ -14867,7 +15287,7 @@ const KILLCAM = (() => {
     camStartQuat.copy(camera.quaternion);
     savedFov = camera.fov;
 
-    const built = CAST.build(resolveCastId());
+    const built = CAST.build(resolveCastId(), resolveAppearance());
     ragdoll = built.rig;
     ragdoll.root.scale.setScalar(1.08);
     ragdoll.root.position.copy(deathPos);
@@ -17902,10 +18322,15 @@ const COOP = (() => {
   // Host-only: peerId -> assigned character id, freed on disconnect so a
   // later joiner can reuse it.
   const slotAssignments = new Map();
+  // Host-only cosmetic mirror. Token ids are validated against the bundled
+  // 123-entry manifest before they can rebuild a remote rig.
+  const aviationAssignments = new Map();
   let role = null, phase = 'idle', connected = false, closing = false, peerReady = false;
   let localId = 'farmhand-' + Math.random().toString(36).slice(2, 8);
   let myCharacterId = 'playerBluecap';
   let requestedCharacterId = 'playerBluecap';
+  let myAviationTokenId = null;
+  let requestedAviationTokenId = null;
   let rosterOrder = [];
   let roomCode = '', sendAcc = 0, connectTimer = null;
   let matchRunning = false;
@@ -18006,6 +18431,7 @@ const COOP = (() => {
     channels.forEach(ch => { try { ch.close(); } catch (err) {} });
     channels.clear();
     slotAssignments.clear();
+    aviationAssignments.clear();
     // The PeerJS calls are tied to this connection and have to go with it,
     // but NOT localVoiceStream itself -- that's VOICE's mic track, which
     // outlives any one match so rejoining never re-prompts for permission.
@@ -18028,6 +18454,8 @@ const COOP = (() => {
     matchMode = 'coop';
     myCharacterId = 'playerBluecap';
     requestedCharacterId = 'playerBluecap';
+    myAviationTokenId = typeof AVIATION_AVATAR !== 'undefined' ? AVIATION_AVATAR.networkTokenId() : null;
+    requestedAviationTokenId = myAviationTokenId;
     rosterOrder = [];
     killCounts.clear();
     lastKillTime.clear();
@@ -18099,6 +18527,13 @@ const COOP = (() => {
     return CHARACTER_POOL.indexOf(id) >= 0 ? id : 'playerBluecap';
   }
 
+  function sanitizeAviationToken(value) {
+    if (value === null || value === undefined || value === '') return null;
+    if (typeof AVIATION_HEAD_PACK === 'undefined') return null;
+    const item = AVIATION_HEAD_PACK.get(value);
+    return item ? item.tokenId : null;
+  }
+
   function roomOrder() {
     if (role === 'host') return [localId].concat(Array.from(channels.keys()));
     const ids = rosterOrder.length ? rosterOrder.slice() : [localId].concat(Array.from(remotes.keys()));
@@ -18110,14 +18545,18 @@ const COOP = (() => {
     return roomOrder().map((id, index) => {
       const local = id === localId;
       let characterId = local ? myCharacterId : 'playerMasked';
+      let aviationTokenId = local ? myAviationTokenId : null;
       if (role === 'host' && !local) characterId = slotAssignments.get(id);
       else if (!local) {
         const remote = remotes.get(id);
         characterId = remote && remote.characterId;
+        aviationTokenId = remote && remote.aviationTokenId;
       }
+      if (role === 'host' && !local) aviationTokenId = aviationAssignments.get(id);
       return {
         id: id,
         characterId: sanitizeCharacter(characterId),
+        aviationTokenId: sanitizeAviationToken(aviationTokenId),
         isHost: role === 'host' ? local : index === 0
       };
     });
@@ -18130,13 +18569,15 @@ const COOP = (() => {
     const seen = new Set(ids);
     entries.forEach(p => {
       const characterId = sanitizeCharacter(p.characterId);
+      const aviationTokenId = sanitizeAviationToken(p.aviationTokenId);
       if (p.id === localId) {
         if (role === 'join') {
           myCharacterId = requestedCharacterId || characterId;
           requestedCharacterId = myCharacterId;
+          myAviationTokenId = sanitizeAviationToken(requestedAviationTokenId);
         }
       } else {
-        makeRemote(p.id, characterId);
+        makeRemote(p.id, characterId, aviationTokenId);
       }
     });
     if (ids.length) remotes.forEach((remote, id) => { if (!seen.has(id)) removeRemote(id); });
@@ -18152,9 +18593,25 @@ const COOP = (() => {
     }
     myCharacterId = chosen;
     requestedCharacterId = chosen;
-    if (role === 'join' && connected) send({ type: 'characterChoice', characterId: chosen });
+    if (role === 'join' && connected) send({ type: 'characterChoice', characterId: chosen, aviationTokenId: requestedAviationTokenId });
     if (role === 'host' && connected) broadcast({ type: 'rosterUpdate', roster: rosterList() });
     if (typeof UI !== 'undefined' && UI.renderCoopCharacterChoices) UI.renderCoopCharacterChoices();
+    if (typeof UI !== 'undefined' && UI.setCoopLobbyStep) UI.setCoopLobbyStep(role, phase);
+    return true;
+  }
+
+  function selectAviationToken(value) {
+    const chosen = sanitizeAviationToken(value);
+    if (matchRunning) {
+      status('Character choices lock when the farm starts.', 'bad');
+      return false;
+    }
+    myAviationTokenId = chosen;
+    requestedAviationTokenId = chosen;
+    if (role === 'join' && connected) {
+      send({ type: 'characterChoice', characterId: requestedCharacterId, aviationTokenId: chosen });
+    }
+    if (role === 'host' && connected) broadcast({ type: 'rosterUpdate', roster: rosterList() });
     if (typeof UI !== 'undefined' && UI.setCoopLobbyStep) UI.setCoopLobbyStep(role, phase);
     return true;
   }
@@ -18297,11 +18754,14 @@ const COOP = (() => {
     // so it has to be captured first or an FFA pick silently reverts.
     const chosenMode = matchMode;
     const chosenCharacter = sanitizeCharacter(myCharacterId);
+    const chosenAviationToken = sanitizeAviationToken(myAviationTokenId);
     stop();
     matchMode = chosenMode;
     role = 'host';
     myCharacterId = chosenCharacter;
     requestedCharacterId = chosenCharacter;
+    myAviationTokenId = chosenAviationToken;
+    requestedAviationTokenId = chosenAviationToken;
     phase = 'creating';
     UI.setCoopLobbyStep('host', phase);
     status('Opening a private room…');
@@ -18331,10 +18791,13 @@ const COOP = (() => {
 
   function prepareJoin() {
     const chosenCharacter = sanitizeCharacter(myCharacterId);
+    const chosenAviationToken = sanitizeAviationToken(myAviationTokenId);
     stop();
     role = 'join';
     myCharacterId = chosenCharacter;
     requestedCharacterId = chosenCharacter;
+    myAviationTokenId = chosenAviationToken;
+    requestedAviationTokenId = chosenAviationToken;
     phase = 'opening';
     UI.setSignalOutput('');
     UI.setCoopLobbyStep('join', phase);
@@ -18369,7 +18832,10 @@ const COOP = (() => {
     try {
       next = peer.connect(code, {
         reliable: true, serialization: 'json',
-        metadata: { game: 'wf-html-tester', version: BUILD.version, characterId: requestedCharacterId }
+        metadata: {
+          game: 'wf-html-tester', version: BUILD.version,
+          characterId: requestedCharacterId, aviationTokenId: requestedAviationTokenId
+        }
       });
     } catch (err) {
       failJoin(peerErrorText(err));
@@ -18402,16 +18868,18 @@ const COOP = (() => {
       // no uniqueness check: duplicate character picks are intentional and
       // valid in every multiplayer mode.
       const characterId = sanitizeCharacter(next.metadata && next.metadata.characterId);
+      const aviationTokenId = sanitizeAviationToken(next.metadata && next.metadata.aviationTokenId);
       slotAssignments.set(peerId, characterId);
+      aviationAssignments.set(peerId, aviationTokenId);
       // Tell the new joiner who they are and who else is already here.
       const roster = rosterList();
       sendTo(peerId, {
-        type: 'welcome', id: localId, characterId: characterId,
+        type: 'welcome', id: localId, characterId: characterId, aviationTokenId: aviationTokenId,
         roster: roster, matchRunning: matchRunning, maxPlayers: C.maxPlayers, matchMode: matchMode,
         worldState: (typeof LEVEL !== 'undefined' && LEVEL.worldState) ? LEVEL.worldState() : null
       });
       // Tell everyone ELSE a new farmhand joined, so their remote list grows too.
-      broadcast({ type: 'playerJoined', id: peerId, characterId: characterId }, peerId);
+      broadcast({ type: 'playerJoined', id: peerId, characterId: characterId, aviationTokenId: aviationTokenId }, peerId);
       broadcast({ type: 'rosterUpdate', roster: rosterList() });
       UI.setCoopLobbyStep('host', phase);
       emit('connected', peerId);
@@ -18436,6 +18904,7 @@ const COOP = (() => {
     if (!channels.has(peerId) && !remotes.has(peerId)) return;
     channels.delete(peerId);
     slotAssignments.delete(peerId);
+    aviationAssignments.delete(peerId);
     loseVoiceCall(peerId);
     const remote = remotes.get(peerId);
     destroyRemote(remote);
@@ -18469,7 +18938,7 @@ const COOP = (() => {
       phase = 'connected';
       UI.setCoopLobbyStep(role, phase);
       status('Connected. Waiting for the host to start the farm…', 'good');
-      send({ type: 'characterChoice', characterId: requestedCharacterId });
+      send({ type: 'characterChoice', characterId: requestedCharacterId, aviationTokenId: requestedAviationTokenId });
       if (localVoiceStream) callVoice('host');
     };
     next.on('open', onOpen);
@@ -18515,6 +18984,7 @@ const COOP = (() => {
   function sendState() {
     const payload = {
       type: 'state', id: localId, characterId: localCharacterId(),
+      aviationTokenId: sanitizeAviationToken(myAviationTokenId),
       player: {
         x: PLAYER.position.x, y: PLAYER.position.y, z: PLAYER.position.z,
         yaw: PLAYER.yaw, pitch: PLAYER.pitch, layerId: PLAYER.layerId,
@@ -18557,10 +19027,11 @@ const COOP = (() => {
     return m;
   }
 
-  function makeRemote(id, characterId) {
+  function makeRemote(id, characterId, aviationTokenId) {
     const desired = CHARACTER_POOL.indexOf(characterId) >= 0 ? characterId : 'playerMasked';
+    const desiredAviationToken = sanitizeAviationToken(aviationTokenId);
     let remote = remotes.get(id);
-    if (remote && remote.characterId !== desired) {
+    if (remote && (remote.characterId !== desired || remote.aviationTokenId !== desiredAviationToken)) {
       // Character swaps rebuild the rig and its proxies. Remove the old
       // proxies from the flat raycast list too, or an invisible collider at
       // the previous position can keep absorbing shots forever.
@@ -18569,7 +19040,7 @@ const COOP = (() => {
       remote = null;
     }
     if (remote) return remote;
-    const built = CAST.build(desired);
+    const built = CAST.build(desired, desiredAviationToken ? { aviationTokenId: desiredAviationToken } : null);
     const group = built.rig.root;
     group.scale.setScalar(1.08);
     group.visible = false;
@@ -18579,7 +19050,7 @@ const COOP = (() => {
     const headProxy = makePlayerProxy(group, new THREE.SphereGeometry(0.32, 8, 6), 1.28, id, 'head');
     const bodyProxy = makePlayerProxy(group, new THREE.BoxGeometry(0.6, 0.96, 0.48), 0.68, id, 'body');
     remote = {
-      id: id, characterId: desired, rig: built.rig, group: group,
+      id: id, characterId: desired, aviationTokenId: desiredAviationToken, rig: built.rig, group: group,
       headProxy: headProxy, bodyProxy: bodyProxy,
       target: {
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
@@ -18604,16 +19075,20 @@ const COOP = (() => {
     if (!message || !message.type) return;
     if (message.type === 'characterChoice') {
       const chosen = sanitizeCharacter(message.characterId);
+      const aviationTokenId = sanitizeAviationToken(message.aviationTokenId);
       if (!channels.has(fromId)) return;
       slotAssignments.set(fromId, chosen);
+      aviationAssignments.set(fromId, aviationTokenId);
       broadcast({ type: 'rosterUpdate', roster: rosterList() });
       UI.setCoopLobbyStep('host', phase);
     } else if (message.type === 'state' && message.player) {
-      const remote = makeRemote(fromId, slotAssignments.get(fromId));
+      const remote = makeRemote(fromId, slotAssignments.get(fromId), aviationAssignments.get(fromId));
       applyRemotePlayerState(remote, message.player);
       remote.lastSeen = 0;
       // Relay to every OTHER joiner so peers see each other through the hub.
-      broadcast(Object.assign({}, message, { id: fromId, characterId: remote.characterId }), fromId);
+      broadcast(Object.assign({}, message, {
+        id: fromId, characterId: remote.characterId, aviationTokenId: remote.aviationTokenId
+      }), fromId);
     } else if (message.type === 'shot' && message.shot) {
       sendTo(fromId, { type: 'shotResolved', shot: message.shot, endPoint: resolveShotAsHost(message.shot, fromId) });
     } else if (message.type === 'enemyDamage' && message.key !== undefined) {
@@ -18650,6 +19125,7 @@ const COOP = (() => {
         myCharacterId = sanitizeCharacter(message.characterId);
         requestedCharacterId = myCharacterId;
       }
+      myAviationTokenId = sanitizeAviationToken(requestedAviationTokenId);
       matchRunning = !!message.matchRunning;
       matchMode = (message.matchMode === 'ffa' || message.matchMode === 'teams') ? message.matchMode : 'coop';
       if (message.worldState) LEVEL.applyWorldState(message.worldState);
@@ -18663,7 +19139,7 @@ const COOP = (() => {
       applyRoster(message.roster);
       UI.setCoopLobbyStep(role, phase);
     } else if (message.type === 'playerJoined' && message.id) {
-      makeRemote(message.id, message.characterId);
+      makeRemote(message.id, message.characterId, message.aviationTokenId);
       if (rosterOrder.indexOf(message.id) < 0) rosterOrder.push(message.id);
       UI.setCoopLobbyStep(role, phase);
     } else if (message.type === 'playerLeft' && message.id) {
@@ -18675,7 +19151,7 @@ const COOP = (() => {
       // joins are still around to see it.
       if (matchRunning) emit('crewMemberLeft', message.id);
     } else if (message.type === 'state' && message.id && message.player) {
-      const remote = makeRemote(message.id, message.characterId);
+      const remote = makeRemote(message.id, message.characterId, message.aviationTokenId);
       applyRemotePlayerState(remote, message.player);
       remote.lastSeen = 0;
     } else if (message.type === 'shotResolved' && message.shot) {
@@ -18852,8 +19328,10 @@ const COOP = (() => {
 
   /* Same name the kill feed already uses for this player, so a chat line and
      "X eliminated Y" both call the same person the same thing. */
-  function displayNameFor(characterId) {
-    return (typeof CAST !== 'undefined' && CAST.ROSTER[characterId]) ? CAST.ROSTER[characterId].label : 'Farmhand';
+  function displayNameFor(characterId, aviationTokenId) {
+    const base = (typeof CAST !== 'undefined' && CAST.ROSTER[characterId]) ? CAST.ROSTER[characterId].label : 'Farmhand';
+    const token = sanitizeAviationToken(aviationTokenId);
+    return token ? base + ' · Goon #' + token : base;
   }
 
   /* Text chat: host broadcasts straight out (its own CHAT module already
@@ -18862,7 +19340,7 @@ const COOP = (() => {
      host, which relays it onward (see receiveOnHost's 'chat' case). */
   function sendChat(text) {
     if (!connected) return false;
-    const message = { type: 'chat', id: localId, name: displayNameFor(myCharacterId), text: text };
+    const message = { type: 'chat', id: localId, name: displayNameFor(myCharacterId, myAviationTokenId), text: text };
     if (role === 'host') broadcast(message);
     else send(message);
     return true;
@@ -19125,7 +19603,7 @@ const COOP = (() => {
   }
 
   return {
-    init, on, openLobby, host, prepareJoin, selectCharacter, signalAction, stop, update, startMatch, setMatchMode,
+    init, on, openLobby, host, prepareJoin, selectCharacter, selectAviationToken, signalAction, stop, update, startMatch, setMatchMode,
     sendShot, relayHostShot, shouldRemoteRelayShots, shouldHostRelayShots, sendEnemyDamage,
     broadcastBossDefeated, broadcastBoss2Defeated, broadcastBoss3Defeated, broadcastWorldReset, sendPlayerDamage, sendPlayerHit, reportDeath, useRallyHorn,
     sendChat, sendWorldInteraction, displayNameFor, setLocalVoiceStream,
@@ -19142,6 +19620,7 @@ const COOP = (() => {
     get playerCount() { return this.roster.length; },
     get spawnSlotIndex() { const index = roomOrder().indexOf(localId); return index >= 0 ? index : 0; },
     get localCharacterId() { return myCharacterId; },
+    get localAviationTokenId() { return sanitizeAviationToken(myAviationTokenId); },
     get roster() { return rosterList(); },
     teamOf: teamOfId,
     get localTeam() { return teamOfId(localId); },
@@ -19266,7 +19745,7 @@ const CHAT = (() => {
   function send(text) {
     text = (text || '').trim().slice(0, C.chatMaxLen);
     if (!text || typeof COOP === 'undefined' || !COOP.connected) return;
-    const name = COOP.displayNameFor(COOP.localCharacterId);
+    const name = COOP.displayNameFor(COOP.localCharacterId, COOP.localAviationTokenId);
     if (typeof UI !== 'undefined') UI.pushChat(name, text, true);
     COOP.sendChat(text);
   }
