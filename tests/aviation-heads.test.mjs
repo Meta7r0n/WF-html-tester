@@ -114,7 +114,7 @@ test('all 123 heads execute through the adapter contract', () => {
   }
 });
 
-test('v0.35 integrates Hangar pilots with the shared rig, persistence, and multiplayer payloads', () => {
+test('v0.36 retains Hangar pilot shared-rig, persistence, and multiplayer integration', () => {
   const manifestIndex = html.indexOf('assets/aviation-heads/manifest.js');
   const packIndex = html.indexOf('assets/aviation-heads/aviation-head-pack.js');
   const gameIndex = html.indexOf('const BUILD = Object.freeze({');
@@ -140,11 +140,16 @@ test('v0.35 integrates Hangar pilots with the shared rig, persistence, and multi
   assert.match(html, /function selectBody\(id\)[\s\S]*state\.bodyId = validBody\(id\)/);
 });
 
-test('portrait snapshots retain pixels, resize per caller, and face the authored -Z side', () => {
+test('portrait snapshots retain pixels and dynamically fit full-body and head-detail views', () => {
   assert.match(html, /preserveDrawingBuffer: true/);
   assert.match(html, /portraitRenderer\.setSize\(width, height, false\)/);
   assert.match(html, /portraitCamera\.aspect = width \/ height/);
-  assert.match(html, /portraitCamera\.position\.set\(0, 0\.92, -2\.05\)/);
+  assert.match(html, /function framePortrait\(built, viewMode\)/);
+  assert.match(html, /new THREE\.Box3\(\)\.setFromObject\(subject\)/);
+  assert.match(html, /portraitCamera\.position\.set\(center\.x, center\.y, center\.z - distance\)/);
+  assert.match(html, /data-aviation-preview="full"/);
+  assert.match(html, /data-aviation-preview="head"/);
+  assert.match(html, /CAST\.renderPortrait\(validBody\(working\.bodyId\), 420, 500,[\s\S]*previewMode\)/);
   assert.match(html, /portraitRenderer\.clear\(\);[\s\S]*portraitRenderer\.render\(portraitScene, portraitCamera\)/);
 });
 
