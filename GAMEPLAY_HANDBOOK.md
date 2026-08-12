@@ -161,6 +161,9 @@ Weapon slots run `1`–`9`. Two more — the Downed Double Barrel and the Chains
 | 7 | **Spray Torch** | Flamethrower | 80 / 240 fuel | World pickup |
 | 8 | **The Claw** | Long-reach melee | — | Bear Claw's rematch drop |
 | 9 | **Portal Gun** | Precision sidearm | 6 / 24 | Crafted only |
+| — | **Seed Spitter** | Automatic LMG | 50 / 200 | The Gardener's drop |
+
+> **A note on the Seed Spitter's slot:** the keyboard only has number keys `1`–`9`, and they're all spoken for — so the Seed Spitter doesn't get one. It's still fully usable: cycle to it with the weapon-switch control (mouse wheel / next-weapon button) or tap it directly in the mobile inventory strip, same as any weapon once your loadout runs past nine.
 
 ### Weapon notes
 
@@ -182,6 +185,8 @@ Weapon slots run `1`–`9`. Two more — the Downed Double Barrel and the Chains
 
 **Portal Gun** — built, not found (see [The Workbench](#8-the-workbench--crafting-the-portal-gun)). Near-perfect accuracy and the highest raw damage of any sidearm. Against Bearclaw2 specifically, landing a headshot with it triggers a bonus critical hit and a real chance to stun him outright.
 
+**Seed Spitter** — The Gardener's drop, and unmistakable the second you see it: a stubby, prohibition-era Tommy-gun body built around a drum magazine shaped like an actual sunflower, yellow petals and all. Under the theming it's a genuine LMG upgrade over the Fieldhand Carbine — a bigger drum, a faster rate of fire, and more damage per shot, at the cost of a slower reload once that drum finally runs dry.
+
 ### Ammo types
 
 Each gun draws from its own ammo pool, restocked by matching pickups scattered around the farm:
@@ -193,6 +198,7 @@ Each gun draws from its own ammo pool, restocked by matching pickups scattered a
 | Carbine | Fieldhand Carbine | Carbine Rounds | +42 |
 | Battery | Scrap Railgun | Batteries | +10 |
 | Spraycan | Spray Torch | Spray Cans | +150 |
+| Seed Drum | Seed Spitter | Seed Drums | +50 |
 | Portal Cell | Portal Gun | *(none in the field — the 18 rounds you're granted at crafting are it)* | — |
 
 ---
@@ -293,7 +299,7 @@ A hybrid: he'll melee you up close, but at range he unloads a spread of seed pel
 
 ### The Gardener
 Solo-only, and the final regular encounter before the crafting quest closes out. A heavily built-up version of a Gaper, she periodically raises her watering can to summon reinforcements and fires her own seed-burst AoE — expect this fight to bring extra company.
-- **On defeat:** drops the **Barn Key**.
+- **On defeat:** drops the **Barn Key** — and the **Seed Spitter**, a full weapon on top of the quest item.
 
 ### Bearclaw2
 The finale. The Bear Claw you already beat, back through a portal, angrier and considerably stronger — this is the fight the entire crafting quest builds toward, and beating him is what actually ends a single-player run. Bring the Portal Gun: a headshot with it lands a bonus critical hit and has a real chance to stun him outright.
@@ -307,7 +313,7 @@ The finale. The Bear Claw you already beat, back through a portal, angrier and c
 | 33 | Beat Slayer | Golden Boombox · Green Shard |
 | 66 | Bear Claw | Pack of Smokes · Metal Fragment |
 | 99 | Carrot Warden | Carrot Cannon · Computer Chip |
-| 132 | The Gardener | Barn Key |
+| 132 | The Gardener | Barn Key · Seed Spitter |
 | *(craft the Portal Gun)* | **Bearclaw2** | *the run's final fight* |
 
 **Co-op / Free-for-all / Team Deathmatch** (no crafting quest — everyone just keeps fighting the farm's escalating threat list):

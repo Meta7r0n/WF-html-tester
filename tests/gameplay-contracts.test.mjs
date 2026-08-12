@@ -245,6 +245,26 @@ test('Portal Gun tuning and Bearclaw2 stun lockout are explicit', () => {
   assert.match(html, /portalStunImmunity: 3\.0/);
 });
 
+test('the Gardener drops both the Barn Key and the Seed Spitter, and the LMG is wired end to end', () => {
+  // CONFIG def: an automatic LMG, distinct from the Fieldhand Carbine, with
+  // its own ammo pool and a slot past the 9 keyboard hotkeys.
+  assert.match(html, /id: 'seedSpitter'[\s\S]*slot: 10[\s\S]*ammoType: 'seedDrum'/);
+  assert.match(html, /seedSpitter:[\s\S]*magSize: 50[\s\S]*automatic: true[\s\S]*damage: 20/);
+  // A real ammo pickup exists for it (unlike the Portal Gun, which has none).
+  assert.match(html, /define\('seedDrumPack', \{[\s\S]*ammoType: 'seedDrum'/);
+  assert.match(html, /\{ id: 'seedDrumPack',/);
+  // The boss-drop weapon pickup exists and is NOT part of the static spawns
+  // list (mirrors carrotCannonWeapon/theClawWeapon's own comments/pattern).
+  assert.match(html, /define\('seedSpitterWeapon', \{[\s\S]*weaponId: 'seedSpitter'/);
+  assert.doesNotMatch(html, /\{ id: 'seedSpitterWeapon',/);
+  // ENEMY.die()'s isGardener branch spawns both drops together.
+  const gardenerDeathBranch = html.slice(html.indexOf('if (e.isGardener) {'), html.indexOf('} else if (e.isBoss) {'));
+  assert.match(gardenerDeathBranch, /PICKUP\.spawn\('barnKey', \{ x:e\.pos\.x, y:e\.pos\.y, z:e\.pos\.z \}/);
+  assert.match(gardenerDeathBranch, /PICKUP\.spawn\('seedSpitterWeapon', \{ x:e\.pos\.x\+0\.8, y:e\.pos\.y, z:e\.pos\.z \}/);
+  // The pickup-message slot hint only ever names a real keyboard digit.
+  assert.match(html, /slot <= 9 \? 'slot ' \+ slot : 'cycle weapons to equip'/);
+});
+
 test('QUEST hands the Portal Gun payoff to PORTALCUTSCENE instead of playing it inline', () => {
   assert.match(quest, /PORTALCUTSCENE\.play\(GAME\.camera,/);
   assert.match(quest, /get cutsceneActive\(\) \{ return typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE\.active; \}/);
