@@ -2048,14 +2048,24 @@ const CONFIG = {
   // of. See PORTALCUTSCENE.
   portalCutscene: {
     portalPos: { x: 62.45, y: 5.7, z: -72.8 }, portalRotY: Math.PI / 2,
-    bossRestPos: { x: 59, y: 4.6, z: -75 },        // a short walk from the portal, same room
+    // The upper room the workbench sits in is two merged floor slabs:
+    // x in [33.4, 62.6] / z in [-78.6, -65.4] near the portal, widening to
+    // x in [33.4, 55.6] / z in [-64.5, -55.5] further north. bossRestPos sits
+    // a real ~16m walk from the workbench (58.3, -76.7), not a couple of
+    // steps -- close enough felt like an ambush the instant control came
+    // back, since Bearclaw2's real AI takes over the moment the cutscene
+    // hands off and immediately closes whatever gap is left.
+    bossRestPos: { x: 44, y: 4.6, z: -70 },
     openDuration: 2.2,    // portal growing on the wall
     walkDuration: 2.4,    // Bearclaw2 crossing from the portal to bossRestPos
     // Wide third-person establishing shot: player + wall + growing portal.
-    wideCam: { x: 51, y: 6.6, z: -79.5 }, wideLook: { x: 60.5, y: 5.0, z: -74 },
+    // Both floor slabs bottom out at z=-78.6 -- the old z=-79.5 sat outside
+    // the room entirely, so this shot rendered from inside/beyond the south
+    // wall until the blend to holdCam masked it.
+    wideCam: { x: 39, y: 5.6, z: -76.5 }, wideLook: { x: 60, y: 5.2, z: -75 },
     // Where the camera blends to as Bearclaw2 finishes crossing the room --
     // holds here through the awaiting-continue beat.
-    holdCam: { x: 54, y: 5.6, z: -71 }, holdLook: { x: 59, y: 5.0, z: -75 },
+    holdCam: { x: 54, y: 5.6, z: -73 }, holdLook: { x: 44, y: 4.8, z: -70 },
     blendStart: 2.2, blendEnd: 4.6   // starts exactly as the walk begins, ends as it lands
   },
   // A short cinematic cutaway on every death (PvE or PvP) -- pulls out from
@@ -4841,15 +4851,33 @@ const LEVEL = (() => {
       upper.box(3.6, top, 0.86, 59.0, top / 2, z, 0, 0, 0, 0.012);
       WORLD.addFloor(59.0, 0, z, 3.6, top, 0.86, 'north_barn_stair');
     }
-    // West edge of the stair opening: continuous rail, open at both ends.
-    for (let z = -64.2; z <= -57.0; z += 1.45) {
-      upper.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
-    }
-    upper.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
     upper.build(parent);
     WORLD.addFloor(CX, UPPER_Y - 0.32, -72.0, 29.2, 0.32, 13.2, 'north_barn_upper');
     WORLD.addFloor(44.5, UPPER_Y - 0.32, -60.0, 22.2, 0.32, 9.0, 'north_barn_upper');
-    WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+
+    // Registered for ENEMY's chase AI: raw direct-line steering clips the
+    // side of this stairwell instead of climbing it (the same problem the
+    // corn maze already solves with its own waypoint funnel) -- see
+    // setNorthBarnStairWaypoint. baseZ/topZ sit just clear of the first and
+    // last step so a funneled approach always lines up with the run before
+    // stepping onto it.
+    WORLD.northBarnStair = { x: 59.0, baseZ: -55.6, topZ: -66.0, baseY: 0, topY: UPPER_Y };
+
+    // West edge of the stair opening: continuous rail, open at both ends.
+    // Its own group (not the shared `upper` batch above) so QUEST can pull
+    // it down the instant the Barn Key gets used -- see setNorthBarnRailing
+    // -- opening a straight-line jump/drop shortcut across the stairwell
+    // instead of forcing the full loop down and back up the stairs.
+    const railingGroup = new THREE.Group();
+    parent.add(railingGroup);
+    const railingBatch = new PRIM.Batch(upperMat, 0.045);
+    for (let z = -64.2; z <= -57.0; z += 1.45) {
+      railingBatch.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
+    }
+    railingBatch.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
+    railingBatch.build(railingGroup);
+    const railingSolid = WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+    animated.northBarnRailing = { group: railingGroup, collider: railingSolid, present: true };
 
     // A chunky, deliberately old tractor. The stripped variant omits its hood
     // and front wheels, exposing an engine block and loose axle parts.
@@ -6334,6 +6362,19 @@ const LEVEL = (() => {
     return !!(animated.northBarnHatch && animated.northBarnHatch.open);
   }
 
+  // Called by QUEST the instant the Barn Key gets used (present=false), and
+  // on every match reset (present=true) -- not a door, so no openness
+  // animation, just an outright presence toggle for both the visual rail
+  // and its collider.
+  function setNorthBarnRailing(present) {
+    const railing = animated.northBarnRailing;
+    if (!railing) return false;
+    railing.present = !!present;
+    railing.group.visible = railing.present;
+    railing.collider.enabled = railing.present;
+    return true;
+  }
+
   const NORTH_BARN_ACCESS = Object.freeze({
     south: Object.freeze({ id: 'south', label: 'south barn doors' }),
     west: Object.freeze({ id: 'west', label: 'west barn doors' }),
@@ -6449,7 +6490,8 @@ const LEVEL = (() => {
     nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen,
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
-    northBarnAccessAt, setNorthBarnAccess, isNorthBarnAccessOpen
+    northBarnAccessAt, setNorthBarnAccess, isNorthBarnAccessOpen,
+    setNorthBarnRailing
   };
 })();
 
@@ -13154,12 +13196,14 @@ const QUEST = (() => {
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
     gardener = null;
     setBarnEntrances(false, true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
     syncHud();
   }
   function start() {
     if (!isSinglePlayer()) {
       // The key quest is solo-only; keep the barn traversable in co-op/PvP.
       setBarnEntrances(true, true);
+      if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
       syncHud();
       return;
     }
@@ -13167,6 +13211,7 @@ const QUEST = (() => {
     state.stage = 1;
     state.encounterSpawned = false;
     setBarnEntrances(false, true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
     UI.toast('WILT ' + CONFIG.progress.singleBeatSlayerThreshold + ' ENEMIES TO DRAW OUT BEAT SLAYER', 2.8);
     syncHud();
   }
@@ -13265,6 +13310,7 @@ const QUEST = (() => {
       if (!state.barnUnlocked) {
         state.barnUnlocked = true;
         LEVEL.setNorthBarnAccess(access.id, true);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
         RUNSTATS.milestone('barn_unlocked', 'northBarn', { entrance: access.id });
         UI.toast('BARN KEY USED — ' + access.label.toUpperCase() + ' UNLOCKED', 2.2);
       } else {
@@ -17896,6 +17942,44 @@ const ENEMY = (() => {
       !!cornMazeCell(m, PLAYER.position.x, PLAYER.position.z));
   }
 
+  /* ---------------- north barn stairwell navigation ----------------
+     Same problem as the corn maze, different shape: direct-line chase
+     steering aims straight at the player's x/z and clips past the edge of
+     this stairwell's narrow footprint instead of walking up it, so an
+     enemy on the ground floor can gain a step or two by accident and then
+     fall right back off. Funnel through the stair's centerline instead --
+     first to whichever mouth is nearer, then straight through to the far
+     mouth -- so the walk stays inside the run long enough for the shared
+     step-up physics (WORLD.moveActor) to actually climb it. */
+  function northBarnStairPursuitActive(e) {
+    const s = WORLD.northBarnStair;
+    if (!s) return false;
+    // Strictly between the two mouths -- not past either one -- so this
+    // releases the instant the climb (or descent) actually completes,
+    // instead of camping the far landing forever waiting for a y-gap that
+    // has already closed.
+    const onRun = Math.abs(e.pos.x - s.x) < 3.5 &&
+      e.pos.z < s.baseZ && e.pos.z > s.topZ;
+    if (onRun) return true;
+    const inBarn = (x, z) => x > 32 && x < 64 && z > -79 && z < -54;
+    return Math.abs(e.pos.y - PLAYER.position.y) > 1.2 &&
+      (inBarn(e.pos.x, e.pos.z) || inBarn(PLAYER.position.x, PLAYER.position.z));
+  }
+
+  function setNorthBarnStairWaypoint(e, target) {
+    const s = WORLD.northBarnStair;
+    if (!s) { e.mazeHasWaypoint = false; return false; }
+    const goingUp = Math.abs(target.y - s.topY) < Math.abs(target.y - s.baseY);
+    const mouthZ = goingUp ? s.baseZ : s.topZ;
+    const farZ = goingUp ? s.topZ : s.baseZ;
+    const alignedX = Math.abs(e.pos.x - s.x) < 0.6;
+    const clearedMouth = goingUp ? e.pos.z <= mouthZ : e.pos.z >= mouthZ;
+    if (alignedX && clearedMouth) e.mazeWaypoint.set(s.x, e.pos.y, farZ);
+    else e.mazeWaypoint.set(s.x, e.pos.y, mouthZ);
+    e.mazeHasWaypoint = true;
+    return true;
+  }
+
   // A flashlight lock acts as a live callout: all other regular enemies on
   // that layer receive the player's position even if their own short-range
   // senses could not have found it independently.
@@ -19348,6 +19432,16 @@ const ENEMY = (() => {
             // The graph is static and players cannot cross a three-metre cell
             // instantly. A short cache avoids thousands of tiny BFS-array
             // allocations per second on a full 22-enemy mobile coop roster.
+            e.mazeRepathTimer = 0.14;
+          } else {
+            routed = e.mazeHasWaypoint;
+          }
+        } else if (northBarnStairPursuitActive(e)) {
+          e.mazeRepathTimer -= dt;
+          const atWaypoint = e.mazeHasWaypoint &&
+            Math.hypot(e.pos.x - e.mazeWaypoint.x, e.pos.z - e.mazeWaypoint.z) < 0.4;
+          if (e.mazeRepathTimer <= 0 || !e.mazeHasWaypoint || atWaypoint) {
+            routed = setNorthBarnStairWaypoint(e, p);
             e.mazeRepathTimer = 0.14;
           } else {
             routed = e.mazeHasWaypoint;
