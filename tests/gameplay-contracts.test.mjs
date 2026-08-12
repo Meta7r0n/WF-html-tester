@@ -10,6 +10,9 @@ const quest = html.slice(questStart, questEnd);
 const statsStart = html.indexOf('const RUNSTATS = (() => {');
 const statsEnd = html.indexOf('const QUEST = (() => {', statsStart);
 const runStatsSource = html.slice(statsStart, statsEnd);
+const portalCutStart = html.indexOf('const PORTALCUTSCENE = (() => {');
+const portalCutEnd = html.indexOf('/* ============================== [HERO] ===============================', portalCutStart);
+const portalCutscene = html.slice(portalCutStart, portalCutEnd);
 
 test('visible and runtime build labels identify v0.38', () => {
   assert.match(html, /<title>The Withered Farm — v0\.38<\/title>/);
@@ -236,45 +239,109 @@ test('Portal Gun tuning and Bearclaw2 stun lockout are explicit', () => {
   assert.match(html, /portalStunImmunity: 3\.0/);
 });
 
-test('the Portal Gun cutscene only hands off to gameplay on a real gesture, not its own timer', () => {
-  assert.match(quest, /awaitingCutsceneContinue = true;[\s\S]*attachCutsceneSkipListener\(\)/);
+test('QUEST hands the Portal Gun payoff to PORTALCUTSCENE instead of playing it inline', () => {
+  assert.match(quest, /PORTALCUTSCENE\.play\(GAME\.camera,/);
+  assert.match(quest, /get cutsceneActive\(\) \{ return typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE\.active; \}/);
+  assert.doesNotMatch(quest, /cutsceneTimer/, 'the old inline timer/portal-growth logic should be fully removed, not duplicated');
+});
 
-  // No point counts as a barn-door access here -- interact()'s crafting
-  // branch is only reachable once nearAccess() finds nothing, and this
-  // test's crafting-station coordinates don't correspond to a real door.
-  const h = createQuestHarness({ LEVEL: { setNorthBarnAccess() {}, isNorthBarnAccessOpen() { return false; }, northBarnAccessAt() { return null; } } });
-  h.quest.start();
-  h.quest.state.components.greenShard = true;
-  h.quest.state.components.metalFragment = true;
-  h.quest.state.components.computerChip = true;
-  h.quest.state.barnKey = true;
-  h.quest.state.barnUnlocked = true;
-  assert.equal(h.quest.interact({ x: 58.3, y: 3.5, z: -76.7 }), true);
-  assert.equal(h.quest.cutsceneActive, true, 'crafting starts the portal cutscene');
+function createPortalCutsceneHarness() {
+  const spawnedBosses = [];
+  const listeners = { pointerdown: [], keydown: [] };
+  const windowMock = {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type) { listeners[type].slice().forEach(fn => fn()); }
+  };
+  function makeBoss() {
+    return {
+      pos: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      vel: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      group: { position: { copy(p) {} } },
+      yaw: 0
+    };
+  }
+  class Object3D {
+    constructor() { this.position = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } }; this.rotation = { x: 0, y: 0, z: 0 }; this.scale = { setScalar() {} }; this.material = { opacity: 1 }; this.parent = null; }
+    traverse() {}
+  }
+  const poseEntityCalls = [];
+  const context = vm.createContext({
+    CONFIG: {
+      render: { fov: 62, near: 0.1, far: 500 },
+      portalCutscene: {
+        portalPos: { x: 62.45, y: 5.7, z: -72.8 }, portalRotY: Math.PI / 2,
+        bossRestPos: { x: 59, y: 4.6, z: -75 },
+        openDuration: 2.2, walkDuration: 2.4,
+        wideCam: { x: 51, y: 6.6, z: -79.5 }, wideLook: { x: 60.5, y: 5.0, z: -74 },
+        holdCam: { x: 54, y: 5.6, z: -71 }, holdLook: { x: 59, y: 5.0, z: -75 },
+        blendStart: 2.2, blendEnd: 4.6
+      }
+    },
+    UTIL: {
+      clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); },
+      lerp(a, b, t) { return a + (b - a) * t; }
+    },
+    THREE: {
+      PerspectiveCamera: class extends Object3D { constructor() { super(); this.aspect = 1; } updateProjectionMatrix() {} lookAt() {} },
+      Mesh: Object3D, TorusGeometry: class {}, MeshBasicMaterial: class {}
+    },
+    ENEMY: {
+      spawnBoss2(appearance) { const b = makeBoss(); spawnedBosses.push(b); return b; },
+      poseEntity(e, t) { poseEntityCalls.push([e, t]); }
+    },
+    CAST: { build() { return { rig: { root: new Object3D() } }; } },
+    HERO: { castId: 'scarf' },
+    AVIATION_AVATAR: { enabled: false, soloCastId(fallback) { return fallback; }, tokenId: null },
+    PLAYER: { position: { x: 58.3, y: 4.6, z: -76.7 } },
+    WORLD: { groundAt() { return 4.6; } },
+    UI: { toast() {} },
+    window: windowMock,
+    setTimeout() {}, console
+  });
+  vm.runInContext(portalCutscene + '\n;globalThis.__portalCutscene = PORTALCUTSCENE;', context);
+  const mod = context.__portalCutscene;
+  mod.init({ add() {} }, { aspect: 1.6 });
+  return { mod, window: windowMock, spawnedBosses, poseEntityCalls };
+}
 
-  // One big dt blows straight past the 5.2s buildup and spawns Bearclaw2 --
-  // this used to call GAME.resumeAfterQuestCutscene() (-> INPUT.requestLock())
-  // immediately, straight from this timer-driven update() call.
-  h.quest.update(6, false);
-  assert.equal(h.quest.state.stage, 6, 'Bearclaw2 spawning still advances the stage on schedule');
-  assert.deepEqual(h.spawns.map(s => s[0]).filter(id => id === 'bearClaw'), ['bearClaw'],
-    'Bearclaw2 still spawns on schedule');
-  assert.deepEqual(h.resumeCalls, [], 'resumeAfterQuestCutscene must NOT fire from the timer-driven update() call');
-  assert.equal(h.quest.cutsceneActive, true, 'still treated as a cutscene while awaiting the real gesture');
+test('PORTALCUTSCENE only hands off to gameplay on a real gesture, not its own timer', () => {
+  const h = createPortalCutsceneHarness();
+  const doneCalls = [];
+  h.mod.play({ aspect: 1.6 }, () => doneCalls.push(true));
+  assert.equal(h.mod.active, true);
 
-  // Further update() calls with no real gesture must never let it through either.
-  h.quest.update(1, false);
-  h.quest.update(1, false);
-  assert.deepEqual(h.resumeCalls, [], 'no amount of additional simulated time substitutes for a real gesture');
+  // Advance past the portal-open beat -- Bearclaw2 should spawn. The walk
+  // phase itself only starts stepping on the following update() call.
+  h.mod.update(2.3);
+  assert.equal(h.spawnedBosses.length, 1, 'Bearclaw2 spawns once the portal finishes opening');
+  h.mod.update(0.1);
+  assert.ok(h.poseEntityCalls.length > 0, 'the walk-out is driven by ENEMY.poseEntity, not just a position lerp');
 
-  // The real gesture -- a genuine click or keypress -- is what's allowed to trigger it.
+  // One big update() call blows straight past the whole walk -- this used
+  // to call onDone() (-> GAME.resumeAfterQuestCutscene() -> INPUT.requestLock())
+  // immediately from this timer-driven call.
+  h.mod.update(3);
+  assert.equal(h.mod.active, true, 'still an active cutscene, now holding on the revealed boss');
+  assert.deepEqual(doneCalls, [], 'onDone must NOT fire from the timer-driven update() call');
+
+  // Further simulated time changes nothing.
+  h.mod.update(5);
+  h.mod.update(5);
+  assert.deepEqual(doneCalls, [], 'no amount of additional simulated time substitutes for a real gesture');
+
+  // A real gesture is what's allowed to end it.
   h.window.trigger('pointerdown');
-  assert.deepEqual(h.resumeCalls, [true], 'a real gesture hands off exactly once');
-  assert.equal(h.quest.cutsceneActive, false);
+  assert.deepEqual(doneCalls, [true], 'a real gesture hands off exactly once');
+  assert.equal(h.mod.active, false);
 
-  // A second stray gesture afterward must be a no-op (listener already detached).
+  // A stray second gesture afterward is a no-op (listener already detached).
   h.window.trigger('pointerdown');
-  assert.deepEqual(h.resumeCalls, [true], 'the handoff never double-fires');
+  assert.deepEqual(doneCalls, [true], 'the handoff never double-fires');
 });
 
 test('run statistics count ammo after consumption and use monotonic time', () => {

@@ -2037,6 +2037,27 @@ const CONFIG = {
       { from: 'pilot', text: '🫡', gap: 0 }
     ]
   },
+  // The Portal Gun's payoff cutscene: gameplay fully pauses, the camera
+  // pulls out to a third-person shot of the wall the workbench faces, the
+  // portal grows open, Bearclaw2 walks out of it and crosses to a mark a
+  // few steps into the room, then the camera settles and holds on it until
+  // the player's own gesture hands control back. All positions live inside
+  // the same north-barn upper room (UPPER_Y ≈ 4.2) the workbench sits in,
+  // not the ground-level 'surface' spot the original one-line spawn used --
+  // that put Bearclaw2 nowhere near the portal it was supposed to walk out
+  // of. See PORTALCUTSCENE.
+  portalCutscene: {
+    portalPos: { x: 62.45, y: 5.7, z: -72.8 }, portalRotY: Math.PI / 2,
+    bossRestPos: { x: 59, y: 4.6, z: -75 },        // a short walk from the portal, same room
+    openDuration: 2.2,    // portal growing on the wall
+    walkDuration: 2.4,    // Bearclaw2 crossing from the portal to bossRestPos
+    // Wide third-person establishing shot: player + wall + growing portal.
+    wideCam: { x: 51, y: 6.6, z: -79.5 }, wideLook: { x: 60.5, y: 5.0, z: -74 },
+    // Where the camera blends to as Bearclaw2 finishes crossing the room --
+    // holds here through the awaiting-continue beat.
+    holdCam: { x: 54, y: 5.6, z: -71 }, holdLook: { x: 59, y: 5.0, z: -75 },
+    blendStart: 2.2, blendEnd: 4.6   // starts exactly as the walk begins, ends as it lands
+  },
   // A short cinematic cutaway on every death (PvE or PvP) -- pulls out from
   // first-person into a slow orbit around the fallen local player's ragdoll,
   // gated in ahead of the dead screen (see GAME.loop). duration is deliberately
@@ -13108,29 +13129,7 @@ const QUEST = (() => {
     components: {}, barnKey: false, barnUnlocked: false,
     crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false
   };
-  let gardener = null, cutsceneTimer = 0, portalEffect = null;
-  // Set once cutsceneTimer reaches 0 (Bearclaw2 has spawned) -- see the
-  // cutsceneTimer===0 branch in update() for why the handoff back to
-  // GAME.resumeAfterQuestCutscene() waits here instead of firing straight
-  // from that timer-driven call.
-  let awaitingCutsceneContinue = false, cutsceneSkipHandler = null;
-
-  function attachCutsceneSkipListener() {
-    if (cutsceneSkipHandler) return;
-    cutsceneSkipHandler = () => {
-      awaitingCutsceneContinue = false;
-      detachCutsceneSkipListener();
-      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
-    };
-    window.addEventListener('pointerdown', cutsceneSkipHandler, { once: true });
-    window.addEventListener('keydown', cutsceneSkipHandler, { once: true });
-  }
-  function detachCutsceneSkipListener() {
-    if (!cutsceneSkipHandler) return;
-    window.removeEventListener('pointerdown', cutsceneSkipHandler);
-    window.removeEventListener('keydown', cutsceneSkipHandler);
-    cutsceneSkipHandler = null;
-  }
+  let gardener = null;
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
   function setBarnEntrances(open, immediate) {
@@ -13153,10 +13152,7 @@ const QUEST = (() => {
     if (typeof ENEMY !== 'undefined' && ENEMY.clearQuestEnemies) ENEMY.clearQuestEnemies();
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
-    gardener = null; cutsceneTimer = 0;
-    awaitingCutsceneContinue = false; detachCutsceneSkipListener();
-    if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
-    portalEffect = null;
+    gardener = null;
     setBarnEntrances(false, true);
     syncHud();
   }
@@ -13288,19 +13284,23 @@ const QUEST = (() => {
     RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
     UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
   }
+  // Fully staged in PORTALCUTSCENE (camera pan, third-person watcher, portal
+  // growth, Bearclaw2's walk-out, held reveal) -- QUEST only owns the
+  // business-logic side of it: releasing input up front, and the stage
+  // bump + resume-into-gameplay handoff once it reports back done.
   function beginCutscene() {
     if (state.cutscenePlayed) return;
-    state.cutscenePlayed = true; cutsceneTimer = 5.2;
+    state.cutscenePlayed = true;
     INPUT.clearActions(); INPUT.releaseLock();
-    portalEffect = new THREE.Mesh(
-      new THREE.TorusGeometry(1.55, 0.18, 10, 36),
-      new THREE.MeshBasicMaterial({ color:0x67e8a5, transparent:true, opacity:0.92, depthWrite:false })
-    );
-    portalEffect.position.set(62.45, 5.7, -72.8);
-    portalEffect.rotation.y = Math.PI / 2;
-    portalEffect.scale.setScalar(0.05);
-    if (GAME.scene) GAME.scene.add(portalEffect);
-    UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
+    if (typeof PORTALCUTSCENE === 'undefined') {
+      state.stage = 6;
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+      return;
+    }
+    PORTALCUTSCENE.play(GAME.camera, () => {
+      state.stage = 6;
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+    });
   }
   function update(dt, simulationActive) {
     if (simulationActive) updateProgress(ENEMY.kills);
@@ -13333,42 +13333,11 @@ const QUEST = (() => {
       }
       UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
     }
-    if (!cutsceneTimer) return;
-    if (portalEffect) {
-      const openK = 1 - Math.min(1, cutsceneTimer / 4.4);
-      portalEffect.scale.setScalar(Math.max(0.05, Math.sin(Math.min(1, openK) * Math.PI * 0.5)));
-      portalEffect.rotation.z += dt * 0.8;
-    }
-    cutsceneTimer = Math.max(0, cutsceneTimer - dt);
-    if (cutsceneTimer === 0) {
-      state.stage = 6;
-      const boss = ENEMY.spawnBoss2(2);
-      if (boss) { boss.pos.set(55, WORLD.groundAt(55, -75, 2, 'surface'), -75); boss.group.position.copy(boss.pos); }
-      UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
-      if (portalEffect) {
-        const closingPortal = portalEffect;
-        closingPortal.material.opacity = 0.45;
-        setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
-      }
-      // GAME.resumeAfterQuestCutscene() ends in INPUT.requestLock() -- and
-      // this whole branch runs from a timer-driven QUEST.update() call, not
-      // a user gesture, so calling it straight from here hits the exact
-      // same transient-activation pointer-lock rejection INTRO/PHONESCENE
-      // already had to guard against: the request gets silently rejected,
-      // dropping the player onto the "mouse lock failed" pause card just as
-      // Bearclaw2 (spawned a few units away, see boss.pos.set above) gets a
-      // free run at them. Wait for the player's own click/keypress instead,
-      // same pattern as everywhere else in this file that hands off into
-      // INPUT.requestLock().
-      awaitingCutsceneContinue = true;
-      attachCutsceneSkipListener();
-      setTimeout(() => { if (awaitingCutsceneContinue) UI.toast('PRESS ANY KEY TO CONTINUE', 8); }, 3000);
-    }
   }
   return { reset, start, collect, interact, interactionHint, update, updateProgress, bossDefeated, spawnGardener, isSinglePlayer,
     get state() { return state; }, get encounters() { return ENCOUNTERS; },
     get gardener() { return gardener; },
-    get cutsceneActive() { return cutsceneTimer > 0 || awaitingCutsceneContinue; } };
+    get cutsceneActive() { return typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE.active; } };
 })();
 
 /* ============================== [GAME] =============================== */
@@ -13465,6 +13434,7 @@ const GAME = (() => {
     COOP.init(scene);
     INTRO.init(scene, camera);
     PHONESCENE.init();
+    PORTALCUTSCENE.init(scene, camera);
     KILLCAM.init(scene);
 
     // shared mouse/touch engagement wiring
@@ -14187,6 +14157,19 @@ const GAME = (() => {
       UI.update(dt);
       renderer.clear();
       renderer.render(scene, INTRO.camera);
+      return;
+    }
+
+    if (typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE.active) {
+      INPUT.consumeMouse();
+      PORTALCUTSCENE.update(dt);
+      LEVEL.update(dt, time);
+      UI.setInteractionHint('');
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      renderer.clear();
+      renderer.render(scene, PORTALCUTSCENE.camera);
       return;
     }
 
@@ -16153,6 +16136,214 @@ const PHONESCENE = (() => {
   return {
     init, play, skip,
     get active() { return active; }
+  };
+})();
+
+/* =========================== [PORTALCUTSCENE] =========================
+   The Portal Gun's payoff: QUEST hands off here the instant crafting
+   succeeds, in place of the toast-only version this used to be. Same
+   full-pause/dedicated-camera shape as INTRO -- GAME's loop() checks
+   .active and, when true, skips all gameplay simulation and renders from
+   this module's own camera instead. Three beats, driven by one `t`:
+     1. 'open'  -- static third-person wide shot (player + wall); the
+        portal grows on the wall.
+     2. 'walk'  -- Bearclaw2 spawns at the portal and crosses the room to
+        its rest mark, animated with ENEMY's own pose dispatcher (so it's
+        a real walk cycle, not a slide); camera blends wide -> hold.
+     3. 'hold'  -- camera holds on Bearclaw2; waits for the player's own
+        click/keypress before finishing -- same reasoning as INTRO's own
+        awaitingContinue: the eventual INPUT.requestLock() this hands off
+        to (via onDone -> QUEST -> GAME.resumeAfterQuestCutscene) needs a
+        real gesture in its call stack, not this timer-driven update(). */
+const PORTALCUTSCENE = (() => {
+  const C = CONFIG.portalCutscene;
+  let scene = null, camera = null;
+  let active = false, t = 0, phase = 'open', onDone = null;
+  let portalEffect = null, watcherRig = null, boss = null;
+  let walkYaw = 0, restY = C.bossRestPos.y;
+  let awaitingContinue = false, skipHandler = null;
+
+  function ease(x) { return x * x * (3 - 2 * x); }
+
+  function init(mainScene, mainCamera) {
+    scene = mainScene;
+    camera = new THREE.PerspectiveCamera(
+      CONFIG.render.fov, mainCamera.aspect, CONFIG.render.near, CONFIG.render.far
+    );
+  }
+
+  function attachSkipListener() {
+    if (skipHandler) return;
+    skipHandler = () => finish();
+    window.addEventListener('pointerdown', skipHandler, { once: true });
+    window.addEventListener('keydown', skipHandler, { once: true });
+  }
+  function detachSkipListener() {
+    if (!skipHandler) return;
+    window.removeEventListener('pointerdown', skipHandler);
+    window.removeEventListener('keydown', skipHandler);
+    skipHandler = null;
+  }
+
+  /* The local player's own likeness, standing where they actually are and
+     facing the portal -- built the same way INTRO builds the crew (CAST +
+     AVIATION_AVATAR's solo resolution), just held statically instead of
+     dropped in. Purely cosmetic: this never touches PLAYER's own state,
+     and the real first-person rig stays wherever WEAPON left it (it just
+     never gets rendered here, since only `scene` -- not `viewScene` --
+     is drawn while this cutscene owns the camera). */
+  function buildWatcher() {
+    const castId = (typeof AVIATION_AVATAR !== 'undefined' && typeof HERO !== 'undefined')
+      ? AVIATION_AVATAR.soloCastId(HERO.castId) : 'playerBluecap';
+    const aviationTokenId = (typeof AVIATION_AVATAR !== 'undefined' && AVIATION_AVATAR.enabled)
+      ? AVIATION_AVATAR.tokenId : null;
+    const built = CAST.build(castId, aviationTokenId ? { aviationTokenId: aviationTokenId } : null);
+    const root = built.rig.root;
+    const p = PLAYER.position;
+    root.position.set(p.x, p.y, p.z);
+    root.rotation.y = Math.atan2(p.x - C.portalPos.x, p.z - C.portalPos.z);
+    scene.add(root);
+    return built.rig;
+  }
+
+  function poseWatcherIdle() {
+    if (!watcherRig) return;
+    const sway = Math.sin(t * 1.3) * 0.05;
+    if (watcherRig.bob) watcherRig.bob.position.y = Math.sin(t * 1.1) * 0.02;
+    if (watcherRig.head) watcherRig.head.rotation.set(0, sway * 0.4, 0);
+    if (watcherRig.armL) watcherRig.armL.rotation.set(0.05, 0, -0.08 + sway * 0.06);
+    if (watcherRig.armR) watcherRig.armR.rotation.set(0.05, 0, 0.08 - sway * 0.06);
+  }
+
+  function disposeGroup(root) {
+    if (!root) return;
+    if (root.parent) root.parent.remove(root);
+    root.traverse(obj => {
+      if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+  }
+
+  function play(mainCamera, onCompleteFn) {
+    if (active) return;
+    active = true; t = 0; phase = 'open'; onDone = onCompleteFn;
+    awaitingContinue = false; boss = null;
+
+    camera.aspect = mainCamera.aspect;
+    camera.updateProjectionMatrix();
+    camera.position.set(C.wideCam.x, C.wideCam.y, C.wideCam.z);
+    camera.lookAt(C.wideLook.x, C.wideLook.y, C.wideLook.z);
+
+    portalEffect = new THREE.Mesh(
+      new THREE.TorusGeometry(1.55, 0.18, 10, 36),
+      new THREE.MeshBasicMaterial({ color: 0x67e8a5, transparent: true, opacity: 0.92, depthWrite: false })
+    );
+    portalEffect.position.set(C.portalPos.x, C.portalPos.y, C.portalPos.z);
+    portalEffect.rotation.y = C.portalRotY;
+    portalEffect.scale.setScalar(0.05);
+    if (scene) scene.add(portalEffect);
+
+    watcherRig = buildWatcher();
+    restY = WORLD.groundAt(C.bossRestPos.x, C.bossRestPos.z, C.portalPos.y, 'surface');
+    walkYaw = Math.atan2(C.portalPos.x - C.bossRestPos.x, C.portalPos.z - C.bossRestPos.z);
+
+    UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
+  }
+
+  function updateCamera() {
+    if (phase !== 'walk') return;
+    const k = ease(UTIL.clamp((t - C.blendStart) / (C.blendEnd - C.blendStart), 0, 1));
+    camera.position.set(
+      UTIL.lerp(C.wideCam.x, C.holdCam.x, k), UTIL.lerp(C.wideCam.y, C.holdCam.y, k), UTIL.lerp(C.wideCam.z, C.holdCam.z, k)
+    );
+    camera.lookAt(
+      UTIL.lerp(C.wideLook.x, C.holdLook.x, k), UTIL.lerp(C.wideLook.y, C.holdLook.y, k), UTIL.lerp(C.wideLook.z, C.holdLook.z, k)
+    );
+  }
+
+  function beginWalk() {
+    phase = 'walk';
+    boss = ENEMY.spawnBoss2(2);
+    if (!boss) { finishWalk(); return; }
+    boss.pos.set(C.portalPos.x, restY, C.portalPos.z);
+    boss.group.position.copy(boss.pos);
+    boss.yaw = walkYaw;
+  }
+
+  function stepWalk() {
+    const k = ease(UTIL.clamp((t - C.openDuration) / C.walkDuration, 0, 1));
+    boss.pos.set(
+      UTIL.lerp(C.portalPos.x, C.bossRestPos.x, k), restY, UTIL.lerp(C.portalPos.z, C.bossRestPos.z, k)
+    );
+    boss.group.position.copy(boss.pos);
+    const walkSpeed = 2.6;
+    boss.vel.set(Math.sin(walkYaw) * walkSpeed, 0, Math.cos(walkYaw) * walkSpeed);
+    boss.yaw = walkYaw;
+    if (typeof ENEMY.poseEntity === 'function') ENEMY.poseEntity(boss, t);
+  }
+
+  function finishWalk() {
+    phase = 'hold';
+    if (boss) {
+      boss.vel.set(0, 0, 0);
+      boss.pos.set(C.bossRestPos.x, restY, C.bossRestPos.z);
+      boss.group.position.copy(boss.pos);
+      if (typeof ENEMY.poseEntity === 'function') ENEMY.poseEntity(boss, t);
+    }
+    if (portalEffect) {
+      const closingPortal = portalEffect;
+      closingPortal.material.opacity = 0.45;
+      setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
+    }
+    UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
+    setTimeout(() => { if (awaitingContinue) UI.toast('PRESS ANY KEY TO CONTINUE', 8); }, 3000);
+    awaitingContinue = true;
+    attachSkipListener();
+  }
+
+  function update(dt) {
+    if (!active) return;
+    t += dt;
+    poseWatcherIdle();
+
+    if (phase === 'open') {
+      if (portalEffect) {
+        const openK = Math.min(1, t / C.openDuration);
+        portalEffect.scale.setScalar(Math.max(0.05, Math.sin(openK * Math.PI * 0.5)));
+        portalEffect.rotation.z += dt * 0.8;
+      }
+      if (t >= C.openDuration) beginWalk();
+      return;
+    }
+
+    if (phase === 'walk') {
+      if (portalEffect) portalEffect.rotation.z += dt * 0.8;
+      stepWalk();
+      updateCamera();
+      if (t >= C.openDuration + C.walkDuration) finishWalk();
+      return;
+    }
+    // phase === 'hold': camera/boss already settled in finishWalk(); just
+    // sits here until the skip listener above fires.
+  }
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    awaitingContinue = false;
+    detachSkipListener();
+    disposeGroup(watcherRig ? watcherRig.root : null);
+    watcherRig = null;
+    disposeGroup(portalEffect);
+    portalEffect = null;
+    boss = null;
+    const cb = onDone; onDone = null;
+    if (cb) cb();
+  }
+
+  return {
+    init, play, update,
+    get active() { return active; },
+    get camera() { return camera; }
   };
 })();
 
@@ -19600,6 +19791,10 @@ const ENEMY = (() => {
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
     clearQuestEnemies, setKillsForDev,
+    // Lets a cutscene (see PORTALCUTSCENE) drive an entity's visual pose
+    // directly -- e.g. Bearclaw2's walk-out animation -- without going
+    // through the real per-frame AI state machine in update().
+    poseEntity: pose,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
