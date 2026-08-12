@@ -14154,6 +14154,23 @@ const GAME = (() => {
       return;
     }
 
+    // PHONESCENE is a pure 2D DOM overlay with no cutscene camera of its own
+    // (unlike INTRO above) -- but it needs the exact same simulation freeze.
+    // `running` only ever flips true via INPUT's 'lock' event, which is
+    // entirely decoupled from whichever cutscene happens to be on screen, so
+    // without this guard ENEMY/PLAYER simulation could run invisibly behind
+    // the opaque veil for the whole conversation, landing the player in
+    // combat -- sometimes already losing it -- the instant the veil lifts.
+    if (typeof PHONESCENE !== 'undefined' && PHONESCENE.active) {
+      INPUT.consumeMouse();
+      LEVEL.update(dt, time);
+      UI.setInteractionHint('');
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      return;
+    }
+
     // one read of the mouse delta per frame, shared by the look and the sway
     const look = INPUT.consumeMouse();
     if (running) WEAPON.addLook(look.x, look.y);
