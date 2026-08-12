@@ -29,6 +29,7 @@ function createQuestHarness(overrides = {}) {
     west: { open: false, changes: [] },
     hatch: { open: false, changes: [] }
   };
+  const railing = { present: true };
   class Vector3 {
     constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
   }
@@ -75,6 +76,13 @@ function createQuestHarness(overrides = {}) {
         accesses[id].open = !!open;
         accesses[id].changes.push(accesses[id].open);
       },
+      setAllNorthBarnAccess(open) {
+        Object.keys(accesses).forEach(id => {
+          accesses[id].open = !!open;
+          accesses[id].changes.push(accesses[id].open);
+        });
+      },
+      setNorthBarnRailing(present) { railing.present = !!present; return true; },
       isNorthBarnAccessOpen(id) { return accesses[id].open; },
       northBarnAccessAt(p) {
         if (p.x < 36) return { id: 'west', label: 'west barn doors' };
@@ -94,7 +102,7 @@ function createQuestHarness(overrides = {}) {
     setTimeout() {}, console
   });
   vm.runInContext(quest + '\n;globalThis.__quest = QUEST;', context);
-  return { quest: context.__quest, enemy, spawns, accesses, game: context.GAME, window: windowMock, resumeCalls };
+  return { quest: context.__quest, enemy, spawns, accesses, railing, game: context.GAME, window: windowMock, resumeCalls };
 }
 
 function createRunStatsHarness() {
@@ -183,7 +191,7 @@ test('quest inventory is fixed, deduplicated, and multiplayer-gated', () => {
   assert.match(html, /if \(p\.runScoped\)[\s\S]*items\.splice\(i, 1\)/);
 });
 
-test('all North Barn entrances share the Barn Key but keep independent open states', () => {
+test('the Barn Key opens every North Barn entrance at once, then each toggles independently', () => {
   assert.match(html, /animated\.northBarnDoor = \{[\s\S]*collider: mainDoorSolid/);
   assert.match(html, /animated\.northBarnWestDoor = \{[\s\S]*collider: westDoorSolid/);
   assert.match(html, /animated\.northBarnHatch = hatch/);
@@ -193,9 +201,10 @@ test('all North Barn entrances share the Barn Key but keep independent open stat
   assert.match(html, /door\.collider\.enabled = door\.target < 0\.5 && door\.openness < 0\.06/);
   assert.match(html, /hatch\.ladder\.enabled = hatch\.target > 0\.5 && hatch\.openness > 0\.55/);
   assert.match(html, /if \(!hatch\.keyed\) \{[\s\S]*hatch\.target = dx \* dx \+ dz \* dz/);
+  assert.match(html, /function setAllNorthBarnAccess\(open, immediate\) \{[\s\S]*setNorthBarnDoor\(open, immediate\)[\s\S]*setNorthBarnWestDoor\(open, immediate\)[\s\S]*setNorthBarnHatch\(open, immediate\)/);
   assert.match(quest, /function nearAccess\(p\)[\s\S]*LEVEL\.northBarnAccessAt/);
   assert.match(quest, /if \(!state\.barnKey\)[\s\S]*LOCKED — KEY REQUIRED/);
-  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setNorthBarnAccess\(access\.id, true\)/);
+  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setAllNorthBarnAccess\(true\)/);
   const collectBody = quest.slice(quest.indexOf('function collect('), quest.indexOf('function spawnGardener('));
   assert.doesNotMatch(collectBody, /setNorthBarnAccess/);
 
@@ -206,15 +215,12 @@ test('all North Barn entrances share the Barn Key but keep independent open stat
     'collecting the key must not open any entrance');
   assert.equal(h.quest.interact({ x: 48, y: 0, z: -55 }), true);
   assert.equal(h.quest.state.barnUnlocked, true);
-  assert.equal(h.accesses.south.open, true, 'the first E interaction uses the key and opens that entrance');
-  assert.equal(h.accesses.west.open, false, 'the west doors remain physically closed until used');
-  assert.equal(h.accesses.hatch.open, false, 'the cellar hatch remains physically closed until used');
-  h.quest.interact({ x: 33, y: 0, z: -66 });
-  assert.equal(h.accesses.west.open, true, 'the unlocked west doors open with E');
-  h.quest.interact({ x: 58, y: 0, z: -73.5 });
-  assert.equal(h.accesses.hatch.open, true, 'the unlocked cellar hatch opens with E');
+  assert.deepEqual(Object.values(h.accesses).map(access => access.open), [true, true, true],
+    'using the key on any single entrance opens all three at once');
   h.quest.interact({ x: 48, y: 0, z: -55 });
   assert.equal(h.accesses.south.open, false, 'later E interactions toggle entrances independently');
+  assert.equal(h.accesses.west.open, true, 'toggling one entrance after the initial unlock leaves the others alone');
+  assert.equal(h.accesses.hatch.open, true, 'toggling one entrance after the initial unlock leaves the others alone');
   h.quest.reset();
   assert.deepEqual(Object.values(h.accesses).map(access => access.open), [false, false, false],
     'a restart closes and relocks all three entrances');

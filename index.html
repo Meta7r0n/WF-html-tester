@@ -672,7 +672,8 @@
   body.touch-device #coopLobby .alt,
   body.touch-device #pause .alt,
   body.touch-device #options .alt,
-  body.touch-device #mapView .alt{display:block;}
+  body.touch-device #mapView .alt,
+  body.touch-device #aviationBuilder .alt{display:block;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
@@ -1467,6 +1468,7 @@
         <button type="button" class="alt" data-open-aviation-builder>Build pilot</button>
       </div>
       <button type="button" class="go" id="hangarPilotStartBtn" hidden>Launch Hangar Pilot →</button>
+      <button type="button" class="alt" id="hangarPilotSwitchBackBtn" hidden>Switch back to classic heroes</button>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
     </div>
   </div>
@@ -6394,6 +6396,14 @@ const LEVEL = (() => {
     return setNorthBarnDoor(open, immediate);
   }
 
+  // The Barn Key opens every entrance at once, not just the one it's used
+  // on -- see QUEST.interact()'s first-use branch.
+  function setAllNorthBarnAccess(open, immediate) {
+    setNorthBarnDoor(open, immediate);
+    setNorthBarnWestDoor(open, immediate);
+    setNorthBarnHatch(open, immediate);
+  }
+
   function isNorthBarnAccessOpen(id) {
     if (id === 'west') return isNorthBarnWestDoorOpen();
     if (id === 'hatch') return isNorthBarnHatchOpen();
@@ -6490,7 +6500,7 @@ const LEVEL = (() => {
     nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen,
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
-    northBarnAccessAt, setNorthBarnAccess, isNorthBarnAccessOpen,
+    northBarnAccessAt, setNorthBarnAccess, setAllNorthBarnAccess, isNorthBarnAccessOpen,
     setNorthBarnRailing
   };
 })();
@@ -13309,10 +13319,11 @@ const QUEST = (() => {
       if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
       if (!state.barnUnlocked) {
         state.barnUnlocked = true;
-        LEVEL.setNorthBarnAccess(access.id, true);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setAllNorthBarnAccess) LEVEL.setAllNorthBarnAccess(true);
+        else LEVEL.setNorthBarnAccess(access.id, true);
         if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
         RUNSTATS.milestone('barn_unlocked', 'northBarn', { entrance: access.id });
-        UI.toast('BARN KEY USED — ' + access.label.toUpperCase() + ' UNLOCKED', 2.2);
+        UI.toast('BARN KEY USED — ALL BARN ENTRANCES OPENED', 2.2);
       } else {
         const open = !LEVEL.isNorthBarnAccessOpen(access.id);
         LEVEL.setNorthBarnAccess(access.id, open);
@@ -15517,6 +15528,7 @@ const AVIATION_AVATAR = (() => {
     document.querySelectorAll('[data-aviation-summary]').forEach(node => { node.textContent = text; });
     const heroChoices = document.getElementById('heroChoices');
     const launch = document.getElementById('hangarPilotStartBtn');
+    const switchBack = document.getElementById('hangarPilotSwitchBackBtn');
     const headline = document.getElementById('playerSelectHeadline');
     const sub = document.getElementById('playerSelectSub');
     const coopPicker = document.getElementById('coopCharacterPicker');
@@ -15525,6 +15537,7 @@ const AVIATION_AVATAR = (() => {
       launch.hidden = !item;
       if (item) launch.textContent = `Launch Hangar Pilot #${item.tokenId} →`;
     }
+    if (switchBack) switchBack.hidden = !item;
     if (headline) headline.innerHTML = item
       ? 'Launch your<br/>pilot<span>Ejection Seat armed · body preset saved</span>'
       : 'Pick your<br/>special<span>Each hero has one emergency trick</span>';
@@ -15687,6 +15700,20 @@ const AVIATION_AVATAR = (() => {
     close();
   }
 
+  // One click back to the classic hero roster from the collapsed
+  // playerSelect view, without needing to re-open the builder and find
+  // "Use classic hero heads" inside it -- see hangarPilotSwitchBackBtn.
+  function disable() {
+    if (!state.enabled) return;
+    state = { enabled: false, tokenId: state.tokenId, bodyId: state.bodyId };
+    working = Object.assign({}, state);
+    persist();
+    renderSummaries();
+    refreshHeroPortraits();
+    if (typeof HERO !== 'undefined' && HERO.syncPilotHud) HERO.syncPilotHud();
+    syncNetworkChoice(false);
+  }
+
   function init(onPortraitsChanged) {
     if (initialized) return;
     initialized = true;
@@ -15739,10 +15766,12 @@ const AVIATION_AVATAR = (() => {
     document.getElementById('aviationUseBtn').addEventListener('click', event => commit(true, event));
     document.getElementById('aviationClassicBtn').addEventListener('click', event => commit(false, event));
     document.getElementById('aviationBackBtn').addEventListener('click', close);
+    const switchBackBtn = document.getElementById('hangarPilotSwitchBackBtn');
+    if (switchBackBtn) switchBackBtn.addEventListener('click', disable);
   }
 
   return {
-    init, appearance, soloCastId, networkTokenId, selectBody,
+    init, appearance, soloCastId, networkTokenId, selectBody, disable,
     get enabled() { return state.enabled; },
     get tokenId() { return networkTokenId(); },
     get bodyId() { return state.bodyId; },
