@@ -13,6 +13,9 @@ const runStatsSource = html.slice(statsStart, statsEnd);
 const portalCutStart = html.indexOf('const PORTALCUTSCENE = (() => {');
 const portalCutEnd = html.indexOf('/* ============================== [HERO] ===============================', portalCutStart);
 const portalCutscene = html.slice(portalCutStart, portalCutEnd);
+const inputStart = html.indexOf('const INPUT = (() => {');
+const inputEnd = html.lastIndexOf('\n', html.indexOf('[PLAYER]', inputStart));
+const inputSource = html.slice(inputStart, inputEnd);
 
 test('visible and runtime build labels identify v0.38', () => {
   assert.match(html, /<title>The Withered Farm — v0\.38<\/title>/);
@@ -426,4 +429,97 @@ test('developer reset cannot poison later natural progression', () => {
   assert.match(html, /e\.devSpawn = false;/);
   assert.match(html, /wilted: cmdWilted/);
   assert.match(html, /QUEST\.reset\(\);[\s\S]*ENEMY\.reset\(\);[\s\S]*PICKUP\.reset\(\);[\s\S]*QUEST\.start\(\)/);
+});
+
+// Builds a minimal document/window/performance so INPUT's own event
+// listeners (registered in init()) run for real, including the pointer-lock
+// handshake requestLock()/exitPointerLock() need to flip `engaged`. This
+// sidesteps two live-testing dead ends: headless Chromium won't reliably
+// grant real pointer lock outside a trusted gesture (confirmed live --
+// INPUT.engaged stayed false after a real click), and even when it does,
+// distinguishing "debounced" from "not wired" needs frame-exact control
+// over elapsed time that a real browser's render loop can't give here.
+function makeEventTarget(types) {
+  const listeners = {};
+  types.forEach(t => { listeners[t] = []; });
+  return {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type, evt) { (listeners[type] || []).slice().forEach(fn => fn(evt || {})); }
+  };
+}
+
+function createInputHarness() {
+  const documentMock = Object.assign(
+    makeEventTarget(['keydown', 'keyup', 'mousemove', 'mousedown', 'mouseup', 'contextmenu',
+      'pointerlockchange', 'pointerlockerror', 'wheel', 'gesturestart']),
+    {
+      pointerLockElement: null,
+      exitPointerLock() { documentMock.pointerLockElement = null; documentMock.trigger('pointerlockchange'); }
+    }
+  );
+  const windowMock = Object.assign(makeEventTarget(['keydown', 'keyup', 'blur']), { matchMedia: undefined });
+  let nowValue = 0;
+  const performanceMock = { now: () => nowValue };
+  const elementMock = {
+    style: {},
+    requestPointerLock() { documentMock.pointerLockElement = elementMock; documentMock.trigger('pointerlockchange'); }
+  };
+  const context = vm.createContext({
+    document: documentMock, window: windowMock, performance: performanceMock,
+    setTimeout: () => 0, clearTimeout: () => {}, console
+  });
+  vm.runInContext(inputSource + '\n;globalThis.__input = INPUT;', context);
+  const INPUT = context.__input;
+  INPUT.init(elementMock);
+  return { INPUT, documentMock, windowMock, setNow: v => { nowValue = v; } };
+}
+
+test('mouse wheel cycles weapons, debounced, and only while actually engaged', () => {
+  assert.match(inputSource, /prevWeapon: false/, 'prevWeapon must be a real action, not just a local variable');
+  assert.match(inputSource, /addEventListener\('wheel', e => \{[\s\S]*if \(!engaged \|\| mode === 'touch'\) return;/);
+  assert.match(inputSource, /triggerAction\(e\.deltaY > 0 \? 'nextWeapon' : 'prevWeapon'\)/);
+  assert.match(html, /if \(INPUT\.consumePress\('nextWeapon'\)\) cycleWeapon\(1\);\s*\n\s*if \(INPUT\.consumePress\('prevWeapon'\)\) cycleWeapon\(-1\);/);
+
+  const h = createInputHarness();
+  assert.equal(h.INPUT.engaged, false, 'starts disengaged');
+
+  // Disengaged: scrolling must do nothing at all.
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false, 'wheel is ignored before pointer lock engages');
+
+  // requestLock() rate-limits re-locking against its own lastRequest clock
+  // (both start at 0 here), so give it real elapsed time first -- a real
+  // browser's now() is never actually 0 at the moment a player locks in.
+  h.setNow(1000);
+  h.INPUT.requestLock();
+  assert.equal(h.INPUT.engaged, true, 'requestLock synchronously engages in this mock');
+
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), true, 'scroll down pulses nextWeapon while engaged');
+  assert.equal(h.INPUT.consumePress('prevWeapon'), false);
+
+  // A second notch inside the debounce window must be swallowed, exactly
+  // the failure mode a real trackpad's flurry of small deltaY events would
+  // otherwise hit (cycling more than one weapon per physical scroll click).
+  h.setNow(1050);
+  h.documentMock.trigger('wheel', { deltaY: -100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('prevWeapon'), false, 'a second tick inside the debounce window is dropped');
+
+  // Past the debounce window, scrolling the other way pulses prevWeapon.
+  h.setNow(1200);
+  h.documentMock.trigger('wheel', { deltaY: -100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('prevWeapon'), true, 'scroll up pulses prevWeapon once debounced');
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false);
+
+  // Releasing the lock re-disengages, and wheel goes back to doing nothing.
+  h.INPUT.releaseLock();
+  assert.equal(h.INPUT.engaged, false);
+  h.setNow(2000);
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false, 'wheel is ignored again once disengaged');
 });

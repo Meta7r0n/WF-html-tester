@@ -8044,7 +8044,7 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, pause: false,
+    melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, prevWeapon: false, pause: false,
     crouch: false, voiceTalk: false, ads: false,
     slot1: false, slot2: false, slot3: false, slot4: false,
     slot5: false, slot6: false, slot7: false, slot8: false, slot9: false
@@ -8065,7 +8065,7 @@ const INPUT = (() => {
   } catch (e) {}
   let mode = touchMode ? 'touch' : 'lock';
   let element = null;
-  let lockTimer = null, lastRequest = 0;
+  let lockTimer = null, lastRequest = 0, lastWheelCycle = 0;
   let diagnosis = '';
   const listeners = { lock: [], unlock: [], press: [], lockError: [] };
 
@@ -8447,6 +8447,19 @@ const INPUT = (() => {
       if (e.button === 2) setAction('ads', false);
     });
     document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
+    // Scroll to cycle weapons -- same nextWeapon/prevWeapon pulse the mobile
+    // Swap button already drives (see WEAPON.update's consumePress calls).
+    // Debounced like requestLock's own rate limit above: a single physical
+    // notch can still fire several small deltaY events on a trackpad, and
+    // without this a single scroll would blow through more than one weapon.
+    document.addEventListener('wheel', e => {
+      if (!engaged || mode === 'touch') return;
+      e.preventDefault();
+      const t = now();
+      if (t - lastWheelCycle < 140) return;
+      lastWheelCycle = t;
+      triggerAction(e.deltaY > 0 ? 'nextWeapon' : 'prevWeapon');
+    }, { passive: false });
 
     document.addEventListener('pointerlockchange', () => {
       locked = document.pointerLockElement === element;
@@ -10382,6 +10395,7 @@ const WEAPON = (() => {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
       if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
+      if (INPUT.consumePress('prevWeapon')) cycleWeapon(-1);
       const pressedFire = INPUT.consumePress('fire');
       const d = defFor();
       if (INPUT.consumePress('melee')) {
