@@ -78,6 +78,7 @@ Before you drop in, you can also flip the difficulty switch:
 | `V` | Quick melee, regardless of what's in your hands |
 | Right Click | Aim down sights — steadier and more accurate, but slower to move, and sprinting is locked out entirely while aiming |
 | `1`–`9` | Switch weapon by slot |
+| Scroll Wheel | Cycle to the next/previous owned weapon |
 | `R` | Reload |
 | `G` | Throw the selected throwable |
 | `T` | Cycle throwable type (Grenade / Dynamite / whatever else you're carrying) |
@@ -163,7 +164,7 @@ Weapon slots run `1`–`9`. Two more — the Downed Double Barrel and the Chains
 | 9 | **Portal Gun** | Precision sidearm | 6 / 24 | Crafted only |
 | — | **Seed Spitter** | Automatic LMG | 50 / 200 | The Gardener's drop |
 
-> **A note on the Seed Spitter's slot:** the keyboard only has number keys `1`–`9`, and they're all spoken for — so the Seed Spitter doesn't get one. It's still fully usable: cycle to it with the weapon-switch control (mouse wheel / next-weapon button) or tap it directly in the mobile inventory strip, same as any weapon once your loadout runs past nine.
+> **A note on the Seed Spitter's slot:** the keyboard only has number keys `1`–`9`, and they're all spoken for — so the Seed Spitter doesn't get one. It's still fully usable: scroll the mouse wheel to cycle to it, or tap it directly in the mobile inventory strip, same as any weapon once your loadout runs past nine.
 
 ### Weapon notes
 
@@ -429,6 +430,7 @@ CROUCH/SLIDE Ctrl                SWITCH THROW  T
 FIRE        Left Click           USE JAYS      J
 AIM         Right Click          LANTERN       F
 WEAPON SLOT 1-9                  TALK          B (hold)
+CYCLE WEAPON Scroll Wheel
 PAUSE       Esc                  DEV CONSOLE   ` (solo only)
 ```
 
