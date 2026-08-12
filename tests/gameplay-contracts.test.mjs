@@ -19,7 +19,7 @@ test('visible and runtime build labels identify v0.38', () => {
   assert.doesNotMatch(html, /WC v0\.37/);
 });
 
-function createQuestHarness() {
+function createQuestHarness(overrides = {}) {
   const spawns = [];
   const accesses = {
     south: { open: false, changes: [] },
@@ -32,7 +32,10 @@ function createQuestHarness() {
   const enemy = {
     kills: 0,
     spawnBoss3: options => { spawns.push(['beatSlayer', options]); return {}; },
-    spawnBoss2: (appearance, options) => { spawns.push(['bearClaw', appearance, options]); return {}; },
+    spawnBoss2: (appearance, options) => {
+      spawns.push(['bearClaw', appearance, options]);
+      return { pos: { set() {} }, group: { position: { copy() {} } } };
+    },
     spawnBoss: options => { spawns.push(['carrotWarden', options]); return {}; },
     spawnGrunt: () => ({
       alive: true, def: { stats: {} }, group: { scale: { setScalar() {} } },
@@ -40,15 +43,31 @@ function createQuestHarness() {
     }),
     clearQuestEnemies() {}
   };
+  // Tracks addEventListener/removeEventListener registrations so a test can
+  // fire a fake 'pointerdown'/'keydown' the same way a real user gesture
+  // would, without depending on any real browser or real elapsed time.
+  const listeners = { pointerdown: [], keydown: [] };
+  const windowMock = {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type) { listeners[type].slice().forEach(fn => fn()); }
+  };
+  const resumeCalls = [];
   const context = vm.createContext({
     CONFIG: { progress: {
       singleBeatSlayerThreshold: 33, singleBearClawThreshold: 66,
       singleCarrotWardenThreshold: 99, singleGardenerThreshold: 132
     } },
-    GAME: { mode: 'single', complete() {} },
+    GAME: { mode: 'single', complete() {}, resumeAfterQuestCutscene() { resumeCalls.push(true); } },
     PLAYER: { layerId: 'surface' },
     ENEMY: enemy,
-    LEVEL: {
+    INPUT: { clearActions() {}, releaseLock() {} },
+    WEAPON: { grantWeapon() {}, setCurrent() {} },
+    LEVEL: overrides.LEVEL || {
       setNorthBarnAccess(id, open) {
         accesses[id].open = !!open;
         accesses[id].changes.push(accesses[id].open);
@@ -61,12 +80,18 @@ function createQuestHarness() {
       }
     },
     UI: { toast() {}, setBoss() {} }, RUNSTATS: { milestone() {}, bossStart() {}, weapon() {} },
-    WORLD: { groundAt() { return 0; } }, THREE: { Vector3 },
+    WORLD: { groundAt() { return 0; } },
+    THREE: {
+      Vector3,
+      Mesh: class { constructor() { this.position = { set() {} }; this.rotation = { x: 0, y: 0, z: 0 }; this.scale = { setScalar() {} }; this.material = {}; } },
+      TorusGeometry: class {}, MeshBasicMaterial: class {}, CircleGeometry: class {}
+    },
+    window: windowMock,
     document: { getElementById() { return null; } }, performance: { now() { return 0; } },
     setTimeout() {}, console
   });
   vm.runInContext(quest + '\n;globalThis.__quest = QUEST;', context);
-  return { quest: context.__quest, enemy, spawns, accesses, game: context.GAME };
+  return { quest: context.__quest, enemy, spawns, accesses, game: context.GAME, window: windowMock, resumeCalls };
 }
 
 function createRunStatsHarness() {
@@ -209,6 +234,47 @@ test('Portal Gun tuning and Bearclaw2 stun lockout are explicit', () => {
   assert.match(html, /portalHeadshotStunChance: 0\.25/);
   assert.match(html, /portalHeadshotStunDuration: 2\.0/);
   assert.match(html, /portalStunImmunity: 3\.0/);
+});
+
+test('the Portal Gun cutscene only hands off to gameplay on a real gesture, not its own timer', () => {
+  assert.match(quest, /awaitingCutsceneContinue = true;[\s\S]*attachCutsceneSkipListener\(\)/);
+
+  // No point counts as a barn-door access here -- interact()'s crafting
+  // branch is only reachable once nearAccess() finds nothing, and this
+  // test's crafting-station coordinates don't correspond to a real door.
+  const h = createQuestHarness({ LEVEL: { setNorthBarnAccess() {}, isNorthBarnAccessOpen() { return false; }, northBarnAccessAt() { return null; } } });
+  h.quest.start();
+  h.quest.state.components.greenShard = true;
+  h.quest.state.components.metalFragment = true;
+  h.quest.state.components.computerChip = true;
+  h.quest.state.barnKey = true;
+  h.quest.state.barnUnlocked = true;
+  assert.equal(h.quest.interact({ x: 58.3, y: 3.5, z: -76.7 }), true);
+  assert.equal(h.quest.cutsceneActive, true, 'crafting starts the portal cutscene');
+
+  // One big dt blows straight past the 5.2s buildup and spawns Bearclaw2 --
+  // this used to call GAME.resumeAfterQuestCutscene() (-> INPUT.requestLock())
+  // immediately, straight from this timer-driven update() call.
+  h.quest.update(6, false);
+  assert.equal(h.quest.state.stage, 6, 'Bearclaw2 spawning still advances the stage on schedule');
+  assert.deepEqual(h.spawns.map(s => s[0]).filter(id => id === 'bearClaw'), ['bearClaw'],
+    'Bearclaw2 still spawns on schedule');
+  assert.deepEqual(h.resumeCalls, [], 'resumeAfterQuestCutscene must NOT fire from the timer-driven update() call');
+  assert.equal(h.quest.cutsceneActive, true, 'still treated as a cutscene while awaiting the real gesture');
+
+  // Further update() calls with no real gesture must never let it through either.
+  h.quest.update(1, false);
+  h.quest.update(1, false);
+  assert.deepEqual(h.resumeCalls, [], 'no amount of additional simulated time substitutes for a real gesture');
+
+  // The real gesture -- a genuine click or keypress -- is what's allowed to trigger it.
+  h.window.trigger('pointerdown');
+  assert.deepEqual(h.resumeCalls, [true], 'a real gesture hands off exactly once');
+  assert.equal(h.quest.cutsceneActive, false);
+
+  // A second stray gesture afterward must be a no-op (listener already detached).
+  h.window.trigger('pointerdown');
+  assert.deepEqual(h.resumeCalls, [true], 'the handoff never double-fires');
 });
 
 test('run statistics count ammo after consumption and use monotonic time', () => {

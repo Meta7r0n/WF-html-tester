@@ -13109,6 +13109,28 @@ const QUEST = (() => {
     crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false
   };
   let gardener = null, cutsceneTimer = 0, portalEffect = null;
+  // Set once cutsceneTimer reaches 0 (Bearclaw2 has spawned) -- see the
+  // cutsceneTimer===0 branch in update() for why the handoff back to
+  // GAME.resumeAfterQuestCutscene() waits here instead of firing straight
+  // from that timer-driven call.
+  let awaitingCutsceneContinue = false, cutsceneSkipHandler = null;
+
+  function attachCutsceneSkipListener() {
+    if (cutsceneSkipHandler) return;
+    cutsceneSkipHandler = () => {
+      awaitingCutsceneContinue = false;
+      detachCutsceneSkipListener();
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+    };
+    window.addEventListener('pointerdown', cutsceneSkipHandler, { once: true });
+    window.addEventListener('keydown', cutsceneSkipHandler, { once: true });
+  }
+  function detachCutsceneSkipListener() {
+    if (!cutsceneSkipHandler) return;
+    window.removeEventListener('pointerdown', cutsceneSkipHandler);
+    window.removeEventListener('keydown', cutsceneSkipHandler);
+    cutsceneSkipHandler = null;
+  }
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
   function setBarnEntrances(open, immediate) {
@@ -13132,6 +13154,7 @@ const QUEST = (() => {
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
     gardener = null; cutsceneTimer = 0;
+    awaitingCutsceneContinue = false; detachCutsceneSkipListener();
     if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
     portalEffect = null;
     setBarnEntrances(false, true);
@@ -13327,12 +13350,25 @@ const QUEST = (() => {
         closingPortal.material.opacity = 0.45;
         setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
       }
-      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+      // GAME.resumeAfterQuestCutscene() ends in INPUT.requestLock() -- and
+      // this whole branch runs from a timer-driven QUEST.update() call, not
+      // a user gesture, so calling it straight from here hits the exact
+      // same transient-activation pointer-lock rejection INTRO/PHONESCENE
+      // already had to guard against: the request gets silently rejected,
+      // dropping the player onto the "mouse lock failed" pause card just as
+      // Bearclaw2 (spawned a few units away, see boss.pos.set above) gets a
+      // free run at them. Wait for the player's own click/keypress instead,
+      // same pattern as everywhere else in this file that hands off into
+      // INPUT.requestLock().
+      awaitingCutsceneContinue = true;
+      attachCutsceneSkipListener();
+      setTimeout(() => { if (awaitingCutsceneContinue) UI.toast('PRESS ANY KEY TO CONTINUE', 8); }, 3000);
     }
   }
   return { reset, start, collect, interact, interactionHint, update, updateProgress, bossDefeated, spawnGardener, isSinglePlayer,
     get state() { return state; }, get encounters() { return ENCOUNTERS; },
-    get gardener() { return gardener; }, get cutsceneActive() { return cutsceneTimer > 0; } };
+    get gardener() { return gardener; },
+    get cutsceneActive() { return cutsceneTimer > 0 || awaitingCutsceneContinue; } };
 })();
 
 /* ============================== [GAME] =============================== */
