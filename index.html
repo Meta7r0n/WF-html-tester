@@ -136,6 +136,10 @@
   #runClock.on{opacity:1} #runClock small{display:block;font-size:8px;letter-spacing:2px;color:var(--rust-deep)}
   #componentHud{position:fixed;left:50%;bottom:18px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
   #componentHud.on{opacity:1}.component-slot{width:min(25vw,145px);padding:6px 8px;background:rgba(22,18,15,.84);border:2px solid var(--cream);border-radius:7px;color:var(--cream-dim);font:900 9px/1.15 "Rockwell",Georgia,serif;text-align:center}.component-slot.collected{background:var(--olive);color:var(--cream);border-color:var(--mustard)}.component-slot.assembled{opacity:.55;text-decoration:line-through}
+  /* Stacked directly above componentHud (same layout, its own quest) so
+     both trays can be visible at once without overlapping. */
+  #shieldHud{position:fixed;left:50%;bottom:58px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
+  #shieldHud.on{opacity:1}
   #runStats{
     margin:16px 0 20px;text-align:left;background:var(--ink-soft);color:var(--cream);
     border:4px solid var(--ink);border-radius:12px;box-shadow:7px 8px 0 rgba(22,18,15,.38);
@@ -702,7 +706,7 @@
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
   body.touch-device #boss3Hud{top:max(92px,calc(env(safe-area-inset-top) + 80px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.5deg);transform-origin:top center;}
-  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
+  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}body.touch-device #shieldHud{bottom:max(152px,calc(env(safe-area-inset-bottom) + 144px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -768,7 +772,7 @@
     background:var(--cream);
     border:5px solid var(--ink);
     border-radius:26px 34px 24px 30px;
-    padding:34px 34px 28px;
+    padding:26px 30px 22px;
     box-shadow:12px 14px 0 rgba(22,18,15,.55);
     transform:rotate(-.6deg);
   }
@@ -1079,14 +1083,14 @@
   /* Options is a true child modal. It must sit above Pause, which appears
      later in the DOM and otherwise wins the equal-z-index stacking order. */
   #options{z-index:44;}
-  #options .options-card{max-width:520px;max-height:86vh;overflow-y:auto;}
-  .opt-section{margin:18px 0;}
+  #options .options-card{max-width:560px;max-height:90vh;overflow-y:auto;}
+  .opt-section{margin:13px 0;}
   .opt-heading{
-    margin:0 0 10px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
+    margin:0 0 7px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
     text-transform:uppercase;color:var(--rust-deep);border-bottom:2px dashed rgba(22,18,15,.2);
-    padding-bottom:6px;
+    padding-bottom:4px;
   }
-  .opt-row{display:flex;align-items:center;gap:12px;margin:10px 0;font-size:13.5px;color:var(--ink-soft);}
+  .opt-row{display:flex;align-items:center;gap:12px;margin:7px 0;font-size:13.5px;color:var(--ink-soft);}
   .opt-hint{margin:2px 0 4px;font-size:12px;line-height:1.4;color:var(--ink-soft);}
   .opt-row span{flex:0 0 84px;font-weight:700;}
   .opt-row input[type="range"]{flex:1 1 auto;accent-color:var(--rust);}
@@ -1104,7 +1108,10 @@
   .spray-tag-actions .alt{display:inline-block;margin:0;}
   #optSprayTagFile{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;}
   #optSprayTagStatus.bad{color:var(--rust-deep);font-weight:800;}
-  .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:7px;}
+  .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px 16px;}
+  @media (min-width:480px){
+    .opt-controls{grid-template-columns:repeat(2,minmax(0,1fr));}
+  }
   .opt-controls li{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     font-size:13px;color:var(--ink-soft);
@@ -1226,6 +1233,11 @@
     <div class="component-slot" data-component="metalFragment">Weapon Fragment</div>
     <div class="component-slot" data-component="computerChip">Computer Chip</div>
   </div>
+  <div id="shieldHud" aria-label="Plow Shield components">
+    <div class="component-slot" data-shield-component="plowDisc">Plow Disc</div>
+    <div class="component-slot" data-shield-component="harnessStraps">Harness Straps</div>
+    <div class="component-slot" data-shield-component="reinforcingPlate">Reinforcing Plate</div>
+  </div>
   <div id="reloadTag">Press R to reload</div>
   <div id="throwableHud" aria-live="polite">
     <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
@@ -1302,6 +1314,7 @@
       <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
       <button type="button" class="mobile-btn" id="mobileTalk" aria-label="Hold to talk">Talk</button>
       <button type="button" class="mobile-btn" id="mobileADS" aria-label="Aim: steadier and more accurate, slower to move">Aim</button>
+      <button type="button" class="mobile-btn" id="mobileShield" aria-label="Raise the Plow Shield to block">Shield</button>
       <button type="button" class="mobile-btn" id="mobileInteract" aria-label="Interact">Use</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
@@ -1557,7 +1570,7 @@
         <div class="spray-tag-editor">
           <div class="spray-tag-preview"><img id="optSprayTagPreview" alt="Current local spray tag" /></div>
           <div class="spray-tag-actions">
-            <button type="button" class="alt" id="optSprayTagChoose">Choose PNG / JPEG</button>
+            <label class="alt" id="optSprayTagChoose" for="optSprayTagFile" tabindex="0" role="button">Choose PNG / JPEG</label>
             <button type="button" class="alt" id="optSprayTagReset">Use built-in tag</button>
             <input id="optSprayTagFile" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
           </div>
@@ -1767,6 +1780,16 @@ const CONFIG = {
     // Downed is a second chance, not a safe room. You keep your head and the
     // Double Barrel, but the clock runs and reaching zero here is a real death.
     downedTime: 16, downedTilt: 0.34
+  },
+  // The Plow Shield: crafted from 3 found pieces at the North Barn Cellar
+  // workbench (see QUEST). Deliberately its own system, not a weapon slot
+  // and not the melee key -- see SHIELD. Passive rear protection is always
+  // on once crafted; the front block only applies while actively raised.
+  shield: {
+    passiveRearDamageMult: 0.55, rearArcDot: 0.35,
+    raisedFrontDamageMult: 0.12, raisedFrontArcDot: 0.3,
+    raisedSpeedMult: 0.62, raiseLerpRate: 10,
+    bashDamage: 38, bashRange: 2.1, bashArc: 0.55, bashForce: 1.7, bashCooldown: 0.62
   },
   map: {
     // The south gate stays fixed while expansions push the farm north.
@@ -3542,6 +3565,7 @@ const LEVEL = (() => {
     basementHatch: null, basementHatches: [], barnStairGate: null,
     northBarnDoor: null, northBarnWestDoor: null, northBarnHatch: null
   };
+  let craftingScreenMesh = null;
 
   /* soft-edged dirt blob used to paint the footpaths */
   let pathTex = null;
@@ -4996,7 +5020,7 @@ const LEVEL = (() => {
     PRIM.box(1.45, 0.95, 0.72, computerMat,
       { pos: [-0.6, 1.65, -0.05], parent: station, outline: 0.045, warp: 0.018 });
     const screenTex = TEX.sign(['CRAFTING', 'OFFLINE'], PAL.oliveDeep, PAL.jaysLight, 256, 144);
-    PRIM.box(1.16, 0.62, 0.06, MAT.flat(0xffffff, { map: screenTex }),
+    craftingScreenMesh = PRIM.box(1.16, 0.62, 0.06, MAT.flat(0xffffff, { map: screenTex }),
       { pos: [-0.6, 1.66, 0.34], parent: station, outline: 0.025, ray: false });
     PRIM.box(1.25, 0.09, 0.52, computerMat,
       { pos: [-0.6, 1.19, 0.52], rot: [-0.08, 0, 0], parent: station, outline: 0.03 });
@@ -6132,6 +6156,33 @@ const LEVEL = (() => {
     WORLD.addFloor(58.5, FLOOR_Y, -61.0, 1.65, 1.85, 3.4, 'north_barn_cellar_cover');
     WORLD.addFloor(48.0, FLOOR_Y, -65.5, 3.2, 0.82, 1.45, 'north_barn_cellar_cover');
 
+    // Second crafting station, one floor directly below the north barn's own
+    // Portal Gun workbench: assembles the Plow Shield from 3 pieces found
+    // out in the world (see QUEST.nearShieldBench/SHIELD_COMPONENTS). Clear
+    // of the cellar cover props and both hatch-landing spawn markers above.
+    const shieldBench = new THREE.Group();
+    shieldBench.position.set(50.0, FLOOR_Y, -73.0);
+    shieldBench.name = 'ShieldWorkbench';
+    shieldBench.userData = { id: 'shield_workbench', craftingStation: true };
+    const shieldBenchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const shieldClampMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const swb = new PRIM.Batch(shieldBenchMat, 0.04);
+    swb.box(2.6, 0.16, 1.2, 0, 0.82, 0, 0, 0, 0.01, 0.016);
+    [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]].forEach(p =>
+      swb.box(0.15, 0.8, 0.15, p[0], 0.4, p[1], 0, 0, 0, 0.01));
+    swb.build(shieldBench);
+    PRIM.box(0.5, 0.3, 0.22, shieldClampMat, { pos: [0.6, 0.98, 0], parent: shieldBench, outline: 0.03 });
+    // A part-assembled riot shield leaning against the bench -- same shape
+    // family as SHIELD.build()'s first-person viewmodel, just bench-sized.
+    const shieldLeanMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    PRIM.box(0.62, 0.85, 0.07, shieldLeanMat,
+      { pos: [-0.95, 0.6, 0.55], rot: [0.25, 0, 0.05], parent: shieldBench, outline: 0.025, warp: 0.012 });
+    const shieldBenchGlow = new THREE.PointLight(0xC98A52, 0.4, 3.5, 2);
+    shieldBenchGlow.position.set(0, 1.1, 0.3); shieldBench.add(shieldBenchGlow);
+    parent.add(shieldBench);
+    WORLD.addFloor(50.0, FLOOR_Y, -73.0, 3.0, 0.98, 1.6, 'shield_workbench');
+    PROPS.lantern(parent, 50.0, FLOOR_Y + 2.6, -71.5, 0);
+
     // Two low service platforms add deliberate vertical play without putting
     // the player's head into the ceiling. Every step is at or below 0.5 m.
     const platforms = new PRIM.Batch(trim, 0.028);
@@ -6391,6 +6442,18 @@ const LEVEL = (() => {
     return true;
   }
 
+  // The dormant crafting station's computer screen: rebakes its texture in
+  // place so the prop can react to quest progress (barn unlocked, Portal
+  // Gun cutscene finished) without rebuilding any geometry.
+  function setCraftingScreenText(lines) {
+    if (!craftingScreenMesh) return false;
+    const oldTex = craftingScreenMesh.material.map;
+    craftingScreenMesh.material.map = TEX.sign(lines, PAL.oliveDeep, PAL.jaysLight, 256, 144);
+    craftingScreenMesh.material.needsUpdate = true;
+    if (oldTex && oldTex.dispose) oldTex.dispose();
+    return true;
+  }
+
   const NORTH_BARN_ACCESS = Object.freeze({
     south: Object.freeze({ id: 'south', label: 'south barn doors' }),
     west: Object.freeze({ id: 'west', label: 'west barn doors' }),
@@ -6515,7 +6578,7 @@ const LEVEL = (() => {
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
     northBarnAccessAt, setNorthBarnAccess, setAllNorthBarnAccess, isNorthBarnAccessOpen,
-    setNorthBarnRailing
+    setNorthBarnRailing, setCraftingScreenText
   };
 })();
 
@@ -8045,7 +8108,7 @@ const INPUT = (() => {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
     melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, prevWeapon: false, pause: false,
-    crouch: false, voiceTalk: false, ads: false,
+    crouch: false, voiceTalk: false, ads: false, shield: false,
     slot1: false, slot2: false, slot3: false, slot4: false,
     slot5: false, slot6: false, slot7: false, slot8: false, slot9: false
   };
@@ -8085,6 +8148,7 @@ const INPUT = (() => {
     'KeyJ': 'useJays',
     'KeyE': 'interact',
     'KeyB': 'voiceTalk',
+    'KeyQ': 'shield',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
@@ -8107,7 +8171,7 @@ const INPUT = (() => {
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
-    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk',
+    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk', 'shield',
     'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8', 'slot9'
   ];
 
@@ -8262,7 +8326,7 @@ const INPUT = (() => {
     }
     const action = KEYMAP[e.code];
     if (!action) return;
-    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action === 'shield' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     setAction(action, down);
   }
 
@@ -8417,6 +8481,7 @@ const INPUT = (() => {
     bindTouchButton('mobileCrouch', 'crouch');
     bindTouchButton('mobileTalk', 'voiceTalk');
     bindTouchButton('mobileADS', 'ads');
+    bindTouchButton('mobileShield', 'shield');
     bindTouchButton('mobileInteract', 'interact');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
@@ -8649,6 +8714,15 @@ const PLAYER = (() => {
     const pvpHit = !!(attacker && attacker.pvp);
     if (dead || devGodMode || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
         !Number.isFinite(amount) || amount <= 0) return false;
+    // The Plow Shield reduces the raw incoming hit before it ever reaches
+    // the health-shield absorb/health split below -- see SHIELD.
+    if (typeof SHIELD !== 'undefined' && SHIELD.owned && fromPos) {
+      const sourceX = Array.isArray(fromPos) ? Number(fromPos[0]) : Number(fromPos.x);
+      const sourceZ = Array.isArray(fromPos) ? Number(fromPos[2]) : Number(fromPos.z);
+      if (Number.isFinite(sourceX) && Number.isFinite(sourceZ)) {
+        amount *= SHIELD.damageMultiplierFor(yaw, pos.x, pos.z, sourceX, sourceZ);
+      }
+    }
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
@@ -9000,12 +9074,17 @@ const PLAYER = (() => {
     const currentWeaponDef = typeof WEAPON !== 'undefined' ? CONFIG.weapons[WEAPON.currentId] : null;
     aiming = active && !locked && !climbing && INPUT.actions.ads &&
       !!currentWeaponDef && (currentWeaponDef.kind === 'gun' || currentWeaponDef.kind === 'flame');
+    // Raising the Plow Shield trades mobility for the frontal block, same
+    // shape as aiming just above -- see SHIELD for the block/bash itself.
+    const shieldActive = active && !locked && !climbing &&
+      typeof SHIELD !== 'undefined' && SHIELD.owned && INPUT.actions.shield;
 
-    sprinting = !climbing && !crouching && active && !locked && !aiming &&
+    sprinting = !climbing && !crouching && active && !locked && !aiming && !shieldActive &&
       slowTimer <= 0 && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
     const aimSpeedFactor = aiming ? C.adsSpeedMult : 1;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * slowMult * crouchSpeedFactor * aimSpeedFactor;
+    const shieldSpeedFactor = shieldActive ? CONFIG.shield.raisedSpeedMult : 1;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * slowMult * crouchSpeedFactor * aimSpeedFactor * shieldSpeedFactor;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
@@ -10390,7 +10469,12 @@ const WEAPON = (() => {
       if (damageMultTimer <= 0) { damageMultTimer = 0; damageMult = 1; }
     }
 
-    if (active) {
+    // The Plow Shield is its own system with its own key (see SHIELD),
+    // never a weapon-slot item -- while it's actually raised, it fully
+    // owns input: no firing, reloading, or swapping, and the melee key
+    // becomes a shield bash instead (see SHIELD.update).
+    const shieldRaised = typeof SHIELD !== 'undefined' && SHIELD.owned && INPUT.actions.shield;
+    if (active && !shieldRaised) {
       for (let slot = 1; slot <= 9; slot++) {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
@@ -10601,6 +10685,106 @@ const WEAPON = (() => {
     get reserve() { return stateFor().reserve; },
     get reloading() { return reloading; },
     get damageBoostRemaining() { return damageMultTimer; }
+  };
+})();
+
+/* ============================== [SHIELD] ==============================
+   The Plow Shield: a COD-Zombies-style riot shield, crafted from 3 found
+   pieces at the North Barn Cellar workbench (see QUEST). Deliberately its
+   own system, not a weapon-slot item and not the melee key:
+
+     - Passive, always on once crafted: reduces damage taken from behind,
+       whether raised or not (see damageMultiplierFor, hooked into
+       PLAYER.damage()).
+     - Active, held via its own key (default Q): raises the shield, which
+       heavily reduces frontal damage while up, slows movement like ADS,
+       and turns the melee key into a shield bash instead of the normal
+       fists/weapon melee (see WEAPON.update's shieldRaised gate).
+
+   Single-player only, same scope as the Portal Gun quest -- no coop sync. */
+const SHIELD = (() => {
+  let owned = false;
+  let raised = false;
+  let raiseAmount = 0;
+  let bashCooldown = 0;
+  let viewGroup = null;
+  const _o = new THREE.Vector3(), _d = new THREE.Vector3();
+
+  function build(viewScene) {
+    viewGroup = new THREE.Group();
+    viewGroup.visible = false;
+    const bodyMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const rimMat = MAT.toon(PAL.charcoal);
+    PRIM.box(0.46, 0.62, 0.05, bodyMat, { pos: [0, 0, 0], parent: viewGroup, outline: 0.02, warp: 0.01, ray: false });
+    PRIM.box(0.5, 0.66, 0.02, rimMat, { pos: [0, 0, -0.02], parent: viewGroup, outline: 0.015, ray: false });
+    PRIM.cyl(0.03, 0.03, 0.22, 8, rimMat, { pos: [0, -0.08, 0.08], rot: [Math.PI / 2, 0, 0], parent: viewGroup, outline: 0.01, ray: false });
+    viewGroup.position.set(0.34, -0.32, -0.62);
+    viewGroup.rotation.set(0, -0.15, 0.05);
+    viewScene.add(viewGroup);
+  }
+
+  function grant() {
+    owned = true;
+  }
+
+  function reset() {
+    owned = false;
+    raised = false;
+    raiseAmount = 0;
+    bashCooldown = 0;
+    if (viewGroup) viewGroup.visible = false;
+  }
+
+  function bash(camera) {
+    bashCooldown = CONFIG.shield.bashCooldown;
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    const connected = typeof ENEMY !== 'undefined' && ENEMY.melee(_o, _d, {
+      damage: CONFIG.shield.bashDamage,
+      range: CONFIG.shield.bashRange,
+      arc: CONFIG.shield.bashArc,
+      force: CONFIG.shield.bashForce
+    });
+    AUDIO.melee('shieldBash', connected);
+  }
+
+  function update(dt, camera, active) {
+    if (bashCooldown > 0) bashCooldown -= dt;
+    if (!owned) {
+      raised = false;
+      if (viewGroup) viewGroup.visible = false;
+      return;
+    }
+    raised = !!(active && INPUT.actions.shield);
+    raiseAmount = UTIL.damp(raiseAmount, raised ? 1 : 0, CONFIG.shield.raiseLerpRate, dt);
+    if (viewGroup) {
+      viewGroup.visible = raiseAmount > 0.01;
+      viewGroup.position.x = 0.34 - raiseAmount * 0.24;
+      viewGroup.position.y = -0.32 + raiseAmount * 0.1;
+      viewGroup.position.z = -0.62 + raiseAmount * 0.12;
+    }
+    if (active && raised && bashCooldown <= 0 && INPUT.consumePress('melee')) bash(camera);
+  }
+
+  // yaw/px/pz describe the local player; sx/sz is the damage source. Kept
+  // as plain numbers (not THREE.Vector3/PLAYER references) so this stays
+  // trivially testable without a real scene or player rig.
+  function damageMultiplierFor(yaw, px, pz, sx, sz) {
+    if (!owned) return 1;
+    const dx = sx - px, dz = sz - pz;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.001) return 1;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const dot = (dx / dist) * fx + (dz / dist) * fz;
+    if (raised && dot > CONFIG.shield.raisedFrontArcDot) return CONFIG.shield.raisedFrontDamageMult;
+    if (dot < -CONFIG.shield.rearArcDot) return CONFIG.shield.passiveRearDamageMult;
+    return 1;
+  }
+
+  return {
+    build, update, grant, reset, damageMultiplierFor,
+    get owned() { return owned; },
+    get raised() { return raised; }
   };
 })();
 
@@ -12221,7 +12405,7 @@ const UI = (() => {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
     jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays', interact: 'Interact',
-    voiceTalk: 'Push to Talk',
+    voiceTalk: 'Push to Talk', shield: 'Raise Plow Shield',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4',
     slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
   };
@@ -12538,7 +12722,14 @@ const PICKUP = (() => {
     // before the Gardener quest stage.
     { id: 'seedDrumPack', x: 41.0, y: 4.2, z: -74.0 },
     { id: 'seedDrumPack', x: 61.0, y: 4.2, z: -69.0 },
-    { id: 'seedDrumPack', x: 3.0, y: 8.2, z: -67.0 }
+    { id: 'seedDrumPack', x: 3.0, y: 8.2, z: -67.0 },
+
+    // The Plow Shield's 3 pieces: spread across three different corners of
+    // the farm (barn yard, horse stable, silo deck) so "find 3 pieces" is a
+    // real trip around the map, not a single cluster next to the bench.
+    { id: 'plowDisc', x: 35.0, z: -51.0 },              // barn yard, near the old tractor wreck
+    { id: 'harnessStraps', x: 43.5, z: -46.0 },          // horse stable
+    { id: 'reinforcingPlate', x: 6.0, y: 8.2, z: -65.0 } // silo deck
   ];
 
   function define(id, def) {
@@ -12670,6 +12861,12 @@ const PICKUP = (() => {
   define('metalWeaponFragment', { type: 'quest', questId: 'metalFragment', label: 'Metal Weapon Fragment', color: PAL.blueGray, respawn: 0 });
   define('computerChip', { type: 'quest', questId: 'computerChip', label: 'Computer Chip', color: PAL.mustard, respawn: 0 });
   define('barnKey', { type: 'quest', questId: 'barnKey', label: 'Barn Key', color: PAL.mustard, respawn: 0 });
+  // The Plow Shield's 3 pieces -- unlike the Portal Gun's components above,
+  // these are found out in the open world rather than dropped by bosses
+  // (see the spawns list below and QUEST.SHIELD_COMPONENTS).
+  define('plowDisc', { type: 'quest', questId: 'plowDisc', label: 'Plow Disc', color: PAL.rustDeep, respawn: 0 });
+  define('harnessStraps', { type: 'quest', questId: 'harnessStraps', label: 'Harness Straps', color: PAL.rustDeep, respawn: 0 });
+  define('reinforcingPlate', { type: 'quest', questId: 'reinforcingPlate', label: 'Reinforcing Plate', color: PAL.blueGray, respawn: 0 });
 
   registerHandler('weapon', (def, pickup) => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity, {
@@ -13284,6 +13481,12 @@ const RUNSTATS = (() => {
 
 const QUEST = (() => {
   const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
+  // The Plow Shield: 3 pieces found out in the open world (not boss drops,
+  // unlike the Portal Gun's COMPONENTS above), assembled at a second,
+  // separate workbench in the North Barn Cellar. See SHIELD for the actual
+  // block/bash mechanic this unlocks.
+  const SHIELD_COMPONENTS = ['plowDisc', 'harnessStraps', 'reinforcingPlate'];
+  const SHIELD_COMPONENT_LABELS = { plowDisc: 'PLOW DISC', harnessStraps: 'HARNESS STRAPS', reinforcingPlate: 'REINFORCING PLATE' };
   const ENCOUNTERS = Object.freeze([
     { stage: 1, id: 'beatSlayer', name: 'Beat Slayer', threshold: CONFIG.progress.singleBeatSlayerThreshold },
     { stage: 2, id: 'bearClaw', name: 'Bear Claw', threshold: CONFIG.progress.singleBearClawThreshold },
@@ -13292,7 +13495,8 @@ const QUEST = (() => {
   ]);
   const state = {
     components: {}, barnKey: false, barnUnlocked: false,
-    crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false
+    crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false,
+    shieldComponents: {}, shieldCrafted: false
   };
   let gardener = null;
 
@@ -13305,21 +13509,33 @@ const QUEST = (() => {
   }
   function syncHud() {
     const hud = document.getElementById('componentHud');
-    if (!hud) return;
-    hud.classList.toggle('on', isSinglePlayer() && !state.crafted);
-    hud.querySelectorAll('[data-component]').forEach(el => {
-      const id = el.getAttribute('data-component');
-      el.classList.toggle('collected', !!state.components[id]);
-      el.classList.toggle('assembled', !!state.crafted);
-    });
+    if (hud) {
+      hud.classList.toggle('on', isSinglePlayer() && !state.crafted);
+      hud.querySelectorAll('[data-component]').forEach(el => {
+        const id = el.getAttribute('data-component');
+        el.classList.toggle('collected', !!state.components[id]);
+        el.classList.toggle('assembled', !!state.crafted);
+      });
+    }
+    const shieldHud = document.getElementById('shieldHud');
+    if (shieldHud) {
+      shieldHud.classList.toggle('on', isSinglePlayer() && !state.shieldCrafted);
+      shieldHud.querySelectorAll('[data-shield-component]').forEach(el => {
+        const id = el.getAttribute('data-shield-component');
+        el.classList.toggle('collected', !!state.shieldComponents[id]);
+        el.classList.toggle('assembled', !!state.shieldCrafted);
+      });
+    }
   }
   function reset() {
     if (typeof ENEMY !== 'undefined' && ENEMY.clearQuestEnemies) ENEMY.clearQuestEnemies();
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
+    state.shieldComponents = {}; state.shieldCrafted = false;
     gardener = null;
     setBarnEntrances(false, true);
     if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['CRAFTING', 'OFFLINE']);
     syncHud();
   }
   function start() {
@@ -13343,6 +13559,12 @@ const QUEST = (() => {
     if (id === 'barnKey') {
       if (state.barnKey) return false;
       state.barnKey = true; RUNSTATS.milestone('barn_key_collected', 'barnKey'); UI.toast('BARN KEY COLLECTED — RETURN TO THE NORTH BARN', 2.6); return true;
+    }
+    if (SHIELD_COMPONENTS.indexOf(id) >= 0) {
+      if (state.shieldComponents[id]) return false;
+      state.shieldComponents[id] = true; syncHud(); RUNSTATS.milestone('shield_component_collected', id);
+      if (SHIELD_COMPONENTS.every(key => state.shieldComponents[key])) UI.toast('ALL SHIELD PIECES FOUND — ASSEMBLE AT THE CELLAR WORKBENCH', 3.2);
+      return true;
     }
     if (COMPONENTS.indexOf(id) < 0 || state.components[id]) return false;
     state.components[id] = true; syncHud(); RUNSTATS.milestone('component_collected', id);
@@ -13408,7 +13630,12 @@ const QUEST = (() => {
     return LEVEL.northBarnAccessAt(p, layer);
   }
   function nearStation(p) { return p && p.y > 3.2 && Math.hypot(p.x - 58.3, p.z + 76.7) < 4.2; }
+  // Second workbench, one floor down in the North Barn Cellar (see LEVEL's
+  // buildBasement north_barn_cellar room) -- p.y < -1 keeps this from ever
+  // overlapping the upstairs Portal Gun station above.
+  function nearShieldBench(p) { return p && p.y < -1 && Math.hypot(p.x - 50, p.z + 73) < 4.0; }
   function missing() { return COMPONENTS.filter(id => !state.components[id]); }
+  function missingShieldPieces() { return SHIELD_COMPONENTS.filter(id => !state.shieldComponents[id]); }
   function interactionKey() {
     if (typeof INPUT === 'undefined') return 'E';
     if (INPUT.mobile) return 'USE';
@@ -13423,6 +13650,7 @@ const QUEST = (() => {
       ? (LEVEL.isNorthBarnAccessOpen(access.id) ? 'Close ' + access.label : 'Open ' + access.label)
       : state.barnKey ? 'Use Barn Key on ' + access.label : 'Locked — Barn Key required');
     if (nearStation(p)) return state.barnUnlocked ? key + ' · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
+    if (nearShieldBench(p)) return state.barnUnlocked ? key + ' · ' + (state.shieldCrafted ? 'Plow Shield already assembled' : 'Use cellar workbench') : 'Workbench inaccessible — barn locked';
     return '';
   }
   function interact(p) {
@@ -13435,6 +13663,7 @@ const QUEST = (() => {
         if (typeof LEVEL !== 'undefined' && LEVEL.setAllNorthBarnAccess) LEVEL.setAllNorthBarnAccess(true);
         else LEVEL.setNorthBarnAccess(access.id, true);
         if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['CRAFTING', 'ONLINE']);
         RUNSTATS.milestone('barn_unlocked', 'northBarn', { entrance: access.id });
         UI.toast('BARN KEY USED — ALL BARN ENTRANCES OPENED', 2.2);
       } else {
@@ -13444,15 +13673,29 @@ const QUEST = (() => {
       }
       return true;
     }
-    if (!nearStation(p)) return false;
-    if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
-    if (state.crafted) { UI.toast('PORTAL GUN ALREADY ASSEMBLED', 1.4); return true; }
-    const need = missing();
-    if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
-    state.crafted = true; syncHud();
-    WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
-    RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
-    UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
+    if (nearStation(p)) {
+      if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
+      if (state.crafted) { UI.toast('PORTAL GUN ALREADY ASSEMBLED', 1.4); return true; }
+      const need = missing();
+      if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
+      state.crafted = true; syncHud();
+      WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
+      RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
+      UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
+    }
+    if (nearShieldBench(p)) {
+      if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
+      if (state.shieldCrafted) { UI.toast('PLOW SHIELD ALREADY ASSEMBLED', 1.4); return true; }
+      const needShield = missingShieldPieces();
+      if (needShield.length) { UI.toast('MISSING: ' + needShield.map(id => SHIELD_COMPONENT_LABELS[id]).join(', '), 2.8); return true; }
+      state.shieldCrafted = true; syncHud();
+      if (typeof SHIELD !== 'undefined' && SHIELD.grant) SHIELD.grant();
+      RUNSTATS.milestone('plow_shield_created', 'plowShield');
+      const shieldKey = typeof INPUT !== 'undefined' ? (INPUT.codeLabel(INPUT.getBindings().shield) || 'Q') : 'Q';
+      UI.toast('PLOW SHIELD ASSEMBLED — HOLD ' + shieldKey + ' TO RAISE IT', 3.0);
+      return true;
+    }
+    return false;
   }
   // Fully staged in PORTALCUTSCENE (camera pan, third-person watcher, portal
   // growth, Bearclaw2's walk-out, held reveal) -- QUEST only owns the
@@ -13464,11 +13707,13 @@ const QUEST = (() => {
     INPUT.clearActions(); INPUT.releaseLock();
     if (typeof PORTALCUTSCENE === 'undefined') {
       state.stage = 6;
+      if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['BREACH', 'DETECTED']);
       if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
       return;
     }
     PORTALCUTSCENE.play(GAME.camera, () => {
       state.stage = 6;
+      if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['BREACH', 'DETECTED']);
       if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
     });
   }
@@ -13589,6 +13834,7 @@ const GAME = (() => {
     FX.setSprayImage(SETTINGS.sprayTagImage || CONFIG.fx.sprayImage || null);
     PLAYER.init(camera);
     WEAPON.build(viewScene);
+    SHIELD.build(viewScene);
     THROWABLE.init(scene);
     await bossAssetTask;
     if (UI.el.loading) UI.el.loading.textContent = 'Warming mini-boss crew…';
@@ -13723,8 +13969,16 @@ const GAME = (() => {
     document.getElementById('autoEquipOffBtn').addEventListener('click', e => {
       e.stopPropagation(); SETTINGS.setAutoEquipPickups(false); UI.syncOptionsUI();
     });
-    document.getElementById('optSprayTagChoose').addEventListener('click', e => {
-      e.stopPropagation(); document.getElementById('optSprayTagFile').click();
+    // A native <label for="optSprayTagFile">, not a button with a JS-driven
+    // input.click() -- the label's built-in browser activation opens the
+    // file picker directly, no synthetic re-dispatch involved. Keyboard
+    // users still need an explicit Enter/Space handler since labels aren't
+    // natively keyboard-activatable the way buttons are.
+    document.getElementById('optSprayTagChoose').addEventListener('click', e => { e.stopPropagation(); });
+    document.getElementById('optSprayTagChoose').addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById('optSprayTagFile').click();
     });
     document.getElementById('optSprayTagReset').addEventListener('click', e => {
       e.stopPropagation(); resetSprayTag();
@@ -14228,6 +14482,7 @@ const GAME = (() => {
     RUNSTATS.begin(mode, mode === 'coop' && COOP.localId ? COOP.localId : 'local');
     PLAYER.revive();
     WEAPON.reset();
+    SHIELD.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
     QUEST.reset();
@@ -14266,6 +14521,7 @@ const GAME = (() => {
     RUNSTATS.finalize(endShown ? 'completed' : 'abandoned');
     PLAYER.revive();
     WEAPON.reset();
+    SHIELD.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
     QUEST.reset();
@@ -14388,6 +14644,7 @@ const GAME = (() => {
     // (or should start) playing.
     KILLCAM.update(dt, camera);
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
+    SHIELD.update(dt, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead && !PLAYER.stunned);
     CONSUMABLE.update(dt, running && !PLAYER.isDead && !PLAYER.stunned);
     HERO.update(dt, running);

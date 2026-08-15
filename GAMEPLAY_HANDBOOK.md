@@ -16,7 +16,7 @@
 5. [The Hangar — Custom Pilot Builder](#5-the-hangar--custom-pilot-builder)
 6. [The Armory — Weapons](#6-the-armory--weapons)
 7. [Field Supplies — Throwables, Consumables & Pickups](#7-field-supplies--throwables-consumables--pickups)
-8. [The Workbench — Crafting the Portal Gun](#8-the-workbench--crafting-the-portal-gun)
+8. [The Workbenches — Crafting the Portal Gun & Plow Shield](#8-the-workbenches--crafting-the-portal-gun--plow-shield)
 9. [The Threats — Regular Enemies](#9-the-threats--regular-enemies)
 10. [Mini-Bosses](#10-mini-bosses)
 11. [The Farm — Map & Locations](#11-the-farm--map--locations)
@@ -77,6 +77,7 @@ Before you drop in, you can also flip the difficulty switch:
 | Left Click | Fire equipped weapon, or swing if it's melee |
 | `V` | Quick melee, regardless of what's in your hands |
 | Right Click | Aim down sights — steadier and more accurate, but slower to move, and sprinting is locked out entirely while aiming |
+| `Q` (hold) | Raise the Plow Shield (once crafted) — see §8. Not a weapon slot, not the melee key: its own independent bind |
 | `1`–`9` | Switch weapon by slot |
 | Scroll Wheel | Cycle to the next/previous owned weapon |
 | `R` | Reload |
@@ -94,7 +95,7 @@ Every one of these can be reassigned under **Options → Controls**.
 
 ### Touch Controls
 
-On a phone or tablet you get a left thumbstick for movement (push up or down on a ladder to climb it), a drag-anywhere-on-the-right look zone, and a row of action buttons: **Fire**, **Jump**, **Bash** (melee), **Load** (reload), **Swap** (next weapon), **Throw**, a throwable-type switcher, **Jays**, **Crouch**, **Aim**, **Use**, **Talk**, plus **Pause** and **Chat** buttons. Tap a weapon in your inventory strip to equip it directly, or hold Fire and drag to aim while shooting.
+On a phone or tablet you get a left thumbstick for movement (push up or down on a ladder to climb it), a drag-anywhere-on-the-right look zone, and a row of action buttons: **Fire**, **Jump**, **Bash** (melee), **Load** (reload), **Swap** (next weapon), **Throw**, a throwable-type switcher, **Jays**, **Crouch**, **Aim**, **Shield**, **Use**, **Talk**, plus **Pause** and **Chat** buttons. Tap a weapon in your inventory strip to equip it directly, or hold Fire and drag to aim while shooting.
 
 > **Field note:** the touch layout doesn't currently include a flashlight button — if you need your lantern on mobile, you'll need to rebind it to a control you can reach, or fight in daylight.
 
@@ -243,9 +244,11 @@ World spawns exist for the Tin Sixer, Fieldhand Carbine, Scrap Railgun, and Spra
 
 ---
 
-## 8. The Workbench — Crafting the Portal Gun
+## 8. The Workbenches — Crafting the Portal Gun & Plow Shield
 
-This is the heart of the single-player campaign, and it's entirely optional in multiplayer — co-op, FFA, and Team Deathmatch simply leave the barn unlocked from the start and skip the whole sequence.
+Single-player has two crafting stations hidden inside the North Barn, one directly above the other. Both are entirely optional in multiplayer — co-op, FFA, and Team Deathmatch simply leave the barn unlocked from the start and skip the whole sequence.
+
+### The Portal Gun (upper floor)
 
 **Step one — earn the pieces.** Three of the four mini-bosses each drop a quest component when defeated:
 
@@ -255,13 +258,30 @@ This is the heart of the single-player campaign, and it's entirely optional in m
 
 A fourth mini-boss, **The Gardener**, drops the **Barn Key** instead of a component.
 
-**Step two — unlock the barn.** Carry the Barn Key to any entrance of the North Barn — the south doors, the west doors, or the cellar hatch — and interact (`E`). The first use throws **every** entrance open at once, so you don't need to hunt down each door separately.
+**Step two — unlock the barn.** Carry the Barn Key to any entrance of the North Barn — the south doors, the west doors, or the cellar hatch — and interact (`E`). The first use throws **every** entrance open at once, so you don't need to hunt down each door separately. The moment the barn unlocks, the workbench's own computer screen flips from "CRAFTING OFFLINE" to "CRAFTING ONLINE."
 
 **Step three — find the bench.** Climb to the North Barn's upper floor and interact with the workbench. If you're missing pieces, it'll tell you exactly what's left to find. Once you're holding all three components, interacting assembles the **Portal Gun** on the spot and equips it immediately with 18 rounds ready to go.
 
-**Step four — the payoff.** Firing up the freshly-built Portal Gun for the first time triggers a full cutscene: the wall begins to glow, a portal tears open on the barn's east wall, and **Bearclaw2** — a tougher, angrier version of the Bear Claw you already fought — steps through and crosses the room to meet you. When you're ready, any input brings you back into full control, weapon drawn, for the fight that ends the run.
+**Step four — the payoff.** Firing up the freshly-built Portal Gun for the first time triggers a full cutscene: the wall begins to glow, a portal tears open on the barn's east wall, and **Bearclaw2** — a tougher, angrier version of the Bear Claw you already fought — steps through and crosses the room to meet you. When you're ready, any input brings you back into full control, weapon drawn, for the fight that ends the run. Once the cutscene finishes, that same computer screen flips again — from "CRAFTING ONLINE" to "BREACH DETECTED."
 
 Defeating Bearclaw2 is single-player's actual win condition. Beat him and the farm goes quiet — literally; that's the line on your final report.
+
+### The Plow Shield (cellar, directly below)
+
+A second, independent workbench sits one floor down, in the North Barn Cellar — reachable through the same unlocked hatch. It builds a riot-style **Plow Shield**, and it doesn't wait on any boss fight.
+
+**Step one — find the three pieces**, scattered out in the open world rather than dropped by anything:
+
+- **Plow Disc** — barn yard, near the old stripped tractor
+- **Harness Straps** — the horse stable
+- **Reinforcing Plate** — the silo deck
+
+**Step two — assemble it.** With the barn unlocked (same key, same gate as the Portal Gun above) and all three pieces in hand, interact with the cellar workbench to weld the shield together.
+
+**Using it** is nothing like a normal weapon or the melee key — it has its own dedicated bind (`Q` by default):
+
+- **Passive, always on:** the moment it's assembled, hits landing on your back take noticeably less damage — no button required. This works whether the shield is raised or not.
+- **Active, hold to raise:** holding `Q` brings the shield up in front of you. While raised, frontal hits are cut down dramatically, movement slows (similar to aiming), and firing/reloading/switching weapons is locked out entirely — you're committed to blocking. Pressing melee (`V`) while raised swings a **shield bash** instead of your usual melee attack.
 
 ---
 
@@ -415,6 +435,7 @@ close                    close the console
 - **The Well only goes one way.** It's a great emergency exit into the basement, but you can't climb back up through it, and enemies can't follow you down.
 - **Aiming down sights locks out sprinting entirely, weapon aside.** Don't hold ADS while repositioning — release it the moment you're done shooting.
 - **The Barn Key opens everything at once.** You don't need to track down each individual door — one use, every entrance swings open.
+- **The Plow Shield protects your back before you ever press the key.** Once it's assembled, don't wait for a firefight to matter — you're already taking less damage from behind at all times.
 - **Extra Lives only queue for saved Hangar Pilots**, and only after a *natural* mini-boss defeat — one spawned from the developer console won't grant one.
 
 ---
@@ -429,9 +450,10 @@ SPRINT      Shift                THROW         G
 CROUCH/SLIDE Ctrl                SWITCH THROW  T
 FIRE        Left Click           USE JAYS      J
 AIM         Right Click          LANTERN       F
-WEAPON SLOT 1-9                  TALK          B (hold)
+SHIELD      Q (hold)             TALK          B (hold)
+WEAPON SLOT 1-9                  DEV CONSOLE   ` (solo only)
 CYCLE WEAPON Scroll Wheel
-PAUSE       Esc                  DEV CONSOLE   ` (solo only)
+PAUSE       Esc
 ```
 
 *Farm Operations thanks you for your service. Try not to become part of the crop.*
