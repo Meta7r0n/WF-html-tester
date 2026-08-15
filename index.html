@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.37</title>
+<title>The Withered Farm — v0.38</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -136,6 +136,10 @@
   #runClock.on{opacity:1} #runClock small{display:block;font-size:8px;letter-spacing:2px;color:var(--rust-deep)}
   #componentHud{position:fixed;left:50%;bottom:18px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
   #componentHud.on{opacity:1}.component-slot{width:min(25vw,145px);padding:6px 8px;background:rgba(22,18,15,.84);border:2px solid var(--cream);border-radius:7px;color:var(--cream-dim);font:900 9px/1.15 "Rockwell",Georgia,serif;text-align:center}.component-slot.collected{background:var(--olive);color:var(--cream);border-color:var(--mustard)}.component-slot.assembled{opacity:.55;text-decoration:line-through}
+  /* Stacked directly above componentHud (same layout, its own quest) so
+     both trays can be visible at once without overlapping. */
+  #shieldHud{position:fixed;left:50%;bottom:58px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
+  #shieldHud.on{opacity:1}
   #runStats{
     margin:16px 0 20px;text-align:left;background:var(--ink-soft);color:var(--cream);
     border:4px solid var(--ink);border-radius:12px;box-shadow:7px 8px 0 rgba(22,18,15,.38);
@@ -672,7 +676,8 @@
   body.touch-device #coopLobby .alt,
   body.touch-device #pause .alt,
   body.touch-device #options .alt,
-  body.touch-device #mapView .alt{display:block;}
+  body.touch-device #mapView .alt,
+  body.touch-device #aviationBuilder .alt{display:block;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   body.touch-device #weaponName{
     right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
@@ -701,7 +706,7 @@
   body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
   body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
   body.touch-device #boss3Hud{top:max(92px,calc(env(safe-area-inset-top) + 80px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.5deg);transform-origin:top center;}
-  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
+  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}body.touch-device #shieldHud{bottom:max(152px,calc(env(safe-area-inset-bottom) + 144px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
   body.touch-device #radar{
     left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
     transform:scale(.78) rotate(-1deg);transform-origin:top left;
@@ -767,7 +772,7 @@
     background:var(--cream);
     border:5px solid var(--ink);
     border-radius:26px 34px 24px 30px;
-    padding:34px 34px 28px;
+    padding:26px 30px 22px;
     box-shadow:12px 14px 0 rgba(22,18,15,.55);
     transform:rotate(-.6deg);
   }
@@ -1078,14 +1083,14 @@
   /* Options is a true child modal. It must sit above Pause, which appears
      later in the DOM and otherwise wins the equal-z-index stacking order. */
   #options{z-index:44;}
-  #options .options-card{max-width:520px;max-height:86vh;overflow-y:auto;}
-  .opt-section{margin:18px 0;}
+  #options .options-card{max-width:560px;max-height:90vh;overflow-y:auto;}
+  .opt-section{margin:13px 0;}
   .opt-heading{
-    margin:0 0 10px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
+    margin:0 0 7px;font:800 12px/1 "Rockwell",Georgia,serif;letter-spacing:2px;
     text-transform:uppercase;color:var(--rust-deep);border-bottom:2px dashed rgba(22,18,15,.2);
-    padding-bottom:6px;
+    padding-bottom:4px;
   }
-  .opt-row{display:flex;align-items:center;gap:12px;margin:10px 0;font-size:13.5px;color:var(--ink-soft);}
+  .opt-row{display:flex;align-items:center;gap:12px;margin:7px 0;font-size:13.5px;color:var(--ink-soft);}
   .opt-hint{margin:2px 0 4px;font-size:12px;line-height:1.4;color:var(--ink-soft);}
   .opt-row span{flex:0 0 84px;font-weight:700;}
   .opt-row input[type="range"]{flex:1 1 auto;accent-color:var(--rust);}
@@ -1103,7 +1108,10 @@
   .spray-tag-actions .alt{display:inline-block;margin:0;}
   #optSprayTagFile{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;}
   #optSprayTagStatus.bad{color:var(--rust-deep);font-weight:800;}
-  .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:7px;}
+  .opt-controls{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:6px 16px;}
+  @media (min-width:480px){
+    .opt-controls{grid-template-columns:repeat(2,minmax(0,1fr));}
+  }
   .opt-controls li{
     display:flex;align-items:center;justify-content:space-between;gap:10px;
     font-size:13px;color:var(--ink-soft);
@@ -1146,6 +1154,55 @@
   .map-legend-swatch.teammate{background:var(--blue-deep);border-radius:50%;}
   .map-live-hint{margin:8px 0 0;font-size:12px;line-height:1.35;color:var(--ink-soft);}
   @media (max-width:900px){#mapCanvases{flex-direction:column;}}
+
+  /* ---------- Phone text scene (see PHONESCENE) ---------- */
+  #phoneScene{z-index:45;}
+  .phone-frame{
+    position:relative;width:min(380px,88vw);max-height:82vh;
+    background:var(--ink);border:5px solid var(--ink);border-radius:34px;
+    padding:14px 10px 18px;box-shadow:12px 14px 0 rgba(22,18,15,.55);
+    display:flex;flex-direction:column;transform:rotate(-.4deg);
+  }
+  .phone-notch{
+    width:84px;height:16px;margin:0 auto 8px;background:var(--ink-soft);
+    border-radius:0 0 12px 12px;
+  }
+  .phone-header{
+    display:flex;align-items:center;gap:10px;padding:6px 10px 12px;
+    border-bottom:2px solid rgba(246,233,210,.18);
+  }
+  .phone-header img{
+    width:38px;height:38px;border-radius:50%;object-fit:cover;
+    border:2px solid var(--mustard);flex:0 0 auto;
+  }
+  .phone-header-text{display:flex;flex-direction:column;line-height:1.25;}
+  .phone-header-name{
+    font:800 15px/1 "Rockwell",Georgia,serif;color:var(--cream);letter-spacing:.3px;
+  }
+  .phone-header-status{font:600 10px/1 "Courier New",monospace;color:var(--blue);margin-top:3px;}
+  .phone-thread{
+    flex:1 1 auto;min-height:220px;max-height:48vh;overflow-y:auto;
+    padding:14px 8px 4px;display:flex;flex-direction:column;gap:10px;
+  }
+  .phone-row{display:flex;align-items:flex-end;gap:7px;opacity:0;transform:translateY(8px);transition:opacity .28s ease,transform .28s ease;}
+  .phone-row.show{opacity:1;transform:translateY(0);}
+  .phone-row.out{justify-content:flex-end;}
+  .phone-row.in{justify-content:flex-start;}
+  .phone-bubble-avatar{
+    width:24px;height:24px;border-radius:50%;object-fit:cover;flex:0 0 auto;
+    border:2px solid var(--mustard);
+  }
+  .phone-bubble{
+    max-width:74%;padding:9px 13px;border-radius:17px;
+    font:600 14px/1.32 "Courier New",monospace;word-wrap:break-word;
+    box-shadow:2px 3px 0 rgba(22,18,15,.3);
+  }
+  .phone-row.in .phone-bubble{background:var(--cream);color:var(--ink);border-bottom-left-radius:5px;}
+  .phone-row.out .phone-bubble{background:var(--blue-deep);color:var(--cream);border-bottom-right-radius:5px;}
+  .phone-skip-hint{
+    margin:12px 4px 0;text-align:center;font:700 10px/1 "Rockwell",Georgia,serif;
+    letter-spacing:2px;text-transform:uppercase;color:rgba(246,233,210,.5);
+  }
   #loading{
     position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;
     background:var(--peach);color:var(--rust-deep);
@@ -1175,6 +1232,11 @@
     <div class="component-slot" data-component="greenShard">Green Shard</div>
     <div class="component-slot" data-component="metalFragment">Weapon Fragment</div>
     <div class="component-slot" data-component="computerChip">Computer Chip</div>
+  </div>
+  <div id="shieldHud" aria-label="Plow Shield components">
+    <div class="component-slot" data-shield-component="plowDisc">Plow Disc</div>
+    <div class="component-slot" data-shield-component="harnessStraps">Harness Straps</div>
+    <div class="component-slot" data-shield-component="reinforcingPlate">Reinforcing Plate</div>
   </div>
   <div id="reloadTag">Press R to reload</div>
   <div id="throwableHud" aria-live="polite">
@@ -1252,6 +1314,7 @@
       <button type="button" class="mobile-btn" id="mobileCrouch" aria-label="Crouch, or slide while sprinting">Crouch</button>
       <button type="button" class="mobile-btn" id="mobileTalk" aria-label="Hold to talk">Talk</button>
       <button type="button" class="mobile-btn" id="mobileADS" aria-label="Aim: steadier and more accurate, slower to move">Aim</button>
+      <button type="button" class="mobile-btn" id="mobileShield" aria-label="Raise the Plow Shield to block">Shield</button>
       <button type="button" class="mobile-btn" id="mobileInteract" aria-label="Interact">Use</button>
     </div>
     <button type="button" class="mobile-btn" id="mobilePause" aria-label="Pause game">Ⅱ</button>
@@ -1276,7 +1339,7 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.37</p>
+      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.38</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -1418,6 +1481,7 @@
         <button type="button" class="alt" data-open-aviation-builder>Build pilot</button>
       </div>
       <button type="button" class="go" id="hangarPilotStartBtn" hidden>Launch Hangar Pilot →</button>
+      <button type="button" class="alt" id="hangarPilotSwitchBackBtn" hidden>Switch back to classic heroes</button>
       <button class="alt" id="backToStartBtn">Back to mode select</button>
     </div>
   </div>
@@ -1506,7 +1570,7 @@
         <div class="spray-tag-editor">
           <div class="spray-tag-preview"><img id="optSprayTagPreview" alt="Current local spray tag" /></div>
           <div class="spray-tag-actions">
-            <button type="button" class="alt" id="optSprayTagChoose">Choose PNG / JPEG</button>
+            <label class="alt" id="optSprayTagChoose" for="optSprayTagFile" tabindex="0" role="button">Choose PNG / JPEG</label>
             <button type="button" class="alt" id="optSprayTagReset">Use built-in tag</button>
             <input id="optSprayTagFile" type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" />
           </div>
@@ -1605,6 +1669,21 @@
     </div>
   </div>
 
+  <div id="phoneScene" class="veil hidden">
+    <div class="phone-frame">
+      <div class="phone-notch"></div>
+      <div class="phone-header">
+        <img src="assets/drewbie_avatar.png" alt="drewbie" />
+        <div class="phone-header-text">
+          <span class="phone-header-name">drewbie</span>
+          <span class="phone-header-status">iMessage</span>
+        </div>
+      </div>
+      <div class="phone-thread" id="phoneSceneThread"></div>
+      <p class="phone-skip-hint">Tap or press any key to continue</p>
+    </div>
+  </div>
+
   <div id="loading">Inking the farm…</div>
   <div id="err"></div>
 
@@ -1618,8 +1697,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.37',
-  branch: 'A-test-v0.37-PICKUP-VIEWMODEL-SPRAY-TAGS'
+  version: 'v0.38',
+  branch: 'A-test-v0.38-BARN-CRAFTING-FIX'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -1701,6 +1780,16 @@ const CONFIG = {
     // Downed is a second chance, not a safe room. You keep your head and the
     // Double Barrel, but the clock runs and reaching zero here is a real death.
     downedTime: 16, downedTilt: 0.34
+  },
+  // The Plow Shield: crafted from 3 found pieces at the North Barn Cellar
+  // workbench (see QUEST). Deliberately its own system, not a weapon slot
+  // and not the melee key -- see SHIELD. Passive rear protection is always
+  // on once crafted; the front block only applies while actively raised.
+  shield: {
+    passiveRearDamageMult: 0.55, rearArcDot: 0.35,
+    raisedFrontDamageMult: 0.12, raisedFrontArcDot: 0.3,
+    raisedSpeedMult: 0.62, raiseLerpRate: 10,
+    bashDamage: 38, bashRange: 2.1, bashArc: 0.55, bashForce: 1.7, bashCooldown: 0.62
   },
   map: {
     // The south gate stays fixed while expansions push the farm north.
@@ -1949,6 +2038,61 @@ const CONFIG = {
     hoverPos: { x: 3, y: 14, z: 24 },
     endPos: { x: 50, y: 23, z: -16 }
   },
+  // A quick beat right as the match starts, before the helicopter cutscene
+  // even begins -- the pilot checks a text from "drewbie". gap is the pause
+  // (seconds) after that bubble appears before the next one lands, roughly
+  // scaled to reading time. PHONESCENE never auto-advances -- it waits for
+  // the player's own click/keypress. That's deliberate, not just pacing:
+  // it's also what INTRO's own eventual INPUT.requestLock() call (in
+  // enterNow(), once INTRO finishes after this) needs to succeed --
+  // browsers only honor pointer-lock requests within a short window of a
+  // real user gesture ("transient activation"), and a timer-driven handoff
+  // blows well past that window, silently getting the request rejected and
+  // dropping the player onto the "mouse lock failed" pause card the instant
+  // control would have unlocked. Every cutscene in this chain (this one,
+  // then INTRO) only ever ends on the player's own gesture, so whichever one
+  // finishes last keeps requestLock() inside that same gesture's call stack.
+  phoneScene: {
+    avatar: 'assets/drewbie_avatar.png',
+    startDelay: 0.9,   // beat after the veil appears before the first bubble lands
+    messages: [
+      { from: 'drewbie', text: 'hey fucker wyd?', gap: 2.0 },
+      { from: 'pilot', text: 'not much just rollin up, wbu?', gap: 2.2 },
+      { from: 'drewbie', text: "I'm trying to get these orders out, but the farm called and said some wonky shits been going on. Go take care of it yeah?", gap: 3.1 },
+      { from: 'pilot', text: '🫡', gap: 0 }
+    ]
+  },
+  // The Portal Gun's payoff cutscene: gameplay fully pauses, the camera
+  // pulls out to a third-person shot of the wall the workbench faces, the
+  // portal grows open, Bearclaw2 walks out of it and crosses to a mark a
+  // few steps into the room, then the camera settles and holds on it until
+  // the player's own gesture hands control back. All positions live inside
+  // the same north-barn upper room (UPPER_Y ≈ 4.2) the workbench sits in,
+  // not the ground-level 'surface' spot the original one-line spawn used --
+  // that put Bearclaw2 nowhere near the portal it was supposed to walk out
+  // of. See PORTALCUTSCENE.
+  portalCutscene: {
+    portalPos: { x: 62.45, y: 5.7, z: -72.8 }, portalRotY: Math.PI / 2,
+    // The upper room the workbench sits in is two merged floor slabs:
+    // x in [33.4, 62.6] / z in [-78.6, -65.4] near the portal, widening to
+    // x in [33.4, 55.6] / z in [-64.5, -55.5] further north. bossRestPos sits
+    // a real ~16m walk from the workbench (58.3, -76.7), not a couple of
+    // steps -- close enough felt like an ambush the instant control came
+    // back, since Bearclaw2's real AI takes over the moment the cutscene
+    // hands off and immediately closes whatever gap is left.
+    bossRestPos: { x: 44, y: 4.6, z: -70 },
+    openDuration: 2.2,    // portal growing on the wall
+    walkDuration: 2.4,    // Bearclaw2 crossing from the portal to bossRestPos
+    // Wide third-person establishing shot: player + wall + growing portal.
+    // Both floor slabs bottom out at z=-78.6 -- the old z=-79.5 sat outside
+    // the room entirely, so this shot rendered from inside/beyond the south
+    // wall until the blend to holdCam masked it.
+    wideCam: { x: 39, y: 5.6, z: -76.5 }, wideLook: { x: 60, y: 5.2, z: -75 },
+    // Where the camera blends to as Bearclaw2 finishes crossing the room --
+    // holds here through the awaiting-continue beat.
+    holdCam: { x: 54, y: 5.6, z: -73 }, holdLook: { x: 44, y: 4.8, z: -70 },
+    blendStart: 2.2, blendEnd: 4.6   // starts exactly as the walk begins, ends as it lands
+  },
   // A short cinematic cutaway on every death (PvE or PvP) -- pulls out from
   // first-person into a slow orbit around the fallen local player's ragdoll,
   // gated in ahead of the dead screen (see GAME.loop). duration is deliberately
@@ -2084,6 +2228,20 @@ const CONFIG = {
       id: 'theClaw', name: 'The Claw', slot: 8, kind: 'melee',
       meleeDamage: 55, meleeRange: 6.5, meleeArc: 0.72, fireInterval: 0.65,
       enemyStunChance: 0.05, enemyStunDuration: 2.5
+    },
+    // The Gardener's drop -- a genuine LMG upgrade over the Fieldhand
+    // Carbine (higher per-shot damage, faster fire rate, a much bigger
+    // drum). slot 10 is deliberately outside the 9 keyboard hotkeys
+    // (INPUT.REBINDABLE_ACTIONS only goes to slot9): it's reached through
+    // weapon-cycle/the mobile Swap strip instead, same as every other
+    // owned weapon once the 1-9 row is full. See WEAPON.buildSeedSpitter.
+    seedSpitter: {
+      id: 'seedSpitter', name: 'Seed Spitter', slot: 10, kind: 'gun', ammoType: 'seedDrum',
+      magSize: 50, startMag: 0, startReserve: 0, maxReserve: 200,
+      fireInterval: 0.08, reloadTime: 2.1, automatic: true,
+      pellets: 1, damage: 20, spread: 0.026, range: 100,
+      recoilBack: 0.09, meleeDamage: 42, meleeRange: 2.3, meleeArc: 0.58,
+      adsSpreadMult: 0.55
     }
   },
   throwables: {
@@ -3407,6 +3565,7 @@ const LEVEL = (() => {
     basementHatch: null, basementHatches: [], barnStairGate: null,
     northBarnDoor: null, northBarnWestDoor: null, northBarnHatch: null
   };
+  let craftingScreenMesh = null;
 
   /* soft-edged dirt blob used to paint the footpaths */
   let pathTex = null;
@@ -4732,15 +4891,33 @@ const LEVEL = (() => {
       upper.box(3.6, top, 0.86, 59.0, top / 2, z, 0, 0, 0, 0.012);
       WORLD.addFloor(59.0, 0, z, 3.6, top, 0.86, 'north_barn_stair');
     }
-    // West edge of the stair opening: continuous rail, open at both ends.
-    for (let z = -64.2; z <= -57.0; z += 1.45) {
-      upper.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
-    }
-    upper.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
     upper.build(parent);
     WORLD.addFloor(CX, UPPER_Y - 0.32, -72.0, 29.2, 0.32, 13.2, 'north_barn_upper');
     WORLD.addFloor(44.5, UPPER_Y - 0.32, -60.0, 22.2, 0.32, 9.0, 'north_barn_upper');
-    WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+
+    // Registered for ENEMY's chase AI: raw direct-line steering clips the
+    // side of this stairwell instead of climbing it (the same problem the
+    // corn maze already solves with its own waypoint funnel) -- see
+    // setNorthBarnStairWaypoint. baseZ/topZ sit just clear of the first and
+    // last step so a funneled approach always lines up with the run before
+    // stepping onto it.
+    WORLD.northBarnStair = { x: 59.0, baseZ: -55.6, topZ: -66.0, baseY: 0, topY: UPPER_Y };
+
+    // West edge of the stair opening: continuous rail, open at both ends.
+    // Its own group (not the shared `upper` batch above) so QUEST can pull
+    // it down the instant the Barn Key gets used -- see setNorthBarnRailing
+    // -- opening a straight-line jump/drop shortcut across the stairwell
+    // instead of forcing the full loop down and back up the stairs.
+    const railingGroup = new THREE.Group();
+    parent.add(railingGroup);
+    const railingBatch = new PRIM.Batch(upperMat, 0.045);
+    for (let z = -64.2; z <= -57.0; z += 1.45) {
+      railingBatch.box(0.14, 1.0, 0.14, 55.8, UPPER_Y + 0.5, z, 0, 0, UTIL.rng(-0.04, 0.04));
+    }
+    railingBatch.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
+    railingBatch.build(railingGroup);
+    const railingSolid = WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
+    animated.northBarnRailing = { group: railingGroup, collider: railingSolid, present: true };
 
     // A chunky, deliberately old tractor. The stripped variant omits its hood
     // and front wheels, exposing an engine block and loose axle parts.
@@ -4843,7 +5020,7 @@ const LEVEL = (() => {
     PRIM.box(1.45, 0.95, 0.72, computerMat,
       { pos: [-0.6, 1.65, -0.05], parent: station, outline: 0.045, warp: 0.018 });
     const screenTex = TEX.sign(['CRAFTING', 'OFFLINE'], PAL.oliveDeep, PAL.jaysLight, 256, 144);
-    PRIM.box(1.16, 0.62, 0.06, MAT.flat(0xffffff, { map: screenTex }),
+    craftingScreenMesh = PRIM.box(1.16, 0.62, 0.06, MAT.flat(0xffffff, { map: screenTex }),
       { pos: [-0.6, 1.66, 0.34], parent: station, outline: 0.025, ray: false });
     PRIM.box(1.25, 0.09, 0.52, computerMat,
       { pos: [-0.6, 1.19, 0.52], rot: [-0.08, 0, 0], parent: station, outline: 0.03 });
@@ -5979,6 +6156,33 @@ const LEVEL = (() => {
     WORLD.addFloor(58.5, FLOOR_Y, -61.0, 1.65, 1.85, 3.4, 'north_barn_cellar_cover');
     WORLD.addFloor(48.0, FLOOR_Y, -65.5, 3.2, 0.82, 1.45, 'north_barn_cellar_cover');
 
+    // Second crafting station, one floor directly below the north barn's own
+    // Portal Gun workbench: assembles the Plow Shield from 3 pieces found
+    // out in the world (see QUEST.nearShieldBench/SHIELD_COMPONENTS). Clear
+    // of the cellar cover props and both hatch-landing spawn markers above.
+    const shieldBench = new THREE.Group();
+    shieldBench.position.set(50.0, FLOOR_Y, -73.0);
+    shieldBench.name = 'ShieldWorkbench';
+    shieldBench.userData = { id: 'shield_workbench', craftingStation: true };
+    const shieldBenchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const shieldClampMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const swb = new PRIM.Batch(shieldBenchMat, 0.04);
+    swb.box(2.6, 0.16, 1.2, 0, 0.82, 0, 0, 0, 0.01, 0.016);
+    [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]].forEach(p =>
+      swb.box(0.15, 0.8, 0.15, p[0], 0.4, p[1], 0, 0, 0, 0.01));
+    swb.build(shieldBench);
+    PRIM.box(0.5, 0.3, 0.22, shieldClampMat, { pos: [0.6, 0.98, 0], parent: shieldBench, outline: 0.03 });
+    // A part-assembled riot shield leaning against the bench -- same shape
+    // family as SHIELD.build()'s first-person viewmodel, just bench-sized.
+    const shieldLeanMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    PRIM.box(0.62, 0.85, 0.07, shieldLeanMat,
+      { pos: [-0.95, 0.6, 0.55], rot: [0.25, 0, 0.05], parent: shieldBench, outline: 0.025, warp: 0.012 });
+    const shieldBenchGlow = new THREE.PointLight(0xC98A52, 0.4, 3.5, 2);
+    shieldBenchGlow.position.set(0, 1.1, 0.3); shieldBench.add(shieldBenchGlow);
+    parent.add(shieldBench);
+    WORLD.addFloor(50.0, FLOOR_Y, -73.0, 3.0, 0.98, 1.6, 'shield_workbench');
+    PROPS.lantern(parent, 50.0, FLOOR_Y + 2.6, -71.5, 0);
+
     // Two low service platforms add deliberate vertical play without putting
     // the player's head into the ceiling. Every step is at or below 0.5 m.
     const platforms = new PRIM.Batch(trim, 0.028);
@@ -6225,6 +6429,31 @@ const LEVEL = (() => {
     return !!(animated.northBarnHatch && animated.northBarnHatch.open);
   }
 
+  // Called by QUEST the instant the Barn Key gets used (present=false), and
+  // on every match reset (present=true) -- not a door, so no openness
+  // animation, just an outright presence toggle for both the visual rail
+  // and its collider.
+  function setNorthBarnRailing(present) {
+    const railing = animated.northBarnRailing;
+    if (!railing) return false;
+    railing.present = !!present;
+    railing.group.visible = railing.present;
+    railing.collider.enabled = railing.present;
+    return true;
+  }
+
+  // The dormant crafting station's computer screen: rebakes its texture in
+  // place so the prop can react to quest progress (barn unlocked, Portal
+  // Gun cutscene finished) without rebuilding any geometry.
+  function setCraftingScreenText(lines) {
+    if (!craftingScreenMesh) return false;
+    const oldTex = craftingScreenMesh.material.map;
+    craftingScreenMesh.material.map = TEX.sign(lines, PAL.oliveDeep, PAL.jaysLight, 256, 144);
+    craftingScreenMesh.material.needsUpdate = true;
+    if (oldTex && oldTex.dispose) oldTex.dispose();
+    return true;
+  }
+
   const NORTH_BARN_ACCESS = Object.freeze({
     south: Object.freeze({ id: 'south', label: 'south barn doors' }),
     west: Object.freeze({ id: 'west', label: 'west barn doors' }),
@@ -6242,6 +6471,14 @@ const LEVEL = (() => {
     if (id === 'west') return setNorthBarnWestDoor(open, immediate);
     if (id === 'hatch') return setNorthBarnHatch(open, immediate);
     return setNorthBarnDoor(open, immediate);
+  }
+
+  // The Barn Key opens every entrance at once, not just the one it's used
+  // on -- see QUEST.interact()'s first-use branch.
+  function setAllNorthBarnAccess(open, immediate) {
+    setNorthBarnDoor(open, immediate);
+    setNorthBarnWestDoor(open, immediate);
+    setNorthBarnHatch(open, immediate);
   }
 
   function isNorthBarnAccessOpen(id) {
@@ -6340,7 +6577,8 @@ const LEVEL = (() => {
     nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen,
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
-    northBarnAccessAt, setNorthBarnAccess, isNorthBarnAccessOpen
+    northBarnAccessAt, setNorthBarnAccess, setAllNorthBarnAccess, isNorthBarnAccessOpen,
+    setNorthBarnRailing, setCraftingScreenText
   };
 })();
 
@@ -7869,8 +8107,8 @@ const INPUT = (() => {
   const actions = {
     forward: false, back: false, left: false, right: false,
     jump: false, sprint: false, fire: false, reload: false, lantern: false,
-    melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, pause: false,
-    crouch: false, voiceTalk: false, ads: false,
+    melee: false, throwable: false, switchThrowable: false, useJays: false, interact: false, nextWeapon: false, prevWeapon: false, pause: false,
+    crouch: false, voiceTalk: false, ads: false, shield: false,
     slot1: false, slot2: false, slot3: false, slot4: false,
     slot5: false, slot6: false, slot7: false, slot8: false, slot9: false
   };
@@ -7890,7 +8128,7 @@ const INPUT = (() => {
   } catch (e) {}
   let mode = touchMode ? 'touch' : 'lock';
   let element = null;
-  let lockTimer = null, lastRequest = 0;
+  let lockTimer = null, lastRequest = 0, lastWheelCycle = 0;
   let diagnosis = '';
   const listeners = { lock: [], unlock: [], press: [], lockError: [] };
 
@@ -7910,6 +8148,7 @@ const INPUT = (() => {
     'KeyJ': 'useJays',
     'KeyE': 'interact',
     'KeyB': 'voiceTalk',
+    'KeyQ': 'shield',
     'Digit1': 'slot1', 'Numpad1': 'slot1',
     'Digit2': 'slot2', 'Numpad2': 'slot2',
     'Digit3': 'slot3', 'Numpad3': 'slot3',
@@ -7932,7 +8171,7 @@ const INPUT = (() => {
   ]);
   const REBINDABLE_ACTIONS = [
     'forward', 'back', 'left', 'right', 'jump', 'sprint', 'crouch',
-    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk',
+    'reload', 'lantern', 'melee', 'throwable', 'useJays', 'interact', 'voiceTalk', 'shield',
     'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8', 'slot9'
   ];
 
@@ -8087,7 +8326,7 @@ const INPUT = (() => {
     }
     const action = KEYMAP[e.code];
     if (!action) return;
-    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
+    if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action === 'shield' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
     setAction(action, down);
   }
 
@@ -8242,6 +8481,7 @@ const INPUT = (() => {
     bindTouchButton('mobileCrouch', 'crouch');
     bindTouchButton('mobileTalk', 'voiceTalk');
     bindTouchButton('mobileADS', 'ads');
+    bindTouchButton('mobileShield', 'shield');
     bindTouchButton('mobileInteract', 'interact');
     bindTouchButton('mobilePause', 'pause');
     document.addEventListener('gesturestart', e => { if (e.preventDefault) e.preventDefault(); }, { passive: false });
@@ -8272,6 +8512,19 @@ const INPUT = (() => {
       if (e.button === 2) setAction('ads', false);
     });
     document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
+    // Scroll to cycle weapons -- same nextWeapon/prevWeapon pulse the mobile
+    // Swap button already drives (see WEAPON.update's consumePress calls).
+    // Debounced like requestLock's own rate limit above: a single physical
+    // notch can still fire several small deltaY events on a trackpad, and
+    // without this a single scroll would blow through more than one weapon.
+    document.addEventListener('wheel', e => {
+      if (!engaged || mode === 'touch') return;
+      e.preventDefault();
+      const t = now();
+      if (t - lastWheelCycle < 140) return;
+      lastWheelCycle = t;
+      triggerAction(e.deltaY > 0 ? 'nextWeapon' : 'prevWeapon');
+    }, { passive: false });
 
     document.addEventListener('pointerlockchange', () => {
       locked = document.pointerLockElement === element;
@@ -8356,6 +8609,10 @@ const PLAYER = (() => {
   // spawn protection, ladders, Iron Hide, and hero saves still block every
   // kind of damage through protectionTimer.
   let hitInvuln = 0, protectionTimer = 0, regenTimer = 0, shake = 0;
+  // Dev-console-only, single-player toggle (see DEVCONSOLE's "god" command)
+  // -- kept separate from protectionTimer so it never expires and never
+  // lights up any of the real invuln-source HUD chips (Iron Hide, etc).
+  let devGodMode = false;
   // KILLCAM-only: whichever attacker most recently damaged the player, so a
   // fatal hit can be traced back to who/what threw it. Either a real ENEMY
   // entity (PvE) or a small { pvp: true, id } marker (PvP -- COOP.getRemote
@@ -8455,8 +8712,17 @@ const PLAYER = (() => {
     options = options || {};
     amount = Number(amount);
     const pvpHit = !!(attacker && attacker.pvp);
-    if (dead || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
+    if (dead || devGodMode || protectionTimer > 0 || (!options.ignoreHitRecovery && !pvpHit && hitInvuln > 0) ||
         !Number.isFinite(amount) || amount <= 0) return false;
+    // The Plow Shield reduces the raw incoming hit before it ever reaches
+    // the health-shield absorb/health split below -- see SHIELD.
+    if (typeof SHIELD !== 'undefined' && SHIELD.owned && fromPos) {
+      const sourceX = Array.isArray(fromPos) ? Number(fromPos[0]) : Number(fromPos.x);
+      const sourceZ = Array.isArray(fromPos) ? Number(fromPos[2]) : Number(fromPos.z);
+      if (Number.isFinite(sourceX) && Number.isFinite(sourceZ)) {
+        amount *= SHIELD.damageMultiplierFor(yaw, pos.x, pos.z, sourceX, sourceZ);
+      }
+    }
     lastAttacker = attacker || null;
     const healthBeforeHit = health;
     const absorbed = Math.min(shield, amount);
@@ -8600,6 +8866,8 @@ const PLAYER = (() => {
   function grantInvuln(seconds) {
     protectionTimer = Math.max(protectionTimer, seconds || 0);
   }
+
+  function setDevGodMode(on) { devGodMode = !!on; }
 
   /* Bear Claw's stun-chance claw swipe. Only ever extends an already-running
      stun (same convention as grantInvuln/applySpeedBoost above), so a
@@ -8806,12 +9074,17 @@ const PLAYER = (() => {
     const currentWeaponDef = typeof WEAPON !== 'undefined' ? CONFIG.weapons[WEAPON.currentId] : null;
     aiming = active && !locked && !climbing && INPUT.actions.ads &&
       !!currentWeaponDef && (currentWeaponDef.kind === 'gun' || currentWeaponDef.kind === 'flame');
+    // Raising the Plow Shield trades mobility for the frontal block, same
+    // shape as aiming just above -- see SHIELD for the block/bash itself.
+    const shieldActive = active && !locked && !climbing &&
+      typeof SHIELD !== 'undefined' && SHIELD.owned && INPUT.actions.shield;
 
-    sprinting = !climbing && !crouching && active && !locked && !aiming &&
+    sprinting = !climbing && !crouching && active && !locked && !aiming && !shieldActive &&
       slowTimer <= 0 && INPUT.sprinting && moveInput.y > 0.25 && grounded;
     const crouchSpeedFactor = crouching && !sliding ? C.crouchSpeedMult : 1;
     const aimSpeedFactor = aiming ? C.adsSpeedMult : 1;
-    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * slowMult * crouchSpeedFactor * aimSpeedFactor;
+    const shieldSpeedFactor = shieldActive ? CONFIG.shield.raisedSpeedMult : 1;
+    const target = (sprinting ? C.sprintSpeed : C.walkSpeed) * inputStrength * speedMult * slowMult * crouchSpeedFactor * aimSpeedFactor * shieldSpeedFactor;
 
     // ---- horizontal acceleration with real friction, no ice ----
     if (!climbing) {
@@ -8987,7 +9260,8 @@ const PLAYER = (() => {
 
   return {
     init, update, respawn, forwardVector, damage, damageOverTime, applyBleed, heal, addShield, revive, reviveAt, launchUp, finishDowned, setSpawnOffset, grantInvuln,
-    applyIronHide, applySpeedBoost, grantStun, grantSlow,
+    applyIronHide, applySpeedBoost, grantStun, grantSlow, setDevGodMode,
+    get devGodMode() { return devGodMode; },
     get ironHideRemaining() { return ironHideTimer; },
     get speedBoostRemaining() { return speedMultTimer; },
     get stunned() { return stunTimer > 0; },
@@ -9464,6 +9738,124 @@ const WEAPON = (() => {
     };
   }
 
+  /* The Gardener's drop: a stubby prohibition-era Tommy-gun silhouette --
+     boxy receiver, front vertical foregrip, wood-toned stock -- built
+     around a drum magazine that's an actual sunflower: a dark
+     seed-speckled face disc ringed by angled yellow petal wedges. */
+  function buildSeedSpitter() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1) });
+    const petal = MAT.toon(PAL.mustard);
+    const petalDeep = MAT.toon(PAL.mustardDk);
+    const seedFace = MAT.toon(PAL.charcoal);
+
+    PRIM.box(0.17, 0.19, 0.42, steel, { pos: [0, 0, -0.08], parent: g, warp: 0.008, outline: 0.013, ray: false });
+    PRIM.cyl(0.05, 0.055, 0.6, 10, steelLight, { pos: [0, 0.02, -0.62], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.cyl(0.07, 0.05, 0.1, 10, MAT.toon(PAL.charcoal), { pos: [0, 0.02, -0.94], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
+
+    const drum = new THREE.Group();
+    drum.position.set(0, -0.13, -0.28);
+    g.add(drum);
+    PRIM.cyl(0.19, 0.19, 0.09, 14, seedFace, { rot: [Math.PI / 2, 0, 0], parent: drum, outline: 0.016, ray: false });
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      PRIM.box(0.075, 0.028, 0.15, i % 2 ? petal : petalDeep, {
+        pos: [Math.cos(a) * 0.21, 0, Math.sin(a) * 0.21], rot: [0, -a, 0], parent: drum, outline: 0.01, ray: false
+      });
+    }
+    PRIM.cyl(0.045, 0.045, 0.1, 10, MAT.toon(PAL.rustDeep), { rot: [Math.PI / 2, 0, 0], parent: drum, outline: 0.008, ray: false });
+
+    PRIM.cyl(0.045, 0.05, 0.22, 10, stemWood, { pos: [0, -0.14, -0.48], rot: [0.08, 0, 0], parent: g, outline: 0.011, ray: false });
+    PRIM.box(0.12, 0.2, 0.42, stemWood, { pos: [0, -0.03, 0.3], rot: [-0.1, 0, 0], parent: g, warp: 0.01, outline: 0.013, ray: false });
+    PRIM.box(0.1, 0.22, 0.14, stemWood, { pos: [0, -0.18, 0.05], rot: [0.24, 0, 0], parent: g, outline: 0.012, ray: false });
+
+    const fx = flashes(g, 0.02, -1.0, 0.85);
+    models.seedSpitter = {
+      root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      base: [0.28, -0.27, -0.5], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
+  /* Portal Gun (barn crafting reward): the only weapon assembled in front
+     of the player rather than found in the world, so its shape is the
+     payoff for the three components (see CRAFT.COMPONENTS) that built it --
+     scrap plating for the chassis, a salvaged circuit board wired in on
+     the side, and the green shard itself socketed up top as the visible
+     "engine," glowing the same 0x67e8a5 as CRAFT's portal ring so the prop
+     reads as the thing that opens it. */
+  function buildPortalGun() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const tape = MAT.toon(PAL.creamDim);
+    const wire = MAT.toon(PAL.charcoal);
+    const boardMat = MAT.toon(PAL.charcoal);
+    const traceMat = MAT.toon(PAL.jaysLight);
+    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal() });
+    const portalGreen = 0x67e8a5;
+
+    // Chassis -- the scrap-metal fragment, plated straight onto a boxy
+    // receiver like the rest of the salvaged arsenal.
+    PRIM.box(0.21, 0.22, 0.34, steel, { pos: [0, 0, -0.03], parent: g, warp: 0.008, outline: 0.014, ray: false });
+    PRIM.box(0.16, 0.07, 0.18, steelLight, { pos: [0, 0.1, 0.03], parent: g, outline: 0.011, ray: false });
+
+    // Stubby emitter barrel, capped with a glowing ring instead of a bore --
+    // this is what actually fires the portal, not a bullet.
+    PRIM.cyl(0.05, 0.06, 0.42, 10, steelLight, { pos: [0, 0.015, -0.44], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.062, 0.02, socketMat, { pos: [0, 0.015, -0.66], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.01, ray: false });
+    const emitterCore = new THREE.Mesh(new THREE.CircleGeometry(0.05, 12),
+      new THREE.MeshBasicMaterial({ color: portalGreen, transparent: true, opacity: 0.92, side: THREE.DoubleSide, fog: false }));
+    emitterCore.position.set(0, 0.015, -0.665);
+    g.add(emitterCore);
+
+    // The green shard, socketed in a claw-mount up top like a held gem --
+    // the crafted component itself, not just a color callback.
+    const socket = new THREE.Group();
+    socket.position.set(0, 0.155, -0.08);
+    g.add(socket);
+    [-1, 1].forEach(s => {
+      PRIM.torus(0.06, 0.012, socketMat, { pos: [s * 0.04, 0, 0], rot: [0, 0, Math.PI / 2 + s * 0.3], parent: socket, outline: 0.008, ray: false });
+    });
+    const shard = new THREE.Mesh(new THREE.OctahedronGeometry(0.075),
+      new THREE.MeshBasicMaterial({ color: portalGreen, transparent: true, opacity: 0.88, fog: false }));
+    shard.scale.set(0.85, 1.3, 0.85);
+    socket.add(shard);
+
+    // Salvaged circuit board, taped to the side -- the computer chip
+    // component, wired up to the shard socket with loose scrap cabling.
+    const board = new THREE.Group();
+    board.position.set(0.115, 0.03, -0.14);
+    board.rotation.set(0, 0.5, 0.06);
+    g.add(board);
+    PRIM.box(0.14, 0.09, 0.012, boardMat, { parent: board, outline: 0.009, ray: false });
+    [[-0.04, 0.025], [0.02, 0.025], [-0.01, -0.01], [0.045, -0.015]].forEach(t =>
+      PRIM.box(0.028, 0.006, 0.004, traceMat, { pos: [t[0], t[1], 0.009], parent: board, outline: false, ray: false })
+    );
+    PRIM.cyl(0.012, 0.012, 0.02, 6, MAT.toon(PAL.mustardDk), { pos: [-0.045, -0.03, 0.014], parent: board, outline: 0.005, ray: false });
+    PRIM.box(0.16, 0.03, 0.02, tape, { pos: [0.115, 0.02, -0.13], rot: [0, 0.5, 0.06], parent: g, outline: 0.008, ray: false });
+    PRIM.hose(new THREE.Vector3(0.13, 0.06, -0.18), new THREE.Vector3(0.03, 0.14, -0.1),
+      0.22, 0.014, wire, { parent: g, outline: 0.005, ray: false });
+
+    // Grip + trigger, same convention as the rest of the salvaged lineup.
+    PRIM.box(0.1, 0.2, 0.12, MAT.toon(PAL.rustDeep), { pos: [0, -0.19, 0.05], rot: [0.24, 0, 0], parent: g, outline: 0.012, ray: false });
+    PRIM.torus(0.05, 0.011, MAT.toon(PAL.charcoal), { pos: [0, -0.08, -0.02], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.008, ray: false });
+
+    const forend = new THREE.Group();
+    forend.position.set(0, -0.02, -0.52);
+    g.add(forend);
+    PRIM.box(0.14, 0.09, 0.16, tape, { parent: forend, warp: 0.01, outline: 0.011, ray: false });
+
+    const fx = flashes(g, 0.015, -0.86, 0.85);
+    models.portalGun = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2, emitterCore: emitterCore,
+      base: [0.27, -0.27, -0.5], rot: [0.02, -0.08, 0.02]
+    };
+  }
+
   function buildHandsAndBoots() {
     const black = MAT.toon(PAL.charcoal);
     armedHands = new THREE.Group();
@@ -9533,6 +9925,8 @@ const WEAPON = (() => {
     buildChainsaw();
     buildSprayTorch();
     buildTheClaw();
+    buildSeedSpitter();
+    buildPortalGun();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -10029,6 +10423,20 @@ const WEAPON = (() => {
     };
   }
 
+  // Dev-console-only support (see DEVCONSOLE's "refillammo" command): top
+  // every currently-owned gun/flame weapon back up to max mag+reserve in
+  // one shot, for playtesting without hunting down ammo pickups.
+  function refillAll() {
+    let n = 0;
+    Object.keys(DEFS).forEach(id => {
+      const d = DEFS[id], s = inventory[id];
+      if (!s.owned || (d.kind !== 'gun' && d.kind !== 'flame')) return;
+      s.mag = d.magSize; s.reserve = d.maxReserve; n++;
+    });
+    if (n > 0) syncHUD();
+    return n;
+  }
+
   function beginHeroSpecial(id) {
     const d = DEFS[id], s = inventory[id];
     if (!d || !s || !d.specialOnly) return false;
@@ -10061,11 +10469,17 @@ const WEAPON = (() => {
       if (damageMultTimer <= 0) { damageMultTimer = 0; damageMult = 1; }
     }
 
-    if (active) {
+    // The Plow Shield is its own system with its own key (see SHIELD),
+    // never a weapon-slot item -- while it's actually raised, it fully
+    // owns input: no firing, reloading, or swapping, and the melee key
+    // becomes a shield bash instead (see SHIELD.update).
+    const shieldRaised = typeof SHIELD !== 'undefined' && SHIELD.owned && INPUT.actions.shield;
+    if (active && !shieldRaised) {
       for (let slot = 1; slot <= 9; slot++) {
         if (INPUT.consumePress('slot' + slot)) selectSlot(slot);
       }
       if (INPUT.consumePress('nextWeapon')) cycleWeapon(1);
+      if (INPUT.consumePress('prevWeapon')) cycleWeapon(-1);
       const pressedFire = INPUT.consumePress('fire');
       const d = defFor();
       if (INPUT.consumePress('melee')) {
@@ -10263,7 +10677,7 @@ const WEAPON = (() => {
   }
 
   return {
-    build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon,
+    build, update, addLook, reset, setCurrent, selectSlot, cycleWeapon, addAmmo, grantWeapon, refillAll,
     beginHeroSpecial, endHeroSpecial, applyDamageBoost,
     hasWeapon(id) { return !!(inventory[id] && inventory[id].owned); },
     get currentId() { return currentId; },
@@ -10271,6 +10685,106 @@ const WEAPON = (() => {
     get reserve() { return stateFor().reserve; },
     get reloading() { return reloading; },
     get damageBoostRemaining() { return damageMultTimer; }
+  };
+})();
+
+/* ============================== [SHIELD] ==============================
+   The Plow Shield: a COD-Zombies-style riot shield, crafted from 3 found
+   pieces at the North Barn Cellar workbench (see QUEST). Deliberately its
+   own system, not a weapon-slot item and not the melee key:
+
+     - Passive, always on once crafted: reduces damage taken from behind,
+       whether raised or not (see damageMultiplierFor, hooked into
+       PLAYER.damage()).
+     - Active, held via its own key (default Q): raises the shield, which
+       heavily reduces frontal damage while up, slows movement like ADS,
+       and turns the melee key into a shield bash instead of the normal
+       fists/weapon melee (see WEAPON.update's shieldRaised gate).
+
+   Single-player only, same scope as the Portal Gun quest -- no coop sync. */
+const SHIELD = (() => {
+  let owned = false;
+  let raised = false;
+  let raiseAmount = 0;
+  let bashCooldown = 0;
+  let viewGroup = null;
+  const _o = new THREE.Vector3(), _d = new THREE.Vector3();
+
+  function build(viewScene) {
+    viewGroup = new THREE.Group();
+    viewGroup.visible = false;
+    const bodyMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const rimMat = MAT.toon(PAL.charcoal);
+    PRIM.box(0.46, 0.62, 0.05, bodyMat, { pos: [0, 0, 0], parent: viewGroup, outline: 0.02, warp: 0.01, ray: false });
+    PRIM.box(0.5, 0.66, 0.02, rimMat, { pos: [0, 0, -0.02], parent: viewGroup, outline: 0.015, ray: false });
+    PRIM.cyl(0.03, 0.03, 0.22, 8, rimMat, { pos: [0, -0.08, 0.08], rot: [Math.PI / 2, 0, 0], parent: viewGroup, outline: 0.01, ray: false });
+    viewGroup.position.set(0.34, -0.32, -0.62);
+    viewGroup.rotation.set(0, -0.15, 0.05);
+    viewScene.add(viewGroup);
+  }
+
+  function grant() {
+    owned = true;
+  }
+
+  function reset() {
+    owned = false;
+    raised = false;
+    raiseAmount = 0;
+    bashCooldown = 0;
+    if (viewGroup) viewGroup.visible = false;
+  }
+
+  function bash(camera) {
+    bashCooldown = CONFIG.shield.bashCooldown;
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    const connected = typeof ENEMY !== 'undefined' && ENEMY.melee(_o, _d, {
+      damage: CONFIG.shield.bashDamage,
+      range: CONFIG.shield.bashRange,
+      arc: CONFIG.shield.bashArc,
+      force: CONFIG.shield.bashForce
+    });
+    AUDIO.melee('shieldBash', connected);
+  }
+
+  function update(dt, camera, active) {
+    if (bashCooldown > 0) bashCooldown -= dt;
+    if (!owned) {
+      raised = false;
+      if (viewGroup) viewGroup.visible = false;
+      return;
+    }
+    raised = !!(active && INPUT.actions.shield);
+    raiseAmount = UTIL.damp(raiseAmount, raised ? 1 : 0, CONFIG.shield.raiseLerpRate, dt);
+    if (viewGroup) {
+      viewGroup.visible = raiseAmount > 0.01;
+      viewGroup.position.x = 0.34 - raiseAmount * 0.24;
+      viewGroup.position.y = -0.32 + raiseAmount * 0.1;
+      viewGroup.position.z = -0.62 + raiseAmount * 0.12;
+    }
+    if (active && raised && bashCooldown <= 0 && INPUT.consumePress('melee')) bash(camera);
+  }
+
+  // yaw/px/pz describe the local player; sx/sz is the damage source. Kept
+  // as plain numbers (not THREE.Vector3/PLAYER references) so this stays
+  // trivially testable without a real scene or player rig.
+  function damageMultiplierFor(yaw, px, pz, sx, sz) {
+    if (!owned) return 1;
+    const dx = sx - px, dz = sz - pz;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.001) return 1;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const dot = (dx / dist) * fx + (dz / dist) * fz;
+    if (raised && dot > CONFIG.shield.raisedFrontArcDot) return CONFIG.shield.raisedFrontDamageMult;
+    if (dot < -CONFIG.shield.rearArcDot) return CONFIG.shield.passiveRearDamageMult;
+    return 1;
+  }
+
+  return {
+    build, update, grant, reset, damageMultiplierFor,
+    get owned() { return owned; },
+    get raised() { return raised; }
   };
 })();
 
@@ -11891,7 +12405,7 @@ const UI = (() => {
     forward: 'Move Forward', back: 'Move Back', left: 'Move Left', right: 'Move Right',
     jump: 'Jump', sprint: 'Sprint', crouch: 'Crouch / Slide', reload: 'Reload', lantern: 'Lantern', melee: 'Melee',
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays', interact: 'Interact',
-    voiceTalk: 'Push to Talk',
+    voiceTalk: 'Push to Talk', shield: 'Raise Plow Shield',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4',
     slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
   };
@@ -12200,7 +12714,22 @@ const PICKUP = (() => {
     // underground room worth circling instead of using only as a hatch exit.
     { id: 'batteryPack', x: 37.5, y: -4.0, z: -74.0 },
     { id: 'healthTonic', x: 59.5, y: -4.0, z: -66.0 },
-    { id: 'grenadeBundle', x: 43.0, y: -4.0, z: -59.5 }
+    { id: 'grenadeBundle', x: 43.0, y: -4.0, z: -59.5 },
+
+    // Seed Spitter ammo. The Gardener's drop is a late-quest reward, so its
+    // resupply sits near where that reward actually lands: the North Barn
+    // upper floor, plus one on the silo deck for players who explore there
+    // before the Gardener quest stage.
+    { id: 'seedDrumPack', x: 41.0, y: 4.2, z: -74.0 },
+    { id: 'seedDrumPack', x: 61.0, y: 4.2, z: -69.0 },
+    { id: 'seedDrumPack', x: 3.0, y: 8.2, z: -67.0 },
+
+    // The Plow Shield's 3 pieces: spread across three different corners of
+    // the farm (barn yard, horse stable, silo deck) so "find 3 pieces" is a
+    // real trip around the map, not a single cluster next to the bench.
+    { id: 'plowDisc', x: 35.0, z: -51.0 },              // barn yard, near the old tractor wreck
+    { id: 'harnessStraps', x: 43.5, z: -46.0 },          // horse stable
+    { id: 'reinforcingPlate', x: 6.0, y: 8.2, z: -65.0 } // silo deck
   ];
 
   function define(id, def) {
@@ -12252,6 +12781,10 @@ const PICKUP = (() => {
   define('spraycanBox', {
     type: 'ammo', label: 'Spray Cans', ammoType: 'spraycan',
     quantity: 150, color: PAL.hotSauce, respawn: 24
+  });
+  define('seedDrumPack', {
+    type: 'ammo', label: 'Seed Drums', ammoType: 'seedDrum',
+    quantity: 50, color: PAL.mustard, respawn: 26
   });
   define('healthTonic', {
     type: 'health', label: 'Pep Tonic', quantity: 30,
@@ -12307,6 +12840,12 @@ const PICKUP = (() => {
     type: 'weapon', label: 'The Claw', weaponId: 'theClaw',
     quantity: 1, color: PAL.rust, respawn: 0
   });
+  // The Gardener's drop (see ENEMY.die's isGardener branch), alongside the
+  // Barn Key -- not part of the static spawns list.
+  define('seedSpitterWeapon', {
+    type: 'weapon', label: 'Seed Spitter', weaponId: 'seedSpitter',
+    quantity: 100, color: PAL.mustard, respawn: 0
+  });
   // Beat Slayer's drop -- not part of the static spawns list either; see
   // ENEMY.die's isBoss3 branch. A single-carry throwable rather than a
   // weapon-slot grant, since throwing it is the whole point.
@@ -12322,6 +12861,12 @@ const PICKUP = (() => {
   define('metalWeaponFragment', { type: 'quest', questId: 'metalFragment', label: 'Metal Weapon Fragment', color: PAL.blueGray, respawn: 0 });
   define('computerChip', { type: 'quest', questId: 'computerChip', label: 'Computer Chip', color: PAL.mustard, respawn: 0 });
   define('barnKey', { type: 'quest', questId: 'barnKey', label: 'Barn Key', color: PAL.mustard, respawn: 0 });
+  // The Plow Shield's 3 pieces -- unlike the Portal Gun's components above,
+  // these are found out in the open world rather than dropped by bosses
+  // (see the spawns list below and QUEST.SHIELD_COMPONENTS).
+  define('plowDisc', { type: 'quest', questId: 'plowDisc', label: 'Plow Disc', color: PAL.rustDeep, respawn: 0 });
+  define('harnessStraps', { type: 'quest', questId: 'harnessStraps', label: 'Harness Straps', color: PAL.rustDeep, respawn: 0 });
+  define('reinforcingPlate', { type: 'quest', questId: 'reinforcingPlate', label: 'Reinforcing Plate', color: PAL.blueGray, respawn: 0 });
 
   registerHandler('weapon', (def, pickup) => {
     const result = WEAPON.grantWeapon(def.weaponId, def.quantity, {
@@ -12331,7 +12876,7 @@ const PICKUP = (() => {
     const slot = CONFIG.weapons[def.weaponId].slot;
     return {
       message: result.newlyOwned
-        ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Swap to cycle' : 'slot ' + slot)
+        ? def.label + ' acquired — ' + (INPUT.mobile ? 'tap Swap to cycle' : slot <= 9 ? 'slot ' + slot : 'cycle weapons to equip')
         : result.refilled
           ? def.label + ' restocked — full ammo'
         : result.repeated
@@ -12467,6 +13012,30 @@ const PICKUP = (() => {
         pos: [s * 0.08, 0.06, s * 0.03], rot: [0.3, 0, s * 0.5], parent: greens, warp: 0.015, outline: 0.018, ray: false
       });
     });
+  }
+
+  /* The Gardener's drop: a stubby Tommy-gun silhouette wrapped around a
+     sunflower drum magazine, scaled up the same way buildCarrotCannonVisual
+     is relative to its held viewmodel -- see WEAPON.buildSeedSpitter. */
+  function buildSeedSpitterVisual(parent) {
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1) });
+    const petal = MAT.toon(PAL.mustard);
+    const petalDeep = MAT.toon(PAL.mustardDk);
+    const seedFace = MAT.toon(PAL.charcoal);
+    PRIM.box(0.26, 0.29, 0.64, steel, { pos: [0, 0, -0.05], parent: parent, warp: 0.01, outline: 0.02, ray: false });
+    PRIM.cyl(0.075, 0.08, 0.9, 10, steel, { pos: [0, 0.03, -0.85], rot: [Math.PI / 2, 0, 0], parent: parent, outline: 0.018, ray: false });
+    const drum = new THREE.Group();
+    drum.position.set(0, -0.2, -0.42);
+    parent.add(drum);
+    PRIM.cyl(0.29, 0.29, 0.13, 14, seedFace, { rot: [Math.PI / 2, 0, 0], parent: drum, outline: 0.022, ray: false });
+    for (let i = 0; i < 12; i++) {
+      const a = i / 12 * Math.PI * 2;
+      PRIM.box(0.11, 0.042, 0.23, i % 2 ? petal : petalDeep, {
+        pos: [Math.cos(a) * 0.32, 0, Math.sin(a) * 0.32], rot: [0, -a, 0], parent: drum, outline: 0.014, ray: false
+      });
+    }
+    PRIM.box(0.18, 0.3, 0.62, stemWood, { pos: [0, -0.04, 0.44], rot: [-0.1, 0, 0], parent: parent, warp: 0.014, outline: 0.02, ray: false });
   }
 
   function buildAmmoVisual(parent, def) {
@@ -12622,6 +13191,7 @@ const PICKUP = (() => {
     if (def.type === 'weapon') {
       if (def.weaponId === 'carrotCannon') buildCarrotCannonVisual(visual);
       else if (def.weaponId === 'sprayTorch') buildSpraycanVisual(visual);
+      else if (def.weaponId === 'seedSpitter') buildSeedSpitterVisual(visual);
       else buildWeaponVisual(visual, def);
     }
     else if (def.type === 'ammo' && def.ammoType === 'battery') buildBatteryVisual(visual);
@@ -12911,6 +13481,12 @@ const RUNSTATS = (() => {
 
 const QUEST = (() => {
   const COMPONENTS = ['greenShard', 'metalFragment', 'computerChip'];
+  // The Plow Shield: 3 pieces found out in the open world (not boss drops,
+  // unlike the Portal Gun's COMPONENTS above), assembled at a second,
+  // separate workbench in the North Barn Cellar. See SHIELD for the actual
+  // block/bash mechanic this unlocks.
+  const SHIELD_COMPONENTS = ['plowDisc', 'harnessStraps', 'reinforcingPlate'];
+  const SHIELD_COMPONENT_LABELS = { plowDisc: 'PLOW DISC', harnessStraps: 'HARNESS STRAPS', reinforcingPlate: 'REINFORCING PLATE' };
   const ENCOUNTERS = Object.freeze([
     { stage: 1, id: 'beatSlayer', name: 'Beat Slayer', threshold: CONFIG.progress.singleBeatSlayerThreshold },
     { stage: 2, id: 'bearClaw', name: 'Bear Claw', threshold: CONFIG.progress.singleBearClawThreshold },
@@ -12919,9 +13495,10 @@ const QUEST = (() => {
   ]);
   const state = {
     components: {}, barnKey: false, barnUnlocked: false,
-    crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false
+    crafted: false, cutscenePlayed: false, stage: 0, encounterSpawned: false,
+    shieldComponents: {}, shieldCrafted: false
   };
-  let gardener = null, cutsceneTimer = 0, portalEffect = null;
+  let gardener = null;
 
   function isSinglePlayer() { return typeof GAME !== 'undefined' && GAME.mode === 'single'; }
   function setBarnEntrances(open, immediate) {
@@ -12932,28 +13509,40 @@ const QUEST = (() => {
   }
   function syncHud() {
     const hud = document.getElementById('componentHud');
-    if (!hud) return;
-    hud.classList.toggle('on', isSinglePlayer() && !state.crafted);
-    hud.querySelectorAll('[data-component]').forEach(el => {
-      const id = el.getAttribute('data-component');
-      el.classList.toggle('collected', !!state.components[id]);
-      el.classList.toggle('assembled', !!state.crafted);
-    });
+    if (hud) {
+      hud.classList.toggle('on', isSinglePlayer() && !state.crafted);
+      hud.querySelectorAll('[data-component]').forEach(el => {
+        const id = el.getAttribute('data-component');
+        el.classList.toggle('collected', !!state.components[id]);
+        el.classList.toggle('assembled', !!state.crafted);
+      });
+    }
+    const shieldHud = document.getElementById('shieldHud');
+    if (shieldHud) {
+      shieldHud.classList.toggle('on', isSinglePlayer() && !state.shieldCrafted);
+      shieldHud.querySelectorAll('[data-shield-component]').forEach(el => {
+        const id = el.getAttribute('data-shield-component');
+        el.classList.toggle('collected', !!state.shieldComponents[id]);
+        el.classList.toggle('assembled', !!state.shieldCrafted);
+      });
+    }
   }
   function reset() {
     if (typeof ENEMY !== 'undefined' && ENEMY.clearQuestEnemies) ENEMY.clearQuestEnemies();
     state.components = {}; state.barnKey = false; state.barnUnlocked = false;
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
-    gardener = null; cutsceneTimer = 0;
-    if (portalEffect && portalEffect.parent) portalEffect.parent.remove(portalEffect);
-    portalEffect = null;
+    state.shieldComponents = {}; state.shieldCrafted = false;
+    gardener = null;
     setBarnEntrances(false, true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['CRAFTING', 'OFFLINE']);
     syncHud();
   }
   function start() {
     if (!isSinglePlayer()) {
       // The key quest is solo-only; keep the barn traversable in co-op/PvP.
       setBarnEntrances(true, true);
+      if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
       syncHud();
       return;
     }
@@ -12961,6 +13550,7 @@ const QUEST = (() => {
     state.stage = 1;
     state.encounterSpawned = false;
     setBarnEntrances(false, true);
+    if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
     UI.toast('WILT ' + CONFIG.progress.singleBeatSlayerThreshold + ' ENEMIES TO DRAW OUT BEAT SLAYER', 2.8);
     syncHud();
   }
@@ -12969,6 +13559,12 @@ const QUEST = (() => {
     if (id === 'barnKey') {
       if (state.barnKey) return false;
       state.barnKey = true; RUNSTATS.milestone('barn_key_collected', 'barnKey'); UI.toast('BARN KEY COLLECTED — RETURN TO THE NORTH BARN', 2.6); return true;
+    }
+    if (SHIELD_COMPONENTS.indexOf(id) >= 0) {
+      if (state.shieldComponents[id]) return false;
+      state.shieldComponents[id] = true; syncHud(); RUNSTATS.milestone('shield_component_collected', id);
+      if (SHIELD_COMPONENTS.every(key => state.shieldComponents[key])) UI.toast('ALL SHIELD PIECES FOUND — ASSEMBLE AT THE CELLAR WORKBENCH', 3.2);
+      return true;
     }
     if (COMPONENTS.indexOf(id) < 0 || state.components[id]) return false;
     state.components[id] = true; syncHud(); RUNSTATS.milestone('component_collected', id);
@@ -13034,7 +13630,12 @@ const QUEST = (() => {
     return LEVEL.northBarnAccessAt(p, layer);
   }
   function nearStation(p) { return p && p.y > 3.2 && Math.hypot(p.x - 58.3, p.z + 76.7) < 4.2; }
+  // Second workbench, one floor down in the North Barn Cellar (see LEVEL's
+  // buildBasement north_barn_cellar room) -- p.y < -1 keeps this from ever
+  // overlapping the upstairs Portal Gun station above.
+  function nearShieldBench(p) { return p && p.y < -1 && Math.hypot(p.x - 50, p.z + 73) < 4.0; }
   function missing() { return COMPONENTS.filter(id => !state.components[id]); }
+  function missingShieldPieces() { return SHIELD_COMPONENTS.filter(id => !state.shieldComponents[id]); }
   function interactionKey() {
     if (typeof INPUT === 'undefined') return 'E';
     if (INPUT.mobile) return 'USE';
@@ -13049,6 +13650,7 @@ const QUEST = (() => {
       ? (LEVEL.isNorthBarnAccessOpen(access.id) ? 'Close ' + access.label : 'Open ' + access.label)
       : state.barnKey ? 'Use Barn Key on ' + access.label : 'Locked — Barn Key required');
     if (nearStation(p)) return state.barnUnlocked ? key + ' · ' + (state.crafted ? 'Portal Gun already assembled' : 'Use Portal Gun workbench') : 'Workbench inaccessible — barn locked';
+    if (nearShieldBench(p)) return state.barnUnlocked ? key + ' · ' + (state.shieldCrafted ? 'Plow Shield already assembled' : 'Use cellar workbench') : 'Workbench inaccessible — barn locked';
     return '';
   }
   function interact(p) {
@@ -13058,9 +13660,12 @@ const QUEST = (() => {
       if (!state.barnKey) { UI.toast('LOCKED — KEY REQUIRED', 1.8); return true; }
       if (!state.barnUnlocked) {
         state.barnUnlocked = true;
-        LEVEL.setNorthBarnAccess(access.id, true);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setAllNorthBarnAccess) LEVEL.setAllNorthBarnAccess(true);
+        else LEVEL.setNorthBarnAccess(access.id, true);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(false);
+        if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['CRAFTING', 'ONLINE']);
         RUNSTATS.milestone('barn_unlocked', 'northBarn', { entrance: access.id });
-        UI.toast('BARN KEY USED — ' + access.label.toUpperCase() + ' UNLOCKED', 2.2);
+        UI.toast('BARN KEY USED — ALL BARN ENTRANCES OPENED', 2.2);
       } else {
         const open = !LEVEL.isNorthBarnAccessOpen(access.id);
         LEVEL.setNorthBarnAccess(access.id, open);
@@ -13068,29 +13673,49 @@ const QUEST = (() => {
       }
       return true;
     }
-    if (!nearStation(p)) return false;
-    if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
-    if (state.crafted) { UI.toast('PORTAL GUN ALREADY ASSEMBLED', 1.4); return true; }
-    const need = missing();
-    if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
-    state.crafted = true; syncHud();
-    WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
-    RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
-    UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
+    if (nearStation(p)) {
+      if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
+      if (state.crafted) { UI.toast('PORTAL GUN ALREADY ASSEMBLED', 1.4); return true; }
+      const need = missing();
+      if (need.length) { UI.toast('MISSING: ' + need.map(id => ({greenShard:'GREEN SHARD',metalFragment:'WEAPON FRAGMENT',computerChip:'COMPUTER CHIP'})[id]).join(', '), 2.8); return true; }
+      state.crafted = true; syncHud();
+      WEAPON.grantWeapon('portalGun', 18); WEAPON.setCurrent('portalGun');
+      RUNSTATS.weapon('crafted', 'portalGun'); RUNSTATS.milestone('portal_gun_created', 'portalGun');
+      UI.toast('PORTAL GUN ASSEMBLED', 2.2); beginCutscene(); return true;
+    }
+    if (nearShieldBench(p)) {
+      if (!state.barnUnlocked) { UI.toast('THE BARN IS STILL LOCKED', 1.6); return true; }
+      if (state.shieldCrafted) { UI.toast('PLOW SHIELD ALREADY ASSEMBLED', 1.4); return true; }
+      const needShield = missingShieldPieces();
+      if (needShield.length) { UI.toast('MISSING: ' + needShield.map(id => SHIELD_COMPONENT_LABELS[id]).join(', '), 2.8); return true; }
+      state.shieldCrafted = true; syncHud();
+      if (typeof SHIELD !== 'undefined' && SHIELD.grant) SHIELD.grant();
+      RUNSTATS.milestone('plow_shield_created', 'plowShield');
+      const shieldKey = typeof INPUT !== 'undefined' ? (INPUT.codeLabel(INPUT.getBindings().shield) || 'Q') : 'Q';
+      UI.toast('PLOW SHIELD ASSEMBLED — HOLD ' + shieldKey + ' TO RAISE IT', 3.0);
+      return true;
+    }
+    return false;
   }
+  // Fully staged in PORTALCUTSCENE (camera pan, third-person watcher, portal
+  // growth, Bearclaw2's walk-out, held reveal) -- QUEST only owns the
+  // business-logic side of it: releasing input up front, and the stage
+  // bump + resume-into-gameplay handoff once it reports back done.
   function beginCutscene() {
     if (state.cutscenePlayed) return;
-    state.cutscenePlayed = true; cutsceneTimer = 5.2;
+    state.cutscenePlayed = true;
     INPUT.clearActions(); INPUT.releaseLock();
-    portalEffect = new THREE.Mesh(
-      new THREE.TorusGeometry(1.55, 0.18, 10, 36),
-      new THREE.MeshBasicMaterial({ color:0x67e8a5, transparent:true, opacity:0.92, depthWrite:false })
-    );
-    portalEffect.position.set(62.45, 5.7, -72.8);
-    portalEffect.rotation.y = Math.PI / 2;
-    portalEffect.scale.setScalar(0.05);
-    if (GAME.scene) GAME.scene.add(portalEffect);
-    UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
+    if (typeof PORTALCUTSCENE === 'undefined') {
+      state.stage = 6;
+      if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['BREACH', 'DETECTED']);
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+      return;
+    }
+    PORTALCUTSCENE.play(GAME.camera, () => {
+      state.stage = 6;
+      if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['BREACH', 'DETECTED']);
+      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
+    });
   }
   function update(dt, simulationActive) {
     if (simulationActive) updateProgress(ENEMY.kills);
@@ -13123,29 +13748,11 @@ const QUEST = (() => {
       }
       UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
     }
-    if (!cutsceneTimer) return;
-    if (portalEffect) {
-      const openK = 1 - Math.min(1, cutsceneTimer / 4.4);
-      portalEffect.scale.setScalar(Math.max(0.05, Math.sin(Math.min(1, openK) * Math.PI * 0.5)));
-      portalEffect.rotation.z += dt * 0.8;
-    }
-    cutsceneTimer = Math.max(0, cutsceneTimer - dt);
-    if (cutsceneTimer === 0) {
-      state.stage = 6;
-      const boss = ENEMY.spawnBoss2(2);
-      if (boss) { boss.pos.set(55, WORLD.groundAt(55, -75, 2, 'surface'), -75); boss.group.position.copy(boss.pos); }
-      UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
-      if (portalEffect) {
-        const closingPortal = portalEffect;
-        closingPortal.material.opacity = 0.45;
-        setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
-      }
-      if (typeof GAME !== 'undefined' && GAME.resumeAfterQuestCutscene) GAME.resumeAfterQuestCutscene();
-    }
   }
   return { reset, start, collect, interact, interactionHint, update, updateProgress, bossDefeated, spawnGardener, isSinglePlayer,
     get state() { return state; }, get encounters() { return ENCOUNTERS; },
-    get gardener() { return gardener; }, get cutsceneActive() { return cutsceneTimer > 0; } };
+    get gardener() { return gardener; },
+    get cutsceneActive() { return typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE.active; } };
 })();
 
 /* ============================== [GAME] =============================== */
@@ -13227,6 +13834,7 @@ const GAME = (() => {
     FX.setSprayImage(SETTINGS.sprayTagImage || CONFIG.fx.sprayImage || null);
     PLAYER.init(camera);
     WEAPON.build(viewScene);
+    SHIELD.build(viewScene);
     THROWABLE.init(scene);
     await bossAssetTask;
     if (UI.el.loading) UI.el.loading.textContent = 'Warming mini-boss crew…';
@@ -13241,6 +13849,8 @@ const GAME = (() => {
     INPUT.init(renderer.domElement);
     COOP.init(scene);
     INTRO.init(scene, camera);
+    PHONESCENE.init();
+    PORTALCUTSCENE.init(scene, camera);
     KILLCAM.init(scene);
 
     // shared mouse/touch engagement wiring
@@ -13359,8 +13969,16 @@ const GAME = (() => {
     document.getElementById('autoEquipOffBtn').addEventListener('click', e => {
       e.stopPropagation(); SETTINGS.setAutoEquipPickups(false); UI.syncOptionsUI();
     });
-    document.getElementById('optSprayTagChoose').addEventListener('click', e => {
-      e.stopPropagation(); document.getElementById('optSprayTagFile').click();
+    // A native <label for="optSprayTagFile">, not a button with a JS-driven
+    // input.click() -- the label's built-in browser activation opens the
+    // file picker directly, no synthetic re-dispatch involved. Keyboard
+    // users still need an explicit Enter/Space handler since labels aren't
+    // natively keyboard-activatable the way buttons are.
+    document.getElementById('optSprayTagChoose').addEventListener('click', e => { e.stopPropagation(); });
+    document.getElementById('optSprayTagChoose').addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById('optSprayTagFile').click();
     });
     document.getElementById('optSprayTagReset').addEventListener('click', e => {
       e.stopPropagation(); resetSprayTag();
@@ -13615,7 +14233,9 @@ const GAME = (() => {
     AUDIO.resume();
     UI.hideMenus();
     if (playIntro === false || typeof INTRO === 'undefined') { enterNow(); return; }
-    INTRO.play(camera, enterNow);
+    const afterPhone = () => INTRO.play(camera, enterNow);
+    if (typeof PHONESCENE === 'undefined') { afterPhone(); return; }
+    PHONESCENE.play(afterPhone);
   }
 
   function startSingle() {
@@ -13862,6 +14482,7 @@ const GAME = (() => {
     RUNSTATS.begin(mode, mode === 'coop' && COOP.localId ? COOP.localId : 'local');
     PLAYER.revive();
     WEAPON.reset();
+    SHIELD.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
     QUEST.reset();
@@ -13900,6 +14521,7 @@ const GAME = (() => {
     RUNSTATS.finalize(endShown ? 'completed' : 'abandoned');
     PLAYER.revive();
     WEAPON.reset();
+    SHIELD.reset();
     THROWABLE.reset();
     CONSUMABLE.reset();
     QUEST.reset();
@@ -13964,6 +14586,36 @@ const GAME = (() => {
       return;
     }
 
+    if (typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE.active) {
+      INPUT.consumeMouse();
+      PORTALCUTSCENE.update(dt);
+      LEVEL.update(dt, time);
+      UI.setInteractionHint('');
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      renderer.clear();
+      renderer.render(scene, PORTALCUTSCENE.camera);
+      return;
+    }
+
+    // PHONESCENE is a pure 2D DOM overlay with no cutscene camera of its own
+    // (unlike INTRO above) -- but it needs the exact same simulation freeze.
+    // `running` only ever flips true via INPUT's 'lock' event, which is
+    // entirely decoupled from whichever cutscene happens to be on screen, so
+    // without this guard ENEMY/PLAYER simulation could run invisibly behind
+    // the opaque veil for the whole conversation, landing the player in
+    // combat -- sometimes already losing it -- the instant the veil lifts.
+    if (typeof PHONESCENE !== 'undefined' && PHONESCENE.active) {
+      INPUT.consumeMouse();
+      LEVEL.update(dt, time);
+      UI.setInteractionHint('');
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      return;
+    }
+
     // one read of the mouse delta per frame, shared by the look and the sway
     const look = INPUT.consumeMouse();
     if (running) WEAPON.addLook(look.x, look.y);
@@ -13992,6 +14644,7 @@ const GAME = (() => {
     // (or should start) playing.
     KILLCAM.update(dt, camera);
     WEAPON.update(dt, time, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
+    SHIELD.update(dt, camera, running && (!PLAYER.isDead || HERO.canActWhileDowned) && !PLAYER.stunned);
     THROWABLE.update(dt, time, camera, running, running && !PLAYER.isDead && !PLAYER.stunned);
     CONSUMABLE.update(dt, running && !PLAYER.isDead && !PLAYER.stunned);
     HERO.update(dt, running);
@@ -15245,6 +15898,7 @@ const AVIATION_AVATAR = (() => {
     document.querySelectorAll('[data-aviation-summary]').forEach(node => { node.textContent = text; });
     const heroChoices = document.getElementById('heroChoices');
     const launch = document.getElementById('hangarPilotStartBtn');
+    const switchBack = document.getElementById('hangarPilotSwitchBackBtn');
     const headline = document.getElementById('playerSelectHeadline');
     const sub = document.getElementById('playerSelectSub');
     const coopPicker = document.getElementById('coopCharacterPicker');
@@ -15253,6 +15907,7 @@ const AVIATION_AVATAR = (() => {
       launch.hidden = !item;
       if (item) launch.textContent = `Launch Hangar Pilot #${item.tokenId} →`;
     }
+    if (switchBack) switchBack.hidden = !item;
     if (headline) headline.innerHTML = item
       ? 'Launch your<br/>pilot<span>Ejection Seat armed · body preset saved</span>'
       : 'Pick your<br/>special<span>Each hero has one emergency trick</span>';
@@ -15415,6 +16070,20 @@ const AVIATION_AVATAR = (() => {
     close();
   }
 
+  // One click back to the classic hero roster from the collapsed
+  // playerSelect view, without needing to re-open the builder and find
+  // "Use classic hero heads" inside it -- see hangarPilotSwitchBackBtn.
+  function disable() {
+    if (!state.enabled) return;
+    state = { enabled: false, tokenId: state.tokenId, bodyId: state.bodyId };
+    working = Object.assign({}, state);
+    persist();
+    renderSummaries();
+    refreshHeroPortraits();
+    if (typeof HERO !== 'undefined' && HERO.syncPilotHud) HERO.syncPilotHud();
+    syncNetworkChoice(false);
+  }
+
   function init(onPortraitsChanged) {
     if (initialized) return;
     initialized = true;
@@ -15467,10 +16136,12 @@ const AVIATION_AVATAR = (() => {
     document.getElementById('aviationUseBtn').addEventListener('click', event => commit(true, event));
     document.getElementById('aviationClassicBtn').addEventListener('click', event => commit(false, event));
     document.getElementById('aviationBackBtn').addEventListener('click', close);
+    const switchBackBtn = document.getElementById('hangarPilotSwitchBackBtn');
+    if (switchBackBtn) switchBackBtn.addEventListener('click', disable);
   }
 
   return {
-    init, appearance, soloCastId, networkTokenId, selectBody,
+    init, appearance, soloCastId, networkTokenId, selectBody, disable,
     get enabled() { return state.enabled; },
     get tokenId() { return networkTokenId(); },
     get bodyId() { return state.bodyId; },
@@ -15493,6 +16164,9 @@ const INTRO = (() => {
   let active = false;
   let t = 0;
   let onDone = null;
+  // Set once t reaches C.duration -- see update()'s comment for why the
+  // cutscene freezes here instead of finishing itself.
+  let awaitingContinue = false;
 
   let heliRoot = null, rotorHub = null, tailRotorHub = null, pilotRig = null;
   const crew = [];
@@ -15649,6 +16323,7 @@ const INTRO = (() => {
     onDone = onCompleteFn;
     t = 0;
     active = true;
+    awaitingContinue = false;
 
     camera.aspect = mainCamera.aspect;
     camera.updateProjectionMatrix();
@@ -15694,6 +16369,7 @@ const INTRO = (() => {
   function finish() {
     if (!active) return;
     active = false;
+    awaitingContinue = false;
     detachSkipListener();
     disposeGroup(heliRoot);
     crew.forEach(c => { disposeGroup(c.root); disposeGroup(c.lineMesh); });
@@ -15773,19 +16449,344 @@ const INTRO = (() => {
     camera.lookAt(_blendLook);
   }
 
+  /* onDone is enterNow(), which ends in INPUT.requestLock() -- browsers only
+     honor a pointer-lock request within a real user gesture's own call
+     stack (or its short sticky-activation window), and this update() runs
+     off the render loop's own rAF, not a gesture. Auto-calling finish() the
+     instant t hits C.duration used to blow straight past that window
+     (C.duration alone, 6.4s, is already longer than Chrome's ~5s sticky
+     activation), so the request landed just far enough outside it to get
+     silently rejected -- dropping the player straight onto the "mouse lock
+     failed" pause card the instant the cutscene would have handed off.
+     Freezing on the last frame and waiting for the player's own
+     click/keypress (the skip listener attached in play(), still armed)
+     keeps finish() -- and the requestLock() it triggers -- inside that
+     gesture's call stack instead. */
   function update(dt) {
-    if (!active) return;
+    if (!active || awaitingContinue) return;
     t += dt;
     if (rotorHub) rotorHub.rotation.y += dt * C.rotorSpeed;
     if (tailRotorHub) tailRotorHub.rotation.x += dt * C.rotorSpeed * 1.4;
     updateHelicopterFlight();
     updateCrew();
     updateCamera();
-    if (t >= C.duration) finish();
+    if (t >= C.duration) {
+      awaitingContinue = true;
+      UI.toast('PRESS ANY KEY TO DROP IN', 8);
+    }
   }
 
   return {
     init, play, skip, update,
+    get active() { return active; },
+    get camera() { return camera; }
+  };
+})();
+
+/* ============================ [PHONESCENE] ============================
+   The pilot checks a text from "drewbie" the instant the match starts --
+   plays before INTRO, so the "go take care of it" order lands right before
+   the crew boards up and flies in, not after they've already landed. Pure
+   2D DOM overlay, not Three.js -- there's no camera/render work here, just
+   a scripted reveal of a fixed message thread. Mirrors INTRO's own
+   play/skip/finish shape so GAME's call site reads the same way for both
+   cutscenes, but deliberately has no auto-finish timer -- see
+   CONFIG.phoneScene's comment for why a real click/keypress has to be what
+   triggers the handoff. */
+const PHONESCENE = (() => {
+  const C = CONFIG.phoneScene;
+  let el = null, threadEl = null;
+  let active = false;
+  let onDone = null;
+  let timers = [];
+  let skipHandler = null;
+
+  function init() {
+    el = document.getElementById('phoneScene');
+    threadEl = document.getElementById('phoneSceneThread');
+  }
+
+  function clearTimers() {
+    timers.forEach(id => clearTimeout(id));
+    timers = [];
+  }
+
+  function appendBubble(msg) {
+    if (!threadEl) return;
+    const row = document.createElement('div');
+    row.className = 'phone-row ' + (msg.from === 'drewbie' ? 'in' : 'out');
+    if (msg.from === 'drewbie') {
+      const avatar = document.createElement('img');
+      avatar.className = 'phone-bubble-avatar';
+      avatar.src = C.avatar;
+      avatar.alt = '';
+      row.appendChild(avatar);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'phone-bubble';
+    bubble.textContent = msg.text;
+    row.appendChild(bubble);
+    threadEl.appendChild(row);
+    threadEl.scrollTop = threadEl.scrollHeight;
+    // Added off-screen (see .phone-row's base opacity/transform in CSS) so
+    // the .show class flip on the next frame actually transitions in,
+    // instead of the browser coalescing both style states into one paint.
+    requestAnimationFrame(() => row.classList.add('show'));
+  }
+
+  function attachSkipListener() {
+    if (skipHandler) return;
+    skipHandler = () => skip();
+    window.addEventListener('pointerdown', skipHandler, { once: true });
+    window.addEventListener('keydown', skipHandler, { once: true });
+  }
+
+  function detachSkipListener() {
+    if (!skipHandler) return;
+    window.removeEventListener('pointerdown', skipHandler);
+    window.removeEventListener('keydown', skipHandler);
+    skipHandler = null;
+  }
+
+  function play(onCompleteFn) {
+    if (active) return;
+    if (!el || !threadEl) { if (onCompleteFn) onCompleteFn(); return; }
+    active = true;
+    onDone = onCompleteFn;
+    threadEl.innerHTML = '';
+    el.classList.remove('hidden');
+    let t = C.startDelay;
+    C.messages.forEach(msg => {
+      timers.push(setTimeout(() => appendBubble(msg), t * 1000));
+      t += msg.gap || 0;
+    });
+    // No auto-finish timer -- the scene sits on the last bubble until the
+    // player's own click/keypress ends it (see the skip listener below,
+    // which doubles as "skip ahead" mid-thread and "continue" once done).
+    attachSkipListener();
+  }
+
+  function skip() { finish(); }
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    clearTimers();
+    detachSkipListener();
+    if (el) el.classList.add('hidden');
+    const cb = onDone; onDone = null;
+    if (cb) cb();
+  }
+
+  return {
+    init, play, skip,
+    get active() { return active; }
+  };
+})();
+
+/* =========================== [PORTALCUTSCENE] =========================
+   The Portal Gun's payoff: QUEST hands off here the instant crafting
+   succeeds, in place of the toast-only version this used to be. Same
+   full-pause/dedicated-camera shape as INTRO -- GAME's loop() checks
+   .active and, when true, skips all gameplay simulation and renders from
+   this module's own camera instead. Three beats, driven by one `t`:
+     1. 'open'  -- static third-person wide shot (player + wall); the
+        portal grows on the wall.
+     2. 'walk'  -- Bearclaw2 spawns at the portal and crosses the room to
+        its rest mark, animated with ENEMY's own pose dispatcher (so it's
+        a real walk cycle, not a slide); camera blends wide -> hold.
+     3. 'hold'  -- camera holds on Bearclaw2; waits for the player's own
+        click/keypress before finishing -- same reasoning as INTRO's own
+        awaitingContinue: the eventual INPUT.requestLock() this hands off
+        to (via onDone -> QUEST -> GAME.resumeAfterQuestCutscene) needs a
+        real gesture in its call stack, not this timer-driven update(). */
+const PORTALCUTSCENE = (() => {
+  const C = CONFIG.portalCutscene;
+  let scene = null, camera = null;
+  let active = false, t = 0, phase = 'open', onDone = null;
+  let portalEffect = null, watcherRig = null, boss = null;
+  let walkYaw = 0, restY = C.bossRestPos.y;
+  let awaitingContinue = false, skipHandler = null;
+
+  function ease(x) { return x * x * (3 - 2 * x); }
+
+  function init(mainScene, mainCamera) {
+    scene = mainScene;
+    camera = new THREE.PerspectiveCamera(
+      CONFIG.render.fov, mainCamera.aspect, CONFIG.render.near, CONFIG.render.far
+    );
+  }
+
+  function attachSkipListener() {
+    if (skipHandler) return;
+    skipHandler = () => finish();
+    window.addEventListener('pointerdown', skipHandler, { once: true });
+    window.addEventListener('keydown', skipHandler, { once: true });
+  }
+  function detachSkipListener() {
+    if (!skipHandler) return;
+    window.removeEventListener('pointerdown', skipHandler);
+    window.removeEventListener('keydown', skipHandler);
+    skipHandler = null;
+  }
+
+  /* The local player's own likeness, standing where they actually are and
+     facing the portal -- built the same way INTRO builds the crew (CAST +
+     AVIATION_AVATAR's solo resolution), just held statically instead of
+     dropped in. Purely cosmetic: this never touches PLAYER's own state,
+     and the real first-person rig stays wherever WEAPON left it (it just
+     never gets rendered here, since only `scene` -- not `viewScene` --
+     is drawn while this cutscene owns the camera). */
+  function buildWatcher() {
+    const castId = (typeof AVIATION_AVATAR !== 'undefined' && typeof HERO !== 'undefined')
+      ? AVIATION_AVATAR.soloCastId(HERO.castId) : 'playerBluecap';
+    const aviationTokenId = (typeof AVIATION_AVATAR !== 'undefined' && AVIATION_AVATAR.enabled)
+      ? AVIATION_AVATAR.tokenId : null;
+    const built = CAST.build(castId, aviationTokenId ? { aviationTokenId: aviationTokenId } : null);
+    const root = built.rig.root;
+    const p = PLAYER.position;
+    root.position.set(p.x, p.y, p.z);
+    root.rotation.y = Math.atan2(p.x - C.portalPos.x, p.z - C.portalPos.z);
+    scene.add(root);
+    return built.rig;
+  }
+
+  function poseWatcherIdle() {
+    if (!watcherRig) return;
+    const sway = Math.sin(t * 1.3) * 0.05;
+    if (watcherRig.bob) watcherRig.bob.position.y = Math.sin(t * 1.1) * 0.02;
+    if (watcherRig.head) watcherRig.head.rotation.set(0, sway * 0.4, 0);
+    if (watcherRig.armL) watcherRig.armL.rotation.set(0.05, 0, -0.08 + sway * 0.06);
+    if (watcherRig.armR) watcherRig.armR.rotation.set(0.05, 0, 0.08 - sway * 0.06);
+  }
+
+  function disposeGroup(root) {
+    if (!root) return;
+    if (root.parent) root.parent.remove(root);
+    root.traverse(obj => {
+      if (obj.isMesh && obj.geometry && obj.geometry.dispose) obj.geometry.dispose();
+    });
+  }
+
+  function play(mainCamera, onCompleteFn) {
+    if (active) return;
+    active = true; t = 0; phase = 'open'; onDone = onCompleteFn;
+    awaitingContinue = false; boss = null;
+
+    camera.aspect = mainCamera.aspect;
+    camera.updateProjectionMatrix();
+    camera.position.set(C.wideCam.x, C.wideCam.y, C.wideCam.z);
+    camera.lookAt(C.wideLook.x, C.wideLook.y, C.wideLook.z);
+
+    portalEffect = new THREE.Mesh(
+      new THREE.TorusGeometry(1.55, 0.18, 10, 36),
+      new THREE.MeshBasicMaterial({ color: 0x67e8a5, transparent: true, opacity: 0.92, depthWrite: false })
+    );
+    portalEffect.position.set(C.portalPos.x, C.portalPos.y, C.portalPos.z);
+    portalEffect.rotation.y = C.portalRotY;
+    portalEffect.scale.setScalar(0.05);
+    if (scene) scene.add(portalEffect);
+
+    watcherRig = buildWatcher();
+    restY = WORLD.groundAt(C.bossRestPos.x, C.bossRestPos.z, C.portalPos.y, 'surface');
+    walkYaw = Math.atan2(C.portalPos.x - C.bossRestPos.x, C.portalPos.z - C.bossRestPos.z);
+
+    UI.toast('THE WALL BEGINS TO GLOW…', 2.4);
+  }
+
+  function updateCamera() {
+    if (phase !== 'walk') return;
+    const k = ease(UTIL.clamp((t - C.blendStart) / (C.blendEnd - C.blendStart), 0, 1));
+    camera.position.set(
+      UTIL.lerp(C.wideCam.x, C.holdCam.x, k), UTIL.lerp(C.wideCam.y, C.holdCam.y, k), UTIL.lerp(C.wideCam.z, C.holdCam.z, k)
+    );
+    camera.lookAt(
+      UTIL.lerp(C.wideLook.x, C.holdLook.x, k), UTIL.lerp(C.wideLook.y, C.holdLook.y, k), UTIL.lerp(C.wideLook.z, C.holdLook.z, k)
+    );
+  }
+
+  function beginWalk() {
+    phase = 'walk';
+    boss = ENEMY.spawnBoss2(2);
+    if (!boss) { finishWalk(); return; }
+    boss.pos.set(C.portalPos.x, restY, C.portalPos.z);
+    boss.group.position.copy(boss.pos);
+    boss.yaw = walkYaw;
+  }
+
+  function stepWalk() {
+    const k = ease(UTIL.clamp((t - C.openDuration) / C.walkDuration, 0, 1));
+    boss.pos.set(
+      UTIL.lerp(C.portalPos.x, C.bossRestPos.x, k), restY, UTIL.lerp(C.portalPos.z, C.bossRestPos.z, k)
+    );
+    boss.group.position.copy(boss.pos);
+    const walkSpeed = 2.6;
+    boss.vel.set(Math.sin(walkYaw) * walkSpeed, 0, Math.cos(walkYaw) * walkSpeed);
+    boss.yaw = walkYaw;
+    if (typeof ENEMY.poseEntity === 'function') ENEMY.poseEntity(boss, t);
+  }
+
+  function finishWalk() {
+    phase = 'hold';
+    if (boss) {
+      boss.vel.set(0, 0, 0);
+      boss.pos.set(C.bossRestPos.x, restY, C.bossRestPos.z);
+      boss.group.position.copy(boss.pos);
+      if (typeof ENEMY.poseEntity === 'function') ENEMY.poseEntity(boss, t);
+    }
+    if (portalEffect) {
+      const closingPortal = portalEffect;
+      closingPortal.material.opacity = 0.45;
+      setTimeout(() => { if (closingPortal.parent) closingPortal.parent.remove(closingPortal); if (portalEffect === closingPortal) portalEffect = null; }, 1200);
+    }
+    UI.toast('BEARCLAW2 EMERGES FROM THE PORTAL', 3);
+    setTimeout(() => { if (awaitingContinue) UI.toast('PRESS ANY KEY TO CONTINUE', 8); }, 3000);
+    awaitingContinue = true;
+    attachSkipListener();
+  }
+
+  function update(dt) {
+    if (!active) return;
+    t += dt;
+    poseWatcherIdle();
+
+    if (phase === 'open') {
+      if (portalEffect) {
+        const openK = Math.min(1, t / C.openDuration);
+        portalEffect.scale.setScalar(Math.max(0.05, Math.sin(openK * Math.PI * 0.5)));
+        portalEffect.rotation.z += dt * 0.8;
+      }
+      if (t >= C.openDuration) beginWalk();
+      return;
+    }
+
+    if (phase === 'walk') {
+      if (portalEffect) portalEffect.rotation.z += dt * 0.8;
+      stepWalk();
+      updateCamera();
+      if (t >= C.openDuration + C.walkDuration) finishWalk();
+      return;
+    }
+    // phase === 'hold': camera/boss already settled in finishWalk(); just
+    // sits here until the skip listener above fires.
+  }
+
+  function finish() {
+    if (!active) return;
+    active = false;
+    awaitingContinue = false;
+    detachSkipListener();
+    disposeGroup(watcherRig ? watcherRig.root : null);
+    watcherRig = null;
+    disposeGroup(portalEffect);
+    portalEffect = null;
+    boss = null;
+    const cb = onDone; onDone = null;
+    if (cb) cb();
+  }
+
+  return {
+    init, play, update,
     get active() { return active; },
     get camera() { return camera; }
   };
@@ -17340,6 +18341,44 @@ const ENEMY = (() => {
       !!cornMazeCell(m, PLAYER.position.x, PLAYER.position.z));
   }
 
+  /* ---------------- north barn stairwell navigation ----------------
+     Same problem as the corn maze, different shape: direct-line chase
+     steering aims straight at the player's x/z and clips past the edge of
+     this stairwell's narrow footprint instead of walking up it, so an
+     enemy on the ground floor can gain a step or two by accident and then
+     fall right back off. Funnel through the stair's centerline instead --
+     first to whichever mouth is nearer, then straight through to the far
+     mouth -- so the walk stays inside the run long enough for the shared
+     step-up physics (WORLD.moveActor) to actually climb it. */
+  function northBarnStairPursuitActive(e) {
+    const s = WORLD.northBarnStair;
+    if (!s) return false;
+    // Strictly between the two mouths -- not past either one -- so this
+    // releases the instant the climb (or descent) actually completes,
+    // instead of camping the far landing forever waiting for a y-gap that
+    // has already closed.
+    const onRun = Math.abs(e.pos.x - s.x) < 3.5 &&
+      e.pos.z < s.baseZ && e.pos.z > s.topZ;
+    if (onRun) return true;
+    const inBarn = (x, z) => x > 32 && x < 64 && z > -79 && z < -54;
+    return Math.abs(e.pos.y - PLAYER.position.y) > 1.2 &&
+      (inBarn(e.pos.x, e.pos.z) || inBarn(PLAYER.position.x, PLAYER.position.z));
+  }
+
+  function setNorthBarnStairWaypoint(e, target) {
+    const s = WORLD.northBarnStair;
+    if (!s) { e.mazeHasWaypoint = false; return false; }
+    const goingUp = Math.abs(target.y - s.topY) < Math.abs(target.y - s.baseY);
+    const mouthZ = goingUp ? s.baseZ : s.topZ;
+    const farZ = goingUp ? s.topZ : s.baseZ;
+    const alignedX = Math.abs(e.pos.x - s.x) < 0.6;
+    const clearedMouth = goingUp ? e.pos.z <= mouthZ : e.pos.z >= mouthZ;
+    if (alignedX && clearedMouth) e.mazeWaypoint.set(s.x, e.pos.y, farZ);
+    else e.mazeWaypoint.set(s.x, e.pos.y, mouthZ);
+    e.mazeHasWaypoint = true;
+    return true;
+  }
+
   // A flashlight lock acts as a live callout: all other regular enemies on
   // that layer receive the player's position even if their own short-range
   // senses could not have found it independently.
@@ -17437,6 +18476,7 @@ const ENEMY = (() => {
       UI.setBoss(false, 0, e.maxHp, 'defeated');
       UI.toast('THE GARDENER UPROOTED — FIND THE BARN KEY', 2.8);
       if (typeof PICKUP !== 'undefined') PICKUP.spawn('barnKey', { x:e.pos.x, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
+      if (typeof PICKUP !== 'undefined') PICKUP.spawn('seedSpitterWeapon', { x:e.pos.x+0.8, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
       if (typeof PICKUP !== 'undefined' && PICKUP.queuePilotLife) PICKUP.queuePilotLife({ devSpawn: !!e.devSpawn });
       if (typeof QUEST !== 'undefined') QUEST.bossDefeated('gardener', e);
       if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossDefeat('gardener');
@@ -18796,6 +19836,16 @@ const ENEMY = (() => {
           } else {
             routed = e.mazeHasWaypoint;
           }
+        } else if (northBarnStairPursuitActive(e)) {
+          e.mazeRepathTimer -= dt;
+          const atWaypoint = e.mazeHasWaypoint &&
+            Math.hypot(e.pos.x - e.mazeWaypoint.x, e.pos.z - e.mazeWaypoint.z) < 0.4;
+          if (e.mazeRepathTimer <= 0 || !e.mazeHasWaypoint || atWaypoint) {
+            routed = setNorthBarnStairWaypoint(e, p);
+            e.mazeRepathTimer = 0.14;
+          } else {
+            routed = e.mazeHasWaypoint;
+          }
         } else {
           e.mazeHasWaypoint = false;
           e.mazeRepathTimer = 0;
@@ -19235,6 +20285,10 @@ const ENEMY = (() => {
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
     clearQuestEnemies, setKillsForDev,
+    // Lets a cutscene (see PORTALCUTSCENE) drive an entity's visual pose
+    // directly -- e.g. Bearclaw2's walk-out animation -- without going
+    // through the real per-frame AI state machine in update().
+    poseEntity: pose,
     get list() { return list; },
     get kills() { return kills; },
     get bossState() { return bossState; },
@@ -20844,6 +21898,11 @@ const DEVCONSOLE = (() => {
     log('killenemies       instantly kill every non-boss enemy on the map');
     log('wilted <count>    set the regular-enemy total to test quantity triggers');
     log('resetenemies      reset kills + all enemy/boss state for a clean retest');
+    log('god               toggle invulnerability (alias: invuln, godmode)');
+    log('heal              restore health to full');
+    log('refillammo        top every owned weapon back up to max mag+reserve (alias: ammo)');
+    log('tp <x> <z>        teleport to coordinates on your current layer (alias: teleport)');
+    log('craftall          grant all 3 crafting components + the Barn Key');
     log('list              list every spawnable id, enemy type and boss name');
     log('clear             clear this log');
     log('close             close the console (backtick/Escape also work)');
@@ -20934,9 +21993,52 @@ const DEVCONSOLE = (() => {
     log('Enemy/boss state reset (kills back to 0)', 'ok');
   }
 
+  function cmdGod() {
+    const on = !PLAYER.devGodMode;
+    PLAYER.setDevGodMode(on);
+    log('God mode ' + (on ? 'ON' : 'OFF'), 'ok');
+  }
+
+  function cmdHeal() {
+    const restored = PLAYER.heal(99999);
+    log(restored > 0 ? ('Healed ' + Math.round(restored) + ' HP') : 'Already at full health', 'ok');
+  }
+
+  function cmdRefillAmmo() {
+    const n = WEAPON.refillAll();
+    log(n > 0 ? ('Refilled ' + n + ' owned weapon' + (n === 1 ? '' : 's') + ' to max') : 'No owned guns to refill', 'ok');
+  }
+
+  function cmdTp(args) {
+    const x = parseFloat(args[0]), z = parseFloat(args[1]);
+    if (!Number.isFinite(x) || !Number.isFinite(z)) {
+      log('Usage: tp <x> <z> -- current position: ' +
+        PLAYER.position.x.toFixed(1) + ', ' + PLAYER.position.z.toFixed(1), 'err');
+      return;
+    }
+    const y = WORLD.groundAt(x, z, PLAYER.position.y + 0.8, PLAYER.layerId);
+    PLAYER.position.set(x, y, z);
+    PLAYER.velocity.set(0, 0, 0);
+    log('Teleported to ' + x.toFixed(1) + ', ' + z.toFixed(1), 'ok');
+  }
+
+  // Grants the barn key + all 3 crafting components -- the actual grind
+  // (up to 132 kills across 3 bosses) skipped, but the North Barn still
+  // has to be physically unlocked and the workbench still has to be
+  // physically used, same as a real run, so that part of the flow still
+  // gets exercised rather than short-circuited too.
+  function cmdCraftAll() {
+    if (typeof QUEST === 'undefined') { log('QUEST module unavailable', 'err'); return; }
+    ['greenShard', 'metalFragment', 'computerChip', 'barnKey'].forEach(id => QUEST.collect(id));
+    log('Granted all 3 crafting components + Barn Key -- unlock the North Barn and reach the workbench to craft', 'ok');
+  }
+
   const COMMANDS = {
     help: cmdHelp, list: cmdList, spawn: cmdSpawn, enemy: cmdEnemy, boss: cmdBoss,
     killenemies: cmdKillEnemies, wilted: cmdWilted, resetenemies: cmdResetEnemies,
+    god: cmdGod, invuln: cmdGod, godmode: cmdGod,
+    heal: cmdHeal, refillammo: cmdRefillAmmo, ammo: cmdRefillAmmo,
+    tp: cmdTp, teleport: cmdTp, craftall: cmdCraftAll,
     clear: function () { if (typeof UI !== 'undefined') UI.clearDevConsoleLog(); },
     close: close, exit: close, quit: close
   };

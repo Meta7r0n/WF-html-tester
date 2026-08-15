@@ -4,6 +4,10 @@ Browser-based rubber-hose horror FPS prototype by Lobster Labz, built as a
 single-page Three.js game with solo, co-op, free-for-all, and team deathmatch
 modes.
 
+Looking for a player-facing guide to weapons, heroes, bosses, crafting, and
+controls instead of build/dev notes? See
+**[GAMEPLAY_HANDBOOK.md](GAMEPLAY_HANDBOOK.md)**.
+
 - **Current alpha:** `v0.36`
 - **Working branch:** `A-test-v0.36-PAUSE-BARN-STATS`
 - **Baseline:** `A-test-v0.35-HANGAR-PILOT-EJECTION-LIVES`

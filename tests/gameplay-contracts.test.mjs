@@ -10,29 +10,41 @@ const quest = html.slice(questStart, questEnd);
 const statsStart = html.indexOf('const RUNSTATS = (() => {');
 const statsEnd = html.indexOf('const QUEST = (() => {', statsStart);
 const runStatsSource = html.slice(statsStart, statsEnd);
+const portalCutStart = html.indexOf('const PORTALCUTSCENE = (() => {');
+const portalCutEnd = html.indexOf('/* ============================== [HERO] ===============================', portalCutStart);
+const portalCutscene = html.slice(portalCutStart, portalCutEnd);
+const inputStart = html.indexOf('const INPUT = (() => {');
+const inputEnd = html.lastIndexOf('\n', html.indexOf('[PLAYER]', inputStart));
+const inputSource = html.slice(inputStart, inputEnd);
 
-test('visible and runtime build labels identify v0.36', () => {
-  assert.match(html, /<title>The Withered Farm — v0\.36<\/title>/);
-  assert.match(html, /WC v0\.36/);
-  assert.match(html, /version: 'v0\.36'/);
-  assert.match(html, /branch: 'A-test-v0\.36-PAUSE-BARN-STATS'/);
-  assert.doesNotMatch(html, /WC v0\.35/);
+test('visible and runtime build labels identify v0.38', () => {
+  assert.match(html, /<title>The Withered Farm — v0\.38<\/title>/);
+  assert.match(html, /WC v0\.38/);
+  assert.match(html, /version: 'v0\.38'/);
+  assert.match(html, /branch: 'A-test-v0\.38-BARN-CRAFTING-FIX'/);
+  assert.doesNotMatch(html, /WC v0\.37/);
 });
 
-function createQuestHarness() {
+function createQuestHarness(overrides = {}) {
   const spawns = [];
   const accesses = {
     south: { open: false, changes: [] },
     west: { open: false, changes: [] },
     hatch: { open: false, changes: [] }
   };
+  const railing = { present: true };
+  const craftingScreenTexts = [];
+  const shieldGrants = [];
   class Vector3 {
     constructor(x = 0, y = 0, z = 0) { this.x = x; this.y = y; this.z = z; }
   }
   const enemy = {
     kills: 0,
     spawnBoss3: options => { spawns.push(['beatSlayer', options]); return {}; },
-    spawnBoss2: (appearance, options) => { spawns.push(['bearClaw', appearance, options]); return {}; },
+    spawnBoss2: (appearance, options) => {
+      spawns.push(['bearClaw', appearance, options]);
+      return { pos: { set() {} }, group: { position: { copy() {} } } };
+    },
     spawnBoss: options => { spawns.push(['carrotWarden', options]); return {}; },
     spawnGrunt: () => ({
       alive: true, def: { stats: {} }, group: { scale: { setScalar() {} } },
@@ -40,33 +52,76 @@ function createQuestHarness() {
     }),
     clearQuestEnemies() {}
   };
+  // Tracks addEventListener/removeEventListener registrations so a test can
+  // fire a fake 'pointerdown'/'keydown' the same way a real user gesture
+  // would, without depending on any real browser or real elapsed time.
+  const listeners = { pointerdown: [], keydown: [] };
+  const windowMock = {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type) { listeners[type].slice().forEach(fn => fn()); }
+  };
+  const resumeCalls = [];
   const context = vm.createContext({
     CONFIG: { progress: {
       singleBeatSlayerThreshold: 33, singleBearClawThreshold: 66,
       singleCarrotWardenThreshold: 99, singleGardenerThreshold: 132
     } },
-    GAME: { mode: 'single', complete() {} },
+    GAME: { mode: 'single', complete() {}, resumeAfterQuestCutscene() { resumeCalls.push(true); } },
     PLAYER: { layerId: 'surface' },
     ENEMY: enemy,
-    LEVEL: {
+    INPUT: {
+      clearActions() {}, releaseLock() {},
+      getBindings() { return { shield: 'KeyQ' }; },
+      codeLabel(code) { return code === 'KeyQ' ? 'Q' : code; }
+    },
+    WEAPON: { grantWeapon() {}, setCurrent() {} },
+    SHIELD: { grant() { shieldGrants.push(true); } },
+    LEVEL: overrides.LEVEL || {
       setNorthBarnAccess(id, open) {
         accesses[id].open = !!open;
         accesses[id].changes.push(accesses[id].open);
       },
+      setAllNorthBarnAccess(open) {
+        Object.keys(accesses).forEach(id => {
+          accesses[id].open = !!open;
+          accesses[id].changes.push(accesses[id].open);
+        });
+      },
+      setNorthBarnRailing(present) { railing.present = !!present; return true; },
+      // Array.from() here (not lines.slice()) deliberately re-materializes
+      // the array in THIS (outer) realm -- `lines` is a vm-context array,
+      // and assert.deepEqual's strict mode fails cross-realm arrays even
+      // when their contents are identical.
+      setCraftingScreenText(lines) { craftingScreenTexts.push(Array.from(lines)); return true; },
       isNorthBarnAccessOpen(id) { return accesses[id].open; },
       northBarnAccessAt(p) {
+        // Real doors sit at surface y:0 -- the crafting stations (upstairs
+        // and in the cellar) live at other heights entirely, so a probe at
+        // any other y must never accidentally read as "near a door."
+        if (p.y !== 0) return null;
         if (p.x < 36) return { id: 'west', label: 'west barn doors' };
         if (p.x > 55 && p.z < -70) return { id: 'hatch', label: 'cellar hatch' };
         return { id: 'south', label: 'south barn doors' };
       }
     },
     UI: { toast() {}, setBoss() {} }, RUNSTATS: { milestone() {}, bossStart() {}, weapon() {} },
-    WORLD: { groundAt() { return 0; } }, THREE: { Vector3 },
+    WORLD: { groundAt() { return 0; } },
+    THREE: {
+      Vector3,
+      Mesh: class { constructor() { this.position = { set() {} }; this.rotation = { x: 0, y: 0, z: 0 }; this.scale = { setScalar() {} }; this.material = {}; } },
+      TorusGeometry: class {}, MeshBasicMaterial: class {}, CircleGeometry: class {}
+    },
+    window: windowMock,
     document: { getElementById() { return null; } }, performance: { now() { return 0; } },
     setTimeout() {}, console
   });
   vm.runInContext(quest + '\n;globalThis.__quest = QUEST;', context);
-  return { quest: context.__quest, enemy, spawns, accesses, game: context.GAME };
+  return { quest: context.__quest, enemy, spawns, accesses, railing, craftingScreenTexts, shieldGrants, game: context.GAME, window: windowMock, resumeCalls };
 }
 
 function createRunStatsHarness() {
@@ -155,7 +210,7 @@ test('quest inventory is fixed, deduplicated, and multiplayer-gated', () => {
   assert.match(html, /if \(p\.runScoped\)[\s\S]*items\.splice\(i, 1\)/);
 });
 
-test('all North Barn entrances share the Barn Key but keep independent open states', () => {
+test('the Barn Key opens every North Barn entrance at once, then each toggles independently', () => {
   assert.match(html, /animated\.northBarnDoor = \{[\s\S]*collider: mainDoorSolid/);
   assert.match(html, /animated\.northBarnWestDoor = \{[\s\S]*collider: westDoorSolid/);
   assert.match(html, /animated\.northBarnHatch = hatch/);
@@ -165,9 +220,10 @@ test('all North Barn entrances share the Barn Key but keep independent open stat
   assert.match(html, /door\.collider\.enabled = door\.target < 0\.5 && door\.openness < 0\.06/);
   assert.match(html, /hatch\.ladder\.enabled = hatch\.target > 0\.5 && hatch\.openness > 0\.55/);
   assert.match(html, /if \(!hatch\.keyed\) \{[\s\S]*hatch\.target = dx \* dx \+ dz \* dz/);
+  assert.match(html, /function setAllNorthBarnAccess\(open, immediate\) \{[\s\S]*setNorthBarnDoor\(open, immediate\)[\s\S]*setNorthBarnWestDoor\(open, immediate\)[\s\S]*setNorthBarnHatch\(open, immediate\)/);
   assert.match(quest, /function nearAccess\(p\)[\s\S]*LEVEL\.northBarnAccessAt/);
   assert.match(quest, /if \(!state\.barnKey\)[\s\S]*LOCKED — KEY REQUIRED/);
-  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setNorthBarnAccess\(access\.id, true\)/);
+  assert.match(quest, /state\.barnUnlocked = true;[\s\S]*LEVEL\.setAllNorthBarnAccess\(true\)/);
   const collectBody = quest.slice(quest.indexOf('function collect('), quest.indexOf('function spawnGardener('));
   assert.doesNotMatch(collectBody, /setNorthBarnAccess/);
 
@@ -178,15 +234,12 @@ test('all North Barn entrances share the Barn Key but keep independent open stat
     'collecting the key must not open any entrance');
   assert.equal(h.quest.interact({ x: 48, y: 0, z: -55 }), true);
   assert.equal(h.quest.state.barnUnlocked, true);
-  assert.equal(h.accesses.south.open, true, 'the first E interaction uses the key and opens that entrance');
-  assert.equal(h.accesses.west.open, false, 'the west doors remain physically closed until used');
-  assert.equal(h.accesses.hatch.open, false, 'the cellar hatch remains physically closed until used');
-  h.quest.interact({ x: 33, y: 0, z: -66 });
-  assert.equal(h.accesses.west.open, true, 'the unlocked west doors open with E');
-  h.quest.interact({ x: 58, y: 0, z: -73.5 });
-  assert.equal(h.accesses.hatch.open, true, 'the unlocked cellar hatch opens with E');
+  assert.deepEqual(Object.values(h.accesses).map(access => access.open), [true, true, true],
+    'using the key on any single entrance opens all three at once');
   h.quest.interact({ x: 48, y: 0, z: -55 });
   assert.equal(h.accesses.south.open, false, 'later E interactions toggle entrances independently');
+  assert.equal(h.accesses.west.open, true, 'toggling one entrance after the initial unlock leaves the others alone');
+  assert.equal(h.accesses.hatch.open, true, 'toggling one entrance after the initial unlock leaves the others alone');
   h.quest.reset();
   assert.deepEqual(Object.values(h.accesses).map(access => access.open), [false, false, false],
     'a restart closes and relocks all three entrances');
@@ -209,6 +262,236 @@ test('Portal Gun tuning and Bearclaw2 stun lockout are explicit', () => {
   assert.match(html, /portalHeadshotStunChance: 0\.25/);
   assert.match(html, /portalHeadshotStunDuration: 2\.0/);
   assert.match(html, /portalStunImmunity: 3\.0/);
+});
+
+test('the North Barn crafting screen reacts to quest progress: offline -> online -> breach detected -> offline', () => {
+  // The screen mesh is captured at build time so it can be rebaked later,
+  // and setCraftingScreenText() rebakes the texture in place and disposes
+  // the old one rather than leaking a THREE.Texture on every call.
+  assert.match(html, /craftingScreenMesh = PRIM\.box\(1\.16, 0\.62, 0\.06, MAT\.flat\(0xffffff, \{ map: screenTex \}\)/);
+  assert.match(
+    html,
+    /function setCraftingScreenText\(lines\) \{\s*if \(!craftingScreenMesh\) return false;\s*const oldTex = craftingScreenMesh\.material\.map;\s*craftingScreenMesh\.material\.map = TEX\.sign\(lines, PAL\.oliveDeep, PAL\.jaysLight, 256, 144\);\s*craftingScreenMesh\.material\.needsUpdate = true;\s*if \(oldTex && oldTex\.dispose\) oldTex\.dispose\(\);\s*return true;\s*\}/
+  );
+  assert.match(html, /setNorthBarnRailing, setCraftingScreenText\s*\};/, 'must be exported from LEVEL');
+
+  // beginCutscene() must flip the screen to BREACH DETECTED on both the
+  // real-cutscene path and the PORTALCUTSCENE-undefined fallback, since
+  // either one represents "the Bearclaw2 reveal is done."
+  const cutsceneBody = quest.slice(quest.indexOf('function beginCutscene()'), quest.indexOf('function update(dt, simulationActive)'));
+  const fallbackBranch = cutsceneBody.slice(0, cutsceneBody.indexOf('PORTALCUTSCENE.play'));
+  const realBranch = cutsceneBody.slice(cutsceneBody.indexOf('PORTALCUTSCENE.play'));
+  assert.match(fallbackBranch, /LEVEL\.setCraftingScreenText\(\['BREACH', 'DETECTED'\]\)/, 'fallback path (no PORTALCUTSCENE) must still update the screen');
+  assert.match(realBranch, /LEVEL\.setCraftingScreenText\(\['BREACH', 'DETECTED'\]\)/, 'the real cutscene completion callback must update the screen');
+
+  const h = createQuestHarness();
+  h.quest.start();
+  h.quest.collect('barnKey');
+  assert.deepEqual(h.craftingScreenTexts, [], 'no screen update before the barn is actually unlocked');
+  h.quest.interact({ x: 48, y: 0, z: -55 });
+  assert.deepEqual(h.craftingScreenTexts, [['CRAFTING', 'ONLINE']], 'unlocking the barn flips the screen online');
+  h.quest.reset();
+  assert.deepEqual(h.craftingScreenTexts, [['CRAFTING', 'ONLINE'], ['CRAFTING', 'OFFLINE']], 'a restart puts the screen back offline');
+});
+
+test('the Plow Shield: its own key, its own passive/active damage rules, and a second cellar workbench', () => {
+  // Its own dedicated key -- never a weapon slot, never the melee key.
+  assert.match(inputSource, /'KeyQ': 'shield'/);
+  assert.match(inputSource, /shield: false,/);
+  assert.match(inputSource, /'melee', 'throwable', 'useJays', 'interact', 'voiceTalk', 'shield',/, 'must be rebindable like every other real action key');
+
+  // Raising it fully owns input in WEAPON.update -- no firing/reload/swap
+  // while blocking, and the melee key is freed up for SHIELD's own bash.
+  const shieldStart = html.indexOf('const shieldRaised = typeof SHIELD');
+  assert.notEqual(shieldStart, -1);
+  assert.match(html.slice(shieldStart, shieldStart + 200), /if \(active && !shieldRaised\) \{/);
+
+  // Passive rear reduction is unconditional once crafted; the much
+  // stronger frontal block only applies while actually raised.
+  assert.match(html, /passiveRearDamageMult: 0\.55, rearArcDot: 0\.35,/);
+  assert.match(html, /raisedFrontDamageMult: 0\.12, raisedFrontArcDot: 0\.3,/);
+  const shieldModuleStart = html.indexOf('const SHIELD = (() => {');
+  assert.notEqual(shieldModuleStart, -1);
+  const shieldModule = html.slice(shieldModuleStart, html.indexOf('const THROWABLE = (() => {', shieldModuleStart));
+  assert.match(shieldModule, /if \(raised && dot > CONFIG\.shield\.raisedFrontArcDot\) return CONFIG\.shield\.raisedFrontDamageMult;/);
+  assert.match(shieldModule, /if \(dot < -CONFIG\.shield\.rearArcDot\) return CONFIG\.shield\.passiveRearDamageMult;/);
+  // Never applies at all until SHIELD.grant() has actually run.
+  assert.match(shieldModule, /function damageMultiplierFor\(yaw, px, pz, sx, sz\) \{\s*if \(!owned\) return 1;/);
+
+  // PLAYER.damage() folds the multiplier into the raw hit before the
+  // existing (unrelated) health-shield absorb/health split runs.
+  const damageFnStart = html.indexOf('function damage(amount, fromPos, attacker, options)');
+  assert.notEqual(damageFnStart, -1);
+  const damageFn = html.slice(damageFnStart, html.indexOf('function damageOverTime', damageFnStart));
+  assert.match(damageFn, /if \(typeof SHIELD !== 'undefined' && SHIELD\.owned && fromPos\) \{/);
+  assert.match(damageFn, /amount \*= SHIELD\.damageMultiplierFor\(yaw, pos\.x, pos\.z, sourceX, sourceZ\);/);
+  assert.match(damageFn, /const absorbed = Math\.min\(shield, amount\);/, 'the multiplier must run before the unrelated health-shield stat absorbs anything');
+
+  // 3 pieces are static world finds, not boss drops (unlike the Portal
+  // Gun's COMPONENTS) -- and the second workbench sits one floor below
+  // the first, gated behind the same barnUnlocked flag.
+  assert.match(html, /define\('plowDisc', \{ type: 'quest', questId: 'plowDisc'/);
+  assert.match(html, /define\('harnessStraps', \{ type: 'quest', questId: 'harnessStraps'/);
+  assert.match(html, /define\('reinforcingPlate', \{ type: 'quest', questId: 'reinforcingPlate'/);
+  assert.match(html, /\{ id: 'plowDisc', x: 35\.0, z: -51\.0 \}/);
+  assert.match(html, /\{ id: 'harnessStraps', x: 43\.5, z: -46\.0 \}/);
+  assert.match(html, /\{ id: 'reinforcingPlate', x: 6\.0, y: 8\.2, z: -65\.0 \}/);
+  assert.match(quest, /function nearShieldBench\(p\) \{ return p && p\.y < -1 && Math\.hypot\(p\.x - 50, p\.z \+ 73\) < 4\.0; \}/);
+  assert.match(html, /WORLD\.addFloor\(50\.0, FLOOR_Y, -73\.0, 3\.0, 0\.98, 1\.6, 'shield_workbench'\);/);
+
+  const h = createQuestHarness();
+  h.quest.start();
+  h.quest.collect('barnKey');
+  h.quest.interact({ x: 48, y: 0, z: -55 }); // unlock the barn -- gates both workbenches
+  assert.equal(h.quest.state.barnUnlocked, true);
+
+  const bench = { x: 50, y: -3.5, z: -73 };
+  h.quest.interact(bench);
+  assert.equal(h.quest.state.shieldCrafted, false, 'nothing collected yet');
+  assert.deepEqual(h.shieldGrants, []);
+
+  assert.equal(h.quest.collect('plowDisc'), true);
+  assert.equal(h.quest.collect('plowDisc'), false, 'collecting the same piece twice is a no-op');
+  assert.equal(h.quest.collect('harnessStraps'), true);
+  h.quest.interact(bench);
+  assert.equal(h.quest.state.shieldCrafted, false, 'still missing the reinforcing plate');
+
+  assert.equal(h.quest.collect('reinforcingPlate'), true);
+  assert.equal(h.quest.interact(bench), true);
+  assert.equal(h.quest.state.shieldCrafted, true);
+  assert.deepEqual(h.shieldGrants, [true], 'SHIELD.grant() fires exactly once, on the successful assembly');
+
+  h.quest.interact(bench);
+  assert.deepEqual(h.shieldGrants, [true], 'assembling twice never grants twice');
+
+  h.quest.reset();
+  assert.equal(h.quest.state.shieldCrafted, false);
+  assert.equal(Object.keys(h.quest.state.shieldComponents).length, 0, 'a restart clears collected pieces too');
+});
+
+test('the Gardener drops both the Barn Key and the Seed Spitter, and the LMG is wired end to end', () => {
+  // CONFIG def: an automatic LMG, distinct from the Fieldhand Carbine, with
+  // its own ammo pool and a slot past the 9 keyboard hotkeys.
+  assert.match(html, /id: 'seedSpitter'[\s\S]*slot: 10[\s\S]*ammoType: 'seedDrum'/);
+  assert.match(html, /seedSpitter:[\s\S]*magSize: 50[\s\S]*automatic: true[\s\S]*damage: 20/);
+  // A real ammo pickup exists for it (unlike the Portal Gun, which has none).
+  assert.match(html, /define\('seedDrumPack', \{[\s\S]*ammoType: 'seedDrum'/);
+  assert.match(html, /\{ id: 'seedDrumPack',/);
+  // The boss-drop weapon pickup exists and is NOT part of the static spawns
+  // list (mirrors carrotCannonWeapon/theClawWeapon's own comments/pattern).
+  assert.match(html, /define\('seedSpitterWeapon', \{[\s\S]*weaponId: 'seedSpitter'/);
+  assert.doesNotMatch(html, /\{ id: 'seedSpitterWeapon',/);
+  // ENEMY.die()'s isGardener branch spawns both drops together.
+  const gardenerDeathBranch = html.slice(html.indexOf('if (e.isGardener) {'), html.indexOf('} else if (e.isBoss) {'));
+  assert.match(gardenerDeathBranch, /PICKUP\.spawn\('barnKey', \{ x:e\.pos\.x, y:e\.pos\.y, z:e\.pos\.z \}/);
+  assert.match(gardenerDeathBranch, /PICKUP\.spawn\('seedSpitterWeapon', \{ x:e\.pos\.x\+0\.8, y:e\.pos\.y, z:e\.pos\.z \}/);
+  // The pickup-message slot hint only ever names a real keyboard digit.
+  assert.match(html, /slot <= 9 \? 'slot ' \+ slot : 'cycle weapons to equip'/);
+});
+
+test('QUEST hands the Portal Gun payoff to PORTALCUTSCENE instead of playing it inline', () => {
+  assert.match(quest, /PORTALCUTSCENE\.play\(GAME\.camera,/);
+  assert.match(quest, /get cutsceneActive\(\) \{ return typeof PORTALCUTSCENE !== 'undefined' && PORTALCUTSCENE\.active; \}/);
+  assert.doesNotMatch(quest, /cutsceneTimer/, 'the old inline timer/portal-growth logic should be fully removed, not duplicated');
+});
+
+function createPortalCutsceneHarness() {
+  const spawnedBosses = [];
+  const listeners = { pointerdown: [], keydown: [] };
+  const windowMock = {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type) { listeners[type].slice().forEach(fn => fn()); }
+  };
+  function makeBoss() {
+    return {
+      pos: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      vel: { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } },
+      group: { position: { copy(p) {} } },
+      yaw: 0
+    };
+  }
+  class Object3D {
+    constructor() { this.position = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; } }; this.rotation = { x: 0, y: 0, z: 0 }; this.scale = { setScalar() {} }; this.material = { opacity: 1 }; this.parent = null; }
+    traverse() {}
+  }
+  const poseEntityCalls = [];
+  const context = vm.createContext({
+    CONFIG: {
+      render: { fov: 62, near: 0.1, far: 500 },
+      portalCutscene: {
+        portalPos: { x: 62.45, y: 5.7, z: -72.8 }, portalRotY: Math.PI / 2,
+        bossRestPos: { x: 59, y: 4.6, z: -75 },
+        openDuration: 2.2, walkDuration: 2.4,
+        wideCam: { x: 51, y: 6.6, z: -79.5 }, wideLook: { x: 60.5, y: 5.0, z: -74 },
+        holdCam: { x: 54, y: 5.6, z: -71 }, holdLook: { x: 59, y: 5.0, z: -75 },
+        blendStart: 2.2, blendEnd: 4.6
+      }
+    },
+    UTIL: {
+      clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); },
+      lerp(a, b, t) { return a + (b - a) * t; }
+    },
+    THREE: {
+      PerspectiveCamera: class extends Object3D { constructor() { super(); this.aspect = 1; } updateProjectionMatrix() {} lookAt() {} },
+      Mesh: Object3D, TorusGeometry: class {}, MeshBasicMaterial: class {}
+    },
+    ENEMY: {
+      spawnBoss2(appearance) { const b = makeBoss(); spawnedBosses.push(b); return b; },
+      poseEntity(e, t) { poseEntityCalls.push([e, t]); }
+    },
+    CAST: { build() { return { rig: { root: new Object3D() } }; } },
+    HERO: { castId: 'scarf' },
+    AVIATION_AVATAR: { enabled: false, soloCastId(fallback) { return fallback; }, tokenId: null },
+    PLAYER: { position: { x: 58.3, y: 4.6, z: -76.7 } },
+    WORLD: { groundAt() { return 4.6; } },
+    UI: { toast() {} },
+    window: windowMock,
+    setTimeout() {}, console
+  });
+  vm.runInContext(portalCutscene + '\n;globalThis.__portalCutscene = PORTALCUTSCENE;', context);
+  const mod = context.__portalCutscene;
+  mod.init({ add() {} }, { aspect: 1.6 });
+  return { mod, window: windowMock, spawnedBosses, poseEntityCalls };
+}
+
+test('PORTALCUTSCENE only hands off to gameplay on a real gesture, not its own timer', () => {
+  const h = createPortalCutsceneHarness();
+  const doneCalls = [];
+  h.mod.play({ aspect: 1.6 }, () => doneCalls.push(true));
+  assert.equal(h.mod.active, true);
+
+  // Advance past the portal-open beat -- Bearclaw2 should spawn. The walk
+  // phase itself only starts stepping on the following update() call.
+  h.mod.update(2.3);
+  assert.equal(h.spawnedBosses.length, 1, 'Bearclaw2 spawns once the portal finishes opening');
+  h.mod.update(0.1);
+  assert.ok(h.poseEntityCalls.length > 0, 'the walk-out is driven by ENEMY.poseEntity, not just a position lerp');
+
+  // One big update() call blows straight past the whole walk -- this used
+  // to call onDone() (-> GAME.resumeAfterQuestCutscene() -> INPUT.requestLock())
+  // immediately from this timer-driven call.
+  h.mod.update(3);
+  assert.equal(h.mod.active, true, 'still an active cutscene, now holding on the revealed boss');
+  assert.deepEqual(doneCalls, [], 'onDone must NOT fire from the timer-driven update() call');
+
+  // Further simulated time changes nothing.
+  h.mod.update(5);
+  h.mod.update(5);
+  assert.deepEqual(doneCalls, [], 'no amount of additional simulated time substitutes for a real gesture');
+
+  // A real gesture is what's allowed to end it.
+  h.window.trigger('pointerdown');
+  assert.deepEqual(doneCalls, [true], 'a real gesture hands off exactly once');
+  assert.equal(h.mod.active, false);
+
+  // A stray second gesture afterward is a no-op (listener already detached).
+  h.window.trigger('pointerdown');
+  assert.deepEqual(doneCalls, [true], 'the handoff never double-fires');
 });
 
 test('run statistics count ammo after consumption and use monotonic time', () => {
@@ -267,4 +550,138 @@ test('developer reset cannot poison later natural progression', () => {
   assert.match(html, /e\.devSpawn = false;/);
   assert.match(html, /wilted: cmdWilted/);
   assert.match(html, /QUEST\.reset\(\);[\s\S]*ENEMY\.reset\(\);[\s\S]*PICKUP\.reset\(\);[\s\S]*QUEST\.start\(\)/);
+});
+
+// Builds a minimal document/window/performance so INPUT's own event
+// listeners (registered in init()) run for real, including the pointer-lock
+// handshake requestLock()/exitPointerLock() need to flip `engaged`. This
+// sidesteps two live-testing dead ends: headless Chromium won't reliably
+// grant real pointer lock outside a trusted gesture (confirmed live --
+// INPUT.engaged stayed false after a real click), and even when it does,
+// distinguishing "debounced" from "not wired" needs frame-exact control
+// over elapsed time that a real browser's render loop can't give here.
+function makeEventTarget(types) {
+  const listeners = {};
+  types.forEach(t => { listeners[t] = []; });
+  return {
+    addEventListener(type, fn) { if (listeners[type]) listeners[type].push(fn); },
+    removeEventListener(type, fn) {
+      if (!listeners[type]) return;
+      const i = listeners[type].indexOf(fn);
+      if (i >= 0) listeners[type].splice(i, 1);
+    },
+    trigger(type, evt) { (listeners[type] || []).slice().forEach(fn => fn(evt || {})); }
+  };
+}
+
+function createInputHarness() {
+  const documentMock = Object.assign(
+    makeEventTarget(['keydown', 'keyup', 'mousemove', 'mousedown', 'mouseup', 'contextmenu',
+      'pointerlockchange', 'pointerlockerror', 'wheel', 'gesturestart']),
+    {
+      pointerLockElement: null,
+      exitPointerLock() { documentMock.pointerLockElement = null; documentMock.trigger('pointerlockchange'); }
+    }
+  );
+  const windowMock = Object.assign(makeEventTarget(['keydown', 'keyup', 'blur']), { matchMedia: undefined });
+  let nowValue = 0;
+  const performanceMock = { now: () => nowValue };
+  const elementMock = {
+    style: {},
+    requestPointerLock() { documentMock.pointerLockElement = elementMock; documentMock.trigger('pointerlockchange'); }
+  };
+  const context = vm.createContext({
+    document: documentMock, window: windowMock, performance: performanceMock,
+    setTimeout: () => 0, clearTimeout: () => {}, console
+  });
+  vm.runInContext(inputSource + '\n;globalThis.__input = INPUT;', context);
+  const INPUT = context.__input;
+  INPUT.init(elementMock);
+  return { INPUT, documentMock, windowMock, setNow: v => { nowValue = v; } };
+}
+
+test('mouse wheel cycles weapons, debounced, and only while actually engaged', () => {
+  assert.match(inputSource, /prevWeapon: false/, 'prevWeapon must be a real action, not just a local variable');
+  assert.match(inputSource, /addEventListener\('wheel', e => \{[\s\S]*if \(!engaged \|\| mode === 'touch'\) return;/);
+  assert.match(inputSource, /triggerAction\(e\.deltaY > 0 \? 'nextWeapon' : 'prevWeapon'\)/);
+  assert.match(html, /if \(INPUT\.consumePress\('nextWeapon'\)\) cycleWeapon\(1\);\s*\n\s*if \(INPUT\.consumePress\('prevWeapon'\)\) cycleWeapon\(-1\);/);
+
+  const h = createInputHarness();
+  assert.equal(h.INPUT.engaged, false, 'starts disengaged');
+
+  // Disengaged: scrolling must do nothing at all.
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false, 'wheel is ignored before pointer lock engages');
+
+  // requestLock() rate-limits re-locking against its own lastRequest clock
+  // (both start at 0 here), so give it real elapsed time first -- a real
+  // browser's now() is never actually 0 at the moment a player locks in.
+  h.setNow(1000);
+  h.INPUT.requestLock();
+  assert.equal(h.INPUT.engaged, true, 'requestLock synchronously engages in this mock');
+
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), true, 'scroll down pulses nextWeapon while engaged');
+  assert.equal(h.INPUT.consumePress('prevWeapon'), false);
+
+  // A second notch inside the debounce window must be swallowed, exactly
+  // the failure mode a real trackpad's flurry of small deltaY events would
+  // otherwise hit (cycling more than one weapon per physical scroll click).
+  h.setNow(1050);
+  h.documentMock.trigger('wheel', { deltaY: -100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('prevWeapon'), false, 'a second tick inside the debounce window is dropped');
+
+  // Past the debounce window, scrolling the other way pulses prevWeapon.
+  h.setNow(1200);
+  h.documentMock.trigger('wheel', { deltaY: -100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('prevWeapon'), true, 'scroll up pulses prevWeapon once debounced');
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false);
+
+  // Releasing the lock re-disengages, and wheel goes back to doing nothing.
+  h.INPUT.releaseLock();
+  assert.equal(h.INPUT.engaged, false);
+  h.setNow(2000);
+  h.documentMock.trigger('wheel', { deltaY: 100, preventDefault() {} });
+  assert.equal(h.INPUT.consumePress('nextWeapon'), false, 'wheel is ignored again once disengaged');
+});
+
+test('the spray tag chooser is a native label, not a button that re-dispatches .click() on the file input', () => {
+  // The old <button> + JS `document.getElementById('optSprayTagFile').click()`
+  // two-hop pattern is what broke on desktop -- a native <label for="...">
+  // opens the file picker as a single native browser action with no script
+  // re-dispatch involved, which is both more standard and more robust.
+  assert.match(
+    html,
+    /<label class="alt" id="optSprayTagChoose" for="optSprayTagFile" tabindex="0" role="button">Choose PNG \/ JPEG<\/label>/,
+    'the choose control must be a label wired to the file input via for=, not a button'
+  );
+  assert.doesNotMatch(
+    html,
+    /<button type="button" class="alt" id="optSprayTagChoose">/,
+    'must not regress back to a plain button for the spray tag chooser'
+  );
+
+  // The click handler must no longer programmatically .click() the file
+  // input (that was the broken two-hop chain) -- only keydown (Enter/Space,
+  // for keyboard users, since bare <label> isn't natively key-activatable)
+  // should still reach for the input directly.
+  const bindStart = html.indexOf("document.getElementById('optSprayTagChoose').addEventListener('click'");
+  assert.notEqual(bindStart, -1, 'the click binding for optSprayTagChoose must still exist');
+  const bindBlock = html.slice(bindStart, html.indexOf("document.getElementById('optSprayTagReset')", bindStart));
+  assert.match(bindBlock, /addEventListener\('click', e => \{ e\.stopPropagation\(\); \}\)/, 'click handler must only stopPropagation, not re-click the input');
+  assert.match(bindBlock, /addEventListener\('keydown', e => \{/, 'keydown handler must exist for keyboard accessibility');
+  assert.match(bindBlock, /if \(e\.key !== 'Enter' && e\.key !== ' '\) return;/);
+  assert.match(bindBlock, /document\.getElementById\('optSprayTagFile'\)\.click\(\);/, 'keyboard path still opens the picker via .click()');
+});
+
+test('menus are sized to need noticeably less scrolling: tighter card padding and a two-column controls list', () => {
+  assert.match(html, /padding:26px 30px 22px;/, 'base .card padding must be trimmed from the original 34px/28px');
+  assert.match(html, /\.opt-section\{margin:13px 0;\}/);
+  assert.match(html, /\.opt-row\{display:flex;align-items:center;gap:12px;margin:7px 0;/);
+  assert.match(html, /#options \.options-card\{max-width:560px;max-height:90vh;overflow-y:auto;\}/);
+  assert.match(
+    html,
+    /@media \(min-width:480px\)\{\s*\.opt-controls\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\);\}\s*\}/,
+    'the 22-entry controls list must lay out as two columns on desktop-width screens, not one long column'
+  );
 });
