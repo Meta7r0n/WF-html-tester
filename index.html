@@ -1792,10 +1792,10 @@ const CONFIG = {
     bashDamage: 38, bashRange: 2.1, bashArc: 0.55, bashForce: 1.7, bashCooldown: 0.62
   },
   map: {
-    // The south gate stays fixed while expansions push the farm north.
-    // Keeping these limits together makes later horizontal slices less
+    // The south gate stays fixed while expansions push the farm north (and
+    // now west). Keeping these limits together makes later slices less
     // error-prone than scattering invisible-wall coordinates through LEVEL.
-    west: -31.2, east: 65.0, south: 32.6, north: -80,
+    west: -85.0, east: 65.0, south: 32.6, north: -80,
     northTransition: -32,
     // The original outer boundary (WC-v0.12 and earlier) becomes an interior
     // breached cross-fence here, same trick northTransition already uses —
@@ -1806,16 +1806,26 @@ const CONFIG = {
     // barn yard can share Silo Row's fence line.
     eastTransition: 31.2,
     eastBumpSouth: 25, eastBumpNorth: -80,
+    // v0.39 west wing: unlike the east wing (a partial north bump), this
+    // extension runs the full south-to-north length of the farm at once.
+    // westTransition is the old boundary line (was a straight run at
+    // roughly x=-30.5), now an interior fence breached by two gates.
+    westTransition: -30.5,
     catwalkY: 3.5
   },
   enemy: {
     // v0.29's north barn adds another large, two-level encounter space. Two
     // enemies are reserved for it while the previous farm roster stays intact.
-    count: 14,
+    // v0.39's west wing (3 greenhouses + water tanks, full south-north
+    // length) grows the farm's bounding footprint from 96.2 x 112.6 (10832
+    // sq. units) to 150.0 x 112.6 (16890 sq. units) -- a 55.9% area increase.
+    // count/coopMax both scale by that same ~56% rather than an eyeballed
+    // number, so roster density per square unit stays roughly constant.
+    count: 22,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
     coopPerExtraPlayer: 4,
-    coopMax: 25,
+    coopMax: 39,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -3803,7 +3813,7 @@ const LEVEL = (() => {
     const bumpS = M.eastBumpSouth, bumpN = M.eastBumpNorth, oldEast = M.eastTransition;
 
     // perimeter, bowed so nothing reads as a square arena
-    fenceRun(b, -30, 32, -3.6, 31.2, { bow: 0.8, wall: true });
+    fenceRun(b, M.west, 32, -3.6, 31.2, { bow: 0.8, wall: true });
     fenceRun(b, 3.6, 31.2, 30, 32, { bow: -0.8, wall: true });
     // Old east boundary: split around two real access gates. The south gate
     // lines up with the maze's west entrance at z=18.5; the north gate lines
@@ -3834,14 +3844,38 @@ const LEVEL = (() => {
     }
     addBoundaryGatePosts(MAZE_GATE_CENTER_Z, 3.25);
     addBoundaryGatePosts(STABLE_GATE_CENTER_Z, 2.85);
-    fenceRun(b, -30, M.siloTransition, -30.5, 32, { bow: -1.4, wall: true });
+    fenceRun(b, M.west, M.siloTransition, M.west, 32, { bow: -1.4, wall: true });
+
+    // v0.39 west wing: the farm's old west boundary (the run that used to
+    // sit at roughly x=-30.5) becomes an interior transition fence, same
+    // trick as siloTransition/northTransition below -- just a vertical line
+    // instead of a horizontal one. Two gates connect the old farm straight
+    // to landmarks players already know: the first lines up with the
+    // Condemned Ruin/Back Forty cluster, the second with the orchard.
+    const WT = M.westTransition;
+    const WEST_GATE1_Z = -25, WEST_GATE1_HALF = 3.6;
+    const WEST_GATE2_Z = -58, WEST_GATE2_HALF = 3.6;
+    function addWestGatePosts(centerZ, halfWidth) {
+      const postOffset = halfWidth - 0.35;
+      [-1, 1].forEach(side => {
+        const z = centerZ + side * postOffset;
+        b.box(0.24, 1.75, 0.24, WT, 0.875, z, 0, 0, 0, 0.02);
+        WORLD.addFloor(WT, 0, z, 0.34, 1.75, 0.34, 'fence_gatepost');
+      });
+    }
+    fenceRun(b, WT, 32, WT, WEST_GATE1_Z + WEST_GATE1_HALF, { bow: -0.4, wall: true });
+    fenceRun(b, WT, WEST_GATE1_Z - WEST_GATE1_HALF, WT, WEST_GATE2_Z + WEST_GATE2_HALF,
+      { bow: 0.35, wall: true });
+    fenceRun(b, WT, WEST_GATE2_Z - WEST_GATE2_HALF, WT, M.north, { bow: -0.3, wall: true });
+    addWestGatePosts(WEST_GATE1_Z, WEST_GATE1_HALF);
+    addWestGatePosts(WEST_GATE2_Z, WEST_GATE2_HALF);
 
     // The original outer boundary now reads as an old cross-fence -- same
     // treatment as northTransition below, just further out. Two deliberate
     // breaches make a proper loop instead of a single campable gate.
     fenceRun(b, 30.5, M.siloTransition, 14, M.siloTransition, { bow: 0.45, wall: true });
     fenceRun(b, 8, M.siloTransition, -14, M.siloTransition, { bow: -0.35, wall: true });
-    fenceRun(b, -20, M.siloTransition, -30, M.siloTransition, { bow: 0.3, wall: true });
+    fenceRun(b, -20, M.siloTransition, WT, M.siloTransition, { bow: 0.3, wall: true });
 
     // Silo Row approach. The east run is split around a second broad, open
     // barn-yard gate at z=-66; there is deliberately no collider in its gap.
@@ -3852,8 +3886,8 @@ const LEVEL = (() => {
     fenceRun(b, 30.5, BARN_WEST_GATE_Z - BARN_WEST_GATE_HALF,
       30.5, M.north, { bow: 0.25, wall: true });
     addBoundaryGatePosts(BARN_WEST_GATE_Z, BARN_WEST_GATE_HALF);
-    fenceRun(b, -30.5, M.siloTransition, -30.5, M.north, { bow: -0.7, wall: true });
-    fenceRun(b, 30.5, M.north, -30.5, M.north, { bow: 1.0, wall: true });
+    fenceRun(b, M.west, M.siloTransition, M.west, M.north, { bow: -0.7, wall: true });
+    fenceRun(b, 30.5, M.north, M.west, M.north, { bow: 1.0, wall: true });
 
     // The former north edge now reads as an old cross-fence. Two deliberate
     // six-metre breaches make a proper loop instead of a single campable gate.
@@ -5182,6 +5216,281 @@ const LEVEL = (() => {
     WORLD.addSpawn(CX, DECK_Y, CZ, 'silo_deck'); // the new highest point on the farm
   }
 
+  /* ---------------- v0.39 West Wing: the greenhouse plot ----------------
+     Three long greenhouses share one x-footprint (halfW=8, centered at
+     x=-43.5) and are stacked south to north, one per growth stage -- the
+     whole point of the expansion is that growth stage doubles as a
+     distinct combat read:
+       - Seedling House (south): open floor, short jumpable grow benches,
+         built to be run-and-gunned through.
+       - Grow House (middle): tall, un-mountable grow benches plus
+         mid-height plant clumps for partial cover.
+       - Mature House (north): dense, player-eye-height-or-taller plants
+         hand-authored into a slalom -- a real maze, not just clutter.
+     Each greenhouse gets 4 doorways (one per wall, centered), a glass
+     shell (WORLD-solid, ray-target so shots spark off it like any other
+     wall), and a flat glass roof that's purely visual -- no collision, no
+     ray target, so gunfire and jump arcs both pass straight through it. */
+  function buildGreenhouseShell(parent, cx, cz, halfW, halfL, wallH, nameLines) {
+    const glassMat = MAT.toon(PAL.blue, { transparent: true, opacity: 0.4 });
+    const b = new PRIM.Batch(glassMat, 0.02);
+    const DOOR_HALF = 1.7;
+
+    function wallRun(isXWall, fixed, rangeMin, rangeMax, doorCenter) {
+      [[rangeMin, doorCenter - DOOR_HALF], [doorCenter + DOOR_HALF, rangeMax]].forEach(seg => {
+        const a = seg[0], c = seg[1];
+        if (c - a < 0.4) return;
+        const mid = (a + c) / 2, len = c - a;
+        if (isXWall) {
+          b.box(len, wallH, 0.16, mid, wallH / 2, fixed, 0, 0, 0, 0.01);
+          WORLD.add(mid, wallH / 2, fixed, len, wallH, 0.3, 'greenhouse_wall');
+        } else {
+          b.box(0.16, wallH, len, fixed, wallH / 2, mid, 0, 0, 0, 0.01);
+          WORLD.add(fixed, wallH / 2, mid, 0.3, wallH, len, 'greenhouse_wall');
+        }
+      });
+      // door-frame posts, full height, both sides of the opening
+      [doorCenter - DOOR_HALF, doorCenter + DOOR_HALF].forEach(d => {
+        if (isXWall) b.box(0.18, wallH + 0.2, 0.24, d, (wallH + 0.2) / 2, fixed, 0, 0, 0, 0.012);
+        else b.box(0.24, wallH + 0.2, 0.18, fixed, (wallH + 0.2) / 2, d, 0, 0, 0, 0.012);
+      });
+    }
+
+    wallRun(true, cz - halfL, cx - halfW, cx + halfW, cx);   // north wall
+    wallRun(true, cz + halfL, cx - halfW, cx + halfW, cx);   // south wall
+    wallRun(false, cx - halfW, cz - halfL, cz + halfL, cz);  // west wall
+    wallRun(false, cx + halfW, cz - halfL, cz + halfL, cz);  // east wall
+    b.build(parent);
+
+    PRIM.box(halfW * 2 + 0.3, 0.1, halfL * 2 + 0.3, glassMat,
+      { pos: [cx, wallH + 0.05, cz], parent: parent, outline: 0.02, ray: false });
+
+    // Nameplate on the south wall -- players approach from the old farm's
+    // gates, south to north, so it reads correctly on the way in.
+    PRIM.box(3.0, 1.1, 0.12, MAT.toon(0xffffff, {
+      map: TEX.sign(nameLines, PAL.cream, PAL.oliveDeep, 256, 130)
+    }), { pos: [cx, wallH * 0.58, cz + halfL + 0.14], parent: parent, ray: false, outline: 0.03 });
+  }
+
+  function buildFarmPlant(parent, x, z, stage) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = UTIL.rng(0, 6.28);
+    const leafCol = stage === 'seed' ? PAL.jaysLight : stage === 'mid' ? PAL.jays : PAL.oliveDeep;
+    const leafMat = MAT.toon(leafCol);
+    const stemMat = MAT.toon(PAL.jaysDeep);
+    const potMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const stalkH = stage === 'seed' ? 0.45 : stage === 'mid' ? 1.1 : 2.0;
+    const leafR = stage === 'seed' ? 0.22 : stage === 'mid' ? 0.45 : 0.85;
+    PRIM.cyl(0.22, 0.26, 0.22, 8, potMat, { pos: [0, 0.11, 0], parent: g, outline: 0.02 });
+    PRIM.cyl(0.05, 0.08, stalkH, 6, stemMat, { pos: [0, 0.22 + stalkH / 2, 0], parent: g, outline: 0.015 });
+    PRIM.sph(leafR, leafMat, { pos: [0, 0.22 + stalkH * 0.85, 0], parent: g, outline: 0.03 });
+    if (stage !== 'seed') {
+      PRIM.sph(leafR * 0.62, leafMat, { pos: [leafR * 0.55, 0.22 + stalkH * 0.65, leafR * 0.3], parent: g, outline: 0.025 });
+      PRIM.sph(leafR * 0.62, leafMat, { pos: [-leafR * 0.5, 0.22 + stalkH * 0.7, -leafR * 0.35], parent: g, outline: 0.025 });
+    }
+    parent.add(g);
+    // Only fully mature plants actually block movement/sightlines -- the
+    // whole reason Mature House reads as a maze while Seedling House
+    // doesn't. Seed/mid stages stay purely decorative underfoot.
+    if (stage === 'mature') {
+      WORLD.add(x, stalkH * 0.5 + 0.2, z, leafR * 1.7, stalkH * 1.15, leafR * 1.7, 'greenhouse_plant');
+    }
+    return g;
+  }
+
+  function buildGrowBench(parent, x, z, len, wid, h, tag) {
+    const topMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const legMat = MAT.toon(PAL.charcoal);
+    PRIM.box(len, 0.08, wid, topMat, { pos: [x, h, z], parent: parent, outline: 0.02 });
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(c => {
+      PRIM.box(0.08, h, 0.08, legMat,
+        { pos: [x + c[0] * (len / 2 - 0.15), h / 2, z + c[1] * (wid / 2 - 0.15)], parent: parent, outline: 0.015 });
+    });
+    WORLD.addFloor(x, 0, z, len, h + 0.1, wid, tag);
+  }
+
+  // Shootable soil/nutrient pallet -- see WEAPON.fireGun's post-ENEMY.hit
+  // branch, which reads userData.nutrientPallet off whatever the shot
+  // actually connected with and (on a cooldown) triggers a dust cloud via
+  // THROWABLE.spawnDustCloud, the exact same lightweight LOS-blocker
+  // mechanic Pack of Smokes already uses -- no new particle system, no
+  // extra physics.
+  function buildNutrientPallet(parent, x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.y = UTIL.rng(0, 6.28);
+    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const sackMat = MAT.toon(PAL.dirt);
+    for (let i = -1; i <= 1; i++) {
+      PRIM.box(1.1, 0.06, 0.16, woodMat, { pos: [0, 0.06, i * 0.32], parent: g, outline: 0.015 });
+    }
+    [[0, 0.28, 0, 0.3], [0.22, 0.28, 0.16, 0.26], [-0.2, 0.26, -0.14, 0.24], [0.04, 0.55, 0.03, 0.24]]
+      .forEach(s => PRIM.sph(s[3], sackMat, { pos: [s[0], s[1], s[2]], parent: g, outline: 0.025 }));
+    parent.add(g);
+    PROPS.blobShadow(g, 0, 0, 0.75, 0.6);
+    const pallet = { lastTriggered: 0 };
+    g.traverse(o => { if (o.isMesh) o.userData.nutrientPallet = pallet; });
+    WORLD.addFloor(x, 0, z, 1.3, 0.85, 1.1, 'nutrient_pallet');
+    return g;
+  }
+
+  function buildGreenhouses(parent) {
+    const GX = -43.5, HALF_W = 8, HALF_L = 14, WALL_H = 2.6;
+    const GH_A_Z = 9, GH_B_Z = -25, GH_C_Z = -59;
+
+    // ---- Seedling House: open, run-and-gun, jumpable benches ----
+    buildGreenhouseShell(parent, GX, GH_A_Z, HALF_W, HALF_L, WALL_H, ['SEEDLING', 'HOUSE']);
+    [[-4, GH_A_Z - 8], [4, GH_A_Z - 8], [-4, GH_A_Z], [4, GH_A_Z], [-4, GH_A_Z + 8], [4, GH_A_Z + 8]]
+      .forEach(p => buildGrowBench(parent, GX + p[0], p[1], 2.6, 1.2, 0.85, 'grow_bench_low'));
+    [[-6.5, GH_A_Z - 11], [6.5, GH_A_Z - 4], [-6.2, GH_A_Z + 5], [6.4, GH_A_Z + 11], [0, GH_A_Z + 10.5]]
+      .forEach(p => buildFarmPlant(parent, GX + p[0], p[1], 'seed'));
+    WORLD.addSpawn(GX, 0, GH_A_Z, 'greenhouse_seedling');
+    WORLD.addSpawn(GX - 5.5, 0, GH_A_Z - 10, 'greenhouse_seedling_corner');
+
+    // ---- Grow House: tall benches (no mounting), partial-cover plants ----
+    buildGreenhouseShell(parent, GX, GH_B_Z, HALF_W, HALF_L, WALL_H, ['GROW', 'HOUSE']);
+    [[-4.5, GH_B_Z - 7.5], [4.5, GH_B_Z - 7.5], [-4.5, GH_B_Z + 7.5], [4.5, GH_B_Z + 7.5]]
+      .forEach(p => buildGrowBench(parent, GX + p[0], p[1], 3.0, 1.3, 1.7, 'grow_bench_tall'));
+    [[0, GH_B_Z - 10.5], [-6.4, GH_B_Z - 3], [6.2, GH_B_Z], [-6, GH_B_Z + 4], [6.4, GH_B_Z + 8.5],
+     [0, GH_B_Z + 11], [-1.4, GH_B_Z - 0.5], [1.6, GH_B_Z + 2.5]]
+      .forEach(p => buildFarmPlant(parent, GX + p[0], p[1], 'mid'));
+    WORLD.addSpawn(GX, 0, GH_B_Z, 'greenhouse_mid');
+    WORLD.addSpawn(GX + 5.5, 0, GH_B_Z + 9, 'greenhouse_mid_corner');
+
+    // ---- Mature House: dense, eye-height-or-taller, hand-slalomed ----
+    buildGreenhouseShell(parent, GX, GH_C_Z, HALF_W, HALF_L, WALL_H, ['MATURE', 'HOUSE']);
+    // Four rows across the width, each row's gap on the opposite side from
+    // its neighbours -- a real weave from door to door, not just clutter.
+    const rowZs = [GH_C_Z - 9.5, GH_C_Z - 3, GH_C_Z + 3.5, GH_C_Z + 10];
+    rowZs.forEach((z, i) => {
+      const gapSide = i % 2 === 0 ? 1 : -1; // alternate which side stays clear
+      [-5.5, -2.5, 2.5, 5.5].forEach(dx => {
+        if (Math.sign(dx) === gapSide && Math.abs(dx) > 3) return; // leave the slalom gap open
+        buildFarmPlant(parent, GX + dx, z, 'mature');
+      });
+    });
+    WORLD.addSpawn(GX, 0, GH_C_Z, 'greenhouse_mature');
+    WORLD.addSpawn(GX - 6, 0, GH_C_Z - 12, 'greenhouse_mature_corner');
+    // Whoever ran this row left in a hurry -- the deepest, densest corner
+    // of the whole west wing is where the trail points back to The
+    // Gardener (see QUEST.spawnGardener/CAST), tying the new area's
+    // toughest room to an encounter players already know from the crafting
+    // quest instead of introducing a name with no payoff.
+    PROPS.signPost(parent, GX + 5.5, GH_C_Z - 12.5, ['SOMETHING IS', 'STILL GROWING'], -0.5,
+      { w: 1.8, h: 0.85, bg: PAL.charcoal, fg: PAL.jaysLight, postH: 1.6 });
+  }
+
+  /* ---------------- v0.39 West Wing: water tanks ----------------
+     Same ladder-to-deck skeleton as buildTower's water tower, just
+     parametrized so it can be planted three times -- one per greenhouse,
+     giving each a vertical sniper-perch accent outside its own footprint. */
+  function buildWaterTank(parent, cx, cz, tag) {
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const b = new PRIM.Batch(wood, 0.05);
+
+    const legs = [[-2.7, -3.5], [2.7, -3.5], [-2.7, 3.5], [2.7, 3.5]];
+    legs.forEach(l => {
+      b.box(0.36, 7.4, 0.36, cx + l[0] * 1.05, 3.7, cz + l[1] * 1.05,
+        -l[1] * 0.028, 0, l[0] * 0.028, 0.02);
+      WORLD.addFloor(cx + l[0] * 1.05, 0, cz + l[1] * 1.05, 0.56, 6.4, 0.56, 'leg');
+    });
+    b.box(5.8, 0.16, 0.16, cx, 2.5, cz - 3.6, 0, 0, 0.04);
+    b.box(5.8, 0.16, 0.16, cx, 2.5, cz + 3.6, 0, 0, -0.04);
+    b.box(0.16, 0.16, 7.4, cx - 2.8, 2.5, cz, 0.03, 0, 0);
+    b.box(0.16, 0.16, 7.4, cx + 2.8, 2.5, cz, -0.03, 0, 0);
+
+    b.box(7.4, 0.34, 7.8, cx, 6.23, cz, 0, 0, 0, 0.02);
+    for (let x = cx - 3.4; x <= cx + 3.4; x += 1.5) {
+      b.box(0.13, 0.95, 0.13, x, 6.88, cz - 3.7, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(7.0, 0.11, 0.11, cx, 7.3, cz - 3.7);
+    for (let z = cz - 3.4; z <= cz + 3.4; z += 1.5) {
+      b.box(0.13, 0.95, 0.13, cx - 3.5, 6.88, z, 0, 0, UTIL.rng(-.05, .05));
+      if (Math.abs(z - cz) > 1.3) b.box(0.13, 0.95, 0.13, cx + 3.5, 6.88, z, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(0.11, 0.11, 7.2, cx - 3.5, 7.3, cz);
+    b.box(0.11, 0.11, 2.3, cx + 3.5, 7.3, cz - 2.4);
+    b.box(0.11, 0.11, 2.3, cx + 3.5, 7.3, cz + 2.4);
+    [-2.55, 2.55].forEach(o => {
+      b.box(0.13, 0.95, 0.13, cx + o, 6.88, cz + 3.7, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.13, 0.95, 0.13, cx + o * 1.36, 6.88, cz + 3.7, 0, 0, UTIL.rng(-.05, .05));
+      b.box(2.2, 0.11, 0.11, cx + o * 1.18, 7.3, cz + 3.7);
+    });
+
+    const ladderZ = cz + 4.03;
+    b.box(0.14, 6.4, 0.14, cx - 0.58, 3.2, ladderZ, 0, 0, -0.015, 0.01);
+    b.box(0.14, 6.4, 0.14, cx + 0.58, 3.2, ladderZ, 0, 0, 0.015, 0.01);
+    for (let y = 0.38; y <= 6.2; y += 0.47) {
+      b.box(1.3, 0.12, 0.14, cx, y, ladderZ, 0, 0, UTIL.rng(-0.018, 0.018), 0.008);
+    }
+    b.build(parent);
+
+    WORLD.addFloor(cx, 6.06, cz, 7.4, 0.34, 7.8, 'deck');
+    WORLD.add(cx, 6.88, cz - 3.7, 7.2, 1.05, 0.35, 'rail');
+    WORLD.add(cx - 3.5, 6.88, cz, 0.35, 1.05, 7.4, 'rail');
+    WORLD.add(cx + 3.5, 6.88, cz - 2.4, 0.35, 1.05, 2.3, 'rail');
+    WORLD.add(cx + 3.5, 6.88, cz + 2.4, 0.35, 1.05, 2.3, 'rail');
+    WORLD.add(cx - 3.05, 6.88, cz + 3.7, 2.3, 1.05, 0.35, 'rail');
+    WORLD.add(cx + 3.05, 6.88, cz + 3.7, 2.3, 1.05, 0.35, 'rail');
+    WORLD.addLadder(cx, 0, ladderZ, 1.6, 6.55, 1.2, {
+      topY: 6.4,
+      topExitX: cx, topExitZ: cz + 3.3,
+      bottomExitX: cx, bottomExitZ: ladderZ + 1.0,
+      normalZ: 1,
+      tag: tag + '_ladder'
+    });
+
+    const tankMat = MAT.toon(PAL.blue, { map: TEX.metal() });
+    PRIM.cyl(2.2, 2.3, 3.5, 14, tankMat, { pos: [cx, 8.15, cz], parent: parent, outline: 0.055 });
+    PRIM.cone(2.55, 1.15, 14, MAT.toon(PAL.charcoal), { pos: [cx, 10.4, cz], parent: parent, outline: 0.055, ray: false });
+    [7.1, 9.15].forEach(y =>
+      PRIM.cyl(2.37, 2.37, 0.14, 14, MAT.toon(PAL.blueGrayDk), { pos: [cx, y, cz], parent: parent, outline: 0.03, ray: false })
+    );
+    WORLD.add(cx, 8.15, cz, 4.7, 3.5, 4.7, 'tank');
+
+    PRIM.box(3.0, 1.3, 0.12, MAT.toon(0xffffff, {
+      map: TEX.sign(['WATER'], PAL.cream, PAL.blueDeep, 256, 110)
+    }), { pos: [cx, 8.35, cz + 2.28], parent: parent, ray: false, outline: 0.03 });
+
+    PROPS.crate(parent, cx - 2.5, 6.4, cz + 2.2, 0.8, 0.3);
+    PROPS.lantern(parent, cx + 2.4, 7.1, cz + 2.6, 0);
+
+    WORLD.addSpawn(cx + 3.5, 0, cz + 6.0, tag + '_base'); // clear of the ladder approach
+    WORLD.addSpawn(cx, 6.4, cz, tag + '_deck');
+  }
+
+  function buildWaterTanks(parent) {
+    buildWaterTank(parent, -68, 9, 'west_tank_south');
+    buildWaterTank(parent, -68, -25, 'west_tank_mid');
+    buildWaterTank(parent, -68, -59, 'west_tank_north');
+  }
+
+  function buildGreenhouseYard(parent) {
+    // Nutrient/soil pallets scattered through the open yard between the
+    // greenhouses (x=-51.5 to -35.5) and the water tanks (x=-68) -- shoot
+    // one to kick up a dust cloud (see buildNutrientPallet's doc comment).
+    // One pair per greenhouse band: one on the transition-fence path side,
+    // one on the water-tank side.
+    [[-33.5, 4], [-33.5, -20], [-33.5, -54], [-58, 13], [-58, -29], [-58, -63]]
+      .forEach(p => buildNutrientPallet(parent, p[0], p[1]));
+
+    // Welcome mat for whichever westTransition gate a player used first --
+    // names the whole plot before they've picked a greenhouse, same job
+    // NORTH PASTURE/BACK FORTY do for their own areas.
+    PROPS.signPost(parent, -32.0, -18.5, ['THE GARDENERS', 'GREENHOUSES'], 0.9,
+      { w: 2.0, h: 0.9, bg: PAL.jaysDeep, fg: PAL.cream, postH: 1.8 });
+    PROPS.barrel(parent, -30.5, -16.5, { color: PAL.olive });
+    PROPS.crate(parent, -31.5, 0, -15.0, 0.85, 0.6);
+
+    // Open ground between the greenhouse row and the tank row, one per
+    // band -- the greenhouse/tank spawn markers only cover their own
+    // interiors/decks, so without these the yard itself would be empty.
+    WORLD.addSpawn(-52, 0, 9, 'greenhouse_yard_south');
+    WORLD.addSpawn(-52, 0, -25, 'greenhouse_yard_mid');
+    WORLD.addSpawn(-52, 0, -59, 'greenhouse_yard_north');
+  }
+
   /* ---------------- barn-to-pasture catwalk ----------------
      A multiplayer-width elevated lane joins the barn loft to the feed shelter.
      Its ground stair now approaches from the east, leaving the north-pasture
@@ -6313,6 +6622,9 @@ const LEVEL = (() => {
     buildNorthBarn(root);
     buildOrchard(root);
     buildSilo(root);
+    buildGreenhouses(root);
+    buildWaterTanks(root);
+    buildGreenhouseYard(root);
     buildCatwalks(root);
     buildTowerCatwalk(root);
     buildBasement(root);
@@ -6602,7 +6914,10 @@ const MAPVIEW = (() => {
   // v0.22.01-EAST widened the playable area itself (CONFIG.map.east 31.2 ->
   // 65) -- cols grows to keep matching real world space 1:1, same 10-unit
   // cell size as before so a grid reference still means the same thing.
-  const GRID = { cell: 10, cols: 11, rows: 12, originX: -35, originZ: -85 };
+  // v0.39 pushes CONFIG.map.west out to -85 (the west wing), so originX/cols
+  // grow again the same way -- rows/originZ are untouched since the new
+  // wing runs the existing south/north extent, not past it.
+  const GRID = { cell: 10, cols: 17, rows: 12, originX: -90, originZ: -85 };
 
   const THEME_SURFACE = { bg: '#D7C39A', ink: '#16120F', grid: 'rgba(22,18,15,0.22)' };
   const THEME_UNDERGROUND = { bg: '#3A3530', ink: '#F0E6D2', grid: 'rgba(240,230,210,0.20)' };
@@ -6611,13 +6926,13 @@ const MAPVIEW = (() => {
   // real fences are gently bowed for visual variety, but a reference map
   // only needs the boundary shape, not the bow.
   const FENCES = [
-    [-30, 32, -3.6, 31.2], [3.6, 31.2, 30, 32],
+    [-85, 32, -3.6, 31.2], [3.6, 31.2, 30, 32],
     // The old east boundary mirrors the two authored gates in LEVEL.
     [30, 32, 30.5, 21.75], [30.5, 15.25, 30.5, -43.15],
-    [30.5, -48.85, 30.5, -51.6], [-30, -51.6, -30.5, 32],
-    [30.5, -51.6, 14, -51.6], [8, -51.6, -14, -51.6], [-20, -51.6, -30, -51.6],
+    [30.5, -48.85, 30.5, -51.6], [-85, -51.6, -85, 32],
+    [30.5, -51.6, 14, -51.6], [8, -51.6, -14, -51.6], [-20, -51.6, -30.5, -51.6],
     [30.5, -51.6, 30.5, -62.4], [30.5, -69.6, 30.5, -80],
-    [-30.5, -51.6, -30.5, -80], [30.5, -80, -30.5, -80],
+    [-85, -51.6, -85, -80], [30.5, -80, -85, -80],
     [30.5, -32, 14, -32], [8, -32, -14, -32], [-20, -32, -30, -32],
     [-8, 24, -12, 14], [9, 25, 13, 20],
     [4, 4, 4, -1], [11, 9, 24, 9.5], [24, 9.5, 24, 21],
@@ -6625,7 +6940,12 @@ const MAPVIEW = (() => {
     // z=-40.2 is the southern North Barn gate; the split x=30.5 run above is
     // its Silo Row gate.
     [65, 25, 65, -80], [31.2, 25, 65, 25], [30.5, -80, 65, -80],
-    [31.2, -40.2, 44.2, -40.2], [51.8, -40.2, 65, -40.2]
+    [31.2, -40.2, 44.2, -40.2], [51.8, -40.2, 65, -40.2],
+    // v0.39 West Wing: westTransition (x=-30.5) is the old farm's original
+    // west boundary, now an interior fence run the full south-north length
+    // with two gate breaches -- mirrors the two authored east-boundary gates
+    // above, just on the other side of the farm.
+    [-30.5, 32, -30.5, -21.4], [-30.5, -28.6, -30.5, -54.4], [-30.5, -61.6, -30.5, -80]
   ];
 
   const STRUCTURES = [
@@ -6635,7 +6955,14 @@ const MAPVIEW = (() => {
     { shape: 'circle', x: -6, z: -26, r: 2.2, label: 'Windmill' },
     { shape: 'circle', x: 2, z: -68, r: 6.2, label: 'Silo Row' },
     { shape: 'rect', x: 43, z: -51, x2: 53, z2: -41, label: 'Horse Stable' },
-    { shape: 'rect', x: 33, z: -79, x2: 63, z2: -55, label: 'North Barn' }
+    { shape: 'rect', x: 33, z: -79, x2: 63, z2: -55, label: 'North Barn' },
+    // v0.39 West Wing.
+    { shape: 'rect', x: -51.5, z: -5, x2: -35.5, z2: 23, label: 'Seedling House' },
+    { shape: 'rect', x: -51.5, z: -39, x2: -35.5, z2: -11, label: 'Grow House' },
+    { shape: 'rect', x: -51.5, z: -73, x2: -35.5, z2: -45, label: 'Mature House' },
+    { shape: 'circle', x: -68, z: 9, r: 4, label: 'South Water Tank' },
+    { shape: 'circle', x: -68, z: -25, r: 4, label: 'Mid Water Tank' },
+    { shape: 'circle', x: -68, z: -59, r: 4, label: 'North Water Tank' }
   ];
 
   // Bounding outline of the corn maze (see buildCornMaze) -- drawn as a
@@ -6654,7 +6981,8 @@ const MAPVIEW = (() => {
     { x: -21.5, z: -35, label: 'Back Forty' },
     { x: -25, z: -25, label: 'Condemned Ruin' },
     { x: 12.4, z: 10.2, label: 'Corn Field' },
-    { x: 58.3, z: -76.7, label: 'Craft Bench (Offline)' }
+    { x: 58.3, z: -76.7, label: 'Craft Bench (Offline)' },
+    { x: -32.0, z: -18.5, label: "The Gardener's Greenhouses" }
   ];
 
   // Surface<->basement entrances -- same HATCHES array buildBasement reads,
@@ -10209,6 +10537,17 @@ const WEAPON = (() => {
                              : _t.clone().negate();
           if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
           FX.hitWobbler(hit.object, _t, 1 / d.pellets * 2.4);
+          // West wing nutrient pallets: gunfire only (this branch never runs
+          // for an enemy hit), gated on a cooldown so one pallet can't be
+          // farmed into a permanent smokescreen.
+          const pallet = hit.object.userData && hit.object.userData.nutrientPallet;
+          if (pallet) {
+            const now = performance.now() / 1000;
+            if (now - pallet.lastTriggered > 6) {
+              pallet.lastTriggered = now;
+              THROWABLE.spawnDustCloud(hit.point);
+            }
+          }
         }
       } else if (i === 0) {
         // Use the spread direction, not the centre line — the old version
@@ -11118,7 +11457,7 @@ const THROWABLE = (() => {
   // second visibility system, so escaping into a cloud "just works" for
   // every enemy (and the boss) with no special-casing on their side.
   const activeSmoke = [];
-  function emitSmokePuffs(point, radius, count) {
+  function emitSmokePuffs(point, radius, count, color) {
     for (let i = 0; i < count; i++) {
       _target.set(
         point.x + UTIL.rng(-radius, radius) * 0.6,
@@ -11126,7 +11465,7 @@ const THROWABLE = (() => {
         point.z + UTIL.rng(-radius, radius) * 0.6
       );
       FX.spawnParticle(_target, new THREE.Vector3(UTIL.rng(-0.3, 0.3), UTIL.rng(0.2, 0.6), UTIL.rng(-0.3, 0.3)), {
-        map: TEX.puff(PAL.blueGray), s0: UTIL.rng(0.5, 0.9), s1: UTIL.rng(1.4, 2),
+        map: TEX.puff(color || PAL.blueGray), s0: UTIL.rng(0.5, 0.9), s1: UTIL.rng(1.4, 2),
         life: UTIL.rng(2.2, 3.2), grav: -0.15, spin: UTIL.rng(-1, 1)
       });
     }
@@ -11139,8 +11478,21 @@ const THROWABLE = (() => {
     blocker.position.copy(point);
     if (scene) scene.add(blocker);
     if (typeof ENEMY !== 'undefined' && ENEMY.addLOSBlocker) ENEMY.addLOSBlocker(blocker);
-    activeSmoke.push({ point: point.clone(), radius: def.smokeRadius, timer: def.smokeDuration, puffTimer: 0, blocker });
-    emitSmokePuffs(point, def.smokeRadius, 10);
+    const color = def.smokeColor || PAL.blueGray;
+    activeSmoke.push({ point: point.clone(), radius: def.smokeRadius, timer: def.smokeDuration, puffTimer: 0, blocker, color });
+    emitSmokePuffs(point, def.smokeRadius, 10, color);
+  }
+
+  // Nutrient pallet (west greenhouse yard): a shot pallet kicks up a cloud
+  // of dust that blocks line of sight exactly like Pack of Smokes, just
+  // recolored and reached directly rather than through the throwable-select
+  // system -- it's triggered by gunfire (WEAPON.fireGun's post-ENEMY.hit
+  // branch), not thrown, so it skips DEFS/the active-projectile list
+  // entirely and calls the same spawnSmokeCloud engine with a plain literal
+  // standing in for a throwable def (spawnSmokeCloud only reads smokeRadius/
+  // smokeDuration/smokeColor off it).
+  function spawnDustCloud(point) {
+    spawnSmokeCloud(point, { smokeRadius: 3.2, smokeDuration: 5, smokeColor: PAL.dirt });
   }
   function clearSmoke() {
     activeSmoke.forEach(cloud => {
@@ -11254,7 +11606,7 @@ const THROWABLE = (() => {
       cloud.puffTimer -= dt;
       if (cloud.puffTimer <= 0) {
         cloud.puffTimer = 0.35;
-        emitSmokePuffs(cloud.point, cloud.radius, 3);
+        emitSmokePuffs(cloud.point, cloud.radius, 3, cloud.color);
       }
       if (cloud.timer <= 0) {
         if (typeof ENEMY !== 'undefined' && ENEMY.removeLOSBlocker) ENEMY.removeLOSBlocker(cloud.blocker);
@@ -11336,7 +11688,7 @@ const THROWABLE = (() => {
 
   return {
     init, update, reset, define, select, cycleType, add, throwCurrent, buildPickupVisual,
-    lobEnemyProjectile, spawnBoomboxZone,
+    lobEnemyProjectile, spawnBoomboxZone, spawnDustCloud,
     get definitions() { return DEFS; },
     get inventory() { return inventory; },
     get active() { return active; },
@@ -12729,7 +13081,28 @@ const PICKUP = (() => {
     // real trip around the map, not a single cluster next to the bench.
     { id: 'plowDisc', x: 35.0, z: -51.0 },              // barn yard, near the old tractor wreck
     { id: 'harnessStraps', x: 43.5, z: -46.0 },          // horse stable
-    { id: 'reinforcingPlate', x: 6.0, y: 8.2, z: -65.0 } // silo deck
+    { id: 'reinforcingPlate', x: 6.0, y: 8.2, z: -65.0 }, // silo deck
+
+    // v0.39 West Wing: 3 greenhouses + 3 water tanks + connecting yard. Each
+    // greenhouse gets a power-up matching its own combat identity (speed for
+    // the open Seedling House run-and-gun, armor for the Mature House's
+    // slower cover fight), plus a fill-in ammo item; each tank deck rewards
+    // the ladder climb; the yard and both westTransition gate mouths round
+    // out the rest.
+    { id: 'jackrabbitPack', x: -43.5, z: 16.0 },   // Seedling House, open north end
+    { id: 'shellBox', x: -43.5, z: 2.0 },          // Seedling House, south aisle
+    { id: 'carbineAmmo', x: -43.5, z: -32.0 },     // Grow House, north aisle
+    { id: 'healthTonic', x: -43.5, z: -18.0 },     // Grow House, south aisle
+    { id: 'ironHidePack', x: -43.5, z: -65.0 },    // Mature House, deep in the slalom
+    { id: 'shieldCell', x: -43.5, z: -52.0 },      // Mature House, near the south door
+    { id: 'grenadeBundle', x: -69.0, y: 6.4, z: 8.0 },   // south tank deck
+    { id: 'batteryPack', x: -69.0, y: 6.4, z: -26.0 },   // mid tank deck
+    { id: 'lightAmmo', x: -69.0, y: 6.4, z: -60.0 },     // north tank deck
+    { id: 'spraycanBox', x: -58.0, z: 8.0 },       // yard, south nutrient pallets
+    { id: 'jaysPack', x: -58.0, z: -24.0 },        // yard, mid nutrient pallets
+    { id: 'fieldhandWeapon', x: -58.0, z: -58.0 }, // yard, north nutrient pallets
+    { id: 'hotSauceJar', x: -33.0, z: -25.0 },     // just inside westTransition gate 1
+    { id: 'carbineAmmo', x: -33.0, z: -58.0 }      // just inside westTransition gate 2
   ];
 
   function define(id, def) {
