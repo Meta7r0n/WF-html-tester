@@ -1,5 +1,5 @@
 # THE WITHERED FARM
-### Farmhand's Field Handbook — v0.38
+### Farmhand's Field Handbook — v0.39
 
 *Issued by Lobster Labz Farm Operations. If found on the ground, dust it off and keep reading — the corn doesn't wait.*
 
@@ -359,6 +359,7 @@ Pull up the **Farm Map** from the main menu or the pause screen for a live, two-
 - **Corn Maze** — sprawling and genuinely large; enemies that spot you inside will path the rows rather than walk through them.
 - **Horse Stable** — out east, with its own overlook and ground stair.
 - **The Well** — a secret, one-way drop point on the surface that dumps you straight into the basement's Generator Hall. Great as an escape route, useless for climbing back out — and enemies can't follow you down it.
+- **The Gardener's Greenhouses** — a west wing running the farm's full south-to-north length, entered through two gaps in the old west fence line. Three long greenhouses, each playing differently: the **Seedling House** is open and clear for running-and-gunning, with low benches you can jump straight onto; the **Grow House** has taller benches you can't mount, forcing you around them; the **Mature House** is dense with full-grown plants that block line of sight and some paths outright, weaving door-to-door. Outside stand three tall water tanks with ladders to their decks, and scattered nutrient pallets that kick up a blocking dust cloud if you shoot them — the same trick as a Pack of Smokes, just free and rechargeable on a cooldown.
 
 **Below ground:** a connected tunnel network linking Basement, Utility Room, Root Cellar, Grenade Room, Generator Hall, Relay Room, Secret Cache, Silo Access, and North Barn Cellar — reachable through six separate surface hatches plus the interactive Barn Stair Gate.
 
