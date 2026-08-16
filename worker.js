@@ -1,4 +1,4 @@
-// Deployment checkpoint: CFP v0.39.05 / 2026-08-16.
+// Deployment checkpoint: CFP v0.39.05 / 2026-08-16; Cloudflare build trigger 1.
 /*
  * Lobster Labz Alpha Lab server-side access gate.
  *
