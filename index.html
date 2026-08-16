@@ -1341,7 +1341,7 @@
   </div>
   <div id="announcerBanner" aria-live="polite"></div>
   <div id="bossHud" aria-live="polite">
-    <div id="bossHudName">Carrot Warden <b id="bossHudState">Awake</b></div>
+    <div id="bossHudName"><span id="bossHudLabel">Carrot Warden</span> <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar"><i id="bossHudFill"></i></div>
     <small id="bossHudHint">The barn has a new problem</small>
   </div>
@@ -1893,11 +1893,16 @@ const CONFIG = {
     // sq. units) to 150.0 x 112.6 (16890 sq. units) -- a 55.9% area increase.
     // count/coopMax both scale by that same ~56% rather than an eyeballed
     // number, so roster density per square unit stays roughly constant.
-    count: 22,
+    // v0.39.05 doesn't grow the footprint further, but the west silo
+    // rework turns their decks from barely-fightable stubs into a real
+    // multi-tier combat space (wraparound ring walkway + a jump route up
+    // to an apex sniper perch) -- a further +12% on top keeps pace with
+    // that newly-usable volume without re-deriving the area math.
+    count: 25,
     // Coop scales enemy count up with real roster size (see ENEMY.rescaleForCoop);
     // single-player and FFA never touch these two.
     coopPerExtraPlayer: 4,
-    coopMax: 39,
+    coopMax: 44,
     radius: 0.38, height: 1.68, eyeHeight: 1.28, stepHeight: 0.5, gravity: 27,
     sightRange: 27, sightFov: 1.2, hearRange: 9, loseSightTime: 5,
     losInterval: 0.25,
@@ -5467,10 +5472,13 @@ const LEVEL = (() => {
     });
 
     // Nameplate on the south wall -- players approach from the old farm's
-    // gates, south to north, so it reads correctly on the way in.
+    // gates, south to north, so it reads correctly on the way in. Mounted
+    // above the wall top (door opening runs floor-to-wallH with no lintel)
+    // so its lower edge clears both the door opening and player eye height,
+    // instead of hanging at chest level in the doorway itself.
     PRIM.box(3.0, 1.1, 0.12, MAT.toon(0xffffff, {
       map: TEX.sign(nameLines, PAL.cream, PAL.oliveDeep, 256, 130)
-    }), { pos: [cx, wallH * 0.58, cz + halfL + 0.14], parent: parent, ray: false, outline: 0.03 });
+    }), { pos: [cx, wallH + 0.75, cz + halfL + 0.14], parent: parent, ray: false, outline: 0.03 });
   }
 
   function buildFarmPlant(parent, x, z, stage, baseY) {
@@ -5557,6 +5565,7 @@ const LEVEL = (() => {
       });
     WORLD.addSpawn(GX, 0, GH_A_Z, 'greenhouse_seedling');
     WORLD.addSpawn(GX - 5.5, 0, GH_A_Z - 10, 'greenhouse_seedling_corner');
+    WORLD.addSpawn(GX + 5.5, 0, GH_A_Z + 10, 'greenhouse_seedling_corner2');
 
     // ---- Grow House: tall benches (no mounting), plants safe up top ----
     // Bench height sits just above the ~1.37m jump apex (gravity 27,
@@ -5571,6 +5580,7 @@ const LEVEL = (() => {
       });
     WORLD.addSpawn(GX, 0, GH_B_Z, 'greenhouse_mid');
     WORLD.addSpawn(GX + 5.5, 0, GH_B_Z + 9, 'greenhouse_mid_corner');
+    WORLD.addSpawn(GX - 5.5, 0, GH_B_Z - 9, 'greenhouse_mid_corner2');
 
     // ---- Mature House: dense, eye-height-or-taller, hand-slalomed ----
     buildGreenhouseShell(parent, GX, GH_C_Z, HALF_W, HALF_L, WALL_H, ['MATURE', 'HOUSE']);
@@ -5586,6 +5596,7 @@ const LEVEL = (() => {
     });
     WORLD.addSpawn(GX, 0, GH_C_Z, 'greenhouse_mature');
     WORLD.addSpawn(GX - 6, 0, GH_C_Z - 12, 'greenhouse_mature_corner');
+    WORLD.addSpawn(GX + 6, 0, GH_C_Z + 12, 'greenhouse_mature_corner2');
     // Whoever ran this row left in a hurry -- the deepest, densest corner
     // of the whole west wing is where the trail points back to The
     // Gardener (see QUEST.spawnGardener/CAST), tying the new area's
@@ -5680,98 +5691,125 @@ const LEVEL = (() => {
     buildWaterTank(parent, -68, -59, 'west_tank_north');
   }
 
-  /* ---------------- West Silo Row: three silos + scaffolding ----------------
+  /* ---------------- West Silo Row: three towers + scaffolding ----------------
      Sits in the open strip between the water tank cluster (x=-68, deck's
      westmost edge ~-71.7) and the true west boundary fence (CONFIG.map.west
-     = -85) -- one silo per water-tank z-band (9/-25/-59), all sharing one
-     x so their decks and the walkways between them read as one continuous
-     elevated line, same idea as the flagship Silo Row up north but scaled
-     to this narrower strip (7.2x8.4 decks instead of 12x12) and with
-     east-facing ladders -- toward the tanks/yard, the natural approach --
-     instead of the flagship's south-facing one. Home of the Glizzy Gat
-     (see PICKUP's westSiloGlizzyGat). */
+     = -85) -- one tower per water-tank z-band (9/-25/-59), all sharing one
+     x so the ring walkways and the scaffold bridges between them read as
+     one continuous elevated line. Deliberately NOT the flagship Silo Row's
+     "water tower" silhouette (tank on stilt legs): these are tall
+     cylindrical grain-silo towers rising straight off the ground with a
+     rounded dome cap, a west-facing ladder (away from the tank/yard
+     approach, toward the open boundary strip beyond), a walkway that wraps
+     the full circumference partway up, and a spiral of small maintenance
+     ledges climbing on up the dome above that -- every ledge-to-ledge rise
+     clears player stepHeight (0.56), so the whole route is a real jump
+     puzzle, not a staircase: a dedicated player's way up to a sniper spot
+     at the apex. Home of the Glizzy Gat (see PICKUP's westSiloGlizzyGat). */
   function buildWestSilo(parent, cx, cz, tag) {
-    const DECK_Y = 7.6, LEG_H = 8.5;
-    const HW = 3.6, HD = 4.2;
+    const CYL_R = 2.5, BODY_H = 9.0, DOME_R = 2.3;
+    const WALK_Y = 6.2, R_WALK = 3.3;
     const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
     const b = new PRIM.Batch(metal, 0.05);
 
-    const legX = 2.6, legZ = 3.2;
-    [[-legX, -legZ], [legX, -legZ], [-legX, legZ], [legX, legZ]].forEach(l => {
-      b.box(0.36, LEG_H, 0.36, cx + l[0], LEG_H / 2, cz + l[1], -l[1] * 0.02, 0, l[0] * 0.02, 0.02);
-      WORLD.addFloor(cx + l[0], 0, cz + l[1], 0.56, DECK_Y, 0.56, 'leg');
-    });
-    // cross bracing, two tiers
-    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 2.8, cz - legZ, 0, 0, 0.03);
-    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 2.8, cz + legZ, 0, 0, -0.03);
-    b.box(0.16, 0.16, legZ * 2 + 0.4, cx - legX, 2.8, cz, 0.025, 0, 0);
-    b.box(0.16, 0.16, legZ * 2 + 0.4, cx + legX, 2.8, cz, -0.025, 0, 0);
-    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 6.0, cz - legZ, 0, 0, -0.03);
-    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 6.0, cz + legZ, 0, 0, 0.03);
-    b.box(0.16, 0.16, legZ * 2 + 0.4, cx - legX, 6.0, cz, -0.025, 0, 0);
-    b.box(0.16, 0.16, legZ * 2 + 0.4, cx + legX, 6.0, cz, 0.025, 0, 0);
+    // Poured-footing collar, purely decorative -- grounds the tower instead
+    // of the cylinder just plunging straight into the dirt.
+    PRIM.cyl(CYL_R + 0.35, CYL_R + 0.45, 0.5, 16, MAT.toon(PAL.charcoal),
+      { pos: [cx, 0.25, cz], parent: parent, outline: 0.04 });
 
-    // platform deck
-    b.box(HW * 2, 0.32, HD * 2, cx, DECK_Y - 0.16, cz, 0, 0, 0, 0.02);
-    // Rails sit inboard of the true edge, same walkable-lip trick as the
-    // flagship silo. North/south/west are continuous; east (the ladder
-    // side, facing the tank row) leaves a gap flanked by stub rails.
-    const railZ = cz - (HD - 0.35), railZ2 = cz + (HD - 0.35);
-    const railX = cx - (HW - 0.35), railX2 = cx + (HW - 0.35);
-    for (let x = cx - HW + 0.7; x <= cx + HW - 0.7; x += 1.2) {
-      b.box(0.12, 0.85, 0.12, x, DECK_Y + 0.44, railZ, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.12, 0.85, 0.12, x, DECK_Y + 0.44, railZ2, 0, 0, UTIL.rng(-.05, .05));
+    // The tower body itself -- one tall cylinder with corrugated band
+    // rings, replacing the flagship's separate tank-on-legs assembly.
+    PRIM.cyl(CYL_R, CYL_R, BODY_H, 18, tankMat, { pos: [cx, BODY_H / 2, cz], parent: parent, outline: 0.055 });
+    for (let y = 1.2; y < BODY_H - 0.4; y += 1.7) {
+      PRIM.cyl(CYL_R + 0.03, CYL_R + 0.03, 0.12, 18, metal, { pos: [cx, y, cz], parent: parent, outline: 0.025, ray: false });
     }
-    b.box(HW * 2 - 1.0, 0.1, 0.1, cx, DECK_Y + 0.84, railZ);
-    b.box(HW * 2 - 1.0, 0.1, 0.1, cx, DECK_Y + 0.84, railZ2);
-    for (let z = railZ + 0.7; z <= railZ2 - 0.7; z += 1.2) {
-      b.box(0.12, 0.85, 0.12, railX, DECK_Y + 0.44, z, 0, 0, UTIL.rng(-.05, .05));
-    }
-    b.box(0.1, 0.1, railZ2 - railZ - 1.0, railX, DECK_Y + 0.84, cz);
-    // Stub rails flanking the east ladder gap.
-    [-1.7, 1.7].forEach(o => {
-      b.box(0.12, 0.85, 0.12, railX2, DECK_Y + 0.44, cz + o, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.12, 0.85, 0.12, railX2, DECK_Y + 0.44, cz + o * 1.4, 0, 0, UTIL.rng(-.05, .05));
-      b.box(0.1, 0.1, 1.3, railX2, DECK_Y + 0.84, cz + o * 1.2);
-    });
+    // Rounded dome cap -- a sphere centered on the body's top so only its
+    // upper half pokes out, the "rounded top" the flagship's flat cone
+    // roof deliberately doesn't have.
+    PRIM.sph(DOME_R, tankMat, { pos: [cx, BODY_H, cz], parent: parent, outline: 0.05 });
 
-    // external ladder, mounted on the east face (facing the tanks/yard)
-    const ladderX = cx + HW + 0.13;
-    b.box(0.14, DECK_Y + 0.15, 0.14, ladderX, (DECK_Y + 0.15) / 2, cz - 0.56, -0.015, 0, 0, 0.01);
-    b.box(0.14, DECK_Y + 0.15, 0.14, ladderX, (DECK_Y + 0.15) / 2, cz + 0.56, 0.015, 0, 0, 0.01);
-    for (let y = 0.38; y <= DECK_Y - 0.2; y += 0.47) {
+    // ---- west-facing ladder, ground to the wraparound walkway ----
+    const ladderX = cx - CYL_R - 0.13;
+    b.box(0.14, WALK_Y + 0.15, 0.14, ladderX, (WALK_Y + 0.15) / 2, cz - 0.56, 0.015, 0, 0, 0.01);
+    b.box(0.14, WALK_Y + 0.15, 0.14, ladderX, (WALK_Y + 0.15) / 2, cz + 0.56, -0.015, 0, 0, 0.01);
+    for (let y = 0.38; y <= WALK_Y - 0.2; y += 0.47) {
       b.box(0.14, 0.12, 1.3, ladderX, y, cz, UTIL.rng(-0.018, 0.018), 0, 0, 0.008);
+    }
+
+    // ---- wraparound ring walkway: a dozen overlapping deck tiles so the
+    // AABB collision has no gap anywhere around the circle (this engine
+    // only has axis-aligned box collision, no native curved shapes -- the
+    // ring is approximated by generously-sized square colliders spaced
+    // closer together than their own width). ----
+    const RING_N = 12, TILE = 2.2, WALK_W = 1.6, COLLIDE_SQ = 2.6;
+    for (let i = 0; i < RING_N; i++) {
+      const a = (i / RING_N) * Math.PI * 2;
+      const tx = cx + Math.cos(a) * R_WALK, tz = cz + Math.sin(a) * R_WALK;
+      b.box(TILE, 0.16, WALK_W, tx, WALK_Y - 0.08, tz, 0, -a, 0, 0.015);
+      WORLD.addFloor(tx, WALK_Y - 0.16, tz, COLLIDE_SQ, 0.16, COLLIDE_SQ, 'catwalk_deck');
+    }
+    // Rail posts guard the far side of the ring (away from the ladder and
+    // the jump-off arc where the ledge spiral begins) -- decorative only,
+    // no collision, so nothing blocks stepping off toward a ledge.
+    for (let i = 0; i < RING_N; i++) {
+      const deg = (i / RING_N) * 360;
+      if (deg > 30 && deg < 270) continue;
+      const a = (i / RING_N) * Math.PI * 2;
+      const rx = cx + Math.cos(a) * (R_WALK + WALK_W / 2 - 0.15);
+      const rz = cz + Math.sin(a) * (R_WALK + WALK_W / 2 - 0.15);
+      b.box(0.11, 0.85, 0.11, rx, WALK_Y + 0.42, rz, 0, 0, 0, 0.01);
     }
     b.build(parent);
 
-    WORLD.addFloor(cx, DECK_Y - 0.32, cz, HW * 2, 0.32, HD * 2, 'deck');
-    WORLD.add(cx, DECK_Y + 0.44, railZ, HW * 2 - 0.6, 1.0, 0.3, 'rail');
-    WORLD.add(cx, DECK_Y + 0.44, railZ2, HW * 2 - 0.6, 1.0, 0.3, 'rail');
-    WORLD.add(railX, DECK_Y + 0.44, cz, 0.3, 1.0, HD * 2 - 0.6, 'rail');
-    WORLD.add(railX2, DECK_Y + 0.44, cz - 2.05, 0.3, 1.0, 1.3, 'rail');
-    WORLD.add(railX2, DECK_Y + 0.44, cz + 2.05, 0.3, 1.0, 1.3, 'rail');
-    WORLD.addLadder(ladderX, 0, cz, 1.2, DECK_Y + 0.15, 1.6, {
-      topY: DECK_Y,
-      topExitX: railX2 - 0.5, topExitZ: cz,
-      bottomExitX: ladderX + 1.0, bottomExitZ: cz,
-      normalX: 1,
+    WORLD.add(cx, BODY_H / 2, cz, CYL_R * 2, BODY_H, CYL_R * 2, 'tank');
+    WORLD.add(cx, BODY_H + DOME_R * 0.4, cz, CYL_R * 1.5, DOME_R * 0.85, CYL_R * 1.5, 'tank');
+    WORLD.addLadder(ladderX, 0, cz, 1.2, WALK_Y + 0.15, 1.6, {
+      topY: WALK_Y,
+      topExitX: ladderX - 0.5, topExitZ: cz,
+      bottomExitX: ladderX - 1.0, bottomExitZ: cz,
+      normalX: -1,
       tag: tag + '_ladder'
     });
 
-    // the silo tank, scaled down from the flagship's
-    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    PRIM.cyl(1.7, 1.82, 4.0, 14, tankMat, { pos: [cx, DECK_Y + 2.15, cz], parent: parent, outline: 0.05 });
-    PRIM.cone(1.95, 1.15, 14, MAT.toon(PAL.charcoal), { pos: [cx, DECK_Y + 4.75, cz], parent: parent, outline: 0.05, ray: false });
-    [DECK_Y + 0.8, DECK_Y + 2.4, DECK_Y + 3.9].forEach(y =>
-      PRIM.cyl(1.87, 1.87, 0.12, 14, MAT.toon(PAL.blueGrayDk), { pos: [cx, y, cz], parent: parent, outline: 0.028, ray: false })
-    );
-    WORLD.add(cx, DECK_Y + 2.6, cz, 3.7, 5.5, 3.7, 'tank');
+    // ---- spiral of jump ledges up the dome to the apex sniper spot.
+    // Every rise below (0.85-1.05m) clears stepHeight (0.56) -- each hop
+    // takes a real jump input, not a walk-up. 45 deg angle steps and a
+    // gently tightening radius keep every ledge-to-ledge gap under ~3.2m
+    // (jumpForce 8.6 / gravity 27 comfortably clears that at a sprint),
+    // so the route reads as a real jump puzzle without being a coinflip.
+    // Ledges shrink and the radius tightens toward the dome as the spiral
+    // climbs, reading as bolted-on maintenance platforms, not a staircase. ----
+    const ledges = [
+      { a: 40, r: 4.3, y: 7.05 },
+      { a: 85, r: 4.0, y: 7.9 },
+      { a: 130, r: 3.7, y: 8.75 },
+      { a: 175, r: 3.2, y: 9.6 },
+      { a: 220, r: 2.6, y: 10.45 }
+    ];
+    ledges.forEach((l, i) => {
+      const rad = l.a * Math.PI / 180;
+      const lx = cx + Math.cos(rad) * l.r, lz = cz + Math.sin(rad) * l.r;
+      const size = i < 3 ? 1.3 : 1.1;
+      PRIM.box(size, 0.16, size, woodMat, { pos: [lx, l.y, lz], parent: parent, outline: 0.02 });
+      PRIM.cyl(0.09, 0.09, 0.8, 6, metal, { pos: [lx, l.y - 0.48, lz], parent: parent, outline: 0.015, ray: false });
+      WORLD.addFloor(lx, l.y - 0.08, lz, size, 0.16, size, 'catwalk_deck');
+    });
 
-    PROPS.crate(parent, cx - 1.6, DECK_Y, cz - 2.8, 0.8, 0.3);
-    PROPS.lantern(parent, cx + 1.6, DECK_Y + 0.7, cz - 2.8, 0);
+    // apex sniper platform, capping the dome
+    const apexY = BODY_H + DOME_R + 0.15;
+    PRIM.cyl(1.0, 1.0, 0.3, 14, woodMat, { pos: [cx, apexY - 0.15, cz], parent: parent, outline: 0.025 });
+    WORLD.addFloor(cx, apexY - 0.3, cz, 2.0, 0.3, 2.0, 'catwalk_deck');
+    PROPS.lantern(parent, cx + 0.7, apexY + 0.5, cz + 0.5, 0);
 
-    WORLD.addSpawn(cx, 0, cz, tag + '_base'); // clear of the corner legs and the east ladder
-    WORLD.addSpawn(cx, DECK_Y, cz, tag + '_deck');
+    PROPS.crate(parent, cx - 1.4, WALK_Y, cz - 2.4, 0.8, 0.3);
+    PROPS.lantern(parent, cx + 1.6, WALK_Y + 0.7, cz - 1.8, 0);
+
+    // Deliberately no spawn marker at the apex -- it's meant to stay a
+    // player-only vantage a dedicated climb earns, not a default enemy slot.
+    WORLD.addSpawn(cx, 0, cz, tag + '_base'); // clear of the west ladder approach
+    WORLD.addSpawn(cx, WALK_Y, cz, tag + '_deck');
   }
 
   /* Two elevated scaffolding walkways link the three deck heights into one
@@ -5824,12 +5862,14 @@ const LEVEL = (() => {
   }
 
   function buildWestSilos(parent) {
-    const SILO_X = -79, DECK_Y = 7.6, HD = 4.2;
+    // WALK_Y/R_WALK mirror buildWestSilo's own constants -- the bridges
+    // dock directly onto each tower's ring walkway at its north/south point.
+    const SILO_X = -79, WALK_Y = 6.2, R_WALK = 3.3;
     buildWestSilo(parent, SILO_X, 9, 'west_silo_south');
     buildWestSilo(parent, SILO_X, -25, 'west_silo_mid');
     buildWestSilo(parent, SILO_X, -59, 'west_silo_north');
-    buildWestSiloWalkway(parent, SILO_X, 9 - HD, -25 + HD, DECK_Y);
-    buildWestSiloWalkway(parent, SILO_X, -25 - HD, -59 + HD, DECK_Y);
+    buildWestSiloWalkway(parent, SILO_X, 9 - R_WALK, -25 + R_WALK, WALK_Y);
+    buildWestSiloWalkway(parent, SILO_X, -25 - R_WALK, -59 + R_WALK, WALK_Y);
 
     PROPS.signPost(parent, SILO_X + 5.5, 9 + 2.0, ['WEST SILOS', '←'], -0.4,
       { w: 1.8, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
@@ -5896,10 +5936,11 @@ const LEVEL = (() => {
 
     // Welcome mat for whichever westTransition gate a player used first --
     // names the whole plot before they've picked a greenhouse, same job
-    // NORTH PASTURE/BACK FORTY do for their own areas. Sits right at
-    // westGate1 (CONFIG.map.westGate1Z) now that the gate opens into open
-    // yard instead of a greenhouse doorway.
-    PROPS.signPost(parent, -30.0, -8.0, ['THE GARDENERS', 'GREENHOUSES'], 0.9,
+    // NORTH PASTURE/BACK FORTY do for their own areas. Flanks westGate1's
+    // south edge (gate spans westGate1Z +/- WEST_GATE1_HALF, i.e. z=-11.6
+    // to -4.4 at the fence line) instead of standing dead-center in the
+    // opening, so it reads on the way in without sitting in the desire line.
+    PROPS.signPost(parent, -27.0, -11.5, ['THE GARDENERS', 'GREENHOUSES'], 0.9,
       { w: 2.0, h: 0.9, bg: PAL.jaysDeep, fg: PAL.cream, postH: 1.8 });
     PROPS.barrel(parent, -28.5, -6.0, { color: PAL.olive });
     PROPS.crate(parent, -29.5, 0, -10.0, 0.85, 0.6);
@@ -12527,6 +12568,7 @@ const UI = (() => {
     el.killNum = document.getElementById('killNum');
     el.bossHud = document.getElementById('bossHud');
     el.bossHudName = document.getElementById('bossHudName');
+    el.bossHudLabel = document.getElementById('bossHudLabel');
     el.bossHudState = document.getElementById('bossHudState');
     el.bossHudFill = document.getElementById('bossHudFill');
     el.bossHudHint = document.getElementById('bossHudHint');
@@ -12844,10 +12886,15 @@ const UI = (() => {
     if (el.crewLeft) el.crewLeft.classList.add('hidden');
   }
 
-  function setBoss(active, hp, maxHp, state) {
+  // This HUD slot is shared by two distinct single-player encounters --
+  // Carrot Warden (33 kills) and, later, The Gardener -- unlike boss2/boss3's
+  // dedicated one-boss-per-slot HUDs, so the name has to be passed in each
+  // call instead of living as static HTML.
+  function setBoss(active, hp, maxHp, state, name) {
     if (!el.bossHud) return;
     el.bossHud.classList.toggle('on', !!active);
     if (!active) return;
+    if (name && el.bossHudLabel) el.bossHudLabel.textContent = name;
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.bossHudFill.style.width = (pct * 100).toFixed(1) + '%';
@@ -13697,13 +13744,17 @@ const PICKUP = (() => {
     { id: 'hotSauceJar', x: -33.0, z: -8.0 },      // just inside westTransition gate 1
     { id: 'carbineAmmo', x: -33.0, z: -42.0 },     // just inside westTransition gate 2
 
-    // v0.39.03 West Silo Row: the Glizzy Gat sits on the north silo deck --
-    // the farthest of the three from the main yard, so reaching it really is
-    // the payoff for climbing and crossing both scaffolding walkways.
-    { id: 'glizzyGatWeapon', x: -76.8, y: 7.6, z: -56.4 },  // north silo deck
-    { id: 'glizzyRoundsPack', x: -81.2, y: 7.6, z: -56.4 }, // north silo deck, paired with the gun
-    { id: 'glizzyRoundsPack', x: -76.8, y: 7.6, z: 11.6 },  // south silo deck
-    { id: 'glizzyRoundsPack', x: -76.8, y: 7.6, z: -22.4 }  // mid silo deck
+    // v0.39.03 West Silo Row: the Glizzy Gat sits on the north silo's ring
+    // walkway -- the farthest of the three from the main yard, so reaching
+    // it really is the payoff for climbing and crossing both scaffolding
+    // bridges. v0.39.05's tower redesign lowered the walkway from the old
+    // rectangular deck's y=7.6 to the new ring's y=6.2 (WALK_Y in
+    // buildWestSilo) -- these x/z already sit right on that ring's radius,
+    // only the height needed to follow the deck down.
+    { id: 'glizzyGatWeapon', x: -76.8, y: 6.2, z: -56.4 },  // north silo ring walkway
+    { id: 'glizzyRoundsPack', x: -81.2, y: 6.2, z: -56.4 }, // north silo ring walkway, paired with the gun
+    { id: 'glizzyRoundsPack', x: -76.8, y: 6.2, z: 11.6 },  // south silo ring walkway
+    { id: 'glizzyRoundsPack', x: -76.8, y: 6.2, z: -22.4 }  // mid silo ring walkway
   ];
 
   function define(id, def) {
@@ -14516,6 +14567,8 @@ const QUEST = (() => {
     state.crafted = false; state.cutscenePlayed = false; state.stage = 0; state.encounterSpawned = false;
     state.shieldComponents = {}; state.shieldCrafted = false;
     gardener = null;
+    gardenerSeeds.forEach(s => { if (s.mesh.parent) s.mesh.parent.remove(s.mesh); });
+    gardenerSeeds = [];
     setBarnEntrances(false, true);
     if (typeof LEVEL !== 'undefined' && LEVEL.setNorthBarnRailing) LEVEL.setNorthBarnRailing(true);
     if (typeof LEVEL !== 'undefined' && LEVEL.setCraftingScreenText) LEVEL.setCraftingScreenText(['CRAFTING', 'OFFLINE']);
@@ -14557,17 +14610,17 @@ const QUEST = (() => {
   function spawnGardener(devSpawn, announcement) {
     if (gardener && gardener.alive) return gardener;
     const p = new THREE.Vector3(48, WORLD.groundAt(48, -52, 2, 'surface'), -52);
-    gardener = ENEMY.spawnGrunt('gaper', p);
+    gardener = ENEMY.spawnGrunt('gardener', p);
     gardener.isGardener = true; gardener.devSpawn = !!devSpawn;
     gardener.def = Object.assign({}, gardener.def, { name: 'The Gardener', stats: Object.assign({}, gardener.def.stats, {
       hp: 780, speed: 2.7, damage: 22, reach: 3.4, windup: 0.75, recover: 0.9, weight: 6
     }) });
     gardener.maxHp = gardener.hp = 780;
-    gardener.group.scale.setScalar(2.15);
-    gardener.headProxy.scale.multiplyScalar(1.45); gardener.bodyProxy.scale.multiplyScalar(1.75);
+    gardener.group.scale.setScalar(2.6);
+    gardener.headProxy.scale.multiplyScalar(1.75); gardener.bodyProxy.scale.multiplyScalar(2.1);
     gardener.gardenerSummons = []; gardener.gardenerSpawnTimes = [];
     gardener.gardenerAttackTimer = 4; gardener.gardenerSeedTimer = 2.5;
-    UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
+    UI.setBoss(true, gardener.hp, gardener.maxHp, 'active', 'The Gardener');
     RUNSTATS.bossStart('gardener', 'The Gardener', !!devSpawn);
     UI.toast(announcement || 'THE GARDENER TAKES ROOT', 2.8);
     return gardener;
@@ -14725,11 +14778,58 @@ const QUEST = (() => {
       }
       if (gardener.gardenerSeedTimer <= 0 && !PLAYER.isDead && gardener.layerId === PLAYER.layerId) {
         gardener.gardenerSeedTimer = 5.5;
-        UI.toast('SEED BURST — MOVE!', 0.9);
-        const distance = Math.hypot(PLAYER.position.x - gardener.pos.x, PLAYER.position.z - gardener.pos.z);
-        if (distance < 19 && Math.random() < 0.7) PLAYER.damage(8, gardener.pos, gardener);
+        UI.toast('THE GARDENER SPITS A VOLLEY OF SEEDS', 1.1);
+        fireGardenerSeeds(gardener);
       }
-      UI.setBoss(true, gardener.hp, gardener.maxHp, 'active');
+      updateGardenerSeeds(dt);
+      UI.setBoss(true, gardener.hp, gardener.maxHp, 'active', 'The Gardener');
+    } else {
+      updateGardenerSeeds(dt);
+    }
+  }
+
+  // A visible seed volley, thrown from the mouth toward the player's
+  // position at fire time, instead of the old invisible dice-roll -- a
+  // short staggered burst of pips lofted on a simple parabolic arc
+  // (position lerp + a sine bump for height). Only one pip in the burst
+  // can actually land the hit, on the same distance/chance gate the old
+  // code used, so damage tuning is unchanged -- only the delivery is new.
+  let gardenerSeeds = [];
+  const gardenerSeedMat = MAT.toon(PAL.mustardDk);
+  function fireGardenerSeeds(g) {
+    if (!GAME.scene) return;
+    g.squashVel = 3.2; // a little recoil pop, reusing the existing hit-spring
+    const originY = g.pos.y + 1.25 * (g.visualScale || 1);
+    const dist = Math.hypot(PLAYER.position.x - g.pos.x, PLAYER.position.z - g.pos.z);
+    const willHit = dist < 19 && Math.random() < 0.7;
+    for (let i = 0; i < 5; i++) {
+      const from = new THREE.Vector3(g.pos.x, originY, g.pos.z);
+      const to = PLAYER.position.clone().add(
+        new THREE.Vector3(UTIL.rng(-0.7, 0.7), UTIL.rng(0.1, 1.0), UTIL.rng(-0.7, 0.7)));
+      const mesh = PRIM.sph(0.075, gardenerSeedMat, {
+        pos: [from.x, from.y, from.z], parent: GAME.scene, outline: 0.012
+      });
+      gardenerSeeds.push({
+        mesh: mesh, from: from, to: to, t: -i * 0.06, dur: 0.5 + UTIL.rng(-0.04, 0.04),
+        willHit: willHit && i === 2
+      });
+    }
+  }
+  function updateGardenerSeeds(dt) {
+    for (let i = gardenerSeeds.length - 1; i >= 0; i--) {
+      const s = gardenerSeeds[i];
+      s.t += dt;
+      if (s.t < 0) continue;
+      const p = Math.min(1, s.t / s.dur);
+      s.mesh.position.lerpVectors(s.from, s.to, p);
+      s.mesh.position.y += Math.sin(p * Math.PI) * 1.1;
+      if (p >= 1) {
+        if (s.willHit && !PLAYER.isDead) {
+          PLAYER.damage(8, [s.mesh.position.x, s.mesh.position.y, s.mesh.position.z], gardener);
+        }
+        if (s.mesh.parent) s.mesh.parent.remove(s.mesh);
+        gardenerSeeds.splice(i, 1);
+      }
     }
   }
   return { reset, start, collect, interact, interactionHint, update, updateProgress, bossDefeated, spawnGardener, isSinglePlayer,
@@ -16035,6 +16135,41 @@ const CAST = (() => {
       pink.build(group, { ray: false });
     },
 
+    /* The Gardener miniboss: a hard vertical split down the middle. The
+       left half stays the bare pink base plate (skin.face), carrying two
+       puffy bee-sting-mark welts standing in for an eyebrow and an eye.
+       The right half is blacked out entirely by one huge grin lined with
+       white triangular teeth. Distinct from every regular "gaper" grunt's
+       face even though it shares the same petaled sunflower skull as
+       everything else in HEADS (see headBase) -- only spawned via
+       CAST.ROSTER.gardener, never a random grunt pick. */
+    gardener(group, skin) {
+      const black = new PRIM.Batch(MAT.toon(PAL.ink), 0.012);
+      const welt = new PRIM.Batch(MAT.toon(0xD46A82), 0.011);
+      const weltCore = new PRIM.Batch(MAT.toon(0xB84F68), 0.01);
+      // Right-half black patch laid over the pink base plate.
+      bar(black, 0.16, 0, 0.34, 0.64, 0, 0.06);
+      // Left half: two bee-sting welts read as an eyebrow and an eye.
+      oval(welt, -0.115, 0.15, 0.052, 0.026, 0.08, 0.05);
+      oval(welt, -0.1, 0.045, 0.058, 0.068, 0, 0.055);
+      oval(weltCore, -0.1, 0.045, 0.026, 0.032, 0, 0.062);
+      // One huge grin dominating the black half.
+      oval(black, 0.16, -0.05, 0.16, 0.12, 0, 0.095);
+      black.build(group, { ray: false });
+      welt.build(group, { ray: false });
+      weltCore.build(group, { ray: false });
+      // Row of white triangular teeth hanging from the grin's top edge --
+      // a 3-sided cone reads as a tooth when flipped apex-down.
+      const toothMat = MAT.toon(PAL.white);
+      for (let i = 0; i < 5; i++) {
+        PRIM.cone(0.026, 0.062, 3, toothMat, {
+          pos: [0.03 + i * 0.062, 0.045, FZ - 0.09],
+          rot: [Math.PI, 0, UTIL.rng(-0.08, 0.08)],
+          parent: group, outline: 0.01, ray: false
+        });
+      }
+    },
+
     /* A beanie, orange ears and a sharp little carrot-warrior grin. The
        silhouette is original code-native geometry, only borrowing the
        reference's playful carrot-wielding energy. */
@@ -16445,6 +16580,20 @@ const CAST = (() => {
       // otherwise basic class from being free target practice.
       stats: { hp: 110, speed: 3.55, damage: 12, reach: 1.9, windup: 0.4, recover: 0.7, weight: 1.0 },
       voice: { pitch: 0.95 }
+    },
+    // Not in ENEMY_ROSTER -- only ever spawned deliberately by
+    // QUEST.spawnGardener, same convention as carrotWarden. Base stats
+    // here barely matter; spawnGardener overrides hp/speed/damage/etc on
+    // top of whatever this produces, same as it always has.
+    gardener: {
+      label: 'The Gardener',
+      role: 'brawler',
+      head: 'gardener',
+      collar: null,
+      hand: null,
+      skin: { face: 0xE9A4B6, glove: PAL.mustardDk, shorts: PAL.jaysDeep, shoe: PAL.rustDeep, sole: PAL.creamDim },
+      stats: { hp: 110, speed: 3.55, damage: 12, reach: 1.9, windup: 0.4, recover: 0.7, weight: 1.0 },
+      voice: { pitch: 0.85 }
     },
     grinner: {
       label: 'The Grinner',
@@ -18907,7 +19056,7 @@ const ENEMY = (() => {
     boss.group.visible = true;
     bossState = 'active';
     if (typeof RUNSTATS !== 'undefined') RUNSTATS.bossStart(B.id, B.name, !!boss.devSpawn);
-    UI.setBoss(true, boss.hp, boss.maxHp, bossState);
+    UI.setBoss(true, boss.hp, boss.maxHp, bossState, B.name);
     UI.toast(options.announcement || '33 WILTED — CARROT WARDEN AWAKES', 3.2);
     AUDIO.enemyAlert(boss.def.voice.pitch);
     return boss;
@@ -19105,7 +19254,7 @@ const ENEMY = (() => {
     stageBoss(B.id, B, 'mini_boss', { isBoss: true });
     stageBoss(B2.id, B2, 'mini_boss_2', { isBoss2: true });
     stageBoss(B3.id, B3, 'mini_boss_3', { isBoss3: true });
-    UI.setBoss(false, 0, B.hp, bossState);
+    UI.setBoss(false, 0, B.hp, bossState, B.name);
     UI.setBoss2(false, 0, B2.hp, bossState2);
     UI.setBoss3(false, 0, B3.hp, bossState3);
     return list.length;
@@ -19461,7 +19610,7 @@ const ENEMY = (() => {
     }
     if (e.isGardener) {
       e.respawnAt = 0;
-      UI.setBoss(false, 0, e.maxHp, 'defeated');
+      UI.setBoss(false, 0, e.maxHp, 'defeated', 'The Gardener');
       UI.toast('THE GARDENER UPROOTED — FIND THE BARN KEY', 2.8);
       if (typeof PICKUP !== 'undefined') PICKUP.spawn('barnKey', { x:e.pos.x, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
       if (typeof PICKUP !== 'undefined') PICKUP.spawn('seedSpitterWeapon', { x:e.pos.x+0.8, y:e.pos.y, z:e.pos.z }, { respawn:0, devSpawn:!!e.devSpawn });
@@ -19471,7 +19620,7 @@ const ENEMY = (() => {
     } else if (e.isBoss) {
       bossState = 'defeated';
       e.respawnAt = 0;
-      UI.setBoss(false, 0, e.maxHp, bossState);
+      UI.setBoss(false, 0, e.maxHp, bossState, B.name);
       UI.toast('CARROT WARDEN WILTED', 2.4);
       // Boss drop: the Carrot Cannon, spawned right where the boss fell.
       // Each client (host and every join) spawns its own local pickup
@@ -19837,7 +19986,7 @@ const ENEMY = (() => {
     currentTarget = Math.max(currentTarget, C.count * (CONFIG.ultra.active ? CONFIG.ultra.enemyCountMult : 1));
     const roster = ENEMY_ROSTER.filter(id => CAST.ROSTER[id]);
     spawnAdditional(Math.round(currentTarget), roster);
-    UI.setBoss(false, 0, B.hp, bossState);
+    UI.setBoss(false, 0, B.hp, bossState, B.name);
     UI.setBoss2(false, 0, B2.hp, bossState2);
     UI.setBoss3(false, 0, B3.hp, bossState3);
   }
@@ -20043,7 +20192,7 @@ const ENEMY = (() => {
     pose(e, t);
     if (e.isBoss2) UI.setBoss2(true, e.hp, e.maxHp, bossState2);
     else if (e.isBoss3) UI.setBoss3(true, e.hp, e.maxHp, bossState3);
-    else UI.setBoss(true, e.hp, e.maxHp, bossState);
+    else UI.setBoss(true, e.hp, e.maxHp, bossState, B.name);
   }
 
   function updateBoss(e, dt, t) {
@@ -20071,7 +20220,7 @@ const ENEMY = (() => {
     e.bossSeedTimer += dt;
     if (e.climbing) {
       updateLadderClimb(e, dt, t);
-      UI.setBoss(true, e.hp, e.maxHp, bossState);
+      UI.setBoss(true, e.hp, e.maxHp, bossState, B.name);
       return;
     }
 
@@ -21113,7 +21262,7 @@ const ENEMY = (() => {
     // The join's own bossState/bossState2/bossState3 never transitions (only
     // the host runs the real state machines), so derive the HUD text from
     // the synced fields directly rather than those stale local variables.
-    if (e.isBoss) UI.setBoss(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
+    if (e.isBoss) UI.setBoss(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated', B.name);
     else if (e.isBoss2) UI.setBoss2(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
     else if (e.isBoss3) UI.setBoss3(snap.alive, e.hp, e.maxHp, snap.alive ? 'active' : 'defeated');
   }

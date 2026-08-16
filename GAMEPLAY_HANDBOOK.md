@@ -323,7 +323,7 @@ A hybrid: he'll melee you up close, but at range he unloads a spread of seed pel
 - **On defeat:** drops the **Carrot Cannon** (plus, solo only, the **Computer Chip**).
 
 ### The Gardener
-Solo-only, and the final regular encounter before the crafting quest closes out. A heavily built-up version of a Gaper, she periodically raises her watering can to summon reinforcements and fires her own seed-burst AoE — expect this fight to bring extra company.
+Solo-only, and the final regular encounter before the crafting quest closes out. A hugely built-up sunflower figure with her own distinct face — one half a bare pink welt-marked stare, the other half blacked out behind a wide, white-toothed grin. She periodically raises her watering can to summon reinforcements, and spits a visible volley of seeds at you every few seconds — watch for the wind-up and get out of the line of fire. Expect this fight to bring extra company.
 - **On defeat:** drops the **Barn Key** — and the **Seed Spitter**, a full weapon on top of the quest item.
 
 ### Bearclaw2
@@ -364,7 +364,7 @@ Pull up the **Farm Map** from the main menu or the pause screen for a live, two-
 - **Horse Stable** — out east, with its own overlook and ground stair.
 - **The Well** — a secret, one-way drop point on the surface that dumps you straight into the basement's Generator Hall. Great as an escape route, useless for climbing back out — and enemies can't follow you down it.
 - **The Gardener's Greenhouses** — a west wing running the farm's full south-to-north length, entered through two gaps in the old west fence line. Three long greenhouses, each playing differently: the **Seedling House** is open and clear for running-and-gunning, with low benches you can jump straight onto; the **Grow House** has taller benches you can't mount, forcing you around them; the **Mature House** is dense with full-grown plants that block line of sight and some paths outright, weaving door-to-door. Outside stand three tall water tanks with ladders to their decks, and scattered nutrient pallets that kick up a blocking dust cloud if you shoot them — the same trick as a Pack of Smokes, just free and rechargeable on a cooldown.
-- **West Silo Row** — three more silos further out past the water tanks, right up against the west fence. Each has its own ladder (facing east, toward the tanks) up to a fighting deck, and two elevated scaffolding walkways link all three decks into one continuous high line running the length of the wing. The Glizzy Gat waits at the far (north) end.
+- **West Silo Row** — three tall, rounded-top grain-silo towers further out past the water tanks, right up against the west fence — a different silhouette from the flagship Silo Row's water-tower look up north. Each has its own west-facing ladder up to a walkway that wraps the whole tower, and two elevated scaffolding bridges link all three walkways into one continuous high line running the length of the wing. From each walkway, a spiral of small jump ledges climbs the dome above it to a tiny apex platform — no ladder up there, just a run of real jumps, so it's a route a dedicated player has to earn. The Glizzy Gat waits at the far (north) end.
 
 **Below ground:** a connected tunnel network linking Basement, Utility Room, Root Cellar, Grenade Room, Generator Hall, Relay Room, Secret Cache, Silo Access, and North Barn Cellar — reachable through six separate surface hatches plus the interactive Barn Stair Gate.
 
