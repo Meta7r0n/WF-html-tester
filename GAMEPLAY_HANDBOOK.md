@@ -164,8 +164,9 @@ Weapon slots run `1`–`9`. Two more — the Downed Double Barrel and the Chains
 | 8 | **The Claw** | Long-reach melee | — | Bear Claw's rematch drop |
 | 9 | **Portal Gun** | Precision sidearm | 6 / 24 | Crafted only |
 | — | **Seed Spitter** | Automatic LMG | 50 / 200 | The Gardener's drop |
+| — | **The Glizzy Gat** | Bolt-action sniper rifle | 5 / 20 | World pickup, West Silo Row |
 
-> **A note on the Seed Spitter's slot:** the keyboard only has number keys `1`–`9`, and they're all spoken for — so the Seed Spitter doesn't get one. It's still fully usable: scroll the mouse wheel to cycle to it, or tap it directly in the mobile inventory strip, same as any weapon once your loadout runs past nine.
+> **A note on the Seed Spitter's and Glizzy Gat's slots:** the keyboard only has number keys `1`–`9`, and they're all spoken for — so neither gets one. Both are still fully usable: scroll the mouse wheel to cycle to them, or tap them directly in the mobile inventory strip, same as any weapon once your loadout runs past nine.
 
 ### Weapon notes
 
@@ -189,6 +190,8 @@ Weapon slots run `1`–`9`. Two more — the Downed Double Barrel and the Chains
 
 **Seed Spitter** — The Gardener's drop, and unmistakable the second you see it: a stubby, prohibition-era Tommy-gun body built around a drum magazine shaped like an actual sunflower, yellow petals and all. Under the theming it's a genuine LMG upgrade over the Fieldhand Carbine — a bigger drum, a faster rate of fire, and more damage per shot, at the cost of a slower reload once that drum finally runs dry.
 
+**The Glizzy Gat** — a hotdog-in-a-bun sniper rifle, and not a joke stat-wise: it's the single hardest-hitting, longest-ranged, most accurate gun on the farm, at the cost of the slowest fire rate and longest reload in the game (a real bolt cycle between shots). Aiming down sights pulls a genuine scope zoom instead of the usual modest steadying-up FOV pull every other gun gets, and while it's your equipped weapon it always paints a **red laser dot** at your point of aim — visible to everyone, not just you, so in multiplayer a teammate (or an opponent) can see exactly when they're being lined up. Found on the West Silo Row's tallest deck, at the far end of both scaffolding walkways.
+
 ### Ammo types
 
 Each gun draws from its own ammo pool, restocked by matching pickups scattered around the farm:
@@ -202,6 +205,7 @@ Each gun draws from its own ammo pool, restocked by matching pickups scattered a
 | Spraycan | Spray Torch | Spray Cans | +150 |
 | Seed Drum | Seed Spitter | Seed Drums | +50 |
 | Portal Cell | Portal Gun | *(none in the field — the 18 rounds you're granted at crafting are it)* | — |
+| Glizzy Rounds | The Glizzy Gat | Glizzy Rounds | +8 |
 
 ---
 
@@ -240,7 +244,7 @@ Four temporary buffs are scattered around the farm, each with a nice long respaw
 
 ### Weapon pickups
 
-World spawns exist for the Tin Sixer, Fieldhand Carbine, Scrap Railgun, and Spray Torch — pick one up for the first time to add it to your inventory (with a starting stock of ammo), or walk over one you already own to top off its magazine and reserve.
+World spawns exist for the Tin Sixer, Fieldhand Carbine, Scrap Railgun, Spray Torch, and the Glizzy Gat — pick one up for the first time to add it to your inventory (with a starting stock of ammo), or walk over one you already own to top off its magazine and reserve.
 
 ---
 
@@ -360,6 +364,7 @@ Pull up the **Farm Map** from the main menu or the pause screen for a live, two-
 - **Horse Stable** — out east, with its own overlook and ground stair.
 - **The Well** — a secret, one-way drop point on the surface that dumps you straight into the basement's Generator Hall. Great as an escape route, useless for climbing back out — and enemies can't follow you down it.
 - **The Gardener's Greenhouses** — a west wing running the farm's full south-to-north length, entered through two gaps in the old west fence line. Three long greenhouses, each playing differently: the **Seedling House** is open and clear for running-and-gunning, with low benches you can jump straight onto; the **Grow House** has taller benches you can't mount, forcing you around them; the **Mature House** is dense with full-grown plants that block line of sight and some paths outright, weaving door-to-door. Outside stand three tall water tanks with ladders to their decks, and scattered nutrient pallets that kick up a blocking dust cloud if you shoot them — the same trick as a Pack of Smokes, just free and rechargeable on a cooldown.
+- **West Silo Row** — three more silos further out past the water tanks, right up against the west fence. Each has its own ladder (facing east, toward the tanks) up to a fighting deck, and two elevated scaffolding walkways link all three decks into one continuous high line running the length of the wing. The Glizzy Gat waits at the far (north) end.
 
 **Below ground:** a connected tunnel network linking Basement, Utility Room, Root Cellar, Grenade Room, Generator Hall, Relay Room, Secret Cache, Silo Access, and North Barn Cellar — reachable through six separate surface hatches plus the interactive Barn Stair Gate.
 

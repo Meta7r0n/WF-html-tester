@@ -2324,6 +2324,24 @@ const CONFIG = {
       pellets: 1, damage: 20, spread: 0.026, range: 100,
       recoilBack: 0.09, meleeDamage: 42, meleeRange: 2.3, meleeArc: 0.58,
       adsSpreadMult: 0.55
+    },
+    // The Glizzy Gat -- a scoped bolt-action sniper found atop the new west
+    // silo cluster. Slowest fire rate and longest reload in the game (the
+    // bolt cycle), but it's the single hardest-hitting, longest-ranged,
+    // most accurate gun WF has: near-zero spread that tightens further
+    // under ADS. scopeFov/scopeFovLerp are unique to this weapon -- the
+    // GAME loop's ADS FOV block reads these off the equipped weapon def
+    // when present, falling back to the generic hip-aim CONFIG.render
+    // values for every other gun. Always paints a red laser dot at its
+    // point of aim (see WEAPON's updateLaserSight) so being lined up by
+    // one is a visible, readable threat in multiplayer, not a surprise.
+    glizzyGat: {
+      id: 'glizzyGat', name: 'The Glizzy Gat', slot: 11, kind: 'gun', ammoType: 'glizzyRounds',
+      magSize: 5, startMag: 0, startReserve: 0, maxReserve: 20,
+      fireInterval: 1.3, reloadTime: 2.2, automatic: false,
+      pellets: 1, damage: 130, spread: 0.0015, range: 220,
+      recoilBack: 0.4, meleeDamage: 36, meleeRange: 2.3, meleeArc: 0.58,
+      adsSpreadMult: 0.25, scopeFov: 16, scopeFovLerp: 7
     }
   },
   throwables: {
@@ -2892,7 +2910,24 @@ const TEX = (() => {
     return c.toDataURL('image/png');
   }
 
-  return { ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, grainDataURL, scratchDataURL, finish };
+  // soft radial glow dot, used for the laser-sight sprite
+  function dot(color) {
+    const key = 'dot' + color;
+    if (cache[key]) return cache[key];
+    const w = 64, c = cv(w, w), x = c.getContext('2d');
+    const cx = w / 2, cy = w / 2;
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, w / 2);
+    const col = hex(color);
+    g.addColorStop(0, col);
+    g.addColorStop(0.35, col);
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, w, w);
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  return { ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot, grainDataURL, scratchDataURL, finish };
 })();
 
 /* ================================ [MAT] ============================== */
@@ -5628,6 +5663,161 @@ const LEVEL = (() => {
     buildWaterTank(parent, -68, -59, 'west_tank_north');
   }
 
+  /* ---------------- West Silo Row: three silos + scaffolding ----------------
+     Sits in the open strip between the water tank cluster (x=-68, deck's
+     westmost edge ~-71.7) and the true west boundary fence (CONFIG.map.west
+     = -85) -- one silo per water-tank z-band (9/-25/-59), all sharing one
+     x so their decks and the walkways between them read as one continuous
+     elevated line, same idea as the flagship Silo Row up north but scaled
+     to this narrower strip (7.2x8.4 decks instead of 12x12) and with
+     east-facing ladders -- toward the tanks/yard, the natural approach --
+     instead of the flagship's south-facing one. Home of the Glizzy Gat
+     (see PICKUP's westSiloGlizzyGat). */
+  function buildWestSilo(parent, cx, cz, tag) {
+    const DECK_Y = 7.6, LEG_H = 8.5;
+    const HW = 3.6, HD = 4.2;
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const b = new PRIM.Batch(metal, 0.05);
+
+    const legX = 2.6, legZ = 3.2;
+    [[-legX, -legZ], [legX, -legZ], [-legX, legZ], [legX, legZ]].forEach(l => {
+      b.box(0.36, LEG_H, 0.36, cx + l[0], LEG_H / 2, cz + l[1], -l[1] * 0.02, 0, l[0] * 0.02, 0.02);
+      WORLD.addFloor(cx + l[0], 0, cz + l[1], 0.56, DECK_Y, 0.56, 'leg');
+    });
+    // cross bracing, two tiers
+    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 2.8, cz - legZ, 0, 0, 0.03);
+    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 2.8, cz + legZ, 0, 0, -0.03);
+    b.box(0.16, 0.16, legZ * 2 + 0.4, cx - legX, 2.8, cz, 0.025, 0, 0);
+    b.box(0.16, 0.16, legZ * 2 + 0.4, cx + legX, 2.8, cz, -0.025, 0, 0);
+    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 6.0, cz - legZ, 0, 0, -0.03);
+    b.box(legX * 2 + 0.4, 0.16, 0.16, cx, 6.0, cz + legZ, 0, 0, 0.03);
+    b.box(0.16, 0.16, legZ * 2 + 0.4, cx - legX, 6.0, cz, -0.025, 0, 0);
+    b.box(0.16, 0.16, legZ * 2 + 0.4, cx + legX, 6.0, cz, 0.025, 0, 0);
+
+    // platform deck
+    b.box(HW * 2, 0.32, HD * 2, cx, DECK_Y - 0.16, cz, 0, 0, 0, 0.02);
+    // Rails sit inboard of the true edge, same walkable-lip trick as the
+    // flagship silo. North/south/west are continuous; east (the ladder
+    // side, facing the tank row) leaves a gap flanked by stub rails.
+    const railZ = cz - (HD - 0.35), railZ2 = cz + (HD - 0.35);
+    const railX = cx - (HW - 0.35), railX2 = cx + (HW - 0.35);
+    for (let x = cx - HW + 0.7; x <= cx + HW - 0.7; x += 1.2) {
+      b.box(0.12, 0.85, 0.12, x, DECK_Y + 0.44, railZ, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.12, 0.85, 0.12, x, DECK_Y + 0.44, railZ2, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(HW * 2 - 1.0, 0.1, 0.1, cx, DECK_Y + 0.84, railZ);
+    b.box(HW * 2 - 1.0, 0.1, 0.1, cx, DECK_Y + 0.84, railZ2);
+    for (let z = railZ + 0.7; z <= railZ2 - 0.7; z += 1.2) {
+      b.box(0.12, 0.85, 0.12, railX, DECK_Y + 0.44, z, 0, 0, UTIL.rng(-.05, .05));
+    }
+    b.box(0.1, 0.1, railZ2 - railZ - 1.0, railX, DECK_Y + 0.84, cz);
+    // Stub rails flanking the east ladder gap.
+    [-1.7, 1.7].forEach(o => {
+      b.box(0.12, 0.85, 0.12, railX2, DECK_Y + 0.44, cz + o, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.12, 0.85, 0.12, railX2, DECK_Y + 0.44, cz + o * 1.4, 0, 0, UTIL.rng(-.05, .05));
+      b.box(0.1, 0.1, 1.3, railX2, DECK_Y + 0.84, cz + o * 1.2);
+    });
+
+    // external ladder, mounted on the east face (facing the tanks/yard)
+    const ladderX = cx + HW + 0.13;
+    b.box(0.14, DECK_Y + 0.15, 0.14, ladderX, (DECK_Y + 0.15) / 2, cz - 0.56, -0.015, 0, 0, 0.01);
+    b.box(0.14, DECK_Y + 0.15, 0.14, ladderX, (DECK_Y + 0.15) / 2, cz + 0.56, 0.015, 0, 0, 0.01);
+    for (let y = 0.38; y <= DECK_Y - 0.2; y += 0.47) {
+      b.box(0.14, 0.12, 1.3, ladderX, y, cz, UTIL.rng(-0.018, 0.018), 0, 0, 0.008);
+    }
+    b.build(parent);
+
+    WORLD.addFloor(cx, DECK_Y - 0.32, cz, HW * 2, 0.32, HD * 2, 'deck');
+    WORLD.add(cx, DECK_Y + 0.44, railZ, HW * 2 - 0.6, 1.0, 0.3, 'rail');
+    WORLD.add(cx, DECK_Y + 0.44, railZ2, HW * 2 - 0.6, 1.0, 0.3, 'rail');
+    WORLD.add(railX, DECK_Y + 0.44, cz, 0.3, 1.0, HD * 2 - 0.6, 'rail');
+    WORLD.add(railX2, DECK_Y + 0.44, cz - 2.05, 0.3, 1.0, 1.3, 'rail');
+    WORLD.add(railX2, DECK_Y + 0.44, cz + 2.05, 0.3, 1.0, 1.3, 'rail');
+    WORLD.addLadder(ladderX, 0, cz, 1.2, DECK_Y + 0.15, 1.6, {
+      topY: DECK_Y,
+      topExitX: railX2 - 0.5, topExitZ: cz,
+      bottomExitX: ladderX + 1.0, bottomExitZ: cz,
+      normalX: 1,
+      tag: tag + '_ladder'
+    });
+
+    // the silo tank, scaled down from the flagship's
+    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    PRIM.cyl(1.7, 1.82, 4.0, 14, tankMat, { pos: [cx, DECK_Y + 2.15, cz], parent: parent, outline: 0.05 });
+    PRIM.cone(1.95, 1.15, 14, MAT.toon(PAL.charcoal), { pos: [cx, DECK_Y + 4.75, cz], parent: parent, outline: 0.05, ray: false });
+    [DECK_Y + 0.8, DECK_Y + 2.4, DECK_Y + 3.9].forEach(y =>
+      PRIM.cyl(1.87, 1.87, 0.12, 14, MAT.toon(PAL.blueGrayDk), { pos: [cx, y, cz], parent: parent, outline: 0.028, ray: false })
+    );
+    WORLD.add(cx, DECK_Y + 2.6, cz, 3.7, 5.5, 3.7, 'tank');
+
+    PROPS.crate(parent, cx - 1.6, DECK_Y, cz - 2.8, 0.8, 0.3);
+    PROPS.lantern(parent, cx + 1.6, DECK_Y + 0.7, cz - 2.8, 0);
+
+    WORLD.addSpawn(cx, 0, cz, tag + '_base'); // clear of the corner legs and the east ladder
+    WORLD.addSpawn(cx, DECK_Y, cz, tag + '_deck');
+  }
+
+  /* Two elevated scaffolding walkways link the three deck heights into one
+     continuous line -- the "high scaffolding/walkways between the silos"
+     half of the request. Steel truss supports (same material as the silos'
+     own frames) under a wood plank deck, with rails the full run since
+     this is real fighting height, not just a visual bridge. */
+  function buildWestSiloWalkway(parent, cx, z1, z2, y) {
+    const WALK_W = 2.4;
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const zMin = Math.min(z1, z2), zMax = Math.max(z1, z2);
+    const len = zMax - zMin, midZ = (zMin + zMax) / 2;
+    const railInset = WALK_W / 2 - 0.15;
+
+    const truss = new PRIM.Batch(metal, 0.045);
+    // A midspan support tower, purely for grounding the silhouette -- the
+    // deck collision below doesn't depend on it.
+    [-1, 1].forEach(s => truss.box(0.3, y, 0.3, cx + s * railInset, y / 2, midZ, 0, 0, s * 0.015, 0.02));
+    truss.box(WALK_W - 0.4, 0.14, 0.14, cx, y - 1.4, midZ, 0, 0, 0.02);
+    truss.box(0.12, 0.12, len * 0.4, cx - railInset, y - 2.1, midZ, 0.02, 0, 0);
+    truss.box(0.12, 0.12, len * 0.4, cx + railInset, y - 2.1, midZ, -0.02, 0, 0);
+    // Under-deck stringers running the whole span, so the plank deck reads
+    // as carried rather than floating.
+    truss.box(0.12, 0.16, len + 0.3, cx - railInset, y - 0.18, midZ, 0, 0, 0.01);
+    truss.box(0.12, 0.16, len + 0.3, cx + railInset, y - 0.18, midZ, 0, 0, -0.01);
+    truss.build(parent);
+
+    const deck = new PRIM.Batch(wood, 0.035);
+    for (let z = zMin + 0.3; z <= zMax - 0.3; z += 0.62) {
+      deck.box(WALK_W, 0.16, 0.56, cx + UTIL.rng(-0.02, 0.02), y - 0.08, z,
+        0, UTIL.rng(-0.02, 0.02), UTIL.rng(-0.012, 0.012), 0.015);
+    }
+    // Rails the full run -- real fighting height with no fall protection
+    // would just be a death trap, not a usable lane.
+    for (let z = zMin + 0.5; z <= zMax - 0.5; z += 1.3) {
+      deck.box(0.11, 0.85, 0.11, cx - railInset, y + 0.42, z, 0, 0, UTIL.rng(-.04, .04));
+      deck.box(0.11, 0.85, 0.11, cx + railInset, y + 0.42, z, 0, 0, UTIL.rng(-.04, .04));
+    }
+    deck.box(0.1, 0.1, len - 0.4, cx - railInset, y + 0.82, midZ);
+    deck.box(0.1, 0.1, len - 0.4, cx + railInset, y + 0.82, midZ);
+    deck.build(parent);
+
+    // Padded a touch past zMin/zMax so this collision slab overlaps the
+    // adjoining silo decks' edges rather than merely touching them --
+    // no float-precision seam for a foot to catch on mid-span.
+    WORLD.addFloor(cx, y - 0.16, midZ, WALK_W, 0.16, len + 0.4, 'catwalk_deck');
+    WORLD.add(cx - railInset, y + 0.42, midZ, 0.3, 0.9, len, 'rail');
+    WORLD.add(cx + railInset, y + 0.42, midZ, 0.3, 0.9, len, 'rail');
+  }
+
+  function buildWestSilos(parent) {
+    const SILO_X = -79, DECK_Y = 7.6, HD = 4.2;
+    buildWestSilo(parent, SILO_X, 9, 'west_silo_south');
+    buildWestSilo(parent, SILO_X, -25, 'west_silo_mid');
+    buildWestSilo(parent, SILO_X, -59, 'west_silo_north');
+    buildWestSiloWalkway(parent, SILO_X, 9 - HD, -25 + HD, DECK_Y);
+    buildWestSiloWalkway(parent, SILO_X, -25 - HD, -59 + HD, DECK_Y);
+
+    PROPS.signPost(parent, SILO_X + 5.5, 9 + 2.0, ['WEST SILOS', '←'], -0.4,
+      { w: 1.8, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
+  }
+
   // A second, standalone chunky old tractor for the west wing yard -- same
   // visual recipe as the North Barn's oldTractor, kept as its own copy
   // since that one is a local closure scoped to buildNorthBarn and can't
@@ -6840,6 +7030,7 @@ const LEVEL = (() => {
     buildSilo(root);
     buildGreenhouses(root);
     buildWaterTanks(root);
+    buildWestSilos(root);
     buildGreenhouseYard(root);
     buildCatwalks(root);
     buildTowerCatwalk(root);
@@ -7180,7 +7371,11 @@ const MAPVIEW = (() => {
     { shape: 'rect', x: -51.5, z: -73, x2: -35.5, z2: -45, label: 'Mature House' },
     { shape: 'circle', x: -68, z: 9, r: 4, label: 'South Water Tank' },
     { shape: 'circle', x: -68, z: -25, r: 4, label: 'Mid Water Tank' },
-    { shape: 'circle', x: -68, z: -59, r: 4, label: 'North Water Tank' }
+    { shape: 'circle', x: -68, z: -59, r: 4, label: 'North Water Tank' },
+    // v0.39.03 West Silo Row, between the tanks and the west fence.
+    { shape: 'circle', x: -79, z: 9, r: 3.6, label: 'South Silo' },
+    { shape: 'circle', x: -79, z: -25, r: 3.6, label: 'Mid Silo' },
+    { shape: 'circle', x: -79, z: -59, r: 3.6, label: 'North Silo' }
   ];
 
   // Bounding outline of the corn maze (see buildCornMaze) -- drawn as a
@@ -7200,7 +7395,8 @@ const MAPVIEW = (() => {
     { x: -25, z: -25, label: 'Condemned Ruin' },
     { x: 10.5, z: 11.6, label: 'Corn Field' },
     { x: 58.3, z: -76.7, label: 'Craft Bench (Offline)' },
-    { x: -30.0, z: -8.0, label: "The Gardener's Greenhouses" }
+    { x: -30.0, z: -8.0, label: "The Gardener's Greenhouses" },
+    { x: -73.5, z: 11.0, label: 'West Silos' }
   ];
 
   // Surface<->basement entrances -- same HATCHES array buildBasement reads,
@@ -7531,6 +7727,11 @@ const FX = (() => {
   const particles = [];
   const tracers = [];
   const rings = [];
+  // Laser-sight dots (Glizzy Gat). Small dynamic registry keyed by an
+  // arbitrary owner id -- 'local' for the player, a remote's COOP id for
+  // everyone else -- since there are only ever a handful on screen at once,
+  // unlike the high-churn pools above.
+  const laserDots = new Map();
   let decalIdx = 0, ringIdx = 0, tracerIdx = 0;
   let muzzleLight = null;
   let boilAcc = 0, boilFrame = 0;
@@ -8013,6 +8214,44 @@ const FX = (() => {
     return null;
   }
 
+  const LASER_COLOR = 0xff2222;
+  function getLaserDot(key) {
+    let d = laserDots.get(key);
+    if (!d) {
+      const mat = new THREE.SpriteMaterial({
+        map: TEX.dot(LASER_COLOR), color: LASER_COLOR, transparent: true,
+        depthWrite: false, fog: false
+      });
+      const s = new THREE.Sprite(mat);
+      s.visible = false;
+      s.renderOrder = 5;
+      s.scale.set(0.06, 0.06, 0.06);
+      scene.add(s);
+      d = { sprite: s };
+      laserDots.set(key, d);
+    }
+    return d;
+  }
+  // Shows/updates a red laser-sight dot at a world point for the given
+  // owner key. Called every frame the beam has a valid hit; see hideLaserDot
+  // for the "no hit / weapon not equipped" case.
+  function setLaserDot(key, point) {
+    const d = getLaserDot(key);
+    d.sprite.position.copy(point);
+    d.sprite.visible = true;
+  }
+  function hideLaserDot(key) {
+    const d = laserDots.get(key);
+    if (d) d.sprite.visible = false;
+  }
+  function removeLaserDot(key) {
+    const d = laserDots.get(key);
+    if (!d) return;
+    scene.remove(d.sprite);
+    d.sprite.material.dispose();
+    laserDots.delete(key);
+  }
+
   function hitWobbler(object, dir, strength) {
     let o = object;
     while (o) {
@@ -8029,7 +8268,8 @@ const FX = (() => {
 
   return {
     init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler,
-    launchJunk, sprayTag, clearSprayTags, setSprayImage
+    launchJunk, sprayTag, clearSprayTags, setSprayImage,
+    setLaserDot, hideLaserDot, removeLaserDot
   };
 })();
 
@@ -10402,6 +10642,79 @@ const WEAPON = (() => {
     };
   }
 
+  /* The Glizzy Gat: the west silo cluster's reward, found up its tallest
+     ladder. Built exactly as asked -- a hotdog nestled in a bun standing in
+     for the whole rifle body: a wood-toned bun forms the stock, a rust
+     sausage runs the length as the barrel (poking a real muzzle tip out the
+     front and back like the filling does past the bun), and a mustard
+     squiggle traces down its top. A stubby scope rides above on two
+     standoffs for this weapon's real zoom (CONFIG.weapons.glizzyGat's
+     scopeFov -- see the GAME loop's ADS FOV block), and a small bolt handle
+     juts out the right side to read as the bolt-action fire rate. */
+  function buildGlizzyGat() {
+    const g = new THREE.Group();
+    rig.add(g);
+    const bunMat = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1) });
+    const sausageMat = MAT.toon(PAL.rust);
+    const mustardMat = MAT.toon(PAL.jays);
+    const scopeMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const capMat = MAT.toon(PAL.charcoal);
+    const lensMat = MAT.toon(PAL.blue);
+    const boltMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+
+    // Bun: the split roll, doubling as the whole rifle body/stock.
+    PRIM.cyl(0.09, 0.075, 1.0, 10, bunMat, {
+      pos: [0, 0, -0.32], rot: [Math.PI / 2, 0, 0], parent: g, warp: 0.012, outline: 0.014, ray: false
+    });
+    // Sausage: the barrel, poking a real muzzle out past the bun's front
+    // tip (and peeking out the back too, same as the filling of a real dog).
+    PRIM.cyl(0.055, 0.05, 1.2, 10, sausageMat, {
+      pos: [0, 0.028, -0.4], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false
+    });
+    // Mustard squiggle traced down the top.
+    for (let i = 0; i < 6; i++) {
+      const z = -0.06 - i * 0.16;
+      PRIM.torus(0.03, 0.008, mustardMat, {
+        pos: [i % 2 ? 0.018 : -0.018, 0.062, z], rot: [0.3, i * 0.6, 0], parent: g, outline: 0.004, ray: false
+      });
+    }
+
+    // Scope: a stubby tube on two standoffs above the bun -- a real scope
+    // zoom, not the generic hip-aim FOV pull-in every other gun uses.
+    const scope = new THREE.Group();
+    scope.position.set(0, 0.15, -0.36);
+    g.add(scope);
+    PRIM.cyl(0.038, 0.038, 0.34, 10, scopeMat, { rot: [Math.PI / 2, 0, 0], parent: scope, outline: 0.01, ray: false });
+    PRIM.cyl(0.042, 0.042, 0.03, 10, capMat, { pos: [0, 0, -0.16], rot: [Math.PI / 2, 0, 0], parent: scope, outline: 0.008, ray: false });
+    PRIM.cyl(0.042, 0.042, 0.03, 10, capMat, { pos: [0, 0, 0.16], rot: [Math.PI / 2, 0, 0], parent: scope, outline: 0.008, ray: false });
+    PRIM.cyl(0.03, 0.03, 0.015, 10, lensMat, { pos: [0, 0, -0.175], rot: [Math.PI / 2, 0, 0], parent: scope, outline: 0.006, ray: false });
+    [-0.07, 0.07].forEach(dz => PRIM.box(0.02, 0.1, 0.02, scopeMat, {
+      pos: [0, -0.05, dz], parent: scope, outline: 0.006, ray: false
+    }));
+
+    // Bolt handle, jutting out the right side -- reads as the manual cycle.
+    PRIM.cyl(0.014, 0.014, 0.14, 6, boltMat, {
+      pos: [0.08, 0, -0.02], rot: [0, 0, Math.PI / 2 - 0.5], parent: g, outline: 0.006, ray: false
+    });
+    PRIM.sph(0.024, boltMat, { pos: [0.145, -0.045, -0.02], parent: g, outline: 0.007, ray: false });
+
+    // Grip, at the back of the bun.
+    PRIM.box(0.09, 0.16, 0.11, MAT.toon(PAL.rustDeep), {
+      pos: [0, -0.15, 0.18], rot: [0.24, 0, 0], parent: g, outline: 0.012, ray: false
+    });
+
+    const forend = new THREE.Group();
+    forend.position.set(0, 0.028, -0.52);
+    g.add(forend);
+    PRIM.cyl(0.06, 0.056, 0.16, 8, sausageMat, { rot: [Math.PI / 2, 0, 0], parent: forend, outline: 0.01, ray: false });
+
+    const fx = flashes(g, 0.04, -1.0, 0.75);
+    models.glizzyGat = {
+      root: g, forend: forend, flash: fx.flash, flash2: fx.flash2,
+      base: [0.27, -0.26, -0.46], rot: [0.03, -0.09, 0.02]
+    };
+  }
+
   function buildHandsAndBoots() {
     const black = MAT.toon(PAL.charcoal);
     armedHands = new THREE.Group();
@@ -10473,6 +10786,7 @@ const WEAPON = (() => {
     buildTheClaw();
     buildSeedSpitter();
     buildPortalGun();
+    buildGlizzyGat();
     buildHandsAndBoots();
 
     for (let i = 0; i < 8; i++) {
@@ -11161,6 +11475,12 @@ const WEAPON = (() => {
           UTIL.lerp(rest[2], hot[2], model.readyK)
         );
       }
+      // The Glizzy Gat's scopeFov (16) is tight enough that the viewmodel's
+      // usual camera-relative offset would balloon to fill much of the
+      // frame -- simplest fix is to duck it out of view while actually
+      // scoped, same as any other real scope hiding the gun behind glass.
+      // The crosshair (already visible) stands in as the reticle.
+      if (currentId === 'glizzyGat') model.root.visible = !PLAYER.aiming;
     } else {
       const base = model.base || [0, 0, 0];
       const rot = model.rot || [0, 0, 0];
@@ -11214,6 +11534,25 @@ const WEAPON = (() => {
       s.mesh.rotation.x += s.spin.x * dt;
       s.mesh.rotation.z += s.spin.z * dt;
     }
+
+    updateLaserSight(camera, active);
+  }
+
+  // The Glizzy Gat's red laser sight: always on while it's the equipped
+  // weapon (not just while ADS'd -- the whole point of a "dead accurate"
+  // sniper is that the dot shows the true hip-fire impact point too), and
+  // synced to remotes over COOP (see sendState's weaponId field) so anyone
+  // lined up by one sees the same tell a real laser sight would give away.
+  function updateLaserSight(camera, active) {
+    if (currentId !== 'glizzyGat' || !active || reloading) {
+      FX.hideLaserDot('local');
+      return;
+    }
+    _o.copy(camera.position);
+    PLAYER.forwardVector(_d);
+    const hit = FX.trace(_o, _d, defFor().range);
+    if (hit) FX.setLaserDot('local', hit.point);
+    else FX.hideLaserDot('local');
   }
 
   function addLook(dx, dy) {
@@ -13330,7 +13669,15 @@ const PICKUP = (() => {
     // v0.39.01: gates moved off the greenhouse centers to CONFIG.map's
     // westGate1Z/westGate2Z (-8/-42) -- these follow.
     { id: 'hotSauceJar', x: -33.0, z: -8.0 },      // just inside westTransition gate 1
-    { id: 'carbineAmmo', x: -33.0, z: -42.0 }      // just inside westTransition gate 2
+    { id: 'carbineAmmo', x: -33.0, z: -42.0 },     // just inside westTransition gate 2
+
+    // v0.39.03 West Silo Row: the Glizzy Gat sits on the north silo deck --
+    // the farthest of the three from the main yard, so reaching it really is
+    // the payoff for climbing and crossing both scaffolding walkways.
+    { id: 'glizzyGatWeapon', x: -76.8, y: 7.6, z: -56.4 },  // north silo deck
+    { id: 'glizzyRoundsPack', x: -81.2, y: 7.6, z: -56.4 }, // north silo deck, paired with the gun
+    { id: 'glizzyRoundsPack', x: -76.8, y: 7.6, z: 11.6 },  // south silo deck
+    { id: 'glizzyRoundsPack', x: -76.8, y: 7.6, z: -22.4 }  // mid silo deck
   ];
 
   function define(id, def) {
@@ -13386,6 +13733,15 @@ const PICKUP = (() => {
   define('seedDrumPack', {
     type: 'ammo', label: 'Seed Drums', ammoType: 'seedDrum',
     quantity: 50, color: PAL.mustard, respawn: 26
+  });
+  // v0.39.03: the Glizzy Gat, found atop the West Silo Row.
+  define('glizzyGatWeapon', {
+    type: 'weapon', label: 'The Glizzy Gat', weaponId: 'glizzyGat',
+    quantity: 10, color: PAL.rust, respawn: 0
+  });
+  define('glizzyRoundsPack', {
+    type: 'ammo', label: 'Glizzy Rounds', ammoType: 'glizzyRounds',
+    quantity: 8, color: PAL.rustDeep, respawn: 30
   });
   define('healthTonic', {
     type: 'health', label: 'Pep Tonic', quantity: 30,
@@ -15233,11 +15589,16 @@ const GAME = (() => {
     const simRunning = running || hostSimActive;
 
     PLAYER.update(dt, running, look);
-    // Aim (RMB): a modest FOV pull-in, not a real scope -- reads as
-    // "steadying up" rather than zooming through glass.
-    const targetFov = (running && PLAYER.aiming) ? CONFIG.render.adsFov : CONFIG.render.fov;
+    // Aim (RMB): a modest FOV pull-in for most guns, not a real scope --
+    // reads as "steadying up" rather than zooming through glass. A weapon
+    // def can opt into a real scope zoom via scopeFov/scopeFovLerp (see
+    // the Glizzy Gat) which override these generic hip-aim values.
+    const aimingDef = CONFIG.weapons[WEAPON.currentId];
+    const adsFovTarget = (aimingDef && aimingDef.scopeFov) || CONFIG.render.adsFov;
+    const adsFovLerpRate = (aimingDef && aimingDef.scopeFovLerp) || CONFIG.render.adsFovLerp;
+    const targetFov = (running && PLAYER.aiming) ? adsFovTarget : CONFIG.render.fov;
     if (Math.abs(camera.fov - targetFov) > 0.02) {
-      camera.fov = UTIL.damp(camera.fov, targetFov, CONFIG.render.adsFovLerp, dt);
+      camera.fov = UTIL.damp(camera.fov, targetFov, adsFovLerpRate, dt);
       camera.updateProjectionMatrix();
     }
     // Overrides camera position/rotation/fov on top of everything above,
@@ -20924,6 +21285,8 @@ const COOP = (() => {
   // duplicate characters do not collide at spawn or collapse Team mode.
   const CHARACTER_POOL = ['playerBluecap', 'playerMasked', 'playerStoned', 'playerPyro'];
   let scene = null, peer = null;
+  const _laserOrigin = new THREE.Vector3();
+  const _laserDir = new THREE.Vector3();
   // One DataConnection per remote peer. Host keys this by each joiner's peer
   // id (so it can hold up to maxPlayers-1 of them); a joiner only ever has
   // one entry, keyed 'host'. Same map shape on both sides keeps send/relay
@@ -20994,6 +21357,7 @@ const COOP = (() => {
     untrackPlayerProxy(remote.headProxy);
     untrackPlayerProxy(remote.bodyProxy);
     if (scene && remote.group) scene.remove(remote.group);
+    if (typeof FX !== 'undefined' && FX.removeLaserDot) FX.removeLaserDot(remote.id);
   }
 
   function clearRemotes() {
@@ -21013,6 +21377,7 @@ const COOP = (() => {
       if (typeof next[key] === 'number' && Number.isFinite(next[key])) target[key] = next[key];
     });
     if (typeof next.layerId === 'string' && WORLD.layers[next.layerId]) target.layerId = next.layerId;
+    if (typeof next.weaponId === 'string') target.weaponId = next.weaponId;
     ['dead', 'moving', 'climbing', 'sprinting'].forEach(key => {
       if (typeof next[key] === 'boolean') target[key] = next[key];
     });
@@ -21601,7 +21966,8 @@ const COOP = (() => {
         dead: PLAYER.isDead,
         moving: PLAYER.isClimbing || Math.hypot(PLAYER.velocity.x, PLAYER.velocity.z) > 0.18,
         climbing: PLAYER.isClimbing,
-        sprinting: PLAYER.sprinting
+        sprinting: PLAYER.sprinting,
+        weaponId: WEAPON.currentId
       }
     };
     if (role === 'host') {
@@ -21664,7 +22030,7 @@ const COOP = (() => {
       headProxy: headProxy, bodyProxy: bodyProxy,
       target: {
         x: 0, y: 0, z: 0, yaw: 0, pitch: 0, layerId: 'surface', dead: false,
-        moving: false, climbing: false, sprinting: false
+        moving: false, climbing: false, sprinting: false, weaponId: null
       },
       active: true, hasState: false, lastSeen: 0, animPhase: Math.random() * Math.PI * 2,
       deathPose: 0
@@ -22199,6 +22565,24 @@ const COOP = (() => {
       remote.group.position.z = UTIL.damp(remote.group.position.z, target.z, 14, dt);
       remote.group.rotation.y = UTIL.damp(remote.group.rotation.y, target.yaw || 0, 14, dt);
       poseRemote(remote, dt);
+      // Glizzy Gat laser sight, replicated for remotes: same forward-vector
+      // math as PLAYER.forwardVector, just off the synced yaw/pitch instead
+      // of the local player's own closure state. Visible to everyone
+      // regardless of match mode -- a real laser sight gives away its
+      // wielder to anyone looking, not just teammates.
+      if (target.weaponId === 'glizzyGat' && visible && !target.dead) {
+        _laserOrigin.set(target.x, target.y + CONFIG.player.eyeHeight, target.z);
+        _laserDir.set(
+          -Math.sin(target.yaw || 0) * Math.cos(target.pitch || 0),
+          Math.sin(target.pitch || 0),
+          -Math.cos(target.yaw || 0) * Math.cos(target.pitch || 0)
+        ).normalize();
+        const laserHit = FX.trace(_laserOrigin, _laserDir, CONFIG.weapons.glizzyGat.range);
+        if (laserHit) FX.setLaserDot(remote.id, laserHit.point);
+        else FX.hideLaserDot(remote.id);
+      } else {
+        FX.hideLaserDot(remote.id);
+      }
       contacts.push({ type: 'player', x: target.x, z: target.z, layerId: target.layerId, id: remote.id });
       // Voice: coop is party mode (every teammate full volume, no falloff);
       // FFA/Teams switches to a proximity mic, linear falloff between the
