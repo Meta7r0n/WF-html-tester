@@ -1,0 +1,299 @@
+{
+  "asset": {
+    "name": "Boombox Cat",
+    "version": "0.1.0",
+    "description": "A sleepy, sharp-toothed cartoon cat DJ with a spotted bandana, olive shorts, blue sneakers, and a yellow boombox.",
+    "coordinateSystem": "Y-up; character faces -Z",
+    "units": "meters",
+    "scale": "approximately 6.5 meters tall in the exported scene"
+  },
+  "generatedAt": "2026-08-09T21:06:04.631Z",
+  "format": "glTF 2.0 binary (.glb)",
+  "geometry": {
+    "meshes": 131,
+    "triangles": 34068,
+    "materials": [
+      "Bandana_Cream",
+      "Bandana_Spots",
+      "Boombox_Black",
+      "Boombox_Button_Yellow",
+      "Boombox_Gray",
+      "Boombox_Shadow_Yellow",
+      "Boombox_Speaker_Gold",
+      "Boombox_Yellow",
+      "Cat_Fur_Black",
+      "Cat_Fur_Highlight",
+      "Eye_Outline_Black",
+      "Eye_Salmon_Lower",
+      "Face_Warm_Cream",
+      "Glove_Shadow",
+      "Glove_White",
+      "Mouth_Interior",
+      "Shorts_Olive",
+      "Shorts_Olive_Shadow",
+      "Sleepy_Eyelid_Taupe",
+      "Sneaker_Aged_Sole",
+      "Sneaker_Blue",
+      "Sneaker_Blue_Dark",
+      "Sneaker_Lace_Tag",
+      "Sneaker_Laces",
+      "Sneaker_White",
+      "Tongue_Salmon",
+      "Tooth_Mustard"
+    ]
+  },
+  "materials": [
+    {
+      "name": "Cat_Fur_Black",
+      "role": "fur",
+      "color": "#17171b",
+      "roughness": 0.54,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Cat_Fur_Highlight",
+      "role": "fur-accent",
+      "color": "#2b2b31",
+      "roughness": 0.62,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Face_Warm_Cream",
+      "role": "face",
+      "color": "#f1e7d6",
+      "roughness": 0.56,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sleepy_Eyelid_Taupe",
+      "role": "eyelid",
+      "color": "#c7b69f",
+      "roughness": 0.64,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Eye_Outline_Black",
+      "role": "eye-outline",
+      "color": "#17151a",
+      "roughness": 0.36,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Eye_Salmon_Lower",
+      "role": "eye-color",
+      "color": "#e87c70",
+      "roughness": 0.42,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Mouth_Interior",
+      "role": "mouth",
+      "color": "#17131a",
+      "roughness": 0.78,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Tooth_Mustard",
+      "role": "teeth",
+      "color": "#f0c329",
+      "roughness": 0.5,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Tongue_Salmon",
+      "role": "tongue",
+      "color": "#e67b78",
+      "roughness": 0.46,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Bandana_Cream",
+      "role": "cloth",
+      "color": "#e4d9c8",
+      "roughness": 0.86,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Bandana_Spots",
+      "role": "cloth-pattern",
+      "color": "#26242a",
+      "roughness": 0.78,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Shorts_Olive",
+      "role": "cloth",
+      "color": "#666b58",
+      "roughness": 0.92,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Shorts_Olive_Shadow",
+      "role": "cloth-accent",
+      "color": "#3d4338",
+      "roughness": 0.96,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Glove_White",
+      "role": "glove",
+      "color": "#f4eee5",
+      "roughness": 0.66,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Glove_Shadow",
+      "role": "glove-accent",
+      "color": "#d6cabb",
+      "roughness": 0.72,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_White",
+      "role": "shoe",
+      "color": "#f1eee4",
+      "roughness": 0.76,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Blue",
+      "role": "shoe-accent",
+      "color": "#5785ae",
+      "roughness": 0.62,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Blue_Dark",
+      "role": "shoe-detail",
+      "color": "#2e557a",
+      "roughness": 0.7,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Aged_Sole",
+      "role": "shoe-rubber",
+      "color": "#d3d4ce",
+      "roughness": 0.86,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Laces",
+      "role": "shoe-laces",
+      "color": "#23252b",
+      "roughness": 0.76,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Lace_Tag",
+      "role": "shoe-detail",
+      "color": "#d56d3e",
+      "roughness": 0.55,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Yellow",
+      "role": "prop-shell",
+      "color": "#f0b90f",
+      "roughness": 0.42,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Button_Yellow",
+      "role": "prop-controls",
+      "color": "#ffd42a",
+      "roughness": 0.33,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Shadow_Yellow",
+      "role": "prop-accent",
+      "color": "#b67b08",
+      "roughness": 0.5,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Black",
+      "role": "prop-panel",
+      "color": "#17181d",
+      "roughness": 0.48,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Gray",
+      "role": "prop-detail",
+      "color": "#3c3c42",
+      "roughness": 0.64,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Speaker_Gold",
+      "role": "prop-speaker",
+      "color": "#c99628",
+      "roughness": 0.5,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Boombox_Handle_Metal",
+      "role": "prop-metal",
+      "color": "#767680",
+      "roughness": 0.42,
+      "metalness": 0.65,
+      "opacity": 1
+    }
+  ],
+  "sockets": [
+    "Socket_Radio_Handle",
+    "Socket_Radio_Speaker",
+    "Socket_Radio_Front_FX",
+    "Socket_Headgear",
+    "Socket_Hand_L_Grip",
+    "Socket_Hand_R_Grip",
+    "Socket_Backpack",
+    "Socket_Center_FX"
+  ],
+  "animations": [
+    {
+      "name": "Idle_Bob",
+      "duration": 2,
+      "tracks": 3
+    },
+    {
+      "name": "Walk_Cycle",
+      "duration": 1,
+      "tracks": 5
+    },
+    {
+      "name": "Boombox_Bounce",
+      "duration": 0.75,
+      "tracks": 2
+    }
+  ],
+  "sourceReference": "45EF0562-4487-4917-ACE2-0CF3C12F900A.jpeg"
+}

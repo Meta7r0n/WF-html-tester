@@ -1,0 +1,16 @@
+{
+  "name": "lobster-labz-alpha-wf-tester",
+  "version": "0.39.5",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "wrangler deploy --dry-run",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "node worker.test.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.123.0"
+  }
+}
+
