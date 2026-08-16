@@ -1,0 +1,243 @@
+{
+  "asset": {
+    "name": "Skeleton Lobster",
+    "version": "0.1.0",
+    "description": "A cartoon skeleton-lobster rogue with oversized pincers, crown pendant, cigarette, and chunky high-top sneakers.",
+    "coordinateSystem": "Y-up; character faces -Z",
+    "units": "meters",
+    "scale": "approximately 6.5 meters tall in the exported scene"
+  },
+  "generatedAt": "2026-08-09T20:36:35.167Z",
+  "format": "glTF 2.0 binary (.glb)",
+  "geometry": {
+    "meshes": 161,
+    "triangles": 30232,
+    "materials": [
+      "Bone_Shadow",
+      "Bone_Warm_Ivory",
+      "Chain_Antique_Gold",
+      "Cigar_Ember",
+      "Cigar_Wrap",
+      "Crown_Polished_Gold",
+      "Crown_Red_Gem",
+      "Eye_Black",
+      "Eye_Highlight",
+      "Eye_White",
+      "Lobster_Shell_Highlight",
+      "Lobster_Shell_Inner",
+      "Lobster_Shell_Red",
+      "Mouth_Interior",
+      "Olive_Short_Pants",
+      "Olive_Short_Shadow",
+      "Skeleton_Void_Black",
+      "Skull_Crack",
+      "Smoke_Transparent",
+      "Sneaker_Aged_Rubber",
+      "Sneaker_Black_Canvas",
+      "Sneaker_Rubber_Shadow"
+    ]
+  },
+  "materials": [
+    {
+      "name": "Bone_Warm_Ivory",
+      "role": "bone",
+      "color": "#f0e6d4",
+      "roughness": 0.58,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Bone_Shadow",
+      "role": "bone-accent",
+      "color": "#cbbda7",
+      "roughness": 0.72,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Skeleton_Void_Black",
+      "role": "body",
+      "color": "#101116",
+      "roughness": 0.48,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Lobster_Shell_Red",
+      "role": "shell",
+      "color": "#c94c2c",
+      "roughness": 0.42,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Lobster_Shell_Inner",
+      "role": "shell-inner",
+      "color": "#722a1e",
+      "roughness": 0.5,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Lobster_Shell_Highlight",
+      "role": "shell-accent",
+      "color": "#f06b3d",
+      "roughness": 0.38,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Olive_Short_Pants",
+      "role": "cloth",
+      "color": "#656b59",
+      "roughness": 0.92,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Olive_Short_Shadow",
+      "role": "cloth-accent",
+      "color": "#3c4136",
+      "roughness": 0.96,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Black_Canvas",
+      "role": "shoe",
+      "color": "#12151b",
+      "roughness": 0.78,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Aged_Rubber",
+      "role": "shoe-rubber",
+      "color": "#eeeeea",
+      "roughness": 0.72,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Sneaker_Rubber_Shadow",
+      "role": "shoe-accent",
+      "color": "#9f9d94",
+      "roughness": 0.8,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Chain_Antique_Gold",
+      "role": "jewelry",
+      "color": "#d39b1e",
+      "roughness": 0.3,
+      "metalness": 0.72,
+      "opacity": 1
+    },
+    {
+      "name": "Crown_Polished_Gold",
+      "role": "jewelry-accent",
+      "color": "#f2c34e",
+      "roughness": 0.22,
+      "metalness": 0.84,
+      "opacity": 1
+    },
+    {
+      "name": "Crown_Red_Gem",
+      "role": "gem",
+      "color": "#9e2624",
+      "roughness": 0.26,
+      "metalness": 0.1,
+      "opacity": 1
+    },
+    {
+      "name": "Eye_White",
+      "role": "eye",
+      "color": "#f7f6ef",
+      "roughness": 0.36,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Eye_Black",
+      "role": "eye-pupil",
+      "color": "#08090c",
+      "roughness": 0.24,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Eye_Highlight",
+      "role": "eye-highlight",
+      "color": "#ffffff",
+      "roughness": 0.16,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Mouth_Interior",
+      "role": "mouth",
+      "color": "#3a211a",
+      "roughness": 0.75,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Cigar_Wrap",
+      "role": "prop",
+      "color": "#9c6a3d",
+      "roughness": 0.8,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Cigar_Ember",
+      "role": "prop-glow",
+      "color": "#f2752c",
+      "roughness": 0.34,
+      "metalness": 0,
+      "opacity": 1
+    },
+    {
+      "name": "Smoke_Transparent",
+      "role": "fx",
+      "color": "#8a8990",
+      "roughness": 1,
+      "metalness": 0,
+      "opacity": 0.34
+    },
+    {
+      "name": "Skull_Crack",
+      "role": "face-detail",
+      "color": "#9e9485",
+      "roughness": 0.84,
+      "metalness": 0,
+      "opacity": 1
+    }
+  ],
+  "sockets": [
+    "Socket_Headgear",
+    "Socket_Backpack",
+    "Socket_Weapon_L",
+    "Socket_Weapon_R",
+    "Socket_FX_Center"
+  ],
+  "animations": [
+    {
+      "name": "Idle_Bob",
+      "duration": 2,
+      "tracks": 3
+    },
+    {
+      "name": "Walk_Cycle",
+      "duration": 1,
+      "tracks": 5
+    },
+    {
+      "name": "Claw_Snap_R",
+      "duration": 0.8,
+      "tracks": 2
+    }
+  ],
+  "sourceReference": "276FE635-DAE2-4EDD-92E6-8091B6A4416C.jpeg"
+}
