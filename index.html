@@ -3618,6 +3618,13 @@ const PROPS = (() => {
     const face = TEX.sign(lines, opts.bg || PAL.cream, opts.fg || PAL.rustDeep, 512, Math.round(512 * bh / bw));
     const board = PRIM.box(bw, bh, 0.1, MAT.toon(0xffffff, { map: face }),
       { pos: [0, ph + bh * 0.32, 0.06], rot: [0, 0, UTIL.rng(-0.035, 0.035)], parent: g });
+    // A close-range shotgun blast can paper the entire readable face in ink
+    // decals (each one small on its own, but they stack) -- signs are the
+    // one prop where that's a real readability problem, not just texture,
+    // so they opt out of decals specifically (see FX.impact's noDecal
+    // check) while still taking the hit/spark/sound feedback like anything
+    // else.
+    board.userData.noDecal = true;
     parent.add(g);
     // Collider matches the 0.16 post plus a little slack, not the 1.7-wide
     // board -- the old 0.4 box was wider than the thing it represented and
@@ -5391,7 +5398,17 @@ const LEVEL = (() => {
      wall), and a flat glass roof that's purely visual -- no collision, no
      ray target, so gunfire and jump arcs both pass straight through it. */
   function buildGreenhouseShell(parent, cx, cz, halfW, halfL, wallH, nameLines) {
-    const glassMat = MAT.toon(PAL.blue, { transparent: true, opacity: 0.4 });
+    // Unlit (MAT.flat), not toon-shaded: a toon material's stepped light
+    // ramp darkens any face that isn't catching direct light head-on, which
+    // for a peaked roof and four wall orientations means most of the shell
+    // reads as flat gray instead of tinted glass depending on which way
+    // it's facing. Unlit keeps the blue tint consistent from every angle,
+    // inside or outside, sunlit side or shade. Opacity pushed well up from
+    // the old 0.4 -- against a sunlit dirt floor or the far wall showing
+    // through, anything lower blends toward the backdrop's own color long
+    // before it reads as tinted glass. depthWrite off is the standard fix
+    // for a transparent surface wrongly occluding what's behind it.
+    const glassMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.62, depthWrite: false });
     const b = new PRIM.Batch(glassMat, 0.02);
     const DOOR_HALF = 1.7;
 
@@ -5424,14 +5441,14 @@ const LEVEL = (() => {
     // Peaked glass roof -- two sloped panes meeting at a ridge, the
     // classic greenhouse silhouette, instead of a flat slab that read as
     // just another wall from below. Frame trim along the ridge and both
-    // eaves sells "glass panels in a frame" even at toon-shaded, low
-    // opacity. Purely decorative like the old flat panel -- no collision,
-    // not raycastable.
+    // eaves sells "glass panels in a frame". Purely decorative like the
+    // old flat panel -- no collision, not raycastable. Same opacity as the
+    // walls (see glassMat above) for the same reason.
     const RISE = 1.8;
     const slopeLen = Math.sqrt(halfW * halfW + RISE * RISE);
     const slopeAngle = Math.atan2(RISE, halfW);
     const roofLen = halfL * 2 + 0.3;
-    const roofMat = MAT.toon(PAL.blue, { transparent: true, opacity: 0.32, side: THREE.DoubleSide });
+    const roofMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
     [-1, 1].forEach(side => {
       // West (side=-1) slopes up from the wall to the ridge as x increases,
       // so its local +X axis (rotation +slopeAngle) must point that way;
@@ -5524,7 +5541,7 @@ const LEVEL = (() => {
   }
 
   function buildGreenhouses(parent) {
-    const GX = -43.5, HALF_W = 8, HALF_L = 14, WALL_H = 2.6;
+    const GX = -43.5, HALF_W = 8, HALF_L = 14, WALL_H = 3.0;
     const GH_A_Z = 9, GH_B_Z = -25, GH_C_Z = -59;
 
     // ---- Seedling House: open, run-and-gun, jumpable benches ----
@@ -7907,17 +7924,21 @@ const FX = (() => {
   /* Cartoon hit: ink splat decal, a burst of dust stars, a smoke ring. */
   function impact(point, normal, opts) {
     opts = opts || {};
-    // decal
-    const d = decals[decalIdx = (decalIdx + 1) % decals.length];
-    d.mesh.position.copy(point).addScaledVector(normal, 0.022);
-    _v.copy(point).add(normal);
-    d.mesh.lookAt(_v);
-    d.mesh.rotation.z = UTIL.rng(0, 6.28);
-    const sc = UTIL.rng(0.28, 0.46) * (opts.scale || 1);
-    d.mesh.scale.set(sc, sc, sc);
-    d.mesh.material.opacity = 0.92;
-    d.mesh.visible = true;
-    d.life = 14;
+    // decal -- skipped for surfaces tagged noDecal (signposts: see
+    // PROPS.signPost) so their readable text can't get papered over by a
+    // stacked-up shotgun blast. Sparks/dust/smoke below still play either way.
+    if (!opts.noDecal) {
+      const d = decals[decalIdx = (decalIdx + 1) % decals.length];
+      d.mesh.position.copy(point).addScaledVector(normal, 0.022);
+      _v.copy(point).add(normal);
+      d.mesh.lookAt(_v);
+      d.mesh.rotation.z = UTIL.rng(0, 6.28);
+      const sc = UTIL.rng(0.28, 0.46) * (opts.scale || 1);
+      d.mesh.scale.set(sc, sc, sc);
+      d.mesh.material.opacity = 0.92;
+      d.mesh.visible = true;
+      d.life = 14;
+    }
 
     // dust stars kicking off the surface
     const n = opts.big ? 9 : 5;
@@ -11067,7 +11088,12 @@ const WEAPON = (() => {
         } else if (!ENEMY.hit(hit.object, hit.point, _t, hit.distance, shotMeta)) {
           const n = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld)
                              : _t.clone().negate();
-          if (d.pellets === 1 || i < 4) FX.impact(hit.point, n, { big: i === 0, scale: d.pellets === 1 ? 0.75 : 1 });
+          if (d.pellets === 1 || i < 4) {
+            FX.impact(hit.point, n, {
+              big: i === 0, scale: d.pellets === 1 ? 0.75 : 1,
+              noDecal: hit.object.userData && hit.object.userData.noDecal
+            });
+          }
           FX.hitWobbler(hit.object, _t, 1 / d.pellets * 2.4);
           // West wing nutrient pallets: gunfire only (this branch never runs
           // for an enemy hit), gated on a cooldown so one pallet can't be
