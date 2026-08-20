@@ -1802,6 +1802,11 @@ const CONFIG = {
     // rather than the warm ground tone, so distance reads as *cooler and
     // flatter* while keeping its own value separate from the sky behind it.
     fogNear: 62, fogFar: 250, fogColor: 0xAFBCC6,
+    // Minimum screen-space weight of an ink outline, in device pixels. The
+    // baked world-space hull inflation adds to this on near geometry, so
+    // contact edges stay heavier than distant detail -- but nothing ever
+    // falls below a legible line. See MAT.ink().
+    inkPixels: 2.0,
     // Aim (RMB): a modest hip-aim zoom rather than a real scope -- there's
     // no scope model, just a tighter FOV that reads as "steadying up."
     adsFov: 58, adsFovLerp: 11,
@@ -1835,12 +1840,18 @@ const CONFIG = {
     grade: {
       exposure: 1.02,
       black: 0.030,       // input value that lands on true 0
-      white: 0.985,       // input value that lands on true 1
-      contrast: 0.42,     // strength of the S-curve between them
-      saturation: 1.10,
-      shadowTint: [0.000, 0.012, 0.036],   // cool the shadow pools
-      highTint:   [0.030, 0.014, 0.000],   // warm the highlights
-      vignette: 0.46,
+      white: 0.945,       // input value that lands on true 1
+      contrast: 0.34,     // strength of the S-curve between them
+      // Dropping the sRGB output encode also dropped the ~2x desaturation it
+      // was silently applying, which left the palette reading as saturated
+      // primaries (salmon dirt, poster-green corn) instead of the dusty
+      // 1930s stock it was picked to be. This pulls that back out. It is
+      // NOT a move toward black-and-white -- the hues are all still here,
+      // they are just wearing the right amount of paint.
+      saturation: 0.64,
+      shadowTint: [0.000, 0.010, 0.026],   // cool the shadow pools
+      highTint:   [0.024, 0.011, 0.000],   // warm the highlights
+      vignette: 0.34,
       grain: 0.085,
       grainScale: 1.4,    // grain cell size in device pixels
       grainFps: 24,       // film-stock cadence, not a 60Hz fizz
@@ -1857,16 +1868,23 @@ const CONFIG = {
       // every horizontal plane clips to paper white and the top of the value
       // scale is spent on dirt instead of on the things that are meant to be
       // white (gloves, signs, cream paint).
-      keyColor: 0xFFF2DA, keyIntensity: 0.62,
+      keyColor: 0xFFF2DA, keyIntensity: 0.55,
       keyDir: [-52, 62, 40],
-      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.24,
-      rimColor: 0xC2D9EE, rimIntensity: 0.15, rimDir: [46, 14, -40],
-      ambColor: 0x8A7F73, ambIntensity: 0.07,
-      // viewmodel scene
-      vKeyColor: 0xFFF3E2, vKeyIntensity: 0.66, vKeyDir: [-1.15, 1.85, 1.55],
-      vSkyColor: 0xCFE2F2, vGroundColor: 0x574A40, vFillIntensity: 0.24,
-      vRimColor: 0xAEC7DD, vRimIntensity: 0.22, vRimDir: [1.5, 0.5, -1.3],
-      vAmbColor: 0x8B8074, vAmbIntensity: 0.07
+      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.30,
+      rimColor: 0xC2D9EE, rimIntensity: 0.17, rimDir: [46, 14, -40],
+      ambColor: 0x8A7F73, ambIntensity: 0.09,
+      /* Viewmodel. It is the one object on screen for the whole run, held a
+         hand's width from the lens, so it gets its own three-point rig rather
+         than a copy of the sun. Key from high front-left picks out the top of
+         the receiver; a deliberately warm, bright hemisphere GROUND colour
+         acts as bounce off the (unseen) player, keeping the underside of the
+         barrel from going to the dead navy slab it was; and a cool rim from
+         behind-right draws the top edge of the whole silhouette so the gun
+         separates from the world instead of sinking into it. */
+      vKeyColor: 0xFFF4E4, vKeyIntensity: 0.72, vKeyDir: [-1.15, 1.75, 1.65],
+      vSkyColor: 0xD6E6F4, vGroundColor: 0x9A7C5E, vFillIntensity: 0.40,
+      vRimColor: 0xBBD3E8, vRimIntensity: 0.34, vRimDir: [1.6, 0.75, -1.25],
+      vAmbColor: 0x94897C, vAmbIntensity: 0.12
     }
   },
   player: {
@@ -3067,11 +3085,70 @@ const MAT = (() => {
     return m;
   }
 
+  /* The ink material for every inverted-hull outline in the game.
+
+     It used to be a plain MeshBasicMaterial, which meant an outline's weight
+     was whatever world-space inflation its shell geometry happened to be
+     baked with -- 0.045 units for most props. That reads as a fat 12px line
+     at two metres and a *sub-pixel* line at thirty, which is exactly why
+     linework kept dropping out across the midground: the shell was still
+     being drawn, it was just thinner than a pixel.
+
+     So the hull is re-inflated in the vertex shader instead, in view space,
+     by an amount proportional to depth -- which is a constant width in
+     SCREEN space. The offset uses n.xy unnormalised on purpose: its length is
+     sin(angle between the normal and the view axis), so it goes to full
+     width exactly on the silhouette and to zero on faces pointing at the
+     camera, where an outline would only bloat the shape. The baked world
+     inflation still rides underneath, so near contact edges stay heavy and
+     far edges never disappear.
+
+     Fog is applied by hand and deliberately held back (uFogHold): a line that
+     fogs out at the same rate as its fill stops being a line. */
   let inkMat = null;
+  const INK_VERT = [
+    'uniform float uWidth;',
+    'varying float vDepth;',
+    'void main() {',
+    '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+    '  float depth = max(-mv.z, 0.001);',
+    '  vec3 n = normalize(normalMatrix * normal);',
+    '  mv.xy += n.xy * (uWidth * depth);',
+    '  vDepth = depth;',
+    '  gl_Position = projectionMatrix * mv;',
+    '}'
+  ].join('\n');
+  const INK_FRAG = [
+    'uniform vec3 uInk;',
+    'uniform vec3 uFogColor;',
+    'uniform float uFogNear;',
+    'uniform float uFogFar;',
+    'uniform float uFogHold;',
+    'varying float vDepth;',
+    'void main() {',
+    '  float f = smoothstep(uFogNear, uFogFar, vDepth) * uFogHold;',
+    '  gl_FragColor = vec4(mix(uInk, uFogColor, f), 1.0);',
+    '}'
+  ].join('\n');
+
   function ink() {
     if (!inkMat) {
-      inkMat = new THREE.MeshBasicMaterial({
-        color: PAL.ink, side: THREE.BackSide, fog: true
+      inkMat = new THREE.ShaderMaterial({
+        uniforms: {
+          uInk: { value: new THREE.Color(PAL.ink) },
+          // Overwritten every frame by RENDERCORE from the live FOV and
+          // viewport height, so the line holds its pixel weight through ADS
+          // zoom and window resizes alike.
+          uWidth: { value: 0.0038 },
+          uFogColor: { value: new THREE.Color(CONFIG.render.fogColor) },
+          uFogNear: { value: CONFIG.render.fogNear },
+          uFogFar: { value: CONFIG.render.fogFar },
+          uFogHold: { value: 0.42 }
+        },
+        vertexShader: INK_VERT,
+        fragmentShader: INK_FRAG,
+        side: THREE.BackSide,
+        fog: false
       });
     }
     return inkMat;
@@ -3523,8 +3600,23 @@ const RENDERCORE = (() => {
   }
 
   /* --------------------------------------------------------------- update */
-  function update(dt, focus) {
+  function update(dt, cam) {
     clock += dt;
+    const focus = cam ? (cam.isCamera ? cam.position : cam) : null;
+
+    // Ink weight is decided here, not in the geometry: convert the desired
+    // line width in screen pixels into the view-space push MAT.ink()'s vertex
+    // shader needs. Derivation: a view-space offset of w*depth projects to
+    // w * cot(fov/2) * H/2 pixels, which is depth-independent -- so
+    // w = px * 2 * tan(fov/2) / H. Re-solved each frame because both the FOV
+    // (ADS) and H (resize) move at runtime.
+    const inkMat = MAT.ink();
+    if (inkMat && inkMat.uniforms) {
+      const fov = (cam && cam.isPerspectiveCamera ? cam.fov : CONFIG.render.fov) * Math.PI / 180;
+      inkMat.uniforms.uWidth.value =
+        CONFIG.render.inkPixels * 2 * Math.tan(fov * 0.5) / Math.max(1, height);
+    }
+
     if (tier.shadows && key && focus) {
       // Snapping the focus point to the shadow map's own texel size is what
       // stops shadow edges from swimming as the player walks.
@@ -3543,7 +3635,7 @@ const RENDERCORE = (() => {
       rim.target.updateMatrixWorld();
     }
     tagAcc += dt;
-    if (tagAcc > 0.4) { tagAcc = 0; tagScene(world); if (tier.viewShadows) tagScene(view); }
+    if (tagAcc > 0.4) { tagAcc = 0; tagScene(world); tagScene(view); }
   }
 
   /* --------------------------------------------------------------- render */
@@ -16253,7 +16345,7 @@ const GAME = (() => {
       FX.update(dt, time);
       AUDIO.update(dt);
       UI.update(dt);
-      RENDERCORE.update(dt, INTRO.camera.position);
+      RENDERCORE.update(dt, INTRO.camera);
       RENDERCORE.render(scene, INTRO.camera, null, null);
       return;
     }
@@ -16266,7 +16358,7 @@ const GAME = (() => {
       FX.update(dt, time);
       AUDIO.update(dt);
       UI.update(dt);
-      RENDERCORE.update(dt, PORTALCUTSCENE.camera.position);
+      RENDERCORE.update(dt, PORTALCUTSCENE.camera);
       RENDERCORE.render(scene, PORTALCUTSCENE.camera, null, null);
       return;
     }
@@ -16376,7 +16468,7 @@ const GAME = (() => {
     // Shadow focus rides the camera, not the player: a killcam or a ladder
     // climb can put the two a long way apart, and the shadow box has to
     // follow whatever is actually being photographed.
-    RENDERCORE.update(dt, camera.position);
+    RENDERCORE.update(dt, camera);
     // The floating first-person weapon has no business in a third-person
     // cutaway shot -- skip the overlay pass entirely while one's playing.
     RENDERCORE.render(scene, camera, KILLCAM.active ? null : viewScene, viewCamera);
