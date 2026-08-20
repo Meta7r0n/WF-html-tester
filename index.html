@@ -44,28 +44,17 @@
     max-width:none;max-height:none;touch-action:none;
   }
 
-  /* ---------- Film / paper layers ---------- */
-  #grain{
-    position:fixed;inset:-40px;pointer-events:none;z-index:20;
-    opacity:.16;mix-blend-mode:multiply;
-    background-repeat:repeat;
-    will-change:transform;
-  }
-  #vignette{
-    position:fixed;inset:0;pointer-events:none;z-index:21;
-    background:
-      radial-gradient(120% 95% at 50% 45%, rgba(0,0,0,0) 42%, rgba(38,24,18,.30) 78%, rgba(22,14,10,.62) 100%);
-    animation:flick 1.9s steps(3,end) infinite;
-  }
-  @keyframes flick{
-    0%{opacity:.86} 33%{opacity:1} 66%{opacity:.92} 100%{opacity:.86}
-  }
+  /* ---------- Film / paper layers ----------
+     Grain and vignette used to be CSS <div>s stacked on the canvas: a fixed
+     tile multiplied over a finished image, which reads as dirt on the monitor
+     rather than as film. Both now live inside the render, in [RENDERCORE]'s
+     post pass, where the grain sits under the print curve and the vignette
+     sits on top of it. Only the scratch/dust layer stays in CSS -- it is a
+     sparse, non-uniform artefact on the print, so a screen-space overlay is
+     genuinely the right place for it. */
   #scratches{
     position:fixed;inset:0;pointer-events:none;z-index:22;opacity:.10;
     background-repeat:no-repeat;
-  }
-  @media (prefers-reduced-motion: reduce){
-    #vignette{animation:none;opacity:.9}
   }
 
   /* ---------- Crosshair ---------- */
@@ -1059,7 +1048,7 @@
   #startFarmBtn{margin-top:14px;}
   #matchModeToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   #matchModeToggle.hidden{display:none;}
-  #ultraModeToggle, #voiceModeToggle, #autoEquipToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
+  #ultraModeToggle, #voiceModeToggle, #autoEquipToggle, #graphicsToggle{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:2px 0 16px;}
   .mode-toggle-label{font:800 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--rust-deep);width:100%;}
   .mode-toggle-btn{
     flex:1 1 200px;padding:9px 12px;text-align:center;cursor:pointer;
@@ -1386,9 +1375,7 @@
     <button type="button" class="mobile-btn" id="mobileChat" aria-label="Send a chat message">Chat</button>
   </div>
 
-  <div id="grain"></div>
   <div id="scratches"></div>
-  <div id="vignette"></div>
 
   <div id="splash" class="veil">
     <div class="studio-bumper" aria-hidden="true">
@@ -1621,6 +1608,12 @@
       <div class="opt-section">
         <p class="opt-heading">Display</p>
         <label class="opt-row"><span>Brightness</span><input type="range" id="optBrightness" min="60" max="140" step="1" /><b id="optBrightnessVal"></b></label>
+        <div id="graphicsToggle" role="group" aria-label="Picture quality">
+          <button type="button" class="mode-toggle-btn active" id="gfxHighBtn" data-gfx="high">Full Picture</button>
+          <button type="button" class="mode-toggle-btn" id="gfxMediumBtn" data-gfx="medium">Balanced</button>
+          <button type="button" class="mode-toggle-btn" id="gfxLowBtn" data-gfx="low">Fast</button>
+        </div>
+        <p class="opt-hint">Full Picture runs soft shadows, edge softening and 4x smoothing. Balanced keeps shadows at half the map size. Fast drops shadows entirely and keeps only the film grade — use it on older laptops.</p>
       </div>
       <div class="opt-section">
         <p class="opt-heading">Weapon Pickups</p>
@@ -1840,9 +1833,9 @@ const CONFIG = {
        target and graded in the palette's own display space -- see
        [RENDERCORE] for why the usual sRGB encode is deliberately absent. */
     grade: {
-      exposure: 1.06,
+      exposure: 1.02,
       black: 0.030,       // input value that lands on true 0
-      white: 0.965,       // input value that lands on true 1
+      white: 0.985,       // input value that lands on true 1
       contrast: 0.42,     // strength of the S-curve between them
       saturation: 1.10,
       shadowTint: [0.000, 0.012, 0.036],   // cool the shadow pools
@@ -1851,7 +1844,7 @@ const CONFIG = {
       grain: 0.085,
       grainScale: 1.4,    // grain cell size in device pixels
       grainFps: 24,       // film-stock cadence, not a 60Hz fizz
-      chroma: 0.0022,
+      chroma: 0.0016,
       weave: 0.00055,     // gate weave, in UV
       flicker: 0.018      // projector exposure flutter
     },
@@ -1859,16 +1852,21 @@ const CONFIG = {
        fully-lit surface: the old rig summed past 2.0, which is what pinned
        every frame into the top of the value scale. */
     lights: {
-      keyColor: 0xFFF2DA, keyIntensity: 0.94,
+      // The budget is the whole point. A fully sunlit, up-facing surface must
+      // total around 0.9, NOT the 2.1 the old rig summed to -- otherwise
+      // every horizontal plane clips to paper white and the top of the value
+      // scale is spent on dirt instead of on the things that are meant to be
+      // white (gloves, signs, cream paint).
+      keyColor: 0xFFF2DA, keyIntensity: 0.62,
       keyDir: [-52, 62, 40],
-      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.34,
-      rimColor: 0xC2D9EE, rimIntensity: 0.30, rimDir: [46, 20, -40],
+      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.24,
+      rimColor: 0xC2D9EE, rimIntensity: 0.15, rimDir: [46, 14, -40],
       ambColor: 0x8A7F73, ambIntensity: 0.07,
       // viewmodel scene
-      vKeyColor: 0xFFF3E2, vKeyIntensity: 0.92, vKeyDir: [-1.15, 1.85, 1.55],
-      vSkyColor: 0xCFE2F2, vGroundColor: 0x574A40, vFillIntensity: 0.30,
-      vRimColor: 0xAEC7DD, vRimIntensity: 0.34, vRimDir: [1.5, 0.5, -1.3],
-      vAmbColor: 0x8B8074, vAmbIntensity: 0.06
+      vKeyColor: 0xFFF3E2, vKeyIntensity: 0.66, vKeyDir: [-1.15, 1.85, 1.55],
+      vSkyColor: 0xCFE2F2, vGroundColor: 0x574A40, vFillIntensity: 0.24,
+      vRimColor: 0xAEC7DD, vRimIntensity: 0.22, vRimDir: [1.5, 0.5, -1.3],
+      vAmbColor: 0x8B8074, vAmbIntensity: 0.07
     }
   },
   player: {
@@ -2561,6 +2559,7 @@ const SETTINGS = (() => {
     master: CONFIG.audio.master, sfx: CONFIG.audio.sfx, music: CONFIG.audio.music,
     wind: CONFIG.audio.wind, voice: CONFIG.audio.voice,
     brightness: 100, ultra: CONFIG.ultra.active,
+    graphics: CONFIG.render.quality,
     autoEquipPickups: true, sprayTagImage: null, keymap: {}
   };
   let current = Object.assign({}, DEFAULTS);
@@ -2606,6 +2605,13 @@ const SETTINGS = (() => {
   // the start-screen toggle buttons -- this just persists the choice.
   function setUltra(v) { current.ultra = !!v; save(); }
   function setBrightness(v) { current.brightness = v; save(); applyBrightness(); }
+  /* Shadow map size, MSAA samples and the pricier half of the post pass all
+     hang off this one word. RENDERCORE is the only thing that reads it. */
+  function setGraphics(v) {
+    if (!CONFIG.render.tiers[v]) v = 'high';
+    current.graphics = v; save();
+    if (typeof RENDERCORE !== 'undefined') RENDERCORE.setQuality(v);
+  }
   function setAutoEquipPickups(v) { current.autoEquipPickups = !!v; save(); }
   function setSprayTagImage(dataUrl) {
     current.sprayTagImage = typeof dataUrl === 'string' && dataUrl.indexOf('data:image/png;base64,') === 0
@@ -2636,7 +2642,7 @@ const SETTINGS = (() => {
 
   return {
     applyAll, setMaster, setSfx, setMusic, setWind, setVoice, setUltra, setBrightness,
-    setAutoEquipPickups, setSprayTagImage, setBinding, resetBindings,
+    setGraphics, setAutoEquipPickups, setSprayTagImage, setBinding, resetBindings,
     get master() { return current.master; },
     get voice() { return current.voice; },
     get sfx() { return current.sfx; },
@@ -2644,6 +2650,7 @@ const SETTINGS = (() => {
     get wind() { return current.wind; },
     get ultra() { return current.ultra; },
     get brightness() { return current.brightness; },
+    get graphics() { return CONFIG.render.tiers[current.graphics] ? current.graphics : 'high'; },
     get autoEquipPickups() { return current.autoEquipPickups !== false; },
     get sprayTagImage() {
       return typeof current.sprayTagImage === 'string' && current.sprayTagImage.indexOf('data:image/png;base64,') === 0
@@ -3011,7 +3018,12 @@ const MAT = (() => {
     const c = document.createElement('canvas');
     c.width = 4; c.height = 1;
     const x = c.getContext('2d');
-    const steps = ['#6b6058', '#a89b8c', '#d8ccbb', '#ffffff'];
+    /* Four steps, but a much deeper first one than the original
+       #6b6058. That old darkest step sat at 42% grey, which meant a surface
+       turned fully away from the key still received 42% of it -- an enormous
+       wrap term that flattened every form in the game into a sticker. The
+       terminator now actually reads as a terminator. */
+    const steps = ['#3a352f', '#8a7c6d', '#cbbda9', '#ffffff'];
     steps.forEach((s, i) => { x.fillStyle = s; x.fillRect(i, 0, 1, 1); });
     ramp = new THREE.CanvasTexture(c);
     ramp.minFilter = ramp.magFilter = THREE.NearestFilter;
@@ -4334,6 +4346,10 @@ const LEVEL = (() => {
     );
     g.rotation.x = -Math.PI / 2;
     g.position.y = 0;
+    // A 400x400 flat plane facing the sun is nothing but self-shadow acne
+    // waiting to happen, and it can never occlude anything a real prop
+    // doesn't already occlude. It receives; it does not cast.
+    g.userData.noShadowCast = true;
     scene.add(g);
     RAY_TARGETS.push(g);
   }
@@ -13074,6 +13090,7 @@ const UI = (() => {
     el.voiceHint = document.getElementById('voiceHint');
     el.optBrightness = document.getElementById('optBrightness');
     el.optBrightnessVal = document.getElementById('optBrightnessVal');
+    el.gfxBtns = Array.prototype.slice.call(document.querySelectorAll('#graphicsToggle [data-gfx]'));
     el.autoEquipOnBtn = document.getElementById('autoEquipOnBtn');
     el.autoEquipOffBtn = document.getElementById('autoEquipOffBtn');
     el.optSprayTagChoose = document.getElementById('optSprayTagChoose');
@@ -13102,7 +13119,6 @@ const UI = (() => {
     el.buffJackrabbit = document.getElementById('buffJackrabbit');
     el.downedHud = document.getElementById('downedHud');
     el.downedHint = document.getElementById('downedHint');
-    el.grain = document.getElementById('grain');
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
     el.pepFill = document.getElementById('pepFill');
@@ -13172,7 +13188,6 @@ const UI = (() => {
       });
     }
 
-    el.grain.style.backgroundImage = 'url(' + TEX.grainDataURL(128) + ')';
     el.scratches.style.backgroundImage = 'url(' + TEX.scratchDataURL(512, 512) + ')';
     if (INPUT.mobile) {
       document.body.classList.add('touch-device');
@@ -13975,6 +13990,13 @@ const UI = (() => {
     if (el.optWind) { const v = Math.round(SETTINGS.wind * 100); el.optWind.value = v; el.optWindVal.textContent = v + '%'; }
     if (el.optVoice) { const v = Math.round(SETTINGS.voice * 100); el.optVoice.value = v; el.optVoiceVal.textContent = v + '%'; }
     if (el.optBrightness) { el.optBrightness.value = SETTINGS.brightness; el.optBrightnessVal.textContent = SETTINGS.brightness + '%'; }
+    if (el.gfxBtns) {
+      el.gfxBtns.forEach(btn => {
+        const on = btn.getAttribute('data-gfx') === SETTINGS.graphics;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
     if (el.autoEquipOnBtn) {
       el.autoEquipOnBtn.classList.toggle('active', SETTINGS.autoEquipPickups);
       el.autoEquipOnBtn.setAttribute('aria-pressed', SETTINGS.autoEquipPickups ? 'true' : 'false');
@@ -14072,13 +14094,13 @@ const UI = (() => {
       radarAcc = 0;
       if (el.radar.classList.contains('on')) drawRadar();
     }
-    // shuffle the paper grain on a 12fps clock so the world looks hand-inked
+    // Grain itself lives in the render now (see [RENDERCORE]); what is left
+    // here is the sparse dust/scratch layer, still reshuffled on a 12fps
+    // clock so it strobes like a worn print rather than crawling.
     grainAcc += dt;
     if (grainAcc > 1 / 12) {
       grainAcc = 0;
       grainStep = (grainStep + 1) % 4;
-      const ox = [0, 37, 71, 19][grainStep], oy = [0, 53, 11, 83][grainStep];
-      el.grain.style.backgroundPosition = ox + 'px ' + oy + 'px';
       if (Math.random() > 0.86) {
         el.scratches.style.backgroundPosition = (Math.random() * 400 | 0) + 'px ' + (Math.random() * 400 | 0) + 'px';
         el.scratches.style.opacity = 0.06 + Math.random() * 0.09;
@@ -15440,32 +15462,26 @@ const GAME = (() => {
     const initialViewport = viewportSize();
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio));
     renderer.setSize(initialViewport.width, initialViewport.height, false);
-    renderer.setClearColor(PAL.peach, 1);
+    renderer.setClearColor(CONFIG.render.fogColor, 1);
     renderer.autoClear = false;
-    if ('outputEncoding' in renderer && THREE.sRGBEncoding) renderer.outputEncoding = THREE.sRGBEncoding;
     document.getElementById('app').appendChild(renderer.domElement);
 
     // ---- world scene ----
     scene = new THREE.Scene();
-    scene.fog = new THREE.Fog(PAL.peach, CONFIG.render.fogNear, CONFIG.render.fogFar);
+    scene.fog = new THREE.Fog(CONFIG.render.fogColor, CONFIG.render.fogNear, CONFIG.render.fogFar);
     camera = new THREE.PerspectiveCamera(CONFIG.render.fov, initialViewport.width / initialViewport.height,
       CONFIG.render.near, CONFIG.render.far);
     camera.rotation.order = 'YXZ';
 
-    scene.add(new THREE.HemisphereLight(0xDCE9F2, PAL.dirtDeep, 0.85));
-    const sun = new THREE.DirectionalLight(0xFFF4DC, 0.95);
-    sun.position.set(-38, 46, 26);
-    scene.add(sun);
-    scene.add(new THREE.AmbientLight(0xB9A99A, 0.28));
-
     // ---- viewmodel scene, drawn on top with a cleared depth buffer ----
     viewScene = new THREE.Scene();
     viewCamera = new THREE.PerspectiveCamera(58, initialViewport.width / initialViewport.height, 0.01, 12);
-    viewScene.add(new THREE.HemisphereLight(0xE8F0F6, 0x6A5A4C, 0.9));
-    const vsun = new THREE.DirectionalLight(0xFFF4DC, 0.95);
-    vsun.position.set(-1.2, 2.0, 1.6);
-    viewScene.add(vsun);
-    viewScene.add(new THREE.AmbientLight(0xC9BAA9, 0.4));
+
+    // Lighting rig, shadow rig, composer and colour space all live in
+    // [RENDERCORE]; it owns both scenes' lights from here on.
+    RENDERCORE.setQuality(SETTINGS.graphics, { recompile: false });
+    RENDERCORE.init(renderer, scene, viewScene);
+    RENDERCORE.setSize(initialViewport.width, initialViewport.height, renderer.getPixelRatio());
 
     // Begin every mini-boss request as soon as the renderer and loader exist.
     // Level construction continues while the browser downloads/parses GLBs.
@@ -15487,6 +15503,10 @@ const GAME = (() => {
     // geometry only, with no viewmodel or enemy proxies mixed in.
     const spawned = ENEMY.init(scene);
     PICKUP.init(scene);
+    // Classify everything the builders just made in one sweep; RENDERCORE
+    // keeps picking up latecomers (enemies, debris, decals) on its own clock.
+    RENDERCORE.tagScene(scene);
+    RENDERCORE.tagScene(viewScene);
     UI.setHealth(CONFIG.player.maxHealth, CONFIG.player.maxHealth);
     UI.setShield(0, CONFIG.player.maxShield);
     UI.setKills(0);
@@ -15607,6 +15627,13 @@ const GAME = (() => {
       UI.syncOptionsUI(); // reflect the pending state immediately too
     });
     document.getElementById('optBrightness').addEventListener('input', e => { SETTINGS.setBrightness(Number(e.target.value)); UI.syncOptionsUI(); });
+    document.querySelectorAll('#graphicsToggle [data-gfx]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        SETTINGS.setGraphics(btn.getAttribute('data-gfx'));
+        UI.syncOptionsUI();
+      });
+    });
     document.getElementById('autoEquipOnBtn').addEventListener('click', e => {
       e.stopPropagation(); SETTINGS.setAutoEquipPickups(true); UI.syncOptionsUI();
     });
@@ -16198,6 +16225,7 @@ const GAME = (() => {
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     viewCamera.aspect = w / h; viewCamera.updateProjectionMatrix();
+    RENDERCORE.setSize(w, h, renderer.getPixelRatio());
   }
 
   function onResize() {
@@ -16225,8 +16253,8 @@ const GAME = (() => {
       FX.update(dt, time);
       AUDIO.update(dt);
       UI.update(dt);
-      renderer.clear();
-      renderer.render(scene, INTRO.camera);
+      RENDERCORE.update(dt, INTRO.camera.position);
+      RENDERCORE.render(scene, INTRO.camera, null, null);
       return;
     }
 
@@ -16238,8 +16266,8 @@ const GAME = (() => {
       FX.update(dt, time);
       AUDIO.update(dt);
       UI.update(dt);
-      renderer.clear();
-      renderer.render(scene, PORTALCUTSCENE.camera);
+      RENDERCORE.update(dt, PORTALCUTSCENE.camera.position);
+      RENDERCORE.render(scene, PORTALCUTSCENE.camera, null, null);
       return;
     }
 
@@ -16345,14 +16373,13 @@ const GAME = (() => {
       }
     }
 
-    renderer.clear();
-    renderer.render(scene, camera);
+    // Shadow focus rides the camera, not the player: a killcam or a ladder
+    // climb can put the two a long way apart, and the shadow box has to
+    // follow whatever is actually being photographed.
+    RENDERCORE.update(dt, camera.position);
     // The floating first-person weapon has no business in a third-person
     // cutaway shot -- skip the overlay pass entirely while one's playing.
-    if (!KILLCAM.active) {
-      renderer.clearDepth();
-      renderer.render(viewScene, viewCamera);
-    }
+    RENDERCORE.render(scene, camera, KILLCAM.active ? null : viewScene, viewCamera);
   }
 
   function resumeAfterQuestCutscene() { if (entered && !PLAYER.isDead) enter(false); }
