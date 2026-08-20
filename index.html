@@ -1780,6 +1780,7 @@ document.querySelectorAll('.veil .card').forEach(card => {
      [TEX]       procedural canvas textures
      [MAT]       toon material factory
      [INK]       inverted-hull outline system
+     [RENDERCORE] composer + print curve + lighting/shadow rig
      [PRIM]      shaped primitive builders (auto-outline + auto-collider)
      [WORLD]     collision volumes + queries
      [LEVEL]     The Withered Farm builder
@@ -1801,10 +1802,74 @@ const CONFIG = {
   render: {
     fov: 74, near: 0.05, far: 300,
     maxPixelRatio: 1.75,
-    fogNear: 40, fogFar: 165,
+    // Aerial perspective, not a cream wash. The old 40/165 peach fog ate the
+    // midground alive -- every barn two fields away flattened into the same
+    // value as the sky. Fog now starts past the far side of the yard and only
+    // reaches full strength at the world edge, and its colour is a cool grey
+    // rather than the warm ground tone, so distance reads as *cooler and
+    // flatter* while keeping its own value separate from the sky behind it.
+    fogNear: 62, fogFar: 250, fogColor: 0xAFBCC6,
     // Aim (RMB): a modest hip-aim zoom rather than a real scope -- there's
     // no scope model, just a tighter FOV that reads as "steadying up."
-    adsFov: 58, adsFovLerp: 11
+    adsFov: 58, adsFovLerp: 11,
+
+    /* ---- render core (see [RENDERCORE]) ---------------------------------
+       Every expensive thing the render core does is gated behind a tier so
+       the whole pipeline can be walked down to something a software
+       rasteriser can hold at 60fps. `quality` is live-swappable from the
+       options menu; SETTINGS persists it. */
+    quality: 'high',
+    tiers: {
+      high: {
+        post: true, samples: 4,
+        shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowSoft: true,
+        viewShadows: true, chroma: true, softEdge: true
+      },
+      medium: {
+        post: true, samples: 0,
+        shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowSoft: false,
+        viewShadows: false, chroma: true, softEdge: false
+      },
+      low: {
+        post: true, samples: 0,
+        shadows: false, shadowMapSize: 512, shadowRadius: 30, shadowSoft: false,
+        viewShadows: false, chroma: false, softEdge: false
+      }
+    },
+    /* Print curve + grade. The world is rendered into a linear-encoded
+       target and graded in the palette's own display space -- see
+       [RENDERCORE] for why the usual sRGB encode is deliberately absent. */
+    grade: {
+      exposure: 1.06,
+      black: 0.030,       // input value that lands on true 0
+      white: 0.965,       // input value that lands on true 1
+      contrast: 0.42,     // strength of the S-curve between them
+      saturation: 1.10,
+      shadowTint: [0.000, 0.012, 0.036],   // cool the shadow pools
+      highTint:   [0.030, 0.014, 0.000],   // warm the highlights
+      vignette: 0.46,
+      grain: 0.085,
+      grainScale: 1.4,    // grain cell size in device pixels
+      grainFps: 24,       // film-stock cadence, not a 60Hz fizz
+      chroma: 0.0022,
+      weave: 0.00055,     // gate weave, in UV
+      flicker: 0.018      // projector exposure flutter
+    },
+    /* Key / fill / rim. Kept deliberately under a total of ~1.25 on a
+       fully-lit surface: the old rig summed past 2.0, which is what pinned
+       every frame into the top of the value scale. */
+    lights: {
+      keyColor: 0xFFF2DA, keyIntensity: 0.94,
+      keyDir: [-52, 62, 40],
+      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.34,
+      rimColor: 0xC2D9EE, rimIntensity: 0.30, rimDir: [46, 20, -40],
+      ambColor: 0x8A7F73, ambIntensity: 0.07,
+      // viewmodel scene
+      vKeyColor: 0xFFF3E2, vKeyIntensity: 0.92, vKeyDir: [-1.15, 1.85, 1.55],
+      vSkyColor: 0xCFE2F2, vGroundColor: 0x574A40, vFillIntensity: 0.30,
+      vRimColor: 0xAEC7DD, vRimIntensity: 0.34, vRimDir: [1.5, 0.5, -1.3],
+      vAmbColor: 0x8B8074, vAmbIntensity: 0.06
+    }
   },
   player: {
     height: 1.72, radius: 0.42, eyeHeight: 1.58,
@@ -3026,6 +3091,502 @@ const INK = (() => {
     return shell;
   }
   return { add };
+})();
+
+/* ============================ [RENDERCORE] ===========================
+   The frame itself: composer, print curve, lighting rig, shadow rig.
+
+   THREE r128's CDN build ships no EffectComposer/RenderPass/ShaderPass and
+   we are not allowed to add a script tag, so the composer here is written by
+   hand. It is deliberately the smallest thing that can work: ONE render
+   target, ONE fullscreen quad, ONE uber-shader. Chaining separate passes
+   would cost a full-screen read+write per effect, which is exactly the
+   bandwidth a software rasteriser has none of.
+
+   COLOUR SPACE -- read this before touching the grade.
+   The renderer used to run outputEncoding = sRGBEncoding while every palette
+   colour and every canvas texture was tagged LinearEncoding. The net effect
+   was a free ^(1/2.2) lift on the whole frame: PAL.ink (0x120F0D) reached the
+   screen at roughly 0x4A -- a mid grey -- which is why the "ink" outlines
+   read brown and no frame had a black in it. The rig also summed to >2.0 of
+   light on a lit surface, clipping every up-facing plane to paper white.
+
+   So: the world renders into a LinearEncoding target (i.e. no encode at all,
+   values land exactly as authored), the grade happens in that same
+   display-referred space, and the quad writes straight out. The palette now
+   arrives on screen as the palette. Everything below is tuned for that.
+
+   TWO-SCENE FRAME. The game draws the world, clears depth, then draws the
+   viewmodel on top. Both go into the same target before the quad runs, so
+   the viewmodel is pinned above the world exactly as before and picks up the
+   grade, grain and vignette with it -- it is part of the photographed image,
+   not a sticker on the glass. Nothing depth-dependent (no DOF, no AO) lives
+   in the pass, so sharing the target costs nothing. */
+const RENDERCORE = (() => {
+  const G = () => CONFIG.render.grade;
+  const L = () => CONFIG.render.lights;
+
+  let renderer = null, world = null, view = null;
+  let rt = null, quadScene = null, quadCam = null, quadMat = null, quadOk = false;
+  let key = null, keyTarget = null, fill = null, rim = null, amb = null;
+  let vKey = null, vKeyTarget = null, vFill = null, vRim = null, vAmb = null;
+  let width = 1, height = 1, tierName = 'high', tier = null;
+  let clock = 0, tagAcc = 0;
+  let lastSamples = -1, lastDefines = '';
+
+  const _keyOff = new THREE.Vector3();
+  const _rimOff = new THREE.Vector3();
+  const _focus = new THREE.Vector3();
+
+  /* -------------------------------------------------------------- shaders */
+  const VERT = [
+    'varying vec2 vUv;',
+    'void main() {',
+    '  vUv = uv;',
+    '  gl_Position = vec4(position.xy, 0.0, 1.0);',
+    '}'
+  ].join('\n');
+
+  const FRAG = [
+    'varying vec2 vUv;',
+    'uniform sampler2D tDiffuse;',
+    'uniform vec2 uTexel;',
+    'uniform vec2 uWeave;',
+    'uniform float uTime;',
+    'uniform float uExposure;',
+    'uniform float uBlack;',
+    'uniform float uWhiteInv;',
+    'uniform float uContrast;',
+    'uniform float uSaturation;',
+    'uniform vec3 uShadowTint;',
+    'uniform vec3 uHighTint;',
+    'uniform float uVignette;',
+    'uniform float uGrain;',
+    'uniform float uGrainScale;',
+    'uniform float uChroma;',
+    '',
+    'const vec3 LUMA = vec3(0.2126, 0.7152, 0.0722);',
+    '',
+    'float hash21(vec2 p) {',
+    '  p = fract(p * vec2(127.31, 311.7));',
+    '  p += dot(p, p + 41.53);',
+    '  return fract(p.x * p.y);',
+    '}',
+    '',
+    'void main() {',
+    '  vec2 c = vUv - 0.5;',
+    '  float r2 = dot(c, c);',
+    '  vec2 uv = vUv + uWeave;',
+    '',
+    // Lens colour fringing: a couple of pixels of radial RGB split, zero in
+    // the middle of frame. Sells "projected through glass" more cheaply than
+    // any blur could.
+    '#ifdef RC_CHROMA',
+    '  vec2 off = c * (uChroma * (0.20 + r2 * 3.2));',
+    '  vec3 col = vec3(',
+    '    texture2D(tDiffuse, uv + off).r,',
+    '    texture2D(tDiffuse, uv).g,',
+    '    texture2D(tDiffuse, uv - off).b);',
+    '#else',
+    '  vec3 col = texture2D(tDiffuse, uv).rgb;',
+    '#endif',
+    '',
+    // Gate softness. Four taps, and only where the corner falloff is
+    // non-zero -- the branch is a real win on a scalar software rasteriser.
+    '#ifdef RC_SOFTEDGE',
+    '  float soft = smoothstep(0.14, 0.48, r2);',
+    '  if (soft > 0.002) {',
+    '    vec2 t = uTexel * 1.6;',
+    '    vec3 b = texture2D(tDiffuse, uv + vec2( t.x,  t.y)).rgb',
+    '           + texture2D(tDiffuse, uv + vec2(-t.x,  t.y)).rgb',
+    '           + texture2D(tDiffuse, uv + vec2( t.x, -t.y)).rgb',
+    '           + texture2D(tDiffuse, uv + vec2(-t.x, -t.y)).rgb;',
+    '    col = mix(col, b * 0.25, soft * 0.55);',
+    '  }',
+    '#endif',
+    '',
+    '  col *= uExposure;',
+    '',
+    // Grain goes into the negative, BEFORE the print curve, so the toe
+    // crushes it out of the blacks and the shoulder squeezes it out of the
+    // whites all by itself -- the way stock actually behaves. A flat
+    // post-grade overlay (what the old CSS tile was) reads as dirt on the
+    // monitor instead.
+    '  float luma0 = dot(col, LUMA);',
+    '  float g = hash21(floor(gl_FragCoord.xy / uGrainScale) + uTime) - 0.5;',
+    '  col += g * uGrain * (0.30 + 0.70 * (1.0 - abs(luma0 * 2.0 - 1.0)));',
+    '',
+    // Print: black point, white point, then an S-curve between them.
+    '  col = clamp((col - uBlack) * uWhiteInv, 0.0, 1.0);',
+    '  col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);',
+    '',
+    '  float luma = dot(col, LUMA);',
+    '  col = mix(vec3(luma), col, uSaturation);',
+    '  col += uShadowTint * (1.0 - luma) + uHighTint * luma;',
+    '',
+    // Vignette is a lens/gate artefact, so it lands on the print, not the
+    // negative.
+    '  col *= 1.0 - uVignette * smoothstep(0.09, 0.60, r2);',
+    '',
+    '  gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);',
+    '}'
+  ].join('\n');
+
+  /* ------------------------------------------------------------ film clock
+     Grain, gate weave and projector flicker all step together on one
+     low-rate clock. 60Hz noise fizzes like video; 24Hz noise reads as film. */
+  function filmHash(n) {
+    const s = Math.sin(n * 12.9898) * 43758.5453;
+    return s - Math.floor(s);
+  }
+
+  /* ------------------------------------------------------------- composer */
+  function makeTarget() {
+    if (rt) { rt.dispose(); rt = null; }
+    const w = Math.max(1, Math.floor(width));
+    const h = Math.max(1, Math.floor(height));
+    const opts = {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      encoding: THREE.LinearEncoding,
+      depthBuffer: true,
+      stencilBuffer: false
+    };
+    const wantsMSAA = tier.samples > 1 &&
+      renderer.capabilities && renderer.capabilities.isWebGL2 &&
+      typeof THREE.WebGLMultisampleRenderTarget === 'function';
+    // Rendering off-screen throws away the default framebuffer's MSAA, and
+    // an inverted-hull outline system without antialiasing is a staircase.
+    // WebGL2 multisample targets buy it back; where they are unavailable the
+    // tier just loses edge quality rather than the whole pipeline.
+    if (wantsMSAA) {
+      rt = new THREE.WebGLMultisampleRenderTarget(w, h, opts);
+      rt.samples = tier.samples;
+    } else {
+      rt = new THREE.WebGLRenderTarget(w, h, opts);
+    }
+    rt.texture.generateMipmaps = false;
+    lastSamples = wantsMSAA ? tier.samples : 0;
+  }
+
+  function makeQuad() {
+    const grade = G();
+    quadScene = new THREE.Scene();
+    quadCam = new THREE.Camera();
+    quadMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: null },
+        uTexel: { value: new THREE.Vector2(1 / 1280, 1 / 720) },
+        uWeave: { value: new THREE.Vector2(0, 0) },
+        uTime: { value: 0 },
+        uExposure: { value: grade.exposure },
+        uBlack: { value: grade.black },
+        uWhiteInv: { value: 1 / Math.max(0.01, grade.white - grade.black) },
+        uContrast: { value: grade.contrast },
+        uSaturation: { value: grade.saturation },
+        uShadowTint: { value: new THREE.Vector3().fromArray(grade.shadowTint) },
+        uHighTint: { value: new THREE.Vector3().fromArray(grade.highTint) },
+        uVignette: { value: grade.vignette },
+        uGrain: { value: grade.grain },
+        uGrainScale: { value: grade.grainScale },
+        uChroma: { value: grade.chroma }
+      },
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      depthTest: false,
+      depthWrite: false
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), quadMat);
+    quad.frustumCulled = false;
+    quadScene.add(quad);
+  }
+
+  function applyDefines() {
+    const want = (tier.chroma ? 'C' : '') + (tier.softEdge ? 'S' : '');
+    if (want === lastDefines) return;
+    lastDefines = want;
+    quadMat.defines = {};
+    if (tier.chroma) quadMat.defines.RC_CHROMA = '1';
+    if (tier.softEdge) quadMat.defines.RC_SOFTEDGE = '1';
+    quadMat.needsUpdate = true;
+  }
+
+  /* --------------------------------------------------------------- lights */
+  function buildWorldLights(scene) {
+    const l = L();
+    key = new THREE.DirectionalLight(l.keyColor, l.keyIntensity);
+    keyTarget = new THREE.Object3D();
+    scene.add(keyTarget);
+    key.target = keyTarget;
+    _keyOff.fromArray(l.keyDir);
+    key.position.copy(_keyOff);
+    scene.add(key);
+
+    // Fill is the only thing lighting a shadow pool, so its colour decides
+    // what "black" looks like here: a cold slate, warmed slightly from below
+    // by bounce off the dirt.
+    fill = new THREE.HemisphereLight(l.skyColor, l.groundColor, l.fillIntensity);
+    scene.add(fill);
+
+    // Rim comes from behind-right, cool and weak. Its whole job is to put a
+    // lit edge on the silhouette side of a form so it separates from
+    // whatever is behind it.
+    rim = new THREE.DirectionalLight(l.rimColor, l.rimIntensity);
+    _rimOff.fromArray(l.rimDir);
+    rim.position.copy(_rimOff);
+    scene.add(rim);
+
+    amb = new THREE.AmbientLight(l.ambColor, l.ambIntensity);
+    scene.add(amb);
+  }
+
+  function buildViewLights(scene) {
+    const l = L();
+    vKey = new THREE.DirectionalLight(l.vKeyColor, l.vKeyIntensity);
+    vKeyTarget = new THREE.Object3D();
+    vKeyTarget.position.set(0, -0.18, -0.55);
+    scene.add(vKeyTarget);
+    vKey.target = vKeyTarget;
+    vKey.position.set(l.vKeyDir[0], l.vKeyDir[1], l.vKeyDir[2]);
+    scene.add(vKey);
+    vFill = new THREE.HemisphereLight(l.vSkyColor, l.vGroundColor, l.vFillIntensity);
+    scene.add(vFill);
+    vRim = new THREE.DirectionalLight(l.vRimColor, l.vRimIntensity);
+    vRim.position.set(l.vRimDir[0], l.vRimDir[1], l.vRimDir[2]);
+    scene.add(vRim);
+    vAmb = new THREE.AmbientLight(l.vAmbColor, l.vAmbIntensity);
+    scene.add(vAmb);
+  }
+
+  /* --------------------------------------------------------------- shadows
+     One shadow-casting light for a 300-unit farm would need an ortho box so
+     wide that a 2048 map gives ~15cm texels. Instead the key's shadow camera
+     is a small box that rides with the player and is snapped to its own texel
+     grid each frame, so the map is spent entirely on what is actually on
+     screen and the edges do not crawl while walking. */
+  function applyShadowTier() {
+    if (!renderer || !key) return;
+    renderer.shadowMap.enabled = !!tier.shadows;
+    renderer.shadowMap.type = tier.shadowSoft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    key.castShadow = !!tier.shadows;
+    if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }
+    key.shadow.mapSize.set(tier.shadowMapSize, tier.shadowMapSize);
+    const R = tier.shadowRadius;
+    const cam = key.shadow.camera;
+    cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;
+    cam.near = 1; cam.far = _keyOff.length() * 2 + R * 2;
+    cam.updateProjectionMatrix();
+    // normalBias does the heavy lifting against acne on the warped, welded
+    // geometry PRIM produces; a big depth bias here would detach contact
+    // shadows from their objects, which is the one thing we cannot afford.
+    key.shadow.bias = -0.00035;
+    key.shadow.normalBias = 0.035;
+    if (vKey) {
+      vKey.castShadow = !!(tier.shadows && tier.viewShadows);
+      if (vKey.shadow.map) { vKey.shadow.map.dispose(); vKey.shadow.map = null; }
+      vKey.shadow.mapSize.set(512, 512);
+      const vc = vKey.shadow.camera;
+      vc.left = -0.85; vc.right = 0.85; vc.top = 0.85; vc.bottom = -0.85;
+      vc.near = 0.05; vc.far = 7;
+      vc.updateProjectionMatrix();
+      vKey.shadow.bias = -0.0012;
+      vKey.shadow.normalBias = 0.012;
+    }
+  }
+
+  /* Toggling shadowMap.enabled changes the compiled program for every lit
+     material, and three will not notice on its own. */
+  function invalidateMaterials(root) {
+    if (!root) return;
+    root.traverse(o => {
+      if (!o.material) return;
+      const m = o.material;
+      if (Array.isArray(m)) m.forEach(x => { if (x) x.needsUpdate = true; });
+      else m.needsUpdate = true;
+    });
+  }
+
+  /* ------------------------------------------------------------- tagging
+     Nothing in the codebase ever set castShadow/receiveShadow, and new
+     meshes appear at runtime constantly (enemies, pickups, decals, debris).
+     Rather than thread a flag through forty builders, the whole scene is
+     swept on a slow clock and anything untagged is classified once.
+
+     The rules, in order:
+       - inverted-hull outline shells never participate. They are a scaled
+         BackSide copy of their sibling, so letting them cast would fatten
+         every silhouette in the shadow map and double the contact edge.
+       - anything transparent, depth-write-disabled or fog-disabled is a
+         decal, a sheet of glass, a cloud, the skydome or an FX puff. None of
+         those should throw a shadow.
+       - only genuinely lit materials can *receive* one. MAT.flat is
+         MeshBasicMaterial and has no lighting term at all; it still casts,
+         because an unlit prop with no shadow under it floats just as badly
+         as a lit one. */
+  function classify(o) {
+    o.userData.rcTagged = true;
+    if (o.userData.outline || o.userData.noShadow) {
+      o.castShadow = false; o.receiveShadow = false; return;
+    }
+    const mat = Array.isArray(o.material) ? o.material[0] : o.material;
+    if (!mat) { o.castShadow = false; o.receiveShadow = false; return; }
+    const ghost = mat.transparent === true || mat.depthWrite === false || mat.fog === false;
+    const lit = !!(mat.isMeshToonMaterial || mat.isMeshStandardMaterial ||
+                   mat.isMeshPhysicalMaterial || mat.isMeshPhongMaterial ||
+                   mat.isMeshLambertMaterial);
+    o.castShadow = !ghost && !o.userData.noShadowCast;
+    o.receiveShadow = lit && !ghost;
+  }
+
+  function tagScene(root) {
+    if (!root) return;
+    root.traverse(o => {
+      if (!o.isMesh || o.userData.rcTagged) return;
+      classify(o);
+    });
+  }
+
+  /* ----------------------------------------------------------------- tier */
+  function currentTier() {
+    const t = CONFIG.render.tiers[tierName] || CONFIG.render.tiers.high;
+    return t;
+  }
+
+  function setQuality(name, opts) {
+    if (!CONFIG.render.tiers[name]) name = 'high';
+    const changed = name !== tierName;
+    tierName = name;
+    CONFIG.render.quality = name;
+    tier = currentTier();
+    if (!renderer) return;
+    applyShadowTier();
+    if (quadMat) applyDefines();
+    const wantsMSAA = tier.samples > 1 && renderer.capabilities.isWebGL2 ? tier.samples : 0;
+    if (wantsMSAA !== lastSamples) makeTarget();
+    if (changed && (!opts || opts.recompile !== false)) {
+      invalidateMaterials(world);
+      invalidateMaterials(view);
+    }
+  }
+
+  /* ----------------------------------------------------------------- init */
+  function init(r, worldScene, viewSceneRef) {
+    renderer = r;
+    world = worldScene;
+    view = viewSceneRef;
+    tier = currentTier();
+
+    // See the COLOUR SPACE note at the top of this module: the frame is
+    // authored, graded and displayed in one space, with no encode anywhere.
+    renderer.outputEncoding = THREE.LinearEncoding;
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.shadowMap.autoUpdate = true;
+    renderer.setClearColor(CONFIG.render.fogColor, 1);
+
+    buildWorldLights(world);
+    buildViewLights(view);
+    applyShadowTier();
+
+    try {
+      makeTarget();
+      makeQuad();
+      applyDefines();
+      quadOk = true;
+    } catch (err) {
+      // A dead composer must not be a dead game: fall through to the plain
+      // two-scene render and lose only the grade.
+      console.warn('RENDERCORE: composer unavailable, rendering ungraded.', err);
+      quadOk = false;
+    }
+  }
+
+  function setSize(w, h, pixelRatio) {
+    width = Math.max(1, Math.floor(w * pixelRatio));
+    height = Math.max(1, Math.floor(h * pixelRatio));
+    if (!quadOk) return;
+    if (rt) rt.setSize(width, height);
+    quadMat.uniforms.uTexel.value.set(1 / width, 1 / height);
+  }
+
+  /* --------------------------------------------------------------- update */
+  function update(dt, focus) {
+    clock += dt;
+    if (tier.shadows && key && focus) {
+      // Snapping the focus point to the shadow map's own texel size is what
+      // stops shadow edges from swimming as the player walks.
+      const texel = (tier.shadowRadius * 2) / tier.shadowMapSize;
+      const fx = Math.round(focus.x / texel) * texel;
+      const fz = Math.round(focus.z / texel) * texel;
+      const fy = focus.y;
+      _focus.set(fx, fy, fz);
+      keyTarget.position.copy(_focus);
+      keyTarget.updateMatrixWorld();
+      key.position.copy(_focus).add(_keyOff);
+    }
+    if (rim && focus) {
+      rim.position.copy(focus).add(_rimOff);
+      rim.target.position.copy(focus);
+      rim.target.updateMatrixWorld();
+    }
+    tagAcc += dt;
+    if (tagAcc > 0.4) { tagAcc = 0; tagScene(world); if (tier.viewShadows) tagScene(view); }
+  }
+
+  /* --------------------------------------------------------------- render */
+  function drawScenes(sceneA, camA, sceneB, camB) {
+    renderer.clear(true, true, true);
+    renderer.render(sceneA, camA);
+    if (sceneB && camB) {
+      // Depth-only clear, exactly as before: the viewmodel must sit on top of
+      // the world and must never be clipped by it.
+      renderer.clearDepth();
+      renderer.render(sceneB, camB);
+    }
+  }
+
+  function render(sceneA, camA, sceneB, camB) {
+    if (!renderer) return;
+    if (!quadOk || !tier.post) {
+      renderer.setRenderTarget(null);
+      drawScenes(sceneA, camA, sceneB, camB);
+      return;
+    }
+    const grade = G();
+    const step = Math.floor(clock * grade.grainFps);
+    const u = quadMat.uniforms;
+    u.uTime.value = step;
+    // Gate weave: a sub-pixel reframe that resettles on the same 24Hz clock
+    // as the grain, so the whole image breathes together.
+    u.uWeave.value.set(
+      (filmHash(step) - 0.5) * 2 * grade.weave,
+      (filmHash(step + 137) - 0.5) * 2 * grade.weave * 0.8
+    );
+    u.uExposure.value = grade.exposure * (1 + (filmHash(step + 61) - 0.5) * 2 * grade.flicker);
+    u.uBlack.value = grade.black;
+    u.uWhiteInv.value = 1 / Math.max(0.01, grade.white - grade.black);
+    u.uContrast.value = grade.contrast;
+    u.uSaturation.value = grade.saturation;
+    u.uVignette.value = grade.vignette;
+    u.uGrain.value = grade.grain;
+    u.uGrainScale.value = grade.grainScale;
+    u.uChroma.value = grade.chroma;
+
+    renderer.setRenderTarget(rt);
+    drawScenes(sceneA, camA, sceneB, camB);
+    renderer.setRenderTarget(null);
+    u.tDiffuse.value = rt.texture;
+    renderer.clear(true, true, true);
+    renderer.render(quadScene, quadCam);
+  }
+
+  return {
+    init, setSize, update, render, setQuality, tagScene,
+    get quality() { return tierName; },
+    get tier() { return tier || currentTier(); },
+    get key() { return key; }
+  };
 })();
 
 /* Meshes a bullet can hit. Outline shells are excluded by construction. */
