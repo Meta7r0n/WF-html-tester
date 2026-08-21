@@ -2107,17 +2107,17 @@ const CONFIG = {
     tiers: {
       high: {
         post: true, samples: 4,
-        shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowSoft: true,
+        shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowBlur: 3.4,
         viewShadows: true, chroma: true, softEdge: true
       },
       medium: {
         post: true, samples: 0,
-        shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowSoft: false,
+        shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowBlur: 2.2,
         viewShadows: false, chroma: true, softEdge: false
       },
       low: {
         post: true, samples: 0,
-        shadows: false, shadowMapSize: 512, shadowRadius: 30, shadowSoft: false,
+        shadows: false, shadowMapSize: 512, shadowRadius: 30, shadowBlur: 1.0,
         viewShadows: false, chroma: false, softEdge: false
       }
     },
@@ -2125,10 +2125,30 @@ const CONFIG = {
        target and graded in the palette's own display space -- see
        [RENDERCORE] for why the usual sRGB encode is deliberately absent. */
     grade: {
-      exposure: 1.02,
-      black: 0.030,       // input value that lands on true 0
-      white: 0.945,       // input value that lands on true 1
-      contrast: 0.34,     // strength of the S-curve between them
+      exposure: 1.00,
+      black: 0.052,       // input value that lands on true 0
+      white: 0.870,       // input value that lands on true 1
+      /* PRINT GAMMA -- the most load-bearing number in the whole grade.
+         With no encode anywhere in the chain the frame was being *displayed*
+         linear-light, and linear-light response is brutal to everything below
+         about a third of the scale: a dark-red barn wall lit only by fill sat
+         at 0.19 of light and printed at RGB 15. Half of the northbarn frame
+         was a black void for exactly this reason, and no amount of extra fill
+         could fix it without blowing the dirt out to paper.
+         A print gamma is the transfer curve that a linear render is *supposed*
+         to be viewed through. It buys back the whole lower-middle of the scale
+         -- that same wall now prints around 80, with its plank lines and its
+         hue intact -- while the black point below still takes the ink lines
+         and the deepest pools to a true 0. Blacks stay black; the shadows
+         stop being holes. */
+      gamma: 0.62,
+      /* Highlight shoulder. Below the knee the curve is untouched; above it,
+         everything rolls asymptotically into the last stop instead of being
+         clamped. Without this, raising the fill floor enough to hold the
+         shadows immediately fused the whole top of the scale into one flat
+         white (p99 was collapsing to 228 with high% at 3%). */
+      knee: 0.80,
+      contrast: 0.15,     // strength of the S-curve, on top of the gamma
       // Dropping the sRGB output encode also dropped the ~2x desaturation it
       // was silently applying, which left the palette reading as saturated
       // primaries (salmon dirt, poster-green corn) instead of the dusty
@@ -2151,20 +2171,29 @@ const CONFIG = {
       weave: 0.00055,     // gate weave, in UV
       flicker: 0.018      // projector exposure flutter
     },
-    /* Key / fill / rim. Kept deliberately under a total of ~1.25 on a
-       fully-lit surface: the old rig summed past 2.0, which is what pinned
-       every frame into the top of the value scale. */
+    /* Key / key-bounce / fill / rim. Kept deliberately under a total of ~1.0
+       on a fully-lit surface: the original rig summed past 2.0, which is what
+       pinned every frame into the top of the value scale. */
     lights: {
       // The budget is the whole point. A fully sunlit, up-facing surface must
-      // total around 0.9, NOT the 2.1 the old rig summed to -- otherwise
+      // total around 0.95, NOT the 2.1 the old rig summed to -- otherwise
       // every horizontal plane clips to paper white and the top of the value
       // scale is spent on dirt instead of on the things that are meant to be
       // white (gloves, signs, cream paint).
-      keyColor: 0xFFF2DA, keyIntensity: 0.55,
+      keyColor: 0xFFF2DA, keyIntensity: 0.50,
       keyDir: [-52, 62, 40],
-      skyColor: 0xB6D3EC, groundColor: 0x6A5544, fillIntensity: 0.30,
-      rimColor: 0xC2D9EE, rimIntensity: 0.17, rimDir: [46, 14, -40],
-      ambColor: 0x8A7F73, ambIntensity: 0.09,
+      /* SHADOW FLOOR. A second directional light on the key's exact axis that
+         casts nothing. Three r128 has no shadow-intensity control, so a cast
+         shadow is a total absence of the key -- which is how half the north
+         barn became a hole. This twin puts a floor under every shadow: a
+         shadowed surface still gets keyBounce, a lit one gets key+keyBounce,
+         and the ratio between them is the shadow's density. It is also the
+         cheapest way to say "sunlight bounces around inside a farmyard".
+         Raise it to open the shadows, lower it to deepen them. */
+      keyBounceColor: 0xE8DCC8, keyBounceIntensity: 0.20,
+      skyColor: 0xBCD6EE, groundColor: 0x7E6650, fillIntensity: 0.36,
+      rimColor: 0xC2D9EE, rimIntensity: 0.15, rimDir: [46, 14, -40],
+      ambColor: 0x8F8478, ambIntensity: 0.11,
       /* Viewmodel. It is the one object on screen for the whole run, held a
          hand's width from the lens, so it gets its own three-point rig rather
          than a copy of the sun. Key from high front-left picks out the top of
@@ -3509,7 +3538,7 @@ const RENDERCORE = (() => {
 
   let renderer = null, world = null, view = null;
   let rt = null, quadScene = null, quadCam = null, quadMat = null, quadOk = false;
-  let key = null, keyTarget = null, fill = null, rim = null, amb = null;
+  let key = null, keyTarget = null, keyBounce = null, fill = null, rim = null, amb = null;
   let vKey = null, vKeyTarget = null, vFill = null, vRim = null, vAmb = null;
   let width = 1, height = 1, tierName = 'high', tier = null;
   let clock = 0, tagAcc = 0;
@@ -3537,6 +3566,9 @@ const RENDERCORE = (() => {
     'uniform float uExposure;',
     'uniform float uBlack;',
     'uniform float uWhiteInv;',
+    'uniform float uGamma;',
+    'uniform float uKnee;',
+    'uniform float uKneeInv;',
     'uniform float uContrast;',
     'uniform float uSaturation;',
     'uniform float uSatRoll;',
@@ -3594,12 +3626,29 @@ const RENDERCORE = (() => {
     // whites all by itself -- the way stock actually behaves. A flat
     // post-grade overlay (what the old CSS tile was) reads as dirt on the
     // monitor instead.
-    '  float luma0 = dot(col, LUMA);',
+    // Density is shaped against the *printed* luma, not the linear one: the
+    // print gamma below stretches the bottom of the scale enormously, so
+    // weighting by linear luma would dump nearly all the grain into the toe
+    // and read as noise in the blacks instead of as stock.
+    '  float luma0 = pow(max(dot(col, LUMA), 0.0), uGamma);',
     '  float g = hash21(floor(gl_FragCoord.xy / uGrainScale) + uTime) - 0.5;',
-    '  col += g * uGrain * (0.30 + 0.70 * (1.0 - abs(luma0 * 2.0 - 1.0)));',
+    '  col += g * uGrain * (0.22 + 0.78 * (1.0 - abs(luma0 * 2.0 - 1.0)));',
     '',
-    // Print: black point, white point, then an S-curve between them.
-    '  col = clamp((col - uBlack) * uWhiteInv, 0.0, 1.0);',
+    // ---- print ---------------------------------------------------------
+    // 1. Black point. Ink lines and the deepest pools go in here and come
+    //    out at a true zero.
+    '  col = max(vec3(0.0), col - uBlack) * uWhiteInv;',
+    // 2. Print gamma -- the transfer curve a linear render is meant to be
+    //    viewed through, and the thing that puts material back into every
+    //    surface lit only by fill. See CONFIG.render.grade.gamma.
+    '  col = pow(col, vec3(uGamma));',
+    // 3. Shoulder. Above the knee, roll into the last stop asymptotically
+    //    rather than clamping, so highlights keep separating from one
+    //    another instead of fusing into a single flat white.
+    '  vec3 over = max(vec3(0.0), col - uKnee);',
+    '  col = min(col, vec3(uKnee)) + (1.0 - uKnee) * (1.0 - exp(-over * uKneeInv));',
+    // 4. A light S on top, purely for snap; the gamma and shoulder have
+    //    already done the shaping.
     '  col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);',
     '',
     '  float luma = dot(col, LUMA);',
@@ -3674,6 +3723,9 @@ const RENDERCORE = (() => {
         uExposure: { value: grade.exposure },
         uBlack: { value: grade.black },
         uWhiteInv: { value: 1 / Math.max(0.01, grade.white - grade.black) },
+        uGamma: { value: grade.gamma },
+        uKnee: { value: grade.knee },
+        uKneeInv: { value: 1 / Math.max(0.01, 1 - grade.knee) },
         uContrast: { value: grade.contrast },
         uSaturation: { value: grade.saturation },
         uSatRoll: { value: grade.satRoll },
@@ -3714,6 +3766,19 @@ const RENDERCORE = (() => {
     _keyOff.fromArray(l.keyDir);
     key.position.copy(_keyOff);
     scene.add(key);
+
+    /* The key's shadowless twin -- the floor under every cast shadow. Three
+       r128 has no shadow-intensity control at all: a shadow is a total
+       absence of the light that cast it, so a wall in shade received nothing
+       but hemisphere and went to RGB 15. This light rides the same axis and
+       is never occluded, so shade keeps a directional read (and its own hue)
+       instead of collapsing into a hole, and the key/keyBounce ratio is
+       exactly how dense the shadows print. */
+    keyBounce = new THREE.DirectionalLight(l.keyBounceColor, l.keyBounceIntensity);
+    keyBounce.castShadow = false;
+    keyBounce.target = keyTarget;
+    keyBounce.position.copy(_keyOff);
+    scene.add(keyBounce);
 
     // Fill is the only thing lighting a shadow pool, so its colour decides
     // what "black" looks like here: a cold slate, warmed slightly from below
@@ -3760,10 +3825,16 @@ const RENDERCORE = (() => {
   function applyShadowTier() {
     if (!renderer || !key) return;
     renderer.shadowMap.enabled = !!tier.shadows;
-    renderer.shadowMap.type = tier.shadowSoft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    /* PCF, not PCF_SOFT. r128's PCF_SOFT is a fixed one-texel bilinear kernel
+       and ignores shadow.radius entirely, which is why the edges were coming
+       out stencil-hard; plain PCF is a 17-tap kernel whose spread *is*
+       shadow.radius, so the penumbra can be widened to something a cartoon
+       sun would actually throw. tier.shadowBlur is that spread in texels. */
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     key.castShadow = !!tier.shadows;
     if (key.shadow.map) { key.shadow.map.dispose(); key.shadow.map = null; }
     key.shadow.mapSize.set(tier.shadowMapSize, tier.shadowMapSize);
+    key.shadow.radius = tier.shadowBlur;
     const R = tier.shadowRadius;
     const cam = key.shadow.camera;
     cam.left = -R; cam.right = R; cam.top = R; cam.bottom = -R;
@@ -3778,6 +3849,7 @@ const RENDERCORE = (() => {
       vKey.castShadow = !!(tier.shadows && tier.viewShadows);
       if (vKey.shadow.map) { vKey.shadow.map.dispose(); vKey.shadow.map = null; }
       vKey.shadow.mapSize.set(512, 512);
+      vKey.shadow.radius = 1.6;
       const vc = vKey.shadow.camera;
       vc.left = -0.85; vc.right = 0.85; vc.top = 0.85; vc.bottom = -0.85;
       vc.near = 0.05; vc.far = 7;
@@ -3930,6 +4002,7 @@ const RENDERCORE = (() => {
       keyTarget.position.copy(_focus);
       keyTarget.updateMatrixWorld();
       key.position.copy(_focus).add(_keyOff);
+      if (keyBounce) keyBounce.position.copy(key.position);
     }
     if (rim && focus) {
       rim.position.copy(focus).add(_rimOff);
@@ -3972,6 +4045,9 @@ const RENDERCORE = (() => {
     u.uExposure.value = grade.exposure * (1 + (filmHash(step + 61) - 0.5) * 2 * grade.flicker);
     u.uBlack.value = grade.black;
     u.uWhiteInv.value = 1 / Math.max(0.01, grade.white - grade.black);
+    u.uGamma.value = grade.gamma;
+    u.uKnee.value = grade.knee;
+    u.uKneeInv.value = 1 / Math.max(0.01, 1 - grade.knee);
     u.uContrast.value = grade.contrast;
     u.uSaturation.value = grade.saturation;
     u.uSatRoll.value = grade.satRoll;
@@ -4000,7 +4076,7 @@ const RENDERCORE = (() => {
        recompile -- which is what makes the rig tunable from the console
        instead of only from a reload. */
     get lights() {
-      return { key: key, fill: fill, rim: rim, amb: amb,
+      return { key: key, keyBounce: keyBounce, fill: fill, rim: rim, amb: amb,
                vKey: vKey, vFill: vFill, vRim: vRim, vAmb: vAmb };
     },
     /* Re-reads CONFIG.render.lights into the live rig. Grade values are read
@@ -4011,6 +4087,10 @@ const RENDERCORE = (() => {
       if (!key) return;
       key.color.set(l.keyColor); key.intensity = l.keyIntensity;
       _keyOff.fromArray(l.keyDir);
+      if (keyBounce) {
+        keyBounce.color.set(l.keyBounceColor);
+        keyBounce.intensity = l.keyBounceIntensity;
+      }
       fill.color.set(l.skyColor); fill.groundColor.set(l.groundColor);
       fill.intensity = l.fillIntensity;
       rim.color.set(l.rimColor); rim.intensity = l.rimIntensity;
