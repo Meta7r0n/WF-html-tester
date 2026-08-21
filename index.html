@@ -9,6 +9,12 @@
     --peach:#F2CDBB;
     --peach-deep:#DCA692;
     --cream:#F6E9D2;
+    /* Declared because they are referenced further down (component chips,
+       run-clock sublabels, the mobile look zone). They used to be missing,
+       which resolved to `unset` -> inherited near-black text: invisible
+       while every frame was cream, ghosted the moment real darks arrived. */
+    --cream-dim:#E2D2B4;
+    --blue-gray:#7D8B94;
     --blue:#8FB3CC;
     --blue-deep:#5C7E99;
     --mustard:#E8A33D;
@@ -18,6 +24,43 @@
     --jays:#8EAD4B;
     --ink:#16120F;
     --ink-soft:#2A231E;
+
+    /* ---- HUD design tokens (see the "Play HUD" section below) ----
+       One place to tune the whole in-game overlay. The HUD is deliberately
+       built from two materials only: a CHARCOAL TAG (enamel plate riveted to
+       the corner of the frame -- the player's own readouts) and a PAPER
+       TICKET (a printed slip -- anything the world is telling you). Nothing
+       else gets a background. */
+    --hud-slab:"Rockwell","Rockwell Nova","Roboto Slab","Bookman Old Style","Bitstream Charter","Courier New",Georgia,serif;
+    /* Fully opaque on purpose. The film layers (#grain, #vignette) sit at
+       z-index 20/21 and the frame itself is now dark and heavily shadowed --
+       a translucent HUD surface reads as a ghost rectangle against both. Every
+       HUD surface is opaque and every HUD element sits above z-index 22. */
+    --hud-tag:linear-gradient(180deg,#241D18 0%,#1A1512 58%,#120F0D 100%);
+    --hud-tag-flat:#1A1512;
+    --hud-paper:#F6E9D2;
+    --hud-line:2.5px;
+    --hud-drop:3px 4px 0 rgba(22,18,15,.45);
+    /* Charcoal tags have to survive BOTH backdrops: the current washed-out
+       cream farm, and the much darker, higher-contrast grade the render pass
+       is bringing. So every dark tag carries a cream keyline inside its ink
+       border AND a cream hairline rim outside it -- on a pale frame the ink
+       does the separating, on a dark frame the cream does. */
+    --hud-keyline:inset 0 0 0 1.5px rgba(246,233,210,.30),0 0 0 1px rgba(246,233,210,.26);
+    --hud-keyline-dark:inset 0 0 0 1.5px rgba(22,18,15,.16);
+    /* Overshoot-and-settle for anything arriving; a hard fast curve for
+       anything leaving. Cartoon timing is asymmetric -- things snap in and
+       are simply gone, they never fade out politely. */
+    --hud-spring:cubic-bezier(.2,1.55,.35,1);
+    --hud-snap:cubic-bezier(.5,0,.9,.6);
+    /* Backing-less HUD text (chips, counters, the kill tally) gets a full
+       eight-way ink edge rather than a four-way cross -- the cross leaves
+       diagonal gaps that let a bright background bleed through the letter
+       corners. This is the only thing keeping that text legible on both a
+       cream frame and a black one. */
+    --hud-ink-edge:
+      1.8px 0 0 var(--ink),-1.8px 0 0 var(--ink),0 1.8px 0 var(--ink),0 -1.8px 0 var(--ink),
+      1.3px 1.3px 0 var(--ink),-1.3px 1.3px 0 var(--ink),1.3px -1.3px 0 var(--ink),-1.3px -1.3px 0 var(--ink);
   }
 
   *{box-sizing:border-box;}
@@ -68,78 +111,188 @@
     #vignette{animation:none;opacity:.9}
   }
 
+  /* ================================================================
+     PLAY HUD
+     ----------------------------------------------------------------
+     Rules this overlay is built to, in priority order:
+
+       1. The frame belongs to the game. Only two things are permanently
+          on screen -- the crosshair and one small enamel tag in each
+          bottom corner. Everything else is transient, corner-anchored,
+          or lives behind a held key (Tab -> #questBoard).
+       2. Two materials only. `.hud-tag` = charcoal enamel plate, for the
+          player's own state. `.hud-ticket` = printed paper slip, for
+          anything the world is saying. Both carry a real ink keyline and
+          a hard offset shadow, which is also how we get true black into
+          a frame that is otherwise all cream.
+       3. Nothing may enter the centre of the frame. The crosshair and the
+          area around it stay clear; hints sit well below it, banners well
+          above it.
+       4. Cartoon timing. Arrivals overshoot and settle (--hud-spring);
+          departures snap (--hud-snap). Never a symmetric linear fade.
+     ================================================================ */
+
+  /* Charcoal enamel tag -- the player's own readouts. */
+  .hud-tag{
+    background:var(--hud-tag);
+    border:var(--hud-line) solid var(--ink);
+    border-radius:11px 13px 10px 14px;
+    box-shadow:var(--hud-keyline),var(--hud-drop);
+  }
+  /* Printed paper slip -- anything the world is telling the player. */
+  .hud-ticket{
+    background:linear-gradient(178deg,#FFFBF2 0%,var(--hud-paper) 46%,#EBDABB 100%);
+    border:var(--hud-line) solid var(--ink);
+    border-radius:10px 13px 9px 12px;
+    box-shadow:var(--hud-keyline-dark),var(--hud-drop);
+  }
+
   /* ---------- Crosshair ---------- */
   #crosshair{
-    position:fixed;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;
-    z-index:30;pointer-events:none;opacity:0;transition:opacity .18s ease;
+    position:fixed;left:50%;top:50%;width:38px;height:38px;margin:-19px 0 0 -19px;
+    z-index:30;pointer-events:none;opacity:0;
+    transition:opacity .18s ease, transform .16s var(--hud-spring);
   }
   #crosshair.on{opacity:1;}
   #crosshair i{
     position:absolute;background:var(--ink);border-radius:2px;
-    box-shadow:0 0 0 2px rgba(246,233,210,.55);
+    box-shadow:0 0 0 1.6px rgba(246,233,210,.62);
   }
-  #crosshair .t{left:50%;top:2px;width:3px;height:11px;margin-left:-1.5px;transform:rotate(-2deg);}
-  #crosshair .b{left:50%;bottom:2px;width:3px;height:11px;margin-left:-1.5px;transform:rotate(3deg);}
-  #crosshair .l{top:50%;left:2px;height:3px;width:11px;margin-top:-1.5px;transform:rotate(2deg);}
-  #crosshair .r{top:50%;right:2px;height:3px;width:11px;margin-top:-1.5px;transform:rotate(-3deg);}
-  #crosshair .d{left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;}
-  #crosshair.kick{transform:scale(1.35);}
-  #crosshair{transition:opacity .18s ease, transform .09s ease;}
+  /* Tapered strokes: each tick is a touch heavier at the outer end, the way
+     an inked line thickens where the nib lands. */
+  #crosshair .t{left:50%;top:1px;width:2.6px;height:9px;margin-left:-1.3px;transform:rotate(-2deg);}
+  #crosshair .b{left:50%;bottom:1px;width:2.6px;height:9px;margin-left:-1.3px;transform:rotate(3deg);}
+  #crosshair .l{top:50%;left:1px;height:2.6px;width:9px;margin-top:-1.3px;transform:rotate(2deg);}
+  #crosshair .r{top:50%;right:1px;height:2.6px;width:9px;margin-top:-1.3px;transform:rotate(-3deg);}
+  #crosshair .d{left:50%;top:50%;width:3.4px;height:3.4px;margin:-1.7px 0 0 -1.7px;border-radius:50%;}
+  #crosshair.kick{transform:scale(1.42) rotate(-3deg);}
   #interactHint{
-    position:fixed;left:50%;top:calc(50% + 44px);z-index:33;
-    transform:translate(-50%,7px) rotate(-.5deg);opacity:0;pointer-events:none;
-    padding:7px 11px;border:2px solid var(--ink);border-radius:8px 6px 9px 7px;
-    background:rgba(246,233,210,.92);box-shadow:3px 4px 0 rgba(22,18,15,.36);
-    color:var(--rust-deep);font:900 11px/1 "Rockwell",Georgia,serif;
-    letter-spacing:1.2px;text-transform:uppercase;white-space:nowrap;
-    transition:opacity .14s ease,transform .14s ease;
+    position:fixed;left:50%;top:calc(50% + 54px);z-index:33;
+    transform:translate(-50%,9px) scale(.86) rotate(-3deg);opacity:0;pointer-events:none;
+    padding:5px 10px;
+    color:var(--rust-deep);font:900 10px/1 var(--hud-slab);
+    letter-spacing:1.3px;text-transform:uppercase;white-space:nowrap;
+    transition:opacity .1s ease .04s,transform .12s var(--hud-snap);
   }
-  #interactHint.on{opacity:1;transform:translate(-50%,0) rotate(-.5deg);}
+  #interactHint.on{
+    opacity:1;transform:translate(-50%,0) scale(1) rotate(-.8deg);
+    transition:opacity .1s ease,transform .3s var(--hud-spring);
+  }
 
-  /* ---------- Weapon + ammo ---------- */
+  /* ---------- Bottom-right: the ammo tag ----------
+     Weapon name, shell marks and count are ONE object now instead of three
+     free-floating labels stacked up the right edge. Everything else that
+     used to live in this corner (inventory strip, throwable, reload nudge)
+     is transient and sits above it. */
+  #ammo{
+    position:fixed;right:18px;bottom:16px;z-index:30;
+    padding:6px 11px 7px;user-select:none;
+    opacity:0;transform:translateY(10px) scale(.9) rotate(1.6deg);
+    transition:opacity .14s ease .04s,transform .16s var(--hud-snap);
+  }
+  #ammo.on{
+    opacity:1;transform:translateY(0) scale(1) rotate(.8deg);
+    transition:opacity .16s ease,transform .38s var(--hud-spring);
+  }
   #weaponName{
-    position:fixed;right:26px;bottom:88px;z-index:30;
-    font-size:12px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
-    color:var(--cream);opacity:0;transform:rotate(-1deg);transition:opacity .2s ease;
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    display:block;margin:0 0 4px;
+    font:900 9px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
+    color:rgba(246,233,210,.66);opacity:0;transition:opacity .2s ease;
   }
   #weaponName.on{opacity:1;}
   #weaponInventory{
-    position:fixed;right:26px;bottom:166px;z-index:36;
-    display:flex;flex-wrap:wrap;justify-content:flex-end;gap:5px;
-    width:min(58vw,520px);pointer-events:none;opacity:0;transition:opacity .18s ease;
+    position:fixed;right:18px;bottom:134px;z-index:36;
+    display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;
+    width:min(46vw,380px);pointer-events:none;
+    opacity:0;transform:translateY(6px) scale(.94);
+    transition:opacity .13s ease .03s,transform .15s var(--hud-snap);
   }
-  #weaponInventory.on{opacity:1;}
+  /* Persistent only where it is the actual control surface (touch) or while
+     the player is holding the detail key; otherwise it peeks for a beat
+     after a weapon changes and then gets out of the way. See UI.peekArsenal. */
+  #weaponInventory.on.peek,
+  body.hud-detail #weaponInventory.on,
+  body.touch-device #weaponInventory.on{
+    opacity:1;transform:translateY(0) scale(1);
+    transition:opacity .14s ease,transform .34s var(--hud-spring);
+  }
+  body.touch-device #weaponInventory.on{pointer-events:none;}
   .weapon-slot-btn{
-    display:flex;align-items:center;gap:5px;min-height:31px;max-width:150px;padding:5px 7px;
-    pointer-events:auto;cursor:pointer;border:3px solid var(--ink);
-    border-radius:7px 10px 8px 9px;background:rgba(246,233,210,.9);color:var(--ink);
-    box-shadow:3px 4px 0 rgba(22,18,15,.5);font:900 10px/1 "Rockwell",Georgia,serif;
-    letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
-    transition:transform .1s ease,background .1s ease,opacity .1s ease;
+    display:flex;align-items:center;gap:5px;min-height:26px;max-width:126px;padding:4px 6px;
+    pointer-events:auto;cursor:pointer;border:2.5px solid var(--ink);
+    border-radius:6px 9px 7px 8px;background:#F3E5CC;color:var(--ink);
+    box-shadow:2px 3px 0 rgba(22,18,15,.55);font:900 9px/1 var(--hud-slab);
+    letter-spacing:.6px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
+    transition:transform .12s var(--hud-spring),background .1s ease,opacity .1s ease;
   }
   .weapon-slot-btn:nth-child(even){transform:rotate(1deg);}
   .weapon-slot-btn kbd{
-    display:grid;place-items:center;min-width:20px;height:20px;padding:0 3px;
-    border:2px solid var(--ink);border-radius:4px;background:var(--blue);font:900 11px/1 "Courier New",monospace;
+    display:grid;place-items:center;min-width:17px;height:17px;padding:0 3px;
+    border:2px solid var(--ink);border-radius:4px;background:var(--blue);font:900 9px/1 "Courier New",monospace;
   }
   .weapon-slot-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(2px) rotate(-1deg);box-shadow:1px 2px 0 rgba(22,18,15,.7);}
-  .weapon-slot-btn:active{transform:translateY(3px) rotate(0deg);}
-  #ammo{
-    position:fixed;right:26px;bottom:22px;z-index:30;
-    display:flex;align-items:flex-end;gap:12px;
-    opacity:0;transition:opacity .2s ease;user-select:none;
+  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(1px) rotate(-1deg) scale(1.04);box-shadow:1px 2px 0 rgba(22,18,15,.7);}
+  .weapon-slot-btn:active{transform:translateY(2px) rotate(0deg);}
+
+  /* ---------- Top-right: run clock ----------
+     Demoted from a boxed readout to a small stamped tick. Single-player
+     only (RUNSTATS.updateHud owns the .on toggle). */
+  #runClock{
+    position:fixed;right:18px;top:14px;z-index:30;padding:4px 8px 5px;
+    text-align:right;font:900 11px/1 "Courier New",monospace;letter-spacing:.5px;
+    color:var(--cream);opacity:0;pointer-events:none;
+    transform:rotate(.8deg);transition:opacity .22s ease;
   }
-  #ammo.on{opacity:1;}
-  #runClock{position:fixed;right:18px;top:16px;z-index:12;padding:7px 12px;background:rgba(246,233,210,.92);border:3px solid var(--ink);border-radius:8px;box-shadow:3px 4px 0 rgba(22,18,15,.55);font:900 13px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;opacity:0;transition:opacity .18s;pointer-events:none;}
-  #runClock.on{opacity:1} #runClock small{display:block;font-size:8px;letter-spacing:2px;color:var(--rust-deep)}
-  #componentHud{position:fixed;left:50%;bottom:18px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
-  #componentHud.on{opacity:1}.component-slot{width:min(25vw,145px);padding:6px 8px;background:rgba(22,18,15,.84);border:2px solid var(--cream);border-radius:7px;color:var(--cream-dim);font:900 9px/1.15 "Rockwell",Georgia,serif;text-align:center}.component-slot.collected{background:var(--olive);color:var(--cream);border-color:var(--mustard)}.component-slot.assembled{opacity:.55;text-decoration:line-through}
-  /* Stacked directly above componentHud (same layout, its own quest) so
-     both trays can be visible at once without overlapping. */
-  #shieldHud{position:fixed;left:50%;bottom:58px;z-index:12;transform:translateX(-50%);display:flex;gap:7px;opacity:0;pointer-events:none;transition:opacity .18s}
-  #shieldHud.on{opacity:1}
+  #runClock.on{opacity:.88}
+  #runClock small{display:block;margin-bottom:3px;font:900 7px/1 var(--hud-slab);letter-spacing:2px;color:var(--mustard);opacity:.9}
+
+  /* ---------- Field orders (hold Tab) ----------
+     The two component trays used to sit across the bottom of the frame as
+     six permanent chips. They are objectives, not vitals: they only need to
+     be readable when the player asks, or for a beat after one changes.
+     `body.hud-detail` is the held key (INPUT's Tab handler); `.peek` is the
+     auto-flash driven by UI.peekQuestBoard. */
+  #questBoard{
+    position:fixed;left:18px;top:50%;z-index:29;width:min(46vw,208px);
+    padding:9px 10px 10px;pointer-events:none;
+    opacity:0;transform:translateY(-50%) translateX(-14px) scale(.9) rotate(-2deg);
+    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
+  }
+  body.hud-detail #questBoard,#questBoard.peek{
+    opacity:1;transform:translateY(-50%) translateX(0) scale(1) rotate(-1deg);
+    transition:opacity .14s ease,transform .4s var(--hud-spring);
+  }
+  /* Nothing left to track -> the slip does not exist. */
+  #questBoard:not(:has(#componentHud.on)):not(:has(#shieldHud.on)){display:none;}
+  .qb-head{
+    margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid rgba(22,18,15,.28);
+    color:var(--rust-deep);font:900 10px/1 var(--hud-slab);letter-spacing:2px;text-transform:uppercase;
+  }
+  .qb-head span{display:block;margin-top:4px;color:rgba(22,18,15,.42);font-size:7.5px;letter-spacing:1.4px;}
+  #componentHud,#shieldHud{display:none;}
+  #componentHud.on,#shieldHud.on{display:block;}
+  #shieldHud.on{margin-top:9px;}
+  .qb-title{
+    margin:0 0 5px;color:var(--olive);font:900 8px/1 var(--hud-slab);
+    letter-spacing:1.8px;text-transform:uppercase;
+  }
+  .component-slot{
+    position:relative;margin-bottom:3px;padding:4px 7px 4px 18px;
+    background:rgba(22,18,15,.08);border:1.5px solid rgba(22,18,15,.34);border-radius:5px 7px 5px 8px;
+    color:var(--ink-soft);font:800 8.5px/1.2 var(--hud-slab);letter-spacing:.8px;text-transform:uppercase;
+  }
+  /* Hand-ticked check box: an empty ring that fills with an ink tick. */
+  .component-slot::before{
+    content:'';position:absolute;left:5px;top:50%;width:8px;height:8px;margin-top:-4px;
+    border:1.5px solid rgba(22,18,15,.5);border-radius:2px 3px 2px 3px;
+  }
+  .component-slot.collected{
+    background:var(--olive);border-color:var(--ink);color:var(--hud-paper);
+  }
+  .component-slot.collected::before{
+    background:var(--mustard);border-color:var(--ink);
+  }
+  .component-slot.assembled{opacity:.5;text-decoration:line-through}
   #runStats{
     margin:16px 0 20px;text-align:left;background:var(--ink-soft);color:var(--cream);
     border:4px solid var(--ink);border-radius:12px;box-shadow:7px 8px 0 rgba(22,18,15,.38);
@@ -181,84 +334,94 @@
     .run-report-stat:nth-child(-n+3){border-bottom:2px solid rgba(246,233,210,.15);}
     .run-report-times,.run-report-log{grid-template-columns:1fr;}
   }
-  #shells{display:flex;gap:5px;align-items:flex-end;}
+  #ammoRow{display:flex;align-items:center;gap:9px;}
+  #shells{display:flex;gap:2.5px;align-items:flex-end;}
   #shells span{
-    width:11px;height:26px;border:3px solid var(--ink);border-radius:3px 3px 5px 5px;
-    background:var(--rust);box-shadow:inset 0 -8px 0 var(--mustard);
-    transform:rotate(-3deg);transition:background .12s, opacity .12s, transform .12s;
+    width:6px;height:15px;border:1.8px solid var(--ink);border-radius:2px 2px 3px 3px;
+    background:var(--rust);box-shadow:inset 0 -5px 0 var(--mustard);
+    transform:rotate(-3deg);transition:background .12s, opacity .12s, transform .12s var(--hud-spring);
   }
   #shells span:nth-child(even){transform:rotate(4deg);}
-  #shells span.spent{background:#B9AFA2;box-shadow:inset 0 -8px 0 #8A8073;opacity:.42;}
+  #shells span.spent{background:#6A6058;box-shadow:inset 0 -5px 0 #4B443E;opacity:.5;transform:rotate(-1deg) translateY(2px);}
   #ammoNum{
-    font-size:38px;font-weight:900;letter-spacing:-1px;line-height:.8;color:var(--cream);
-    text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink),
-                2px 2px 0 var(--ink),-2px 2px 0 var(--ink),2px -2px 0 var(--ink),-2px -2px 0 var(--ink),
-                5px 6px 0 rgba(22,18,15,.35);
-    transform:rotate(-2deg);
+    font:900 23px/.85 var(--hud-slab);letter-spacing:-.5px;color:var(--cream);
+    transform:rotate(-1.5deg);white-space:nowrap;
   }
   #ammoNum.low{color:var(--mustard);}
-  #ammoNum small{font-size:16px;letter-spacing:0;color:var(--cream);opacity:.82;}
-  #ammoNum.melee{font-size:23px;letter-spacing:2px;line-height:1;}
+  #ammoNum small{font-size:10px;letter-spacing:.5px;color:var(--cream);opacity:.55;}
+  #ammoNum.melee{font-size:12px;letter-spacing:1.6px;line-height:1.2;}
   #reloadTag{
-    position:fixed;right:26px;bottom:105px;z-index:30;
-    font-size:15px;font-weight:800;letter-spacing:2px;text-transform:uppercase;
+    position:fixed;right:18px;bottom:106px;z-index:30;
+    font:900 10px/1 var(--hud-slab);letter-spacing:1.8px;text-transform:uppercase;
     color:var(--mustard);opacity:0;transform:rotate(-2deg);
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    text-shadow:var(--hud-ink-edge);
   }
-  #reloadTag.on{opacity:1;animation:nudge .5s steps(2,end) infinite;}
-  @keyframes nudge{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(1deg) translateY(-3px)}100%{transform:rotate(-2deg) translateY(0)}}
-  #throwableHud{
-    position:fixed;right:26px;bottom:132px;z-index:30;
-    display:flex;align-items:center;gap:8px;opacity:0;pointer-events:none;
-    color:var(--cream);font:900 11px/1 "Rockwell",Georgia,serif;
-    letter-spacing:2px;text-transform:uppercase;transform:rotate(1deg);
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    transition:opacity .18s ease;
-  }
-  #throwableHud.on{opacity:1;}
-  #throwableHud.empty{opacity:.48;}
-  #throwableCount{
-    display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
-    border:3px solid var(--ink);border-radius:50%;background:var(--rust);
-    color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
-    box-shadow:3px 4px 0 rgba(22,18,15,.4);
-  }
+  #reloadTag.on{opacity:1;animation:nudge .46s steps(2,end) infinite;}
+  @keyframes nudge{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(1.5deg) translateY(-3px)}100%{transform:rotate(-2deg) translateY(0)}}
 
+  /* Small circular badge -- the shared vocabulary for every countable
+     transient (throwables, Jays, buff timers). Ink ring, flat colour fill. */
+  .hud-pip{
+    display:grid;place-items:center;min-width:19px;height:19px;padding:0 4px;
+    border:2px solid var(--ink);border-radius:50%;background:var(--rust);
+    color:var(--hud-paper);font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;
+    box-shadow:2px 2px 0 rgba(22,18,15,.42);
+  }
+  #throwableHud{
+    position:fixed;right:18px;bottom:78px;z-index:30;
+    display:flex;align-items:center;gap:6px;pointer-events:none;
+    color:var(--cream);font:900 9px/1 var(--hud-slab);
+    letter-spacing:1.6px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
+    opacity:0;transform:translateX(8px) scale(.9) rotate(1deg);
+    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
+  }
+  #throwableHud.on{
+    opacity:1;transform:translateX(0) scale(1) rotate(1deg);
+    transition:opacity .14s ease,transform .32s var(--hud-spring);
+  }
+  #throwableHud.empty{opacity:.42;}
+
+  /* Bottom-left transient stack: buffs, then Jays, then voice, then the
+     vitals tag itself. Column order is set by the markup. */
   #jaysHud{
-    display:flex;align-items:center;gap:8px;margin-top:10px;
-    color:var(--cream);font:900 11px/1 "Rockwell",Georgia,serif;
-    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    opacity:0;transition:opacity .18s ease;transform:rotate(1deg);
+    display:flex;align-items:center;gap:6px;margin-bottom:6px;
+    color:var(--cream);font:900 9px/1 var(--hud-slab);
+    letter-spacing:1.6px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
+    opacity:0;transform:translateX(-8px) scale(.9) rotate(1deg);
+    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
   }
-  #jaysHud.on{opacity:1;}
+  #jaysHud.on{
+    opacity:1;transform:translateX(0) scale(1) rotate(1deg);
+    transition:opacity .14s ease,transform .32s var(--hud-spring);
+  }
   #jaysHud.active{color:var(--jays, #8EAD4B);}
-  #jaysCount{
-    display:grid;place-items:center;min-width:30px;height:30px;padding:0 7px;
-    border:3px solid var(--ink);border-radius:50%;background:var(--jays);
-    color:var(--cream);font-size:17px;letter-spacing:0;text-shadow:none;
-    box-shadow:3px 4px 0 rgba(22,18,15,.4);
-  }
-  #buffHud{
-    display:flex;flex-direction:column;gap:4px;margin-top:8px;
-  }
+  #jaysCount{background:var(--jays);}
+  #buffHud{display:flex;flex-direction:column;gap:3px;}
   .buffChip{
-    display:flex;align-items:center;gap:8px;
-    color:var(--cream);font:900 10px/1 "Rockwell",Georgia,serif;
-    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    opacity:0;transition:opacity .18s ease;transform:rotate(-1deg);
+    display:flex;align-items:center;gap:6px;margin-bottom:0;
+    color:var(--cream);font:900 8.5px/1 var(--hud-slab);
+    letter-spacing:1.4px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
+    opacity:0;height:0;overflow:hidden;transform:translateX(-8px) scale(.88);
+    transition:opacity .1s ease,height .16s var(--hud-snap),transform .14s var(--hud-snap);
   }
-  .buffChip.on{opacity:1;}
+  .buffChip.on{
+    opacity:1;height:19px;transform:translateX(0) scale(1);
+    transition:opacity .14s ease,height .2s var(--hud-spring),transform .3s var(--hud-spring);
+  }
   .buffChip b{
-    display:grid;place-items:center;min-width:26px;height:26px;padding:0 6px;
-    border:3px solid var(--ink);border-radius:50%;color:var(--cream);
-    font-size:14px;letter-spacing:0;text-shadow:none;box-shadow:3px 4px 0 rgba(22,18,15,.4);
+    display:grid;place-items:center;min-width:19px;height:19px;padding:0 4px;
+    border:2px solid var(--ink);border-radius:50%;color:var(--hud-paper);
+    font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;box-shadow:2px 2px 0 rgba(22,18,15,.42);
   }
   #buffIronHide b{background:#6C7E88;}
   #buffHotSauce b{background:#9C2F12;}
   #buffJackrabbit b{background:#B08A2E;}
   #stunChip b{background:#8A2F2F;}
   #slowChip b{background:#3A5F73;}
-  #pilotLifeChip b{background:var(--blue-deep);min-width:48px;border-radius:14px;}
+  #pilotLifeChip b{background:var(--blue-deep);min-width:34px;border-radius:10px;}
   #buffIronHide.on{color:#9FB4BE;}
   #buffHotSauce.on{color:#D1481F;}
   #buffJackrabbit.on{color:#E0B84A;}
@@ -267,75 +430,98 @@
   #pilotLifeChip.on{color:var(--blue);}
 
   #downedHud{
-    position:fixed;left:50%;bottom:19%;z-index:32;transform:translateX(-50%) rotate(-1deg);
+    position:fixed;left:50%;bottom:21%;z-index:32;transform:translateX(-50%) rotate(-1deg);
     display:none;pointer-events:none;text-align:center;color:var(--cream);
-    font:900 16px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;
-    text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink);
+    font:900 13px/1.1 var(--hud-slab);letter-spacing:2.6px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
   }
-  #downedHud.on{display:block;}
-  #downedHud small{display:block;margin-top:7px;color:var(--mustard);font-size:10px;letter-spacing:1.3px;}
+  #downedHud.on{display:block;animation:hudDrop .34s var(--hud-spring) both;}
+  #downedHud small{display:block;margin-top:6px;color:var(--mustard);font-size:9px;letter-spacing:1.2px;}
+  @keyframes hudDrop{
+    0%{opacity:0;transform:translateX(-50%) translateY(-12px) scale(.86) rotate(-4deg)}
+    100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1) rotate(-1deg)}
+  }
 
-  /* ---------- Health + tally ---------- */
+  /* ---------- Bottom-left: the vitals tag ----------
+     Two rubberhose gauges on one enamel plate, each led by an inked icon
+     instead of a shouted word. The guard gauge collapses out of the plate
+     entirely while the player has no guard (UI.setShield toggles .has-guard),
+     so the common case is a single small pill. */
   #vitals{
-    position:fixed;left:26px;bottom:22px;z-index:30;
+    position:fixed;left:18px;bottom:16px;z-index:30;
+    display:flex;flex-direction:column;align-items:flex-start;
     opacity:0;transition:opacity .2s ease;user-select:none;
   }
   #vitals.on{opacity:1;}
-  #vitals .lbl{
-    font-size:13px;font-weight:900;letter-spacing:4px;text-transform:uppercase;
-    color:var(--cream);margin:0 0 6px 3px;transform:rotate(-1.5deg);
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  #vitalsTag{
+    padding:7px 10px;
+    transform:rotate(-.8deg) scale(1);
+    transition:transform .34s var(--hud-spring);
+  }
+  .vital-row{display:flex;align-items:center;gap:7px;}
+  .vital-ico{display:block;flex:0 0 auto;filter:drop-shadow(1.5px 2px 0 rgba(22,18,15,.5));}
+  #guardRow{
+    height:0;margin-top:0;overflow:hidden;opacity:0;
+    transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .1s ease;
+  }
+  #vitals.has-guard #guardRow{
+    height:15px;margin-top:6px;opacity:1;
+    transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .16s ease;
   }
   #pepBar{
-    width:186px;height:24px;border:4px solid var(--ink);border-radius:6px 10px 7px 9px;
-    background:rgba(30,22,18,.55);transform:rotate(-1.5deg);
-    box-shadow:4px 5px 0 rgba(22,18,15,.4);overflow:hidden;
+    width:112px;height:14px;border:2.5px solid var(--ink);border-radius:9px;
+    background:#0D0B09;box-shadow:inset 1px 1px 0 rgba(0,0,0,.5);overflow:hidden;
   }
   #pepFill{
     height:100%;width:100%;background:var(--mustard);
-    box-shadow:inset 0 -7px 0 rgba(22,18,15,.22);
-    transition:width .16s ease, background .2s ease;
+    box-shadow:inset 0 -4px 0 rgba(22,18,15,.24),inset 0 3px 0 rgba(255,251,242,.22);
+    transition:width .22s var(--hud-spring), background .2s ease;
   }
   #pepFill.hurt{background:var(--rust);}
-  #shieldRow{margin-top:9px;}
-  #shieldRow .lbl{color:var(--blue);margin-bottom:4px;}
   #shieldBar{
-    width:156px;height:16px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;
-    background:rgba(30,22,18,.55);transform:rotate(.8deg);
-    box-shadow:3px 4px 0 rgba(22,18,15,.35);overflow:hidden;
+    width:96px;height:9px;border:2px solid var(--ink);border-radius:6px;
+    background:#0D0B09;overflow:hidden;
   }
   #shieldFill{
     height:100%;width:0;background:var(--blue);
-    box-shadow:inset 0 -5px 0 rgba(22,18,15,.18);transition:width .16s ease;
+    box-shadow:inset 0 -3px 0 rgba(22,18,15,.2);transition:width .22s var(--hud-spring);
   }
+
+  /* ---------- Pickup / objective slip ----------
+     Was a 440px banner parked in the middle of the frame. Now a small
+     printed slip low and centre, clear of the crosshair and of both
+     corner tags. */
   #pickupToast{
-    position:fixed;left:50%;bottom:115px;z-index:33;max-width:min(80vw,440px);
-    transform:translate(-50%,12px) rotate(-1deg);opacity:0;pointer-events:none;
-    padding:10px 16px;background:var(--cream);border:3px solid var(--ink);
-    border-radius:9px 13px 8px 12px;box-shadow:4px 5px 0 rgba(22,18,15,.42);
-    font:900 13px/1.2 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;
-    color:var(--rust-deep);transition:opacity .14s ease,transform .14s ease;text-align:center;
+    position:fixed;left:50%;bottom:76px;z-index:33;max-width:min(52vw,286px);
+    transform:translate(-50%,14px) scale(.84) rotate(-4deg);opacity:0;pointer-events:none;
+    padding:6px 12px 7px;
+    font:900 10px/1.3 var(--hud-slab);letter-spacing:1.2px;text-transform:uppercase;
+    color:var(--rust-deep);text-align:center;
+    transition:opacity .11s ease .04s,transform .14s var(--hud-snap);
   }
-  #pickupToast.on{opacity:1;transform:translate(-50%,0) rotate(-1deg);}
+  #pickupToast.on{
+    opacity:1;transform:translate(-50%,0) scale(1) rotate(-1.2deg);
+    transition:opacity .12s ease,transform .36s var(--hud-spring);
+  }
   #tally{
-    position:fixed;left:26px;top:22px;z-index:30;
-    font-size:14px;font-weight:900;letter-spacing:3px;text-transform:uppercase;
+    position:fixed;left:18px;top:14px;z-index:30;
+    font:900 9.5px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
     color:var(--cream);opacity:0;transition:opacity .2s ease;transform:rotate(-1deg);
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    text-shadow:var(--hud-ink-edge);
   }
-  #tally.on{opacity:1;}
-  #tally b{color:var(--mustard);font-size:19px;}
+  #tally.on{opacity:.92;}
+  #tally b{color:var(--mustard);font-size:13px;margin-left:2px;}
 
   /* ---------- Free-for-all live scoreboard ---------- */
   #ffaScoreboard{
-    position:fixed;right:26px;top:22px;z-index:30;list-style:none;margin:0;padding:0;
+    position:fixed;right:18px;top:14px;z-index:30;list-style:none;margin:0;padding:0;
     opacity:0;transition:opacity .2s ease;transform:rotate(1deg);
-    font:900 12px/1.5 "Rockwell",Georgia,serif;letter-spacing:1px;text-transform:uppercase;
+    font:900 10px/1.5 var(--hud-slab);letter-spacing:1px;text-transform:uppercase;
     text-align:right;
   }
   #ffaScoreboard.on{opacity:1;}
   #ffaScoreboard li{
-    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    color:var(--cream);text-shadow:var(--hud-ink-edge);
   }
   #ffaScoreboard li.team-a{color:var(--rust);}
   #ffaScoreboard li.team-b{color:var(--blue);}
@@ -350,27 +536,36 @@
 
   /* ---------- Deathmatch kill feed ---------- */
   #killFeed{
-    position:fixed;right:26px;top:130px;z-index:30;
-    display:flex;flex-direction:column;align-items:flex-end;gap:4px;
+    position:fixed;right:18px;top:112px;z-index:30;
+    display:flex;flex-direction:column;align-items:flex-end;gap:3px;
     pointer-events:none;
   }
   #killFeed .line{
-    font:900 11px/1.3 "Rockwell",Georgia,serif;letter-spacing:1px;text-transform:uppercase;
-    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    background:rgba(18,15,13,.35);padding:3px 8px;border-radius:6px;
-    opacity:0;transform:translateX(8px);transition:opacity .18s ease,transform .18s ease;
+    font:900 9px/1.3 var(--hud-slab);letter-spacing:1px;text-transform:uppercase;
+    color:var(--cream);
+    background:var(--hud-tag-flat);border:1.6px solid var(--ink);
+    padding:3px 7px;border-radius:5px 7px 5px 8px;
+    box-shadow:0 0 0 1px rgba(246,233,210,.24),2px 2px 0 rgba(22,18,15,.5);
+    opacity:0;transform:translateX(14px) scale(.9) rotate(1.6deg);
+    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
   }
-  #killFeed .line.on{opacity:1;transform:translateX(0);}
+  #killFeed .line.on{
+    opacity:1;transform:translateX(0) scale(1) rotate(0);
+    transition:opacity .14s ease,transform .32s var(--hud-spring);
+  }
 
   /* ---------- Kill cam ---------- */
   #killcamCaption{
-    position:fixed;left:50%;bottom:9%;z-index:34;transform:translate(-50%,8px);
+    position:fixed;left:50%;bottom:12%;z-index:34;transform:translate(-50%,10px) scale(.9);
     display:none;pointer-events:none;text-align:center;
-    font:900 22px/1 "Rockwell",Georgia,serif;letter-spacing:2px;text-transform:uppercase;
-    color:var(--cream);text-shadow:3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink);
-    opacity:0;transition:opacity .25s ease,transform .25s ease;
+    font:900 17px/1 var(--hud-slab);letter-spacing:2px;text-transform:uppercase;
+    color:var(--cream);text-shadow:var(--hud-ink-edge);
+    opacity:0;transition:opacity .2s ease,transform .18s var(--hud-snap);
   }
-  #killcamCaption.on{display:block;opacity:1;transform:translate(-50%,0);}
+  #killcamCaption.on{
+    display:block;opacity:1;transform:translate(-50%,0) scale(1);
+    transition:opacity .24s ease,transform .42s var(--hud-spring);
+  }
   #killcamBars{position:fixed;inset:0;z-index:33;pointer-events:none;}
   #killcamBars .bar{
     position:absolute;left:0;right:0;height:9vh;background:var(--ink);
@@ -393,7 +588,12 @@
   body.killcam-active #radar,
   body.killcam-active #jaysHud,
   body.killcam-active #buffHud,
-  body.killcam-active #voiceChip{
+  body.killcam-active #voiceChip,
+  body.killcam-active #runClock,
+  body.killcam-active #throwableHud,
+  body.killcam-active #reloadTag,
+  body.killcam-active #pickupToast,
+  body.killcam-active #questBoard{
     opacity:0 !important;pointer-events:none;
   }
   @media (prefers-reduced-motion: reduce){
@@ -406,19 +606,26 @@
     display:flex;flex-direction:column;gap:4px;pointer-events:none;
   }
   #chatLog .line{
-    font:700 12px/1.3 "Rockwell",Georgia,serif;
-    color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    background:rgba(18,15,13,.42);padding:3px 8px;border-radius:6px;word-break:break-word;
-    opacity:0;transform:translateY(6px);transition:opacity .18s ease,transform .18s ease;
+    font:700 11px/1.35 var(--hud-slab);
+    color:var(--cream);
+    background:var(--hud-tag-flat);border:1.6px solid var(--ink);
+    box-shadow:0 0 0 1px rgba(246,233,210,.2),2px 2px 0 rgba(22,18,15,.5);
+    padding:3px 8px;border-radius:5px 7px 5px 8px;word-break:break-word;
+    opacity:0;transform:translateY(8px) scale(.94);
+    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
   }
-  #chatLog .line.on{opacity:1;transform:translateY(0);}
+  #chatLog .line.on{
+    opacity:1;transform:translateY(0) scale(1);
+    transition:opacity .14s ease,transform .3s var(--hud-spring);
+  }
   #chatLog .line b{color:var(--mustard);margin-right:5px;}
   #chatLog .line.self b{color:var(--rust);}
   #chatInputBar{
     position:fixed;left:26px;bottom:132px;z-index:31;width:min(360px,44vw);
     display:none;align-items:center;gap:6px;
-    font:700 13px/1.3 "Rockwell",Georgia,serif;color:var(--cream);
-    background:rgba(18,15,13,.78);border:2px solid var(--ink);border-radius:6px;padding:5px 9px;
+    font:700 12px/1.35 var(--hud-slab);color:var(--cream);
+    background:var(--hud-tag-flat);border:2px solid var(--ink);border-radius:6px;padding:5px 9px;
+    box-shadow:0 0 0 1px rgba(246,233,210,.2),2px 3px 0 rgba(22,18,15,.5);
   }
   #chatInputBar.on{display:flex;}
   #chatInputBar b{color:var(--mustard);white-space:nowrap;}
@@ -456,94 +663,140 @@
 
   /* ---------- Voice chat indicator ---------- */
   #voiceChip{
-    display:flex;align-items:center;gap:8px;margin-top:8px;
-    color:var(--cream);font:900 10px/1 "Rockwell",Georgia,serif;
-    letter-spacing:2px;text-transform:uppercase;text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
-    opacity:0;transition:opacity .18s ease;transform:rotate(1deg);
+    display:flex;align-items:center;gap:6px;margin-bottom:6px;
+    color:var(--cream);font:900 8.5px/1 var(--hud-slab);
+    letter-spacing:1.4px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
+    opacity:0;transition:opacity .18s ease,transform .3s var(--hud-spring);transform:rotate(1deg);
   }
   #voiceChip.on{opacity:.55;}
-  #voiceChip.talking{opacity:1;}
+  #voiceChip.talking{opacity:1;transform:rotate(1deg) scale(1.06);}
   #voiceChip b{
-    display:grid;place-items:center;min-width:22px;height:22px;padding:0 5px;
-    border:3px solid var(--ink);border-radius:50%;background:#6C7E88;
-    color:var(--cream);font-size:11px;letter-spacing:0;text-shadow:none;box-shadow:3px 4px 0 rgba(22,18,15,.4);
+    display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;
+    border:2px solid var(--ink);border-radius:50%;background:#6C7E88;
+    color:var(--hud-paper);font-size:9px;letter-spacing:0;text-shadow:none;box-shadow:2px 2px 0 rgba(22,18,15,.42);
   }
   #voiceChip.talking b{background:var(--jays,#8EAD4B);}
 
-  /* ---------- Deathmatch announcer banner ---------- */
+  /* ---------- Deathmatch announcer banner ----------
+     Kept high in the frame and well clear of the crosshair. Squash on the
+     way in, overshoot, settle -- the one element that earns a big entrance. */
   #announcerBanner{
-    position:fixed;left:50%;top:26%;z-index:34;transform:translate(-50%,-10px) rotate(-1.5deg);
+    position:fixed;left:50%;top:23%;z-index:34;transform:translate(-50%,0) rotate(-1.5deg);
     display:none;pointer-events:none;text-align:center;
-    font:900 40px/1 "Rockwell",Georgia,serif;letter-spacing:4px;text-transform:uppercase;
-    color:var(--mustard);text-shadow:4px 0 0 var(--ink),-4px 0 0 var(--ink),0 4px 0 var(--ink),0 -4px 0 var(--ink);
-    opacity:0;transition:opacity .12s ease,transform .12s ease;
+    font:900 26px/1 var(--hud-slab);letter-spacing:3px;text-transform:uppercase;
+    color:var(--mustard);
+    text-shadow:
+      3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink),
+      2.2px 2.2px 0 var(--ink),-2.2px 2.2px 0 var(--ink),2.2px -2.2px 0 var(--ink),-2.2px -2.2px 0 var(--ink),
+      4px 5px 0 rgba(22,18,15,.4);
+    opacity:0;transition:opacity .1s ease;
   }
-  #announcerBanner.on{display:block;opacity:1;transform:translate(-50%,0) rotate(-1.5deg);}
-
-  /* ---------- Mini-boss status ---------- */
-  #bossHud{
-    position:fixed;left:50%;top:22px;z-index:31;width:min(390px,48vw);
-    transform:translateX(-50%) rotate(.7deg);opacity:0;pointer-events:none;
-    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
-    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  #announcerBanner.on{display:block;opacity:1;animation:announcerIn .46s cubic-bezier(.24,1.4,.4,1) both;}
+  @keyframes announcerIn{
+    0%  {opacity:0;transform:translate(-50%,6px) scale(.5,1.35) rotate(-7deg)}
+    38% {opacity:1;transform:translate(-50%,-4px) scale(1.16,.9) rotate(2.5deg)}
+    64% {transform:translate(-50%,1px) scale(.96,1.05) rotate(-2.6deg)}
+    84% {transform:translate(-50%,0) scale(1.02,.99) rotate(-.6deg)}
+    100%{opacity:1;transform:translate(-50%,0) scale(1,1) rotate(-1.5deg)}
   }
-  #bossHud.on{opacity:.96;}
-  #bossHudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
-  #bossHudName b{color:var(--mustard);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
-  #bossHudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
-  #bossHudFill{display:block;width:100%;height:100%;background:var(--rust);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
-  #bossHudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--mustard);}
 
-  /* Second mini-boss slot -- stacks below #bossHud (both can be visible at
-     once, since the two fights aren't mutually exclusive) with the same
-     shape but a blue-gray identity instead of Carrot Warden's rust. */
-  #boss2Hud{
-    position:fixed;left:50%;top:78px;z-index:31;width:min(390px,48vw);
-    transform:translateX(-50%) rotate(-.6deg);opacity:0;pointer-events:none;
-    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
-    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  /* ---------- Mini-boss status ----------
+     A printed bill posted at the top of the frame, not a health bar. Three
+     slots can be live at once so each is deliberately shallow (~40px) and
+     they stack tight. Enters with a drop-and-settle. */
+  .boss-bill{
+    position:fixed;left:50%;z-index:31;width:min(268px,40vw);
+    padding:6px 10px 7px;text-align:center;color:var(--ink);
+    opacity:0;pointer-events:none;
+    transition:opacity .12s ease .03s,transform .15s var(--hud-snap);
   }
-  #boss2Hud.on{opacity:.96;}
-  #boss2HudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
-  #boss2HudName b{color:var(--blue);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
-  #boss2HudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
-  #boss2HudFill{display:block;width:100%;height:100%;background:var(--blue-deep);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
-  #boss2HudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--blue);}
-
-  /* Third mini-boss slot -- stacks below #boss2Hud, same shape again but a
-     gold identity matching his golden boombox drop. */
-  #boss3Hud{
-    position:fixed;left:50%;top:134px;z-index:31;width:min(390px,48vw);
-    transform:translateX(-50%) rotate(.5deg);opacity:0;pointer-events:none;
-    transition:opacity .2s ease;filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
-    text-align:center;color:var(--cream);text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+  .boss-bill.on{
+    opacity:1;
+    transition:opacity .16s ease,transform .42s var(--hud-spring);
   }
-  #boss3Hud.on{opacity:.96;}
-  #boss3HudName{font:900 13px/1.1 "Rockwell",Georgia,serif;letter-spacing:3px;text-transform:uppercase;}
-  #boss3HudName b{color:var(--mustard);font-size:10px;letter-spacing:1.5px;margin-left:7px;}
-  #boss3HudBar{height:13px;margin-top:6px;border:3px solid var(--ink);border-radius:8px 5px 9px 6px;background:rgba(18,15,13,.65);overflow:hidden;}
-  #boss3HudFill{display:block;width:100%;height:100%;background:var(--mustard);box-shadow:inset 0 -4px 0 rgba(22,18,15,.25);transition:width .16s ease;}
-  #boss3HudHint{display:block;margin-top:4px;font:900 9px/1 "Rockwell",Georgia,serif;letter-spacing:1.5px;text-transform:uppercase;color:var(--mustard);}
+  .boss-bill > div:first-child{
+    font:900 10px/1.1 var(--hud-slab);letter-spacing:2.2px;text-transform:uppercase;
+  }
+  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1.2px;margin-left:6px;}
+  .boss-bar{
+    height:8px;margin-top:5px;border:2px solid var(--ink);border-radius:5px;
+    background:#161210;overflow:hidden;
+  }
+  .boss-bar > i{
+    display:block;width:100%;height:100%;
+    box-shadow:inset 0 -3px 0 rgba(22,18,15,.28),inset 0 2px 0 rgba(255,251,242,.2);
+    transition:width .2s var(--hud-spring);
+  }
+  /* One line only: three bills can be posted at once, so a wrapping hint
+     would push the stack into the crosshair. */
+  .boss-bill small{
+    display:block;margin-top:4px;font:800 7.5px/1.2 var(--hud-slab);
+    letter-spacing:1.2px;text-transform:uppercase;color:rgba(22,18,15,.62);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  #bossHud {top:14px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.7deg);}
+  #boss2Hud{top:66px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(-.6deg);}
+  #boss3Hud{top:118px;transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.5deg);}
+  #bossHud.on {transform:translateX(-50%) translateY(0) scale(1) rotate(.7deg);}
+  #boss2Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(-.6deg);}
+  #boss3Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(.5deg);}
+  #bossHudName b{color:var(--rust-deep);}
+  #boss2HudName b{color:var(--blue-deep);}
+  #boss3HudName b{color:var(--rust-deep);}
+  #bossHudFill{background:var(--rust);}
+  #boss2HudFill{background:var(--blue-deep);}
+  #boss3HudFill{background:var(--mustard);}
 
-  /* ---------- Proximity radar ---------- */
+  /* ---------- Proximity radar ----------
+     Shrunk to a small sensor disc and stripped of its "RADAR" caption --
+     a round dial in the corner does not need to announce that it is a dial. */
   #radar{
-    position:fixed;left:26px;top:52px;width:116px;height:142px;z-index:30;
-    opacity:0;pointer-events:none;user-select:none;transition:opacity .2s ease;
-    transform:rotate(-1deg);filter:drop-shadow(4px 5px 0 rgba(22,18,15,.32));
+    position:fixed;left:18px;top:46px;width:80px;height:94px;z-index:30;
+    opacity:0;pointer-events:none;user-select:none;
+    transition:opacity .2s ease,transform .3s var(--hud-spring);
+    transform:rotate(-1deg) scale(.94);filter:drop-shadow(2.5px 3px 0 rgba(22,18,15,.34));
   }
-  #radar.on{opacity:.94;}
+  #radar.on{opacity:.92;transform:rotate(-1deg) scale(1);}
   #radarCanvas{
-    display:block;width:112px;height:112px;border:3px solid var(--ink);
-    border-radius:50%;background:rgba(18,15,13,.68);
+    display:block;width:80px;height:80px;border:2.5px solid var(--ink);
+    border-radius:50%;background:var(--hud-tag-flat);
+    box-shadow:inset 0 0 0 1.5px rgba(246,233,210,.22),0 0 0 1px rgba(246,233,210,.26);
   }
   #radarTitle,#radarSignal{
     position:absolute;left:0;right:0;text-align:center;color:var(--cream);
-    font:900 10px/1 "Rockwell",Georgia,serif;letter-spacing:2px;text-transform:uppercase;
-    text-shadow:2px 0 0 var(--ink),-2px 0 0 var(--ink),0 2px 0 var(--ink),0 -2px 0 var(--ink);
+    font:900 7px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
+    text-shadow:var(--hud-ink-edge);
   }
-  #radarTitle{top:-14px;}
-  #radarTitle b{color:var(--mustard);font-size:9px;letter-spacing:1px;}
-  #radarSignal{bottom:1px;color:var(--mustard);font-size:9px;letter-spacing:1px;}
+  #radarTitle{top:-11px;opacity:.6;}
+  #radarSignal{bottom:0;color:var(--mustard);transition:opacity .2s ease;}
+  #radarSignal.quiet{opacity:.28;}
+
+  #jaysHud small{opacity:.55;font-size:7px;letter-spacing:1px;}
+  #jaysHud.active small{opacity:.85;}
+
+  /* Short viewports (720p and every laptop below it) -- pull the top-of-frame
+     furniture in so three boss bills plus the kill feed still fit. */
+  @media (max-height:620px){
+    #bossHud {top:10px;}
+    #boss2Hud{top:54px;}
+    #boss3Hud{top:98px;}
+    #killFeed{top:100px;}
+    #announcerBanner{top:20%;font-size:22px;}
+    #questBoard{width:min(40vw,178px);padding:7px 9px 8px;}
+    .component-slot{font-size:8px;padding:3px 6px 3px 17px;}
+  }
+
+  /* Cartoon timing is the point, but it is not worth motion sickness. */
+  @media (prefers-reduced-motion: reduce){
+    #crosshair,#interactHint,#pickupToast,#ammo,#weaponInventory,#throwableHud,
+    #jaysHud,.buffChip,#voiceChip,#killFeed .line,#killcamCaption,#questBoard,
+    .boss-bill,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
+      transition-duration:.12s !important;transition-timing-function:ease !important;
+    }
+    #announcerBanner.on,#downedHud.on{animation:none;}
+    #reloadTag.on{animation:none;}
+  }
 
   /* ---------- Mobile controls ---------- */
   #mobileControls{
@@ -679,44 +932,57 @@
   body.touch-device #mapView .alt,
   body.touch-device #aviationBuilder .alt{display:block;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
-  body.touch-device #weaponName{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(14px,env(safe-area-inset-top));bottom:auto;
-    max-width:42vw;text-align:right;font-size:10px;
-  }
+  /* Touch layout: the bottom third of the screen belongs to the thumb
+     controls, so the whole play HUD moves to the top edge. #weaponName is a
+     child of the ammo tag now, so it needs no rule of its own here. */
   body.touch-device #weaponInventory{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(150px,calc(env(safe-area-inset-top) + 136px));bottom:auto;
-    width:min(54vw,250px);max-height:30vh;overflow:auto;gap:4px;
-    transform:scale(.78) rotate(-1deg);transform-origin:right top;
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(136px,calc(env(safe-area-inset-top) + 122px));bottom:auto;
+    width:min(54vw,236px);max-height:30vh;overflow:auto;gap:4px;
+    transform:scale(.86) rotate(-1deg);transform-origin:right top;
   }
-  body.touch-device .weapon-slot-btn{min-height:35px;max-width:118px;font-size:9px;}
+  body.touch-device #weaponInventory.on{transform:scale(.86) rotate(-1deg);}
+  body.touch-device .weapon-slot-btn{min-height:32px;max-width:112px;font-size:9px;}
   body.touch-device #ammo{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(39px,calc(env(safe-area-inset-top) + 25px));bottom:auto;
-    transform:scale(.72);transform-origin:right top;
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(30px,calc(env(safe-area-inset-top) + 18px));bottom:auto;
+    transform:scale(.9) rotate(.8deg);transform-origin:right top;
   }
+  body.touch-device #ammo.on{transform:scale(.9) rotate(.8deg);}
   body.touch-device #throwableHud{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(82px,calc(env(safe-area-inset-top) + 68px));bottom:auto;
-    transform:scale(.8) rotate(1deg);transform-origin:right top;
+    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(92px,calc(env(safe-area-inset-top) + 80px));bottom:auto;
+    transform:scale(.9) rotate(1deg);transform-origin:right top;
   }
+  body.touch-device #throwableHud.on{transform:scale(.9) rotate(1deg);}
   body.touch-device #jaysHud{
-    position:fixed;right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(112px,calc(env(safe-area-inset-top) + 98px));
-    transform:scale(.8) rotate(1deg);transform-origin:right top;
+    position:fixed;right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(114px,calc(env(safe-area-inset-top) + 102px));
+    margin-bottom:0;transform:scale(.9) rotate(1deg);transform-origin:right top;
   }
-  body.touch-device #downedHud{bottom:27%;font-size:13px;}
+  body.touch-device #jaysHud.on{transform:scale(.9) rotate(1deg);}
+  body.touch-device #downedHud{bottom:29%;font-size:12px;}
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
-  body.touch-device #bossHud{top:max(12px,env(safe-area-inset-top));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.7deg);transform-origin:top center;}
-  body.touch-device #boss2Hud{top:max(52px,calc(env(safe-area-inset-top) + 40px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(-.6deg);transform-origin:top center;}
-  body.touch-device #boss3Hud{top:max(92px,calc(env(safe-area-inset-top) + 80px));width:min(54vw,300px);transform:translateX(-50%) scale(.78) rotate(.5deg);transform-origin:top center;}
-  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.82);transform-origin:top right}body.touch-device #componentHud{bottom:max(112px,calc(env(safe-area-inset-bottom) + 104px));width:92vw;gap:3px}body.touch-device #shieldHud{bottom:max(152px,calc(env(safe-area-inset-bottom) + 144px));width:92vw;gap:3px}.touch-device .component-slot{flex:1;width:auto;padding:5px 3px;font-size:7px}
+  body.touch-device .boss-bill{width:min(60vw,250px);transform-origin:top center;}
+  body.touch-device #bossHud {top:max(12px,env(safe-area-inset-top));}
+  body.touch-device #boss2Hud{top:max(56px,calc(env(safe-area-inset-top) + 44px));}
+  body.touch-device #boss3Hud{top:max(100px,calc(env(safe-area-inset-top) + 88px));}
+  body.touch-device #bossHud.on {transform:translateX(-50%) scale(.88) rotate(.7deg);}
+  body.touch-device #boss2Hud.on{transform:translateX(-50%) scale(.88) rotate(-.6deg);}
+  body.touch-device #boss3Hud.on{transform:translateX(-50%) scale(.88) rotate(.5deg);}
+  body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.86) rotate(.8deg);transform-origin:top right}
+  /* No Tab key on a phone: the board only ever peeks, so it can sit in the
+     middle-left dead zone where nothing else lives. */
+  body.touch-device #questBoard{width:min(56vw,190px);}
+  body.touch-device #questBoard.peek{transform:translateY(-50%) scale(.92) rotate(-1deg);}
+  body.touch-device #questBoardHint{display:none;}
   body.touch-device #radar{
-    left:max(14px,env(safe-area-inset-left));top:max(148px,calc(env(safe-area-inset-top) + 138px));
-    transform:scale(.78) rotate(-1deg);transform-origin:top left;
+    left:max(14px,env(safe-area-inset-left));top:max(130px,calc(env(safe-area-inset-top) + 120px));
+    transform:scale(.86) rotate(-1deg);transform-origin:top left;
   }
+  body.touch-device #radar.on{transform:scale(.86) rotate(-1deg);}
   body.touch-device #vitals{
-    left:max(14px,env(safe-area-inset-left));top:max(48px,calc(env(safe-area-inset-top) + 38px));bottom:auto;
-    transform:scale(.72);transform-origin:left top;
+    left:max(14px,env(safe-area-inset-left));top:max(38px,calc(env(safe-area-inset-top) + 28px));bottom:auto;
+    transform:scale(.86);transform-origin:left top;
   }
-  body.touch-device #reloadTag{right:50%;bottom:18%;transform:translateX(50%) rotate(-2deg);font-size:12px;}
-  body.touch-device #pickupToast{bottom:24%;max-width:54vw;font-size:11px;}
+  body.touch-device #reloadTag{right:50%;bottom:20%;transform:translateX(50%) rotate(-2deg);font-size:11px;}
+  body.touch-device #pickupToast{bottom:25%;max-width:62vw;}
 
   @media (orientation:landscape) and (max-height:540px){
     body.touch-device .veil{padding:10px max(14px,env(safe-area-inset-right)) 10px max(14px,env(safe-area-inset-left));overflow:auto;}
@@ -1284,50 +1550,65 @@
   <div id="app"></div>
 
   <div id="crosshair"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
-  <div id="interactHint" aria-live="polite"></div>
+  <div id="interactHint" class="hud-ticket" aria-live="polite"></div>
 
-  <div id="weaponName">Pipe Popper</div>
   <div id="weaponInventory" aria-label="Weapon inventory"></div>
-  <div id="ammo">
-    <div id="shells"></div>
-    <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
+  <!-- Bottom-right enamel tag: weapon, shell marks and count as one object. -->
+  <div id="ammo" class="hud-tag">
+    <div id="weaponName">Pipe Popper</div>
+    <div id="ammoRow">
+      <div id="shells"></div>
+      <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
+    </div>
   </div>
-  <div id="runClock" aria-label="Active run time"><small>RUN TIME</small><span>00:00.000</span></div>
-  <div id="componentHud" aria-label="Portal Gun components">
-    <div class="component-slot" data-component="greenShard">Green Shard</div>
-    <div class="component-slot" data-component="metalFragment">Weapon Fragment</div>
-    <div class="component-slot" data-component="computerChip">Computer Chip</div>
-  </div>
-  <div id="shieldHud" aria-label="Plow Shield components">
-    <div class="component-slot" data-shield-component="plowDisc">Plow Disc</div>
-    <div class="component-slot" data-shield-component="harnessStraps">Harness Straps</div>
-    <div class="component-slot" data-shield-component="reinforcingPlate">Reinforcing Plate</div>
+  <div id="runClock" class="hud-tag" aria-label="Active run time"><small>Run</small><span>00:00.000</span></div>
+  <!-- Objectives live behind the detail key (Tab) and flash for a beat when
+       a piece is found; they are not permanent furniture. -->
+  <div id="questBoard" class="hud-ticket" aria-label="Field orders">
+    <p class="qb-head">Field Orders<span id="questBoardHint">Hold Tab</span></p>
+    <div id="componentHud" aria-label="Portal Gun components">
+      <p class="qb-title">Portal Gun</p>
+      <div class="component-slot" data-component="greenShard">Green Shard</div>
+      <div class="component-slot" data-component="metalFragment">Weapon Fragment</div>
+      <div class="component-slot" data-component="computerChip">Computer Chip</div>
+    </div>
+    <div id="shieldHud" aria-label="Plow Shield components">
+      <p class="qb-title">Plow Shield</p>
+      <div class="component-slot" data-shield-component="plowDisc">Plow Disc</div>
+      <div class="component-slot" data-shield-component="harnessStraps">Harness Straps</div>
+      <div class="component-slot" data-shield-component="reinforcingPlate">Reinforcing Plate</div>
+    </div>
   </div>
   <div id="reloadTag">Press R to reload</div>
   <div id="throwableHud" aria-live="polite">
-    <span id="throwableName">G · Grenade</span><b id="throwableCount">0</b>
+    <span id="throwableName">G · Grenade</span><b id="throwableCount" class="hud-pip">0</b>
   </div>
   <div id="downedHud" aria-live="polite">DOWNED <small id="downedHint">Double Barrel ready · fire twice to revive</small></div>
 
+  <!-- Bottom-left: transient chips stacked above one enamel vitals tag. -->
   <div id="vitals">
-    <p class="lbl">Pep</p>
-    <div id="pepBar"><div id="pepFill"></div></div>
-    <div id="shieldRow">
-      <p class="lbl">Guard</p>
-      <div id="shieldBar"><div id="shieldFill"></div></div>
-    </div>
-    <div id="jaysHud" aria-live="polite"><span>Jays</span><b id="jaysCount">0</b><small id="jaysState">J to use</small></div>
     <div id="buffHud" aria-live="polite">
-      <div class="buffChip" id="buffIronHide" data-buff="ironHide"><span>Iron Hide</span><b>0</b></div>
-      <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><span>Hot Sauce</span><b>0</b></div>
-      <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><span>Jackrabbit</span><b>0</b></div>
-      <div class="buffChip" id="stunChip"><span>Stunned</span><b>0</b></div>
-      <div class="buffChip" id="slowChip"><span>Slowed</span><b>0</b></div>
-      <div class="buffChip" id="pilotLifeChip"><span>Hangar Downs</span><b>0/3</b></div>
+      <div class="buffChip" id="buffIronHide" data-buff="ironHide"><b>0</b><span>Iron Hide</span></div>
+      <div class="buffChip" id="buffHotSauce" data-buff="hotSauce"><b>0</b><span>Hot Sauce</span></div>
+      <div class="buffChip" id="buffJackrabbit" data-buff="jackrabbit"><b>0</b><span>Jackrabbit</span></div>
+      <div class="buffChip" id="stunChip"><b>0</b><span>Stunned</span></div>
+      <div class="buffChip" id="slowChip"><b>0</b><span>Slowed</span></div>
+      <div class="buffChip" id="pilotLifeChip"><b>0/3</b><span>Hangar Downs</span></div>
     </div>
+    <div id="jaysHud" aria-live="polite"><b id="jaysCount" class="hud-pip">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
+    <div id="vitalsTag" class="hud-tag">
+      <div class="vital-row">
+        <svg class="vital-ico" width="15" height="14" viewBox="0 0 30 28" aria-hidden="true" focusable="false"><path d="M15 26C6 19.5 2 14.6 2 9.6 2 5.4 5.2 2 9.2 2c2.4 0 4.6 1.2 5.8 3.2C16.2 3.2 18.4 2 20.8 2 24.8 2 28 5.4 28 9.6c0 5-4 9.9-13 16.4z" fill="#A85A3C" stroke="#16120F" stroke-width="3.6" stroke-linejoin="round"/></svg>
+        <div id="pepBar"><div id="pepFill"></div></div>
+      </div>
+      <div class="vital-row" id="guardRow">
+        <svg class="vital-ico" width="12" height="13" viewBox="0 0 26 28" aria-hidden="true" focusable="false"><path d="M13 2.4 23.6 5.9v8.7c0 5.9-4.4 9.5-10.6 11-6.2-1.5-10.6-5.1-10.6-11V5.9z" fill="#8FB3CC" stroke="#16120F" stroke-width="3.8" stroke-linejoin="round"/></svg>
+        <div id="shieldBar"><div id="shieldFill"></div></div>
+      </div>
+    </div>
   </div>
-  <div id="pickupToast"></div>
+  <div id="pickupToast" class="hud-ticket"></div>
   <div id="tally">Wilted <b id="killNum">0</b></div>
   <ul id="ffaScoreboard" aria-live="polite"></ul>
   <div id="killFeed" aria-live="polite"></div>
@@ -1340,23 +1621,23 @@
     <div id="devConsoleInputBar"><b>&gt;</b><span id="devConsoleInput"></span></div>
   </div>
   <div id="announcerBanner" aria-live="polite"></div>
-  <div id="bossHud" aria-live="polite">
+  <div id="bossHud" class="boss-bill hud-ticket" aria-live="polite">
     <div id="bossHudName"><span id="bossHudLabel">Carrot Warden</span> <b id="bossHudState">Awake</b></div>
-    <div id="bossHudBar"><i id="bossHudFill"></i></div>
+    <div id="bossHudBar" class="boss-bar"><i id="bossHudFill"></i></div>
     <small id="bossHudHint">The barn has a new problem</small>
   </div>
-  <div id="boss2Hud" aria-live="polite">
+  <div id="boss2Hud" class="boss-bill hud-ticket" aria-live="polite">
     <div id="boss2HudName">Bear Claw <b id="boss2HudState">Prowling</b></div>
-    <div id="boss2HudBar"><i id="boss2HudFill"></i></div>
+    <div id="boss2HudBar" class="boss-bar"><i id="boss2HudFill"></i></div>
     <small id="boss2HudHint">Watch for the smoke cloud</small>
   </div>
-  <div id="boss3Hud" aria-live="polite">
+  <div id="boss3Hud" class="boss-bill hud-ticket" aria-live="polite">
     <div id="boss3HudName">Beat Slayer <b id="boss3HudState">Circling</b></div>
-    <div id="boss3HudBar"><i id="boss3HudFill"></i></div>
+    <div id="boss3HudBar" class="boss-bar"><i id="boss3HudFill"></i></div>
     <small id="boss3HudHint">Keeps his distance -- watch for the boombox</small>
   </div>
   <div id="radar" aria-label="Proximity radar">
-    <div id="radarTitle">Radar <b id="radarLayer">Surface</b></div>
+    <div id="radarTitle"><b id="radarLayer">Surface</b></div>
     <canvas id="radarCanvas" width="132" height="132"></canvas>
     <div id="radarSignal">Clear</div>
   </div>
@@ -9095,6 +9376,9 @@ const INPUT = (() => {
     touchMoveX = touchMoveY = 0;
     touchSprint = false;
     touchResetters.forEach(reset => reset());
+    // The HUD detail key is held, so a lost keyup (alt-tab, pointer unlock)
+    // would otherwise leave the field-orders board pinned open forever.
+    if (typeof UI !== 'undefined' && UI.setDetail) UI.setDetail(false);
   }
   function clearTransientInput() {
     clearActions();
@@ -9169,6 +9453,18 @@ const INPUT = (() => {
     }
     if (down && e.code === 'Backquote' && typeof DEVCONSOLE !== 'undefined' && DEVCONSOLE.canOpen()) {
       DEVCONSOLE.open();
+      if (e.preventDefault) e.preventDefault();
+      return;
+    }
+    /* HUD detail key. Held, not toggled: everything the HUD demoted off the
+       permanent frame (the field-orders board, the arsenal strip) comes back
+       for exactly as long as Tab is down. Deliberately NOT in KEYMAP -- it
+       drives no game action, must never be rebound onto a movement key, and
+       has to keep working while the player is dead or downed. Tab's default
+       is focus traversal, which would pull focus out of the canvas, so it is
+       always swallowed here. */
+    if (e.code === 'Tab') {
+      if (typeof UI !== 'undefined' && UI.setDetail) UI.setDetail(down);
       if (e.preventDefault) e.preventDefault();
       return;
     }
@@ -12467,6 +12763,12 @@ const ANNOUNCER = (() => {
 const UI = (() => {
   const el = {};
   let kickTimer = 0, toastTimer = 0, radarAcc = 0;
+  // The HUD's two "peek" timers. Neither element is permanent furniture any
+  // more: the arsenal strip shows itself for a beat whenever the weapon set
+  // changes, and the field-orders board does the same whenever a quest piece
+  // lands. Both are also reachable on demand via the detail key (see
+  // setDetail / INPUT's Tab handler).
+  let arsenalPeek = 0, questPeek = 0, lastArsenalSignature = '';
   let externalRadarContacts = [];
 
   function init() {
@@ -12546,6 +12848,8 @@ const UI = (() => {
     el.vitals = document.getElementById('vitals');
     el.pepFill = document.getElementById('pepFill');
     el.shieldFill = document.getElementById('shieldFill');
+    el.questBoard = document.getElementById('questBoard');
+    el.questBoardHint = document.getElementById('questBoardHint');
     el.pickupToast = document.getElementById('pickupToast');
     el.tally = document.getElementById('tally');
     el.ffaScoreboard = document.getElementById('ffaScoreboard');
@@ -12617,7 +12921,41 @@ const UI = (() => {
       document.body.classList.add('touch-device');
       document.getElementById('enterBtn').textContent = 'Tap to enter →';
       document.getElementById('resumeBtn').textContent = 'Back to it →';
+      // No Tab key on a phone: the field-orders board only ever auto-peeks
+      // there, so promising a keyboard shortcut would be a lie.
+      if (el.questBoardHint) el.questBoardHint.textContent = '';
     }
+  }
+
+  /* --------------------------------------------------------------------
+     Transient HUD helpers.
+
+     `setDetail` is the held-key state (Tab): while it is on, the arsenal
+     strip and the field-orders board are both pinned open. `peekArsenal`
+     and `peekQuestBoard` are the automatic flashes -- something changed,
+     show it briefly, then get out of the frame again.
+     -------------------------------------------------------------------- */
+  function setDetail(on) {
+    document.body.classList.toggle('hud-detail', !!on);
+  }
+  function peekArsenal(seconds) {
+    if (!el.weaponInventory) return;
+    arsenalPeek = seconds === undefined ? 2.6 : seconds;
+    el.weaponInventory.classList.add('peek');
+  }
+  function peekQuestBoard(seconds) {
+    if (!el.questBoard) return;
+    questPeek = seconds === undefined ? 3.4 : seconds;
+    el.questBoard.classList.add('peek');
+  }
+  /* Re-arms a CSS entry animation/transition on an element that is already
+     showing, so a second toast in quick succession still pops instead of
+     silently swapping its text. */
+  function restartEnter(node, cls) {
+    if (!node || !node.classList.contains(cls)) return;
+    node.classList.remove(cls);
+    void node.offsetWidth;
+    node.classList.add(cls);
   }
 
   function setWeaponInventory(list, currentId) {
@@ -12639,18 +12977,26 @@ const UI = (() => {
       button.append(key, name);
       el.weaponInventory.appendChild(button);
     });
+    const signature = items.map(item => item.id + (item.id === currentId ? '*' : '')).join('|');
     el.weaponInventory.classList.toggle('on', items.length > 0);
+    // The strip is transient now (see #weaponInventory in the stylesheet):
+    // flash it whenever the set or the equipped weapon actually changes,
+    // then let it fade back out of the frame.
+    if (signature !== lastArsenalSignature) {
+      lastArsenalSignature = signature;
+      if (items.length > 0) peekArsenal();
+    }
   }
 
   function setWeapon(name, kind, n, reserve, max) {
     el.weaponName.textContent = name;
     if (kind !== 'gun' && kind !== 'flame') {
       // No mag/reserve to show for any melee-kind weapon (fists, chainsaw,
-      // The Claw) -- the weapon's own name reads better here than a
-      // hardcoded 'FISTS' that used to show even while swinging something
-      // else entirely.
+      // The Claw). The weapon's own name now lives at the top of the ammo
+      // tag, so repeating it here would just say the same thing twice --
+      // the tag shows an empty count mark instead.
       el.shells.innerHTML = '';
-      el.ammoNum.textContent = name.toUpperCase();
+      el.ammoNum.textContent = '—';
       el.ammoNum.className = 'melee';
       return;
     }
@@ -12711,6 +13057,10 @@ const UI = (() => {
   function setShield(n, max) {
     const pct = UTIL.clamp(n / max, 0, 1);
     el.shieldFill.style.width = (pct * 100).toFixed(1) + '%';
+    // The guard gauge collapses out of the vitals tag entirely while the
+    // player has no guard, so the common case is one small pill instead of
+    // two -- and picking guard up gets a real bit of motion.
+    if (el.vitals) el.vitals.classList.toggle('has-guard', pct > 0.001);
   }
   function setKills(n) { el.killNum.textContent = n; }
 
@@ -12921,7 +13271,8 @@ const UI = (() => {
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.boss3HudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.boss3HudState.textContent = state === 'defeated' ? 'Fled' : (state === 'active' ? 'Circling' : 'Incoming');
-    el.boss3HudHint.textContent = state === 'active' ? 'Keeps his distance -- watch for the boombox' : 'A beat is coming from somewhere out there';
+    // Short enough to stay on one line in the boss bill at 720p.
+    el.boss3HudHint.textContent = state === 'active' ? 'Watch for the boombox' : 'A beat, somewhere out there';
   }
 
   // Bear Claw's stun-chance claw swipe (see PLAYER.grantStun). Same
@@ -12976,12 +13327,16 @@ const UI = (() => {
     let sameLayer = 0, otherLayer = 0, sameEnemies = 0;
 
     ctx.clearRect(0, 0, size, size);
-    ctx.fillStyle = 'rgba(18,15,13,.78)';
+    // Opaque: the dial has to hold its own black against a dark, shadowed
+    // frame, and against the film overlays sitting on top of it.
+    ctx.fillStyle = '#1A1512';
     ctx.fillRect(0, 0, size, size);
     ctx.save();
     ctx.translate(center, center);
-    ctx.strokeStyle = 'rgba(143,179,204,.42)';
-    ctx.lineWidth = 1.5;
+    // The dial is drawn at 132px and displayed at 80px, so the graticule
+    // needs more weight and contrast than it looks like it should on canvas.
+    ctx.strokeStyle = 'rgba(160,196,220,.55)';
+    ctx.lineWidth = 2.4;
     [radius * 0.5, radius].forEach(r => {
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
     });
@@ -13004,17 +13359,17 @@ const UI = (() => {
       const scale = Math.min(1, distance / CONFIG.radar.range);
       const x = right / distance * radius * scale;
       const y = down / distance * radius * scale;
-      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#A85A3C');
+      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#C96B45');
       ctx.strokeStyle = '#120F0D';
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 4.2 : (c.boss ? 6.2 : 4.8), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 5.4 : (c.boss ? 7.4 : 6), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
     // Player marker and forward tick.
-    ctx.fillStyle = '#E8A33D';
+    ctx.fillStyle = '#F6E9D2';
     ctx.strokeStyle = '#120F0D';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(6, 6); ctx.lineTo(0, 3); ctx.lineTo(-6, 6); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 
     const label = layer === 'basement' ? 'Basement' : 'Surface';
@@ -13023,12 +13378,16 @@ const UI = (() => {
     else if (sameLayer > 0) el.radarSignal.textContent = sameLayer + ' contact';
     else if (otherLayer > 0) el.radarSignal.textContent = otherLayer + (layer === 'basement' ? ' above' : ' below');
     else el.radarSignal.textContent = 'Clear';
+    // "Clear" is the default state and carries no information -- dim it so
+    // the only time the dial says anything loudly is when it has news.
+    el.radarSignal.classList.toggle('quiet', sameLayer === 0 && otherLayer === 0);
   }
 
   function toast(message, seconds) {
     if (!message) return;
     el.pickupToast.textContent = message;
-    el.pickupToast.classList.add('on');
+    if (el.pickupToast.classList.contains('on')) restartEnter(el.pickupToast, 'on');
+    else el.pickupToast.classList.add('on');
     toastTimer = seconds || 1.45;
   }
 
@@ -13161,6 +13520,12 @@ const UI = (() => {
     el.crosshair.classList.remove('on');
     el.radar.classList.remove('on');
     if (el.weaponInventory) el.weaponInventory.classList.remove('on');
+    // Held-key/auto-peek overlays are per-moment state, never something a
+    // cutscene or menu should inherit.
+    setDetail(false);
+    arsenalPeek = questPeek = 0;
+    if (el.weaponInventory) el.weaponInventory.classList.remove('peek');
+    if (el.questBoard) el.questBoard.classList.remove('peek');
   }
   function showHud() {
     el.crosshair.classList.add('on');
@@ -13170,6 +13535,8 @@ const UI = (() => {
     el.vitals.classList.add('on');
     el.tally.classList.add('on');
     el.radar.classList.add('on');
+    // One free look at the arsenal on the way in, then it gets out of the way.
+    peekArsenal(3.2);
     showMobileControls(true);
   }
   function enterGame() {
@@ -13506,6 +13873,14 @@ const UI = (() => {
       toastTimer -= dt;
       if (toastTimer <= 0) el.pickupToast.classList.remove('on');
     }
+    if (arsenalPeek > 0) {
+      arsenalPeek -= dt;
+      if (arsenalPeek <= 0 && el.weaponInventory) el.weaponInventory.classList.remove('peek');
+    }
+    if (questPeek > 0) {
+      questPeek -= dt;
+      if (questPeek <= 0 && el.questBoard) el.questBoard.classList.remove('peek');
+    }
     radarAcc += dt;
     if (radarAcc >= CONFIG.radar.refresh) {
       radarAcc = 0;
@@ -13531,6 +13906,7 @@ const UI = (() => {
     init, setWeapon, setWeaponInventory, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast, setInteractionHint,
     showPause, hidePause, showMobileControls, hideLoading, update,
+    setDetail, peekArsenal, peekQuestBoard,
     setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, setPilotLives, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
@@ -14541,6 +14917,11 @@ const QUEST = (() => {
     LEVEL.setNorthBarnAccess('west', open, immediate);
     LEVEL.setNorthBarnAccess('hatch', open, immediate);
   }
+  /* Both trays now live inside #questBoard, which is off-frame unless the
+     player holds the detail key. So this also flashes the board whenever the
+     tracked state actually changes -- finding a piece still tells you what
+     you found without parking six chips across the bottom of the screen. */
+  let lastQuestSignature = null;
   function syncHud() {
     const hud = document.getElementById('componentHud');
     if (hud) {
@@ -14559,6 +14940,14 @@ const QUEST = (() => {
         el.classList.toggle('collected', !!state.shieldComponents[id]);
         el.classList.toggle('assembled', !!state.shieldCrafted);
       });
+    }
+    const signature = COMPONENTS.map(id => state.components[id] ? 1 : 0).join('') + '/' +
+      SHIELD_COMPONENTS.map(id => state.shieldComponents[id] ? 1 : 0).join('') +
+      (state.crafted ? 'C' : '') + (state.shieldCrafted ? 'S' : '');
+    if (signature !== lastQuestSignature) {
+      const first = lastQuestSignature === null;
+      lastQuestSignature = signature;
+      if (!first && isSinglePlayer() && typeof UI !== 'undefined' && UI.peekQuestBoard) UI.peekQuestBoard();
     }
   }
   function reset() {
