@@ -9,8 +9,19 @@
     --peach:#F2CDBB;
     --peach-deep:#DCA692;
     --cream:#F6E9D2;
+    /* creamDim and blueGray are in CONFIG.palette and were referenced by
+       #componentHud / #shieldHud / the run-clock sublabels, but were never
+       actually declared here. `color: var(--cream-dim)` on an undeclared
+       custom property resolves to `unset`, so those labels silently
+       inherited near-black text. That was invisible while every frame was
+       cream-coloured -- the translucent chip background let the bright
+       scene behind bleed through and fake legibility. Now that the render
+       has real darks behind the HUD, the same chips read as ghosted empty
+       rectangles. Declaring them is the whole fix. */
+    --cream-dim:#E2D2B4;
     --blue:#8FB3CC;
     --blue-deep:#5C7E99;
+    --blue-gray:#7D8B94;
     --mustard:#E8A33D;
     --rust:#A85A3C;
     --rust-deep:#7E3F2A;
@@ -1849,6 +1860,11 @@ const CONFIG = {
       // NOT a move toward black-and-white -- the hues are all still here,
       // they are just wearing the right amount of paint.
       saturation: 0.64,
+      // How much of that saturation is given back up at the top of the
+      // scale. Sunlit dirt is the largest area in nearly every frame; without
+      // a rolloff it reads as bright orange instead of pale dust. See the
+      // grade shader.
+      satRoll: 0.45,
       shadowTint: [0.000, 0.010, 0.026],   // cool the shadow pools
       highTint:   [0.024, 0.011, 0.000],   // warm the highlights
       vignette: 0.34,
@@ -3247,6 +3263,7 @@ const RENDERCORE = (() => {
     'uniform float uWhiteInv;',
     'uniform float uContrast;',
     'uniform float uSaturation;',
+    'uniform float uSatRoll;',
     'uniform vec3 uShadowTint;',
     'uniform vec3 uHighTint;',
     'uniform float uVignette;',
@@ -3310,7 +3327,15 @@ const RENDERCORE = (() => {
     '  col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);',
     '',
     '  float luma = dot(col, LUMA);',
-    '  col = mix(vec3(luma), col, uSaturation);',
+    // Saturation rolls off toward the top of the scale. Sunlit dirt is the
+    // single biggest area in almost every frame here, and a flat saturation
+    // multiplier leaves it reading as bright orange -- the pigment gets
+    // brighter without getting any paler, which no real surface and no
+    // painted cel does. Rolling the top end toward its own luma bleaches the
+    // lit ground back to dust while the mids and shadows keep every bit of
+    // their hue, so the corn stays green and the rust stays rust.
+    '  float sat = uSaturation * (1.0 - uSatRoll * smoothstep(0.42, 1.0, luma));',
+    '  col = mix(vec3(luma), col, sat);',
     '  col += uShadowTint * (1.0 - luma) + uHighTint * luma;',
     '',
     // Vignette is a lens/gate artefact, so it lands on the print, not the
@@ -3375,6 +3400,7 @@ const RENDERCORE = (() => {
         uWhiteInv: { value: 1 / Math.max(0.01, grade.white - grade.black) },
         uContrast: { value: grade.contrast },
         uSaturation: { value: grade.saturation },
+        uSatRoll: { value: grade.satRoll },
         uShadowTint: { value: new THREE.Vector3().fromArray(grade.shadowTint) },
         uHighTint: { value: new THREE.Vector3().fromArray(grade.highTint) },
         uVignette: { value: grade.vignette },
@@ -3672,6 +3698,9 @@ const RENDERCORE = (() => {
     u.uWhiteInv.value = 1 / Math.max(0.01, grade.white - grade.black);
     u.uContrast.value = grade.contrast;
     u.uSaturation.value = grade.saturation;
+    u.uSatRoll.value = grade.satRoll;
+    u.uShadowTint.value.fromArray(grade.shadowTint);
+    u.uHighTint.value.fromArray(grade.highTint);
     u.uVignette.value = grade.vignette;
     u.uGrain.value = grade.grain;
     u.uGrainScale.value = grade.grainScale;
@@ -3689,7 +3718,36 @@ const RENDERCORE = (() => {
     init, setSize, update, render, setQuality, tagScene,
     get quality() { return tierName; },
     get tier() { return tier || currentTier(); },
-    get key() { return key; }
+    get key() { return key; },
+    /* Live handles on the whole rig. Intensities and colours are plain
+       uniforms, so anything here can be pushed at runtime without a shader
+       recompile -- which is what makes the rig tunable from the console
+       instead of only from a reload. */
+    get lights() {
+      return { key: key, fill: fill, rim: rim, amb: amb,
+               vKey: vKey, vFill: vFill, vRim: vRim, vAmb: vAmb };
+    },
+    /* Re-reads CONFIG.render.lights into the live rig. Grade values are read
+       fresh every frame already; the lights are not, so this is the hook for
+       changing them at runtime. */
+    syncLights() {
+      const l = L();
+      if (!key) return;
+      key.color.set(l.keyColor); key.intensity = l.keyIntensity;
+      _keyOff.fromArray(l.keyDir);
+      fill.color.set(l.skyColor); fill.groundColor.set(l.groundColor);
+      fill.intensity = l.fillIntensity;
+      rim.color.set(l.rimColor); rim.intensity = l.rimIntensity;
+      _rimOff.fromArray(l.rimDir);
+      amb.color.set(l.ambColor); amb.intensity = l.ambIntensity;
+      if (!vKey) return;
+      vKey.color.set(l.vKeyColor); vKey.intensity = l.vKeyIntensity;
+      vKey.position.set(l.vKeyDir[0], l.vKeyDir[1], l.vKeyDir[2]);
+      vFill.color.set(l.vSkyColor); vFill.groundColor.set(l.vGroundColor);
+      vFill.intensity = l.vFillIntensity;
+      vRim.color.set(l.vRimColor); vRim.intensity = l.vRimIntensity;
+      vAmb.color.set(l.vAmbColor); vAmb.intensity = l.vAmbIntensity;
+    }
   };
 })();
 
