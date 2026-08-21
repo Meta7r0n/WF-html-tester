@@ -4135,10 +4135,31 @@ const PRIM = (() => {
   function cone(r, h, seg, mat, o) { return mesh(new THREE.ConeGeometry(r, h, seg || 10), mat, o); }
   function torus(r, tube, mat, o) { return mesh(new THREE.TorusGeometry(r, tube, 6, 14), mat, o); }
 
-  /* A curved rubber-hose limb between two points. */
+  /* A curved rubber-hose limb between two points.
+
+     [RUBBERHOSE] Options beyond the original signature, all optional and
+     all backward-compatible when omitted:
+
+       o.taper   radius multiplier at `b` (1 = the old constant-radius tube).
+                 Rings are lerped toward the centreline so the noodle thins
+                 the way an inked rubberhose limb does — fat at the shoulder,
+                 narrow at the wrist.
+       o.bulge   extra radius multiplier at the curve's midpoint, so the
+                 limb reads as a swollen hose rather than a cone.
+       o.side    lateral (x/z-plane) bow added on top of the vertical `sag`,
+                 given as [dx, dz]. Straight-down sag alone makes limbs read
+                 as hanging rope; a little sideways bow makes them read as
+                 drawn arcs.
+       o.seg     tubular segment count (default 14 — the old 22 was more
+                 tessellation than a 30cm limb ever needed, and half of the
+                 saving pays for the extra segment each limb is now split
+                 into).
+       o.radial  radial segment count (default 8). */
   function hose(a, b, sag, radius, mat, o) {
+    o = o || {};
     const mid = new THREE.Vector3().addVectors(a, b).multiplyScalar(0.5);
     mid.y -= sag;
+    if (o.side) { mid.x += o.side[0]; mid.z += o.side[1]; }
     const curve = new THREE.CatmullRomCurve3([
       a.clone(),
       new THREE.Vector3().lerpVectors(a, mid, 0.7),
@@ -4146,7 +4167,32 @@ const PRIM = (() => {
       new THREE.Vector3().lerpVectors(mid, b, 0.6),
       b.clone()
     ]);
-    const geo = new THREE.TubeGeometry(curve, 22, radius, 8, false);
+    const seg = o.seg || 14;
+    const radial = o.radial || 8;
+    const geo = new THREE.TubeGeometry(curve, seg, radius, radial, false);
+    const taper = o.taper === undefined ? 1 : o.taper;
+    const bulge = o.bulge === undefined ? 1 : o.bulge;
+    if (taper !== 1 || bulge !== 1) {
+      // TubeGeometry lays vertices out ring-major: ring i owns indices
+      // i*(radial+1) .. i*(radial+1)+radial, centred on curve point i/seg.
+      const pos = geo.attributes.position;
+      const c = new THREE.Vector3();
+      for (let i = 0; i <= seg; i++) {
+        const t = i / seg;
+        curve.getPointAt(t, c);
+        const s = (1 + (taper - 1) * t) * (1 + (bulge - 1) * Math.sin(t * Math.PI));
+        if (s === 1) continue;
+        for (let j = 0; j <= radial; j++) {
+          const k = i * (radial + 1) + j;
+          pos.setXYZ(k,
+            c.x + (pos.getX(k) - c.x) * s,
+            c.y + (pos.getY(k) - c.y) * s,
+            c.z + (pos.getZ(k) - c.z) * s);
+        }
+      }
+      pos.needsUpdate = true;
+      geo.computeVertexNormals();
+    }
     return mesh(geo, mat, o);
   }
 
@@ -16172,6 +16218,10 @@ const QUEST = (() => {
     gardener.maxHp = gardener.hp = 780;
     gardener.group.scale.setScalar(2.6);
     gardener.headProxy.scale.multiplyScalar(1.75); gardener.bodyProxy.scale.multiplyScalar(2.1);
+    // The Gardener is the one grunt whose root scale and proxy sizes are
+    // authored after create(). Re-snapshot them so ENEMY's per-frame proxy
+    // pinning keeps THESE dimensions, not the 1:1 ones create() saw.
+    ENEMY.refreshProxyBase(gardener);
     gardener.gardenerSummons = []; gardener.gardenerSpawnTimes = [];
     gardener.gardenerAttackTimer = 4; gardener.gardenerSeedTimer = 2.5;
     UI.setBoss(true, gardener.hp, gardener.maxHp, 'active', 'The Gardener');
@@ -17434,7 +17484,23 @@ const CAST = (() => {
      Each builder receives (group, skin) and hangs geometry off `group`.
      The petal ring and face plate are shared; builders only draw the face. */
 
+  /* [RUBBERHOSE] Everything loose enough to lag the skull — petals, caps,
+     scarves, ears — is parented to this sub-group instead of the head
+     itself, so CAST.settle() can trail and overshoot it a frame or two
+     behind whatever the head is doing. Falls back to the head group when a
+     builder is handed a bare Object3D (portrait previews, aviation packs). */
+  function trailOf(group) {
+    if (!group) return group;
+    if (!group.userData.trail) {
+      const t = new THREE.Group();
+      group.add(t);
+      group.userData.trail = t;
+    }
+    return group.userData.trail;
+  }
+
   function headBase(group, skin, options) {
+    const trail = trailOf(group);
     // squashed cream skull
     PRIM.sph(HEAD_R, MAT.toon(skin.face), {
       parent: group, scale: [1, 1, 0.72], outline: 0.028, ray: false
@@ -17461,32 +17527,35 @@ const CAST = (() => {
       front.custom(mk(0.10, 0.23, 0.055), [0.10, 0.23, 0.055],
         Math.cos(a) * 0.335, Math.sin(a) * 0.335, -0.06, 0, 0, a - Math.PI / 2);
     }
-    back.build(group, { ray: false });
-    front.build(group, { ray: false });
+    back.build(trail, { ray: false });
+    front.build(trail, { ray: false });
   }
 
   /* One canonical blue aviation cap for every classic hero except Pyro.
      Keeping it here makes the rule apply identically to portraits, intro
      rigs, local/remote multiplayer bodies, and future CAST consumers. */
   function aviationCap(group) {
+    // [RUBBERHOSE] the cap rides the head's trail group so it lags and
+    // settles a beat behind the skull instead of being welded to it.
+    const g = trailOf(group);
     const blue = MAT.toon(PAL.blue);
     const darkBlue = MAT.toon(PAL.blueDeep);
     PRIM.sph(0.225, blue, {
       pos: [0, 0.245, 0.015], scale: [1.16, 0.62, 0.92],
-      parent: group, outline: 0.028, ray: false
+      parent: g, outline: 0.028, ray: false
     });
     PRIM.box(0.40, 0.075, 0.14, darkBlue, {
       pos: [0, 0.177, -0.19], rot: [0.08, 0, 0],
-      parent: group, outline: 0.022, ray: false
+      parent: g, outline: 0.022, ray: false
     });
     [-1, 1].forEach(s => {
       PRIM.box(0.13, 0.22, 0.12, blue, {
         pos: [s * 0.22, 0.285, 0.015], rot: [0, 0, s * 0.24],
-        parent: group, outline: 0.022, ray: false
+        parent: g, outline: 0.022, ray: false
       });
       PRIM.sph(0.085, blue, {
         pos: [s * 0.285, 0.015, 0.01], scale: [0.62, 1.18, 0.72],
-        parent: group, outline: 0.02, ray: false
+        parent: g, outline: 0.02, ray: false
       });
     });
   }
@@ -17542,13 +17611,14 @@ const CAST = (() => {
     });
   }
 
-  /* Pointed cat/wolf ears. */
+  /* Pointed cat/wolf ears. [RUBBERHOSE] on the head trail so they flick. */
   function catEars(group, skin) {
+    const g = trailOf(group);
     const m = MAT.toon(skin.ink);
     [-1, 1].forEach(s => {
       PRIM.cone(0.115, 0.15, 4, m, {
         pos: [s * 0.175, 0.305, -0.01], rot: [0.05, 0, s * 0.32],
-        parent: group, outline: 0.02, ray: false
+        parent: g, outline: 0.02, ray: false
       });
     });
   }
@@ -18342,9 +18412,16 @@ const CAST = (() => {
 
     // head — DAO aviation cosmetics replace only this local subtree. The
     // shared body/animation rig below remains byte-for-byte identical.
+    //
+    // [RUBBERHOSE] `neck` is new and sits between torso and head carrying
+    // the old head offset. Nothing outside CAST touches it; every existing
+    // consumer keeps driving `rig.head` exactly as before, and CAST.settle()
+    // adds the lag/overshoot on the neck underneath that pose.
+    const neck = new THREE.Group();
+    neck.position.set(0, 0.50, 0);
+    torso.add(neck);
     const head = new THREE.Group();
-    head.position.set(0, 0.50, 0);
-    torso.add(head);
+    neck.add(head);
     const aviationItem = appearance && typeof AVIATION_HEAD_PACK !== 'undefined'
       ? AVIATION_HEAD_PACK.get(appearance.aviationTokenId) : null;
     const headSkin = aviationItem
@@ -18358,22 +18435,58 @@ const CAST = (() => {
     } else {
       (HEADS[def.head] || HEADS.gaper)(head, skin);
     }
-    if (def.collar && COLLARS[def.collar]) COLLARS[def.collar](head, skin);
+    // Collars hang off the head but are cloth: they ride the trail group so
+    // a scarf keeps swinging after the head has stopped.
+    if (def.collar && COLLARS[def.collar]) COLLARS[def.collar](trailOf(head), skin);
 
-    // arms
+    /* [RUBBERHOSE] arms and legs are noodles, not rods.
+
+       Each limb is now TWO tapered hose segments joined by a mid joint
+       (elbow / knee). The shoulder joint keeps its old name and its old
+       local transform, so every existing pose function — ENEMY.pose,
+       COOP.poseRemote, KILLCAM.poseRagdoll, the cutscenes — drives it
+       exactly as before and nothing needs to know the limb got a second
+       hinge. The hand/foot groups also keep their old local positions, so
+       hand props, gloves, shoes and the hit proxies are untouched.
+
+       The extra hinge is what makes the limb able to *arc*: CAST.settle()
+       trails it behind the shoulder, so a swinging arm bows backwards
+       through the swing and whips through at the end instead of rotating
+       rigidly about one point. Each segment also carries its own sag and a
+       sideways bow, so even at rest the silhouette is a drawn curve. */
     const limbMat = MAT.toon(skin.limb);
+    const V = THREE.Vector3;
     const arms = [];
     [-1, 1].forEach(s => {
       const j = new THREE.Group();
       j.position.set(s * 0.145, 0.2, 0);
       torso.add(j);
-      PRIM.hose(new THREE.Vector3(0, 0, 0), new THREE.Vector3(s * 0.2, -0.36, -0.04),
-        0.11, 0.052, limbMat, { parent: j, outline: 0.02, ray: false });
+      /* Longer than the original single 0.36 stub. A rubberhose arm has to
+         hang far enough down the body to read as a hose at all — at the old
+         length it was a shoulder pad with a glove on it, and no amount of
+         curvature showed at gameplay distance. Nothing collides with an arm,
+         and the hand group's contents (glove, weapon props) simply ride
+         further out, so the extra reach is free. */
+      // upper arm: shoulder -> elbow
+      const elbow = new V(s * 0.145, -0.235, -0.02);
+      PRIM.hose(new V(0, 0, 0), elbow, 0.075, 0.06, limbMat, {
+        parent: j, outline: 0.02, ray: false, taper: 0.84, bulge: 1.08,
+        side: [s * 0.038, 0.016], seg: 9, radial: 7
+      });
+      const mid = new THREE.Group();
+      mid.position.copy(elbow);
+      j.add(mid);
+      // forearm: elbow -> wrist
+      const wrist = new V(s * 0.105, -0.215, -0.026);
+      PRIM.hose(new V(0, 0, 0), wrist, 0.062, 0.05, limbMat, {
+        parent: mid, outline: 0.02, ray: false, taper: 0.78, bulge: 1.06,
+        side: [s * 0.03, -0.012], seg: 9, radial: 7
+      });
       const hand = new THREE.Group();
-      hand.position.set(s * 0.2, -0.36, -0.04);
-      j.add(hand);
+      hand.position.copy(wrist);
+      mid.add(hand);
       glove(hand, s, skin);
-      arms.push({ joint: j, hand: hand, side: s });
+      arms.push({ joint: j, mid: mid, hand: hand, side: s });
     });
 
     // right hand prop
@@ -18385,22 +18498,195 @@ const CAST = (() => {
       const j = new THREE.Group();
       j.position.set(s * 0.115, 0.55, 0);
       bob.add(j);
-      PRIM.hose(new THREE.Vector3(0, 0, 0), new THREE.Vector3(s * 0.02, -0.46, 0),
-        0.05, 0.058, limbMat, { parent: j, outline: 0.021, ray: false });
+      const knee = new V(s * 0.012, -0.245, 0.008);
+      PRIM.hose(new V(0, 0, 0), knee, 0.028, 0.064, limbMat, {
+        parent: j, outline: 0.021, ray: false, taper: 0.88, bulge: 1.05,
+        side: [s * 0.016, 0], seg: 9, radial: 7
+      });
+      const mid = new THREE.Group();
+      mid.position.copy(knee);
+      j.add(mid);
+      const ankle = new V(s * 0.008, -0.235, -0.008);
+      PRIM.hose(new V(0, 0, 0), ankle, 0.024, 0.056, limbMat, {
+        parent: mid, outline: 0.021, ray: false, taper: 0.82, bulge: 1.04,
+        side: [s * 0.01, 0], seg: 9, radial: 7
+      });
+      // knee + ankle sum back to the old foot offset of (s*0.02, -0.48, 0)
       const foot = new THREE.Group();
-      foot.position.set(s * 0.02, -0.48, 0);
-      j.add(foot);
+      foot.position.copy(ankle);
+      mid.add(foot);
       shoe(foot, s, skin);
-      legs.push({ joint: j, foot: foot, side: s });
+      legs.push({ joint: j, mid: mid, foot: foot, side: s });
     });
 
     return {
-      root: root, bob: bob, torso: torso, head: head,
+      root: root, bob: bob, torso: torso, neck: neck, head: head,
+      headTrail: head.userData.trail || null,
       armL: arms[0].joint, armR: arms[1].joint,
+      armLMid: arms[0].mid, armRMid: arms[1].mid,
       handL: arms[0].hand, handR: arms[1].hand,
-      legL: legs[0].joint, legR: legs[1].joint
+      legL: legs[0].joint, legR: legs[1].joint,
+      legLMid: legs[0].mid, legRMid: legs[1].mid,
+      footL: legs[0].foot, footR: legs[1].foot
     };
   }
+
+  /* ================= [RUBBERHOSE] secondary motion =================
+     Follow-through and overlapping action for every CAST rig, driven from
+     one place so nothing can forget it.
+
+     The rule of the style is that no two parts start or stop on the same
+     frame. Everything here is a lag: an underdamped spring chases whatever
+     the *pose* function put on a parent joint, and the child is offset by
+     the error between the two. While the parent accelerates, the spring is
+     behind it, so the child bends backwards — the limb trails. When the
+     parent stops, the spring overshoots past it, so the child swings
+     through and wobbles back to rest a few frames later.
+
+     Consumers call CAST.settle(rig, dt) once per frame AFTER posing. It is
+     a no-op on rigs that lack the joints (GLB boss rigs), so the boss code
+     and the cutscenes can call it unconditionally.
+
+     Cost is a handful of scalar springs per character — no allocation, no
+     matrix work beyond the transforms Three.js was already going to do. */
+
+  // [joint, mid joint, x-gain, z-gain, x-limit, z-limit]
+  const TRAIL_LIMBS = [
+    ['armL', 'armLMid', 0.85, 0.55, 1.15, 0.7],
+    ['armR', 'armRMid', 0.85, 0.55, 1.15, 0.7],
+    ['legL', 'legLMid', 0.72, 0.30, 0.8, 0.4],
+    ['legR', 'legRMid', 0.72, 0.30, 0.8, 0.4]
+  ];
+  const SPRING_K = 175, SPRING_D = 13.5;
+  // How fast the "lead" filter chases the stepped pose. High enough that the
+  // lead is effectively the pose, low enough that a 12fps step edge becomes a
+  // ramp instead of a cliff — without this the trail joints flick once per
+  // animation step instead of arcing.
+  const LEAD_LAMBDA = 26;
+
+  /* Two-stage filter, three floats per channel: [lead, pos, vel].
+
+     `lead` is a fast exponential chase of the posed angle — it removes the
+     staircase the 12fps animation clock puts on the input. `pos`/`vel` are
+     an underdamped spring chasing `lead`. The child joint is driven by the
+     error between them, so it lags while the parent accelerates and
+     overshoots after the parent stops. */
+  function trailStep(s, i, target, h) {
+    s[i] += (target - s[i]) * (1 - Math.exp(-LEAD_LAMBDA * h));
+    const v = s[i + 2] + (-(s[i + 1] - s[i]) * SPRING_K - s[i + 2] * SPRING_D) * h;
+    s[i + 2] = v;
+    s[i + 1] += v * h;
+    return s[i] - s[i + 1];
+  }
+
+  function clampTo(v, lim) { return v < -lim ? -lim : (v > lim ? lim : v); }
+
+  /* Reset every spring to the rig's current pose. Call on spawn/revive/
+     teleport so a character never explodes into a wobble it did not earn. */
+  function settleReset(rig) {
+    if (!rig) return;
+    rig.trailState = null;
+    for (let i = 0; i < TRAIL_LIMBS.length; i++) {
+      const m = rig[TRAIL_LIMBS[i][1]];
+      if (m) m.rotation.set(0, 0, 0);
+    }
+    if (rig.neck) { rig.neck.rotation.set(0, 0, 0); rig.neck.position.y = 0.50; }
+    if (rig.headTrail) { rig.headTrail.rotation.set(0, 0, 0); rig.headTrail.scale.setScalar(1); }
+    // Pose functions squash these directly (blinks, death impacts); a revived
+    // body must not keep the last frame of its own corpse.
+    if (rig.head) rig.head.scale.setScalar(1);
+    if (rig.torso) rig.torso.scale.setScalar(1);
+    if (rig.bob) { rig.bob.position.set(0, 0, 0); rig.bob.rotation.set(0, 0, 0); }
+    if (rig.footL) rig.footL.rotation.set(0, 0, 0);
+    if (rig.footR) rig.footR.rotation.set(0, 0, 0);
+  }
+
+  // channel base offsets into trailState (3 floats each)
+  const CH_NECK_X = 24, CH_NECK_Z = 27, CH_TRAIL_X = 30, CH_TRAIL_Z = 33, CH_BOB = 36;
+
+  function settle(rig, dt, gain) {
+    if (!rig || !rig.armLMid) return;
+    const g = gain === undefined ? 1 : gain;
+    // Long frames (tab wake-up, level load hitch) must not integrate a
+    // spring that far in one go; clamp rather than sub-step, since a stale
+    // wobble is invisible next to a divergent one.
+    const h = dt > 0.034 ? 0.034 : (dt > 0 ? dt : 0.0001);
+    let s = rig.trailState;
+    if (!s) {
+      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z and the
+      // vertical bob = 13 channels x 3 floats.
+      s = rig.trailState = new Float32Array(39);
+      let k = 0;
+      for (let i = 0; i < TRAIL_LIMBS.length; i++) {
+        const j = rig[TRAIL_LIMBS[i][0]];
+        const rx = j ? j.rotation.x : 0, rz = j ? j.rotation.z : 0;
+        s[k] = s[k + 1] = rx;
+        s[k + 3] = s[k + 4] = rz;
+        k += 6;
+      }
+    }
+
+    let k = 0;
+    for (let i = 0; i < TRAIL_LIMBS.length; i++) {
+      const cfg = TRAIL_LIMBS[i];
+      const j = rig[cfg[0]], m = rig[cfg[1]];
+      if (j && m) {
+        m.rotation.x = clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
+        m.rotation.z = clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
+      }
+      k += 6;
+    }
+
+    // Head: lags the combined torso+head pose, and lags the body's vertical
+    // bounce so the skull keeps rising for a frame after the hips stop.
+    const torso = rig.torso, head = rig.head, neck = rig.neck;
+    if (neck && torso && head) {
+      neck.rotation.x = clampTo(
+        trailStep(s, CH_NECK_X, torso.rotation.x + head.rotation.x, h) * 0.9 * g, 0.65);
+      neck.rotation.z = clampTo(
+        trailStep(s, CH_NECK_Z, torso.rotation.z + head.rotation.z, h) * 0.9 * g, 0.5);
+      const by = rig.bob ? rig.bob.position.y : 0;
+      neck.position.y = 0.50 + clampTo(trailStep(s, CH_BOB, by, h) * -0.6 * g, 0.075);
+    }
+    // Petals / caps / ears / scarves lag the head in turn — third link in
+    // the chain, so the silhouette ripples outward from the body.
+    const trail = rig.headTrail;
+    if (trail && head) {
+      trail.rotation.x = clampTo(
+        trailStep(s, CH_TRAIL_X, head.rotation.x + (neck ? neck.rotation.x : 0), h) * 1.25 * g, 0.55);
+      trail.rotation.z = clampTo(
+        trailStep(s, CH_TRAIL_Z, head.rotation.z + (neck ? neck.rotation.z : 0), h) * 1.25 * g, 0.45);
+    }
+  }
+
+  /* Shared easing vocabulary. Cartoon timing is not linear: it is a fast
+     attack into a long hold, or a slow gather into a snap. Every pose
+     function in the game reaches for these instead of raw `k`. */
+  const EASE = {
+    // fast out of the pose, long settle into it — the workhorse
+    outQuint(k) { const u = 1 - k; return 1 - u * u * u * u * u; },
+    outCubic(k) { const u = 1 - k; return 1 - u * u * u; },
+    // slow gather, sudden release: anticipation
+    inQuart(k) { return k * k * k * k; },
+    // overshoot past the target then come back — the cartoon "snap"
+    outBack(k, s) {
+      const b = s === undefined ? 2.1 : s;
+      const u = k - 1;
+      return 1 + u * u * ((b + 1) * u + b);
+    },
+    // decaying wobble, for hit reactions and things coming to rest
+    ring(k, cycles, decay) {
+      return Math.cos(k * Math.PI * 2 * (cycles === undefined ? 2 : cycles)) *
+        Math.exp(-(decay === undefined ? 4 : decay) * k);
+    },
+    // sine reshaped to hold at the extremes and snap through the middle —
+    // this is what turns a linear walk cycle into a cartoon one
+    snapSin(a, p) {
+      const s = Math.sin(a);
+      const e = p === undefined ? 0.62 : p;
+      return s < 0 ? -Math.pow(-s, e) : Math.pow(s, e);
+    }
+  };
 
   /* Build a character. Returns { rig, def, skin }. */
   function build(id, appearance) {
@@ -18513,7 +18799,11 @@ const CAST = (() => {
     return dataUrl;
   }
 
-  return { ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list, renderPortrait };
+  return {
+    ROSTER, HEADS, HANDS, COLLARS, BACKS, DEFAULT_SKIN, build, list, renderPortrait,
+    // [RUBBERHOSE] shared animation services — see settle()/EASE above.
+    settle, settleReset, EASE
+  };
 })();
 
 /* ======================== [AVIATION_AVATAR] ==========================
@@ -19347,13 +19637,27 @@ const PORTALCUTSCENE = (() => {
     return built.rig;
   }
 
-  function poseWatcherIdle() {
+  /* [RUBBERHOSE] The watcher stands still for a long cutscene beat, which
+     is exactly where a stiff rig gives itself away. Breathing, a held head
+     turn and CAST.settle()'s trailing keep it alive without moving it. */
+  function poseWatcherIdle(dt) {
     if (!watcherRig) return;
-    const sway = Math.sin(t * 1.3) * 0.05;
-    if (watcherRig.bob) watcherRig.bob.position.y = Math.sin(t * 1.1) * 0.02;
-    if (watcherRig.head) watcherRig.head.rotation.set(0, sway * 0.4, 0);
-    if (watcherRig.armL) watcherRig.armL.rotation.set(0.05, 0, -0.08 + sway * 0.06);
-    if (watcherRig.armR) watcherRig.armR.rotation.set(0.05, 0, 0.08 - sway * 0.06);
+    const E = CAST.EASE;
+    const ts = Math.floor(t * 12) / 12;
+    const sway = E.snapSin(ts * 0.55, 0.5) * 0.05;
+    const breath = Math.sin(ts * 1.5) * 0.02;
+    if (watcherRig.bob) {
+      watcherRig.bob.position.y = breath;
+      watcherRig.bob.position.x = sway * 0.35;
+    }
+    if (watcherRig.torso) {
+      watcherRig.torso.rotation.set(-breath * 0.8, 0, sway * 0.5);
+      watcherRig.torso.scale.set(1 + breath * 0.5, 1 + breath * 0.9, 1 + breath * 0.5);
+    }
+    if (watcherRig.head) watcherRig.head.rotation.set(breath * 1.4, sway * 5, -sway * 0.6);
+    if (watcherRig.armL) watcherRig.armL.rotation.set(0.05 + breath, 0, -0.08 - breath * 1.2 + sway * 0.06);
+    if (watcherRig.armR) watcherRig.armR.rotation.set(0.05 + breath, 0, 0.08 + breath * 1.2 - sway * 0.06);
+    CAST.settle(watcherRig, dt || 0.016, 0.9);
   }
 
   function disposeGroup(root) {
@@ -19444,7 +19748,7 @@ const PORTALCUTSCENE = (() => {
   function update(dt) {
     if (!active) return;
     t += dt;
-    poseWatcherIdle();
+    poseWatcherIdle(dt);
 
     if (phase === 'open') {
       if (portalEffect) {
@@ -19909,17 +20213,29 @@ const KILLCAM = (() => {
      uses -- fits "You Wilted" on the dead card right after this plays. No
      scale-to-zero here, unlike that one, since this needs to stay on screen
      for the whole cutaway rather than shrink away in ~1s. */
-  function poseRagdoll() {
+  function poseRagdoll(dt) {
     if (!ragdoll) return;
+    const E = CAST.EASE;
     const k = UTIL.clamp(t / C.toppleTime, 0, 1);
-    ragdoll.torso.rotation.x = -k * 1.3;
-    ragdoll.head.rotation.x = k * 0.4;
-    ragdoll.head.rotation.z = k * 0.9;
-    ragdoll.armL.rotation.x = -k * 1.8;
-    ragdoll.armR.rotation.x = -k * 1.6;
-    ragdoll.legL.rotation.x = k * 0.3;
-    ragdoll.legR.rotation.x = -k * 0.25;
-    ragdoll.bob.position.y = -k * 0.12;
+    // [RUBBERHOSE] The topple lands fast and then rings out; limbs keep
+    // travelling after the torso has stopped instead of arriving with it.
+    const fall = E.outQuint(k);
+    const wob = E.ring(k, 2.2, 5.5) * (1 - k) * 0.5;
+    const impact = Math.sin(UTIL.clamp(k / 0.35, 0, 1) * Math.PI);
+    ragdoll.torso.rotation.x = -fall * 1.3 - wob * 0.25;
+    ragdoll.torso.rotation.z = fall * 0.14;
+    ragdoll.head.rotation.x = fall * 0.4;
+    ragdoll.head.rotation.z = fall * 0.9 + wob;
+    ragdoll.armL.rotation.x = -fall * 1.8 - wob * 1.4;
+    ragdoll.armR.rotation.x = -fall * 1.6 + wob * 1.5;
+    ragdoll.armL.rotation.z = -0.12 - fall * 0.4;
+    ragdoll.armR.rotation.z = 0.12 + fall * 0.35;
+    ragdoll.legL.rotation.x = fall * 0.3 + wob * 0.6;
+    ragdoll.legR.rotation.x = -fall * 0.25 - wob * 0.6;
+    ragdoll.bob.position.y = -fall * 0.12;
+    const s = 1.08, sq = 1 - impact * 0.18 + wob * 0.3;
+    ragdoll.root.scale.set(s / Math.sqrt(sq), s * sq, s / Math.sqrt(sq));
+    CAST.settle(ragdoll, dt || 0.016, 1.15);
   }
 
   function beginCam(camera) {
@@ -19982,7 +20298,7 @@ const KILLCAM = (() => {
     camera.updateProjectionMatrix();
     camera.updateMatrixWorld(true);
 
-    poseRagdoll();
+    poseRagdoll(dt);
   }
 
   function endCam() {
@@ -20440,6 +20756,36 @@ const ENEMY = (() => {
     e.bodyProxy.scale.set(b.width / sx, b.height / sy, b.depth / sz);
   }
 
+  /* [RUBBERHOSE] Non-boss counterpart to syncBossHitboxes.
+
+     Snapshot whatever proxy offsets/sizes and root scale a caller has
+     authored (plain grunt = 1; the Gardener = 2.6 with enlarged proxies),
+     then cancel the *live* root scale every frame so the world-space damage
+     volumes stay exactly that. Locomotion squash and hit springs became a
+     lot more energetic in this pass; without this they would be quietly
+     resizing every hitbox in the game. */
+  function captureProxyBase(e) {
+    if (!e || !e.headProxy || !e.bodyProxy) return;
+    const g = e.group.scale;
+    e.proxyBase = {
+      gx: g.x || 1, gy: g.y || 1, gz: g.z || 1,
+      hy: e.headProxy.position.y, hs: e.headProxy.scale.clone(),
+      by: e.bodyProxy.position.y, bs: e.bodyProxy.scale.clone()
+    };
+  }
+
+  function syncGruntProxies(e) {
+    const b = e.proxyBase;
+    if (!b) return;
+    const fx = b.gx / Math.max(0.001, Math.abs(e.group.scale.x));
+    const fy = b.gy / Math.max(0.001, Math.abs(e.group.scale.y));
+    const fz = b.gz / Math.max(0.001, Math.abs(e.group.scale.z));
+    e.headProxy.position.y = b.hy * fy;
+    e.headProxy.scale.set(b.hs.x * fx, b.hs.y * fy, b.hs.z * fz);
+    e.bodyProxy.position.y = b.by * fy;
+    e.bodyProxy.scale.set(b.bs.x * fx, b.bs.y * fy, b.bs.z * fz);
+  }
+
   function create(id, marker, options) {
     options = options || {};
     const isBoss = !!options.isBoss;
@@ -20510,6 +20856,10 @@ const ENEMY = (() => {
       targetYaw: 0,
       animClock: 0,
       stepPhase: UTIL.rng(0, 6.28),
+      // [RUBBERHOSE] fixed per-character phase offset for idle life
+      // (breath / weight shift / head scan / blink). Constant for the
+      // entity's whole life so a crowd never breathes in unison.
+      idleSeed: UTIL.rng(0, 12.56),
       squash: 0, squashVel: 0,
       lean: 0,
       lastSeen: -99,
@@ -20569,6 +20919,7 @@ const ENEMY = (() => {
       anyBoss ? new THREE.BoxGeometry(1, 1, 1) : new THREE.BoxGeometry(0.62, 0.98, 0.5),
       anyBoss ? 0 : 0.68, 'body', e, 'body');
     if (anyBoss) syncBossHitboxes(e);
+    else captureProxyBase(e);
 
     // The replacement GLB includes both lobster claws; retain the old
     // procedural props only when the loader has fallen back to the legacy
@@ -21456,6 +21807,9 @@ const ENEMY = (() => {
     e.group.scale.set(1, 1, 1);
     e.group.rotation.set(0, e.yaw, 0);
     e.squash = e.squashVel = 0;
+    // Clear the corpse's squash/blink/trail state or the revived body wears
+    // the last frame of its own death.
+    CAST.settleReset(e.rig);
     e.headProxy.raycast = THREE.Mesh.prototype.raycast;
     e.bodyProxy.raycast = THREE.Mesh.prototype.raycast;
     setState(e, 'idle');
@@ -21676,6 +22030,8 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
+    CAST.settle(e.rig, dt);
+    syncGruntProxies(e);
   }
 
   function bossSeedBlast(e) {
@@ -21749,6 +22105,7 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
+    CAST.settle(e.rig, dt, 0.8);
     if (e.isBoss2) UI.setBoss2(true, e.hp, e.maxHp, bossState2);
     else if (e.isBoss3) UI.setBoss3(true, e.hp, e.maxHp, bossState3);
     else UI.setBoss(true, e.hp, e.maxHp, bossState, B.name);
@@ -22158,41 +22515,88 @@ const ENEMY = (() => {
     e.assetMixer.update(Math.min(e.assetDelta || 0, 0.08));
   }
 
+  /* [RUBBERHOSE] Shared attack shaping for the three GLB bosses.
+
+     These three have no procedural limb rig to bend, so all the cartoon
+     timing has to live in the ONE transform we own: the group. Returns
+     { anticip, strike, extra } where
+
+       anticip  0..1 gather (used to squat/coil before the commit)
+       strike   0..1+ committing motion, back-eased so it overshoots
+       extra    additive stretch for the group scale during the commit
+
+     Called with the state's own windup/recover split so each boss keeps
+     its existing hit timing exactly — only the shape of the curve changes,
+     never when the damage lands. */
+  function attackCurve(timer, windup, recover, snapFrac, overshoot) {
+    const E = CAST.EASE;
+    const total = windup + recover;
+    const k = UTIL.clamp(timer / total, 0, 1);
+    const wk = total > 0 ? windup / total : 0.5;
+    if (k < wk) {
+      const coil = E.inQuart(UTIL.clamp((k / wk) / 0.82, 0, 1));
+      return { anticip: coil, strike: 0, extra: -coil * 0.1 };
+    }
+    const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
+    const sf = snapFrac || 0.3;
+    const strike = a < sf
+      ? E.outBack(a / sf, overshoot === undefined ? 1.8 : overshoot)
+      : 1 + E.ring((a - sf) / (1 - sf), 1.5, 4.5) * 0.13;
+    return { anticip: 1 - a, strike: strike, extra: Math.sin(UTIL.clamp(a / sf, 0, 1) * Math.PI) * 0.15 };
+  }
+
   function poseAsset(e, t) {
+    const E = CAST.EASE;
     if (e.state === 'dead') {
       if (e.assetAction) {
         e.assetAction.stop();
         e.assetAction = null;
       }
       const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
-      const s = 1 + Math.sin(k * Math.PI) * 0.22;
+      // fast topple, impact squash, ring-out, then a late shrink
+      const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
+      const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
+      const wob = E.ring(k, 2.2, 6) * 0.12;
+      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       const scale = e.visualScale || 1;
-      e.group.scale.set(scale * (1 - k) * (2 - s), scale * (1 - k) * s, scale * (1 - k) * (2 - s));
-      e.group.rotation.set(-k * 1.05, e.yaw + B.assetForwardCorrection, k * 0.18);
+      const sy = (1 - impact * 0.4 + wob) * gone;
+      const sxz = (1 + impact * 0.3 - wob * 0.6) * gone;
+      e.group.scale.set(scale * sxz, scale * sy, scale * sxz);
+      e.group.rotation.set(-fall * 1.1 - wob * 0.3, e.yaw + B.assetForwardCorrection, fall * 0.2 + wob * 0.4);
       return;
     }
 
     const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
     updateAssetAction(e, moving);
 
-    const sq = 1 + e.squash;
-    const scale = e.visualScale || 1;
-    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
-    syncBossHitboxes(e);
     // The supplied model declares +Z as forward; the farmhand rig faces -Z.
-    e.group.rotation.set(0, e.yaw + B.assetForwardCorrection, 0);
+    let pitch = 0, roll = 0, extra = 0;
 
     // Preserve the GLB's authored rig for idle/run, adding only a readable
     // attack accent for the existing boss state machine.
-    if (e.assetShoulderR && e.assetShoulderRBase &&
-        (e.state === 'boss_melee' || e.state === 'boss_seed')) {
-      e.assetShoulderR.rotation.copy(e.assetShoulderRBase);
-      const duration = e.state === 'boss_melee' ? B.windup + B.recover : B.seedWindup + B.seedRecover;
-      const k = UTIL.clamp(e.timer / duration, 0, 1);
-      const lift = Math.sin(k * Math.PI);
-      e.assetShoulderR.rotation.z -= lift * (e.state === 'boss_melee' ? 1.05 : 0.58);
-      e.assetShoulderR.rotation.x += lift * (e.state === 'boss_melee' ? 0.22 : 0.12);
+    if (e.state === 'boss_melee' || e.state === 'boss_seed') {
+      const melee = e.state === 'boss_melee';
+      const c = attackCurve(e.timer,
+        melee ? B.windup : B.seedWindup,
+        melee ? B.recover : B.seedRecover,
+        melee ? 0.28 : 0.34, melee ? 2.0 : 1.4);
+      // whole-body anticipation: coil back, then drive through
+      pitch = -c.anticip * (melee ? 0.26 : 0.16) + c.strike * (melee ? 0.34 : 0.18);
+      roll = c.anticip * (melee ? 0.1 : 0.05) - c.strike * (melee ? 0.14 : 0.06);
+      extra = c.extra * (melee ? 1 : 0.7);
+      if (e.assetShoulderR && e.assetShoulderRBase) {
+        e.assetShoulderR.rotation.copy(e.assetShoulderRBase);
+        const lift = Math.max(c.anticip, c.strike < 0.5 ? c.strike : 1 - (c.strike - 0.5));
+        e.assetShoulderR.rotation.z -= lift * (melee ? 1.15 : 0.62);
+        e.assetShoulderR.rotation.x += lift * (melee ? 0.26 : 0.14);
+      }
     }
+
+    const sq = 1 + e.squash + extra;
+    const scale = e.visualScale || 1;
+    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
+    e.group.rotation.set(pitch, e.yaw + B.assetForwardCorrection, roll);
   }
 
   /* Bear Claw uses the replacement GLB's authored clips when available.
@@ -22205,35 +22609,36 @@ const ENEMY = (() => {
     // instead, that mismatch doesn't exist -- applying the correction
     // anyway would face the whole group (claw arms included) 180° away
     // from the way the character is actually walking.
+    const E = CAST.EASE;
     const correction = e.asset ? B2.assetForwardCorrection : 0;
     const scale = e.visualScale || 1;
     if (e.state === 'dead') {
       const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
-      const s = 1 + Math.sin(k * Math.PI) * 0.22;
-      e.group.scale.set(scale * (1 - k) * (2 - s), scale * (1 - k) * s, scale * (1 - k) * (2 - s));
-      e.group.rotation.set(-k * 1.05, e.yaw + correction, k * 0.18);
+      const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
+      const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
+      const wob = E.ring(k, 2.2, 6) * 0.12;
+      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
+        scale * (1 - impact * 0.4 + wob) * gone,
+        scale * (1 + impact * 0.3 - wob * 0.6) * gone);
+      e.group.rotation.set(-fall * 1.1 - wob * 0.3, e.yaw + correction, fall * 0.2 + wob * 0.4);
       return;
     }
-
-    const sq = 1 + e.squash;
-    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
-    syncBossHitboxes(e);
-    e.group.rotation.set(0, e.yaw + correction, 0);
 
     const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
     const attackAction = e.state === 'boss2_melee' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
-    // Claw reach: 0 at rest, peaks partway through the melee windup and
-    // eases back out through the recover half -- the "stretchy" part of
-    // "stretchy lobster claws." A light agitated twitch during smoke-vent
-    // keeps the claws reading as alive even while the body holds still.
-    let reach = 0;
+    /* Claw reach: the claws are rubber hoses, so they get the full
+       anticipation grammar — suck IN before they shoot out, overshoot the
+       full extension, then ring back. `reach` still peaks and decays over
+       the same windup/recover split the hit timing uses. */
+    let reach = 0, pitch = 0, extra = 0;
     if (e.state === 'boss2_melee') {
-      const total = B2.windup + B2.recover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
-      const wk = B2.windup / total;
-      reach = k < wk ? (k / wk) : Math.max(0, 1 - (k - wk) / (1 - wk) * 1.6);
+      const c = attackCurve(e.timer, B2.windup, B2.recover, 0.26, 2.4);
+      reach = -c.anticip * 0.28 + c.strike;
+      pitch = -c.anticip * 0.2 + c.strike * 0.24;
+      extra = c.extra;
     } else if (e.state === 'boss2_smoke') {
       reach = 0.15 + Math.sin(t * 14) * 0.08;
     }
@@ -22241,10 +22646,20 @@ const ENEMY = (() => {
       const extend = 0.34 * reach;
       e.clawArms.left.stretch.position.z = extend;
       e.clawArms.right.stretch.position.z = extend;
-      const spread = reach * 0.35;
+      // spread lags the extension so the pincers open after the arm goes
+      const spread = UTIL.clamp(reach, -0.4, 1.2) * 0.35;
       e.clawArms.left.pivot.rotation.y = spread;
       e.clawArms.right.pivot.rotation.y = -spread;
+      // stretch the arm along its own length rather than only sliding it
+      const st = 1 + UTIL.clamp(reach, -0.4, 1.2) * 0.3;
+      e.clawArms.left.stretch.scale.z = st;
+      e.clawArms.right.stretch.scale.z = st;
     }
+
+    const sq = 1 + e.squash + extra;
+    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
+    e.group.rotation.set(pitch, e.yaw + correction, 0);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -22252,36 +22667,46 @@ const ENEMY = (() => {
      attack cues are a lean-back-then-snap-forward on the boombox throw and
      a forward lunge on the punch. */
   function poseBeatSlayer(e, t) {
+    const E = CAST.EASE;
     const correction = e.asset ? B3.assetForwardCorrection : 0;
     const scale = e.visualScale || 1;
     if (e.state === 'dead') {
       const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
-      const s = 1 + Math.sin(k * Math.PI) * 0.22;
-      e.group.scale.set(scale * (1 - k) * (2 - s), scale * (1 - k) * s, scale * (1 - k) * (2 - s));
-      e.group.rotation.set(-k * 1.05, e.yaw + correction, k * 0.18);
+      const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
+      const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
+      const wob = E.ring(k, 2.2, 6) * 0.12;
+      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
+        scale * (1 - impact * 0.4 + wob) * gone,
+        scale * (1 + impact * 0.3 - wob * 0.6) * gone);
+      e.group.rotation.set(-fall * 1.1 - wob * 0.3, e.yaw + correction, fall * 0.2 + wob * 0.4);
       return;
     }
 
-    const sq = 1 + e.squash;
-    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
-    syncBossHitboxes(e);
-
-    let pitch = 0;
+    // [RUBBERHOSE] Both attacks are a gather-then-snap; the boombox throw
+    // additionally twists, so the whole silhouette rotates into the release
+    // instead of only pitching.
+    let pitch = 0, roll = 0, yawExtra = 0, extra = 0;
     if (e.state === 'boss3_throw') {
-      const total = B3.throwWindup + B3.throwRecover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
-      const wk = B3.throwWindup / total;
-      pitch = k < wk ? -0.3 * (k / wk) : 0.18 * Math.max(0, 1 - (k - wk) / (1 - wk) * 2);
+      const c = attackCurve(e.timer, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
+      pitch = -c.anticip * 0.34 + c.strike * 0.3;
+      yawExtra = c.anticip * 0.4 - c.strike * 0.55;
+      roll = -c.anticip * 0.12 + c.strike * 0.16;
+      extra = c.extra;
     } else if (e.state === 'boss3_melee') {
-      const total = B3.windup + B3.recover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
-      const wk = B3.windup / total;
-      pitch = (k < wk ? (k / wk) : Math.max(0, 1 - (k - wk) / (1 - wk) * 1.6)) * 0.3;
+      const c = attackCurve(e.timer, B3.windup, B3.recover, 0.26, 2.0);
+      pitch = -c.anticip * 0.22 + c.strike * 0.36;
+      roll = c.anticip * 0.08 - c.strike * 0.12;
+      extra = c.extra;
     }
     const moving = e.climbing || Math.hypot(e.vel.x, e.vel.z) > 0.2;
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
-    e.group.rotation.set(pitch, e.yaw + correction, 0);
+
+    const sq = 1 + e.squash + extra;
+    e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
+    syncBossHitboxes(e);
+    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll);
   }
 
   function pose(e, t) {
@@ -22299,129 +22724,305 @@ const ENEMY = (() => {
       return;
     }
     const r = e.rig;
+    const E = CAST.EASE;
     const speed = Math.hypot(e.vel.x, e.vel.z);
     const walk = UTIL.clamp(speed / 4, 0, 1.3);
+    // The dead branch topples the whole group; make sure a live body (or a
+    // coop ghost that came back without going through revive()) never wears
+    // a leftover corpse tilt.
+    if (e.state !== 'dead' && (e.group.rotation.x !== 0 || e.group.rotation.z !== 0)) {
+      e.group.rotation.x = 0; e.group.rotation.z = 0;
+      if (r.bob) r.bob.rotation.x = 0;
+    }
+    // [RUBBERHOSE] A 1930s cartoon is shot on twos. stepPhase already
+    // advances on a 12fps clock; `ts` gives every *other* oscillator in here
+    // the same boil so breathing and sway don't glide at 60fps against a
+    // stepped walk. Character translation stays smooth — only the drawing
+    // is stepped, exactly like a cel over a moving pan.
+    const ts = Math.floor(t * C.stepFPS) / C.stepFPS;
+    const seed = e.idleSeed || 0;
 
     if (e.state === 'dead') {
       const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
-      const s = 1 + Math.sin(k * Math.PI) * 0.45;
-      e.group.scale.set((1 - k) * (2 - s), (1 - k) * s, (1 - k) * (2 - s));
-      r.torso.rotation.x = -k * 1.2;
-      r.head.rotation.z = k * 1.6;
-      r.armL.rotation.x = -k * 2.2;
-      r.armR.rotation.x = -k * 2.2;
+      // Collapse fast, then hold, then pop out of existence — the old
+      // version faded linearly across the whole corpse time, which is the
+      // one timing a cartoon never uses.
+      const fall = E.outQuint(UTIL.clamp(k / 0.30, 0, 1));
+      const gone = UTIL.clamp((k - 0.72) / 0.28, 0, 1);
+      // squash flat on the first impact, spring back out, settle
+      const impact = k < 0.30 ? Math.sin(UTIL.clamp(k / 0.30, 0, 1) * Math.PI) : 0;
+      const wob = E.ring(k, 2.4, 6) * 0.16 * (1 - gone);
+      const sy = (1 - impact * 0.55 + wob) * (1 - E.outCubic(gone));
+      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - E.outCubic(gone));
+      e.group.scale.set(sxz, sy, sxz);
+      // Topple the WHOLE body about its feet, not just the torso — a wilt
+      // that only bends at the waist reads as a bow, not a death. The hips
+      // carry the fold; the torso adds the rest on top of it.
+      e.group.rotation.x = -fall * 0.62 - wob * 0.25;
+      e.group.rotation.z = fall * 0.18 + wob * 0.2;
+      r.bob.rotation.x = -fall * 0.35;
+      r.torso.rotation.x = -fall * 0.75 - wob * 0.5;
+      r.torso.rotation.z = fall * 0.22;
+      r.head.rotation.z = fall * 1.5 + wob * 1.1;
+      r.head.rotation.x = fall * 0.35;
+      // arms fling up and keep swinging after the body has stopped
+      r.armL.rotation.x = -fall * 2.5 - wob * 1.6;
+      r.armR.rotation.x = -fall * 2.2 - wob * 1.9;
+      r.armL.rotation.z = -0.12 - fall * 0.5;
+      r.armR.rotation.z = 0.12 + fall * 0.45;
+      r.legL.rotation.x = fall * 0.5 + wob * 0.8;
+      r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      r.bob.position.y = -fall * 0.10;
+      if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
       return;
     }
 
     if (e.state === 'climb') {
-      const swing = Math.sin(t * 7.2 + e.stepPhase);
-      r.armL.rotation.x = -0.9 + swing * 0.72;
-      r.armR.rotation.x = -0.9 - swing * 0.72;
-      r.legL.rotation.x = swing * 0.38;
-      r.legR.rotation.x = -swing * 0.38;
+      // Reaching hand over hand: each arm gets a sharp pull and a long
+      // reach-back rather than a symmetric sine.
+      const a = t * 7.2 + e.stepPhase;
+      const swing = E.snapSin(a, 0.55);
+      r.armL.rotation.x = -0.9 + swing * 0.78;
+      r.armR.rotation.x = -0.9 - swing * 0.78;
+      r.armL.rotation.z = -0.2 - swing * 0.1;
+      r.armR.rotation.z = 0.2 - swing * 0.1;
+      r.legL.rotation.x = swing * 0.42;
+      r.legR.rotation.x = -swing * 0.42;
       r.torso.rotation.x = -0.10;
-      r.torso.rotation.z = 0;
-      r.head.rotation.x = 0;
+      r.torso.rotation.z = swing * 0.05;
+      r.head.rotation.x = 0.06 + Math.abs(swing) * 0.08;
+      r.head.rotation.z = -swing * 0.12;
+      const cs = 1 + Math.abs(swing) * 0.05;
+      e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
       return;
     }
 
     if (e.isBoss) {
-      const sw = Math.sin(e.stepPhase), cw = Math.cos(e.stepPhase);
-      r.legL.rotation.x = -sw * 0.72 * walk;
-      r.legR.rotation.x = sw * 0.72 * walk;
-      r.armL.rotation.x = sw * 0.75 * walk;
-      r.armR.rotation.x = -sw * 0.45 * walk;
-      r.armL.rotation.z = -0.1 - walk * 0.08;
-      r.armR.rotation.z = 0.18 + walk * 0.06;
-      r.bob.position.y = Math.abs(cw) * 0.06 * walk + Math.sin(t * 1.35 + e.stepPhase) * 0.014;
-      r.torso.rotation.z = sw * 0.045 * walk;
-      r.torso.rotation.x = e.lean;
-      r.head.rotation.z = -sw * 0.07 * walk;
-      r.head.rotation.x = -e.lean * 0.5;
+      /* Carrot Warden (procedural rig). A heavy character: slower gather,
+         bigger squash on the plant, longer follow-through. Same grammar as
+         the grunts, dialled for weight. */
+      const sw = E.snapSin(e.stepPhase, 0.55);
+      const cw = Math.cos(e.stepPhase);
+      const contact = 1 - Math.abs(cw);
+      const breath = Math.sin(ts * 1.35 + seed) * 0.016;
+      r.legL.rotation.x = -sw * 0.8 * walk;
+      r.legR.rotation.x = sw * 0.8 * walk;
+      r.armL.rotation.x = sw * 0.82 * walk;
+      r.armR.rotation.x = -sw * 0.5 * walk;
+      r.armL.rotation.z = -0.1 - walk * 0.12 - breath;
+      r.armR.rotation.z = 0.18 + walk * 0.1 + breath;
+      if (r.footL) r.footL.rotation.x = -sw * 0.4 * walk;
+      if (r.footR) r.footR.rotation.x = sw * 0.4 * walk;
+      let stepSquash = contact * 0.13 * walk;
+      r.bob.position.y = Math.pow(Math.abs(cw), 1.4) * 0.07 * walk + breath - stepSquash * 0.1;
+      r.torso.rotation.z = sw * 0.06 * walk;
+      r.torso.rotation.x = e.lean - breath * 0.8;
+      r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.3, 1 + breath * 0.8);
+      r.head.rotation.z = -sw * 0.09 * walk;
+      r.head.rotation.x = -e.lean * 0.5 + breath * 1.4;
+      let extra = 0;
       if (e.state === 'boss_melee') {
-        const k = UTIL.clamp(e.timer / (B.windup + B.recover), 0, 1);
-        r.armR.rotation.x = k < 0.5 ? -2.4 * (k * 2) : -2.4 + Math.sin((k - 0.5) * Math.PI) * 3.8;
-        r.torso.rotation.x -= Math.sin(k * Math.PI) * 0.24;
-        r.torso.rotation.y = Math.sin(k * Math.PI) * 0.42;
+        const total = B.windup + B.recover;
+        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const wk = B.windup / total;
+        if (k < wk) {
+          // gather: haul the arm back on an ease-in and squat into it
+          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.8, 0, 1));
+          r.armR.rotation.x = -2.6 * coil;
+          r.torso.rotation.x -= 0.3 * coil;
+          r.torso.rotation.y = 0.55 * coil;
+          stepSquash += coil * 0.14;
+        } else {
+          const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
+          const strike = a < 0.3 ? E.outBack(a / 0.3, 1.8) : 1 + E.ring((a - 0.3) / 0.7, 1.4, 4.5) * 0.15;
+          r.armR.rotation.x = -2.6 + strike * 4.0;
+          r.torso.rotation.x += -0.3 + strike * 0.85;
+          r.torso.rotation.y = 0.55 - strike * 1.05;
+          extra = Math.sin(UTIL.clamp(a / 0.3, 0, 1) * Math.PI) * 0.16;
+        }
       } else if (e.state === 'boss_seed') {
-        const k = UTIL.clamp(e.timer / (B.seedWindup + B.seedRecover), 0, 1);
-        r.armR.rotation.x = -1.35 - Math.sin(Math.min(k, 0.6) / 0.6 * Math.PI) * 0.7;
-        r.torso.rotation.x -= 0.14 * Math.sin(k * Math.PI);
-        r.torso.rotation.y = -0.18 * Math.sin(k * Math.PI);
+        const total = B.seedWindup + B.seedRecover;
+        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const wk = B.seedWindup / total;
+        if (k < wk) {
+          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.85, 0, 1));
+          r.armR.rotation.x = -1.35 - coil * 0.85;
+          r.torso.rotation.x -= 0.2 * coil;
+          r.torso.rotation.y = -0.26 * coil;
+          stepSquash += coil * 0.1;
+        } else {
+          const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
+          const kick = 1 - E.outQuint(a);
+          r.armR.rotation.x = -1.35 - kick * 0.3;
+          r.torso.rotation.x += 0.22 * kick;
+          r.torso.rotation.y = -0.26 + 0.4 * kick;
+          extra = kick * 0.18;
+        }
       } else {
         r.torso.rotation.y = 0;
       }
-      const sq = 1 + e.squash;
+      const sq = 1 + e.squash - stepSquash + extra;
       const scale = e.visualScale || 1;
       e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
       syncBossHitboxes(e);
       return;
     }
 
-    const sw = Math.sin(e.stepPhase);
+    /* ---------------- walk cycle ----------------
+       `snapSin` holds the limb at each extreme and rips it through the
+       middle, which is the difference between a mechanical pendulum and a
+       drawn one. The mid joints are NOT touched here — CAST.settle() bends
+       them from the shoulder's own angular velocity, so the noodle bows
+       backwards through the swing and whips through at the top. */
+    const sw = E.snapSin(e.stepPhase, 0.6);
     const cw = Math.cos(e.stepPhase);
+    const gait = UTIL.clamp(walk * (0.9 + 0.25 * walk), 0, 1.05);
 
-    // walk cycle
-    r.legL.rotation.x = -sw * 0.85 * walk;
-    r.legR.rotation.x = sw * 0.85 * walk;
-    r.armL.rotation.x = sw * 0.95 * walk;
-    r.armR.rotation.x = -sw * 0.95 * walk;
-    r.armL.rotation.z = -0.12 - walk * 0.1;
-    r.armR.rotation.z = 0.12 + walk * 0.1;
+    r.legL.rotation.x = -sw * 0.72 * gait;
+    r.legR.rotation.x = sw * 0.72 * gait;
+    r.armL.rotation.x = sw * 1.05 * gait;
+    r.armR.rotation.x = -sw * 1.05 * gait;
+    // Arms swing OUT as well as forward, so the noodle clears the torso and
+    // its curve is actually visible in silhouette rather than buried in it.
+    r.armL.rotation.z = -0.12 - walk * 0.3 - Math.abs(sw) * 0.16 * gait;
+    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait;
+    // toes flick up on the forward reach and point on the push-off
+    if (r.footL) r.footL.rotation.x = -sw * 0.34 * gait;
+    if (r.footR) r.footR.rotation.x = sw * 0.34 * gait;
 
-    // bounce, breathing and lean
-    const breath = Math.sin(t * 1.7 + e.stepPhase) * 0.012;
-    const bounce = Math.abs(cw) * 0.07 * walk;
-    r.bob.position.y = bounce + breath;
-    r.torso.rotation.z = sw * 0.06 * walk;
-    r.torso.rotation.x = e.lean;
-    r.head.rotation.z = -sw * 0.09 * walk;
-    r.head.rotation.x = -e.lean * 0.6;
+    /* ---------------- bounce, breath, idle life ----------------
+       Nothing is ever perfectly still. Even parked, the body breathes,
+       shifts its weight from foot to foot, and scans around — all on the
+       12fps boil, all offset per character by idleSeed so a crowd never
+       pulses in unison. */
+    const idleAmt = 1 - UTIL.clamp(walk * 2.2, 0, 1);
+    const breathPh = ts * 1.55 + seed;
+    const breath = Math.sin(breathPh) * (0.008 + idleAmt * 0.016);
+    // Contact is the low point of the cycle; the body compresses into it
+    // and stretches through the passing position.
+    const contact = 1 - Math.abs(cw);
+    // A rubberhose walk is mostly VERTICAL: the body rides up over the
+    // passing position and drops hard into contact. These used to be small
+    // enough that the character just slid along at a constant height.
+    const bounce = Math.pow(Math.abs(cw), 1.45) * 0.15 * gait;
+    const stepSquash = contact * 0.17 * gait;
+
+    // weight shift: a slow lateral lean that holds on each foot
+    const shiftPh = ts * 0.62 + seed * 1.7;
+    const shift = E.snapSin(shiftPh, 0.62) * idleAmt;
+    r.bob.position.y = bounce + breath - stepSquash * 0.10;
+    r.bob.position.x = shift * 0.022;
+    r.torso.rotation.z = sw * 0.075 * gait + shift * 0.05;
+    r.torso.rotation.x = e.lean - breath * 0.9;
+    r.torso.rotation.y = 0;
+    r.torso.scale.set(1 + breath * 0.9, 1 + breath * 1.5, 1 + breath * 0.9);
+
+    // idle scan: swing the head to a new heading, then hold it there. The
+    // low exponent is what gives the hold; a plain sine reads as a fan.
+    const scanPh = ts * 0.4 + seed * 0.9;
+    const scan = E.snapSin(scanPh, 0.42) * idleAmt;
+    r.head.rotation.y = scan * 0.28;
+    r.head.rotation.z = -sw * 0.12 * gait - shift * 0.06;
+    r.head.rotation.x = -e.lean * 0.6 + breath * 1.6 + Math.abs(scan) * 0.05;
+    // a blink-ish head squash on a slow per-character schedule
+    const blinkPh = (ts * 0.47 + seed) % 1;
+    const blink = blinkPh > 0.93 ? Math.sin((blinkPh - 0.93) / 0.07 * Math.PI) : 0;
+    r.head.scale.set(1 + blink * 0.10, 1 - blink * 0.16, 1 + blink * 0.10);
+    // arms breathe out from the body and drift with the weight shift
+    r.armL.rotation.z += -breath * 1.1 - shift * 0.07;
+    r.armR.rotation.z += breath * 1.1 - shift * 0.07;
 
     // squash and stretch on top of everything
-    const sq = 1 + e.squash;
+    const sq = 1 + e.squash - stepSquash;
     e.group.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
 
     if (e.state === 'alert') {
-      const k = e.timer / C.alertTime;
-      r.torso.rotation.x = -0.35 * Math.sin(k * Math.PI);
-      r.armL.rotation.x = -1.1 * Math.sin(k * Math.PI);
-      r.armR.rotation.x = -1.1 * Math.sin(k * Math.PI);
-      e.mark.scale.setScalar(0.28 + Math.sin(k * Math.PI) * 0.16);
+      /* Double-take: a fast recoil up onto the toes (stretch), then a
+         settle. The `!` mark pops with a back-ease overshoot. */
+      const k = UTIL.clamp(e.timer / C.alertTime, 0, 1);
+      const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
+      // Kept deliberately modest: the neck/head-trail springs multiply this
+      // by a lot, and the double-take has to read as a recoil, not a fall.
+      r.torso.rotation.x = -0.2 * pop;
+      r.armL.rotation.x = -1.25 * pop;
+      r.armR.rotation.x = -1.25 * pop;
+      r.armL.rotation.z = -0.12 - 0.42 * pop;
+      r.armR.rotation.z = 0.12 + 0.42 * pop;
+      r.head.rotation.x = -0.14 * pop;
+      // the pop is mostly vertical: rise onto the toes and stretch
+      r.bob.position.y = bounce + breath + pop * 0.07;
+      const markK = UTIL.clamp(k / 0.3, 0, 1);
+      e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
 
     if (e.state === 'attack') {
+      /* Anticipation -> snap -> overshoot -> settle.
+
+         The old version ramped the arm back linearly over the whole windup
+         and swung it on a plain sine. Now the character *gathers*: it
+         compresses down and coils away from the target on an ease-in
+         (slow, then suddenly), holds for a beat at the top, then the swing
+         is a back-eased snap that overshoots past the contact pose before
+         drifting home. */
       const st = e.def.stats;
       const total = st.windup + st.recover;
-      const k = e.timer / total;
+      const k = UTIL.clamp(e.timer / total, 0, 1);
       const wk = st.windup / total;
       if (k < wk) {
         const a = k / wk;
-        r.armR.rotation.x = -2.3 * a;
-        r.torso.rotation.x = -0.3 * a;
-        r.torso.rotation.y = 0.45 * a;
+        // gather: ease-in, then hold the coiled pose for the last 25%
+        const coil = E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
+        r.armR.rotation.x = -2.5 * coil;
+        r.armR.rotation.z = 0.12 + 0.45 * coil;
+        r.armL.rotation.x = 0.55 * coil;
+        r.torso.rotation.x = -0.34 * coil;
+        r.torso.rotation.y = 0.52 * coil;
+        r.head.rotation.x = -0.2 * coil;
+        r.head.rotation.y = 0.3 * coil;
+        // squat into the wind-up: squash down and widen
+        const cs = 1 - coil * 0.16;
+        e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
+        r.bob.position.y = bounce + breath - coil * 0.06;
       } else {
-        const a = (k - wk) / (1 - wk);
-        const swing = Math.sin(Math.min(a * 3.2, Math.PI * 0.9));
-        r.armR.rotation.x = -2.3 + swing * 3.4;
-        r.torso.rotation.x = -0.3 + swing * 0.75;
-        r.torso.rotation.y = 0.45 - swing * 0.9;
+        const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
+        // snap through in the first third with an overshoot, then settle
+        const strike = a < 0.34 ? E.outBack(a / 0.34, 1.7) : 1 + E.ring((a - 0.34) / 0.66, 1.6, 5) * 0.14;
+        r.armR.rotation.x = -2.5 + strike * 3.7;
+        r.armR.rotation.z = 0.57 - strike * 0.45;
+        r.armL.rotation.x = 0.55 - strike * 0.9;
+        r.torso.rotation.x = -0.34 + strike * 0.95;
+        r.torso.rotation.y = 0.52 - strike * 1.05;
+        r.head.rotation.x = -0.2 + strike * 0.55;
+        r.head.rotation.y = 0.3 - strike * 0.55;
+        // stretch out along the swing, then recover
+        const ss = 1 + Math.sin(UTIL.clamp(a / 0.34, 0, 1) * Math.PI) * 0.18 + e.squash;
+        e.group.scale.set(1 / Math.sqrt(ss), ss, 1 / Math.sqrt(ss));
       }
     } else if (e.state === 'shine') {
-      // Hold the flashlight steadily in front while the beam is locked.
-      r.armR.rotation.x = -1.35;
-      r.armR.rotation.z = 0.08;
-      r.torso.rotation.x = -0.08;
+      // Hold the flashlight out front — but a hand-held light never sits
+      // dead still, so let it drift and jitter on the boil.
+      const j = Math.sin(ts * 5.1 + seed) * 0.03 + Math.sin(ts * 1.7 + seed * 2) * 0.05;
+      r.armR.rotation.x = -1.35 + j;
+      r.armR.rotation.z = 0.08 + j * 0.4;
+      r.armL.rotation.x = -0.2 + j * 0.5;
+      r.torso.rotation.x = -0.08 + breath * 0.5;
       r.torso.rotation.y = 0.08;
-      r.head.rotation.x = -0.04;
-    } else {
-      r.torso.rotation.y = 0;
+      r.head.rotation.x = -0.04 + j * 0.6;
+      r.head.rotation.y = j * 1.2;
     }
 
     if (e.state === 'stagger') {
-      const k = e.timer / C.staggerTime;
-      r.torso.rotation.x = -0.5 * (1 - k);
-      r.head.rotation.x = 0.6 * (1 - k);
+      /* Getting hit is a shudder, not a lean. Ring it out so the whole
+         body rattles and comes to rest instead of sliding back linearly. */
+      const k = UTIL.clamp(e.timer / C.staggerTime, 0, 1);
+      const decay = 1 - E.outCubic(k);
+      const shake = E.ring(k, 2.6, 3.2) * decay;
+      r.torso.rotation.x = -0.55 * decay + shake * 0.22;
+      r.torso.rotation.z = shake * 0.16;
+      r.head.rotation.x = 0.7 * decay - shake * 0.4;
+      r.head.rotation.z = shake * 0.5;
+      r.armL.rotation.x = -0.5 * decay - shake * 0.7;
+      r.armR.rotation.x = -0.5 * decay + shake * 0.7;
     }
   }
 
@@ -22450,6 +23051,10 @@ const ENEMY = (() => {
         }
       }
       pose(e, t);
+      // A corpse still has cloth and petals on it: keep the trail springs
+      // running so the body settles instead of freezing mid-collapse.
+      CAST.settle(e.rig, dt, 1.15);
+      syncGruntProxies(e);
       return;
     }
 
@@ -22663,6 +23268,12 @@ const ENEMY = (() => {
     }, e.body);
     if (e.pos.y < -6) { e.pos.copy(e.home); e.vel.set(0, 0, 0); }
 
+    // [RUBBERHOSE] landing impact — hitting the ground has to cost the body
+    // something. moveActor reports the frame of contact and how hard.
+    if (e.body.landed && e.body.fallSpeed > 2) {
+      e.squashVel -= UTIL.clamp(e.body.fallSpeed * 0.9, 2, 11);
+    }
+
     // stepped animation clock
     const speed = Math.hypot(e.vel.x, e.vel.z);
     e.animClock += dt;
@@ -22672,9 +23283,13 @@ const ENEMY = (() => {
       const prev = Math.sin(e.stepPhase);
       e.stepPhase += stepDur * (3.4 + speed * 1.5);
       // a footfall thud each time the cycle crosses zero, if you are near
-      if (prev * Math.sin(e.stepPhase) < 0 && speed > 0.8 &&
-          Math.abs(PLAYER.position.x - e.pos.x) < 14 && Math.abs(PLAYER.position.z - e.pos.z) < 14) {
-        AUDIO.enemyStep(e.def.voice.pitch);
+      if (prev * Math.sin(e.stepPhase) < 0 && speed > 0.8) {
+        // Every footfall pushes a little squash into the spring, so a run
+        // reads as a series of impacts rather than a glide.
+        e.squashVel -= 1.5 * UTIL.clamp(speed / 4, 0, 1.2);
+        if (Math.abs(PLAYER.position.x - e.pos.x) < 14 && Math.abs(PLAYER.position.z - e.pos.z) < 14) {
+          AUDIO.enemyStep(e.def.voice.pitch);
+        }
       }
     }
 
@@ -22688,6 +23303,12 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
+    // Overlapping action: limbs, head and cloth all trail whatever pose()
+    // just committed. Runs last so it always reads the final frame.
+    CAST.settle(e.rig, dt);
+    // ...and the damage volumes are re-pinned to world size afterwards, so
+    // none of that squash reaches the hit detection.
+    syncGruntProxies(e);
   }
 
   /* ---------------- coop: host-authoritative sync ----------------
@@ -22818,6 +23439,10 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.rotation.y = e.yaw;
     pose(e, t);
+    // Coop ghosts run the same follow-through as host-side entities, so a
+    // join sees the identical motion the host does.
+    CAST.settle(e.rig, dt);
+    if (!e.isBoss && !e.isBoss2 && !e.isBoss3) syncGruntProxies(e);
     // The join's own bossState/bossState2/bossState3 never transitions (only
     // the host runs the real state machines), so derive the HUD text from
     // the synced fields directly rather than those stale local variables.
@@ -22980,6 +23605,9 @@ const ENEMY = (() => {
     init, prepareAssets, warmAssets, update, hit, melee, coneDamage, blast, reset, applyDamage, spawnBoss, spawnBoss2, spawnBoss3,
     snapshot, applyRemoteState, applyRemoteReset, applyDamageByKey, disableForFfa,
     rescaleForCoop, escalateAfterBoss, addLOSBlocker, removeLOSBlocker, stunEntity, attractTo, spawnGrunt,
+    // [RUBBERHOSE] re-snapshot an entity's authored proxy dimensions after a
+    // caller has rescaled it (see QUEST.spawnGardener).
+    refreshProxyBase: captureProxyBase,
     clearQuestEnemies, setKillsForDev,
     // Lets a cutscene (see PORTALCUTSCENE) drive an entity's visual pose
     // directly -- e.g. Bearclaw2's walk-out animation -- without going
@@ -24231,44 +24859,94 @@ const COOP = (() => {
     emit('matchStart', startingPlayerCount);
   }
 
+  /* [RUBBERHOSE] Remote players and co-op ghosts run the same animation
+     vocabulary as local enemies: stepped 12fps phase, snappy eases, squash
+     on footfall, and CAST.settle() for follow-through. The network payload
+     is untouched — every value below is still derived from the same
+     `target` fields (moving/sprinting/climbing/dead) the snapshot already
+     carried, so host and join stay byte-compatible. */
   function poseRemote(remote, dt) {
     const r = remote.rig;
     const target = remote.target;
     if (!r) return;
+    const E = CAST.EASE;
     // A defeated remote remains in the world as a fallen body until their
     // real respawn state arrives. Hiding the whole group made a lethal hit
     // look like an asset/collision failure and gave no visual explanation
     // for the later spawn jump.
     remote.deathPose = UTIL.damp(remote.deathPose || 0, target.dead ? 1 : 0, 10, dt);
-    r.root.rotation.z = remote.deathPose * 1.42;
+    // Topple with an ease-out and a settling wobble rather than a linear
+    // slump, and let the limbs keep going after the torso has landed.
+    const dp = E.outCubic(remote.deathPose);
+    r.root.rotation.z = dp * 1.42;
     if (target.dead) {
-      if (r.bob) r.bob.position.y = -0.12 * remote.deathPose;
+      const ring = E.ring(remote.deathPose, 2.2, 5.5) * (1 - remote.deathPose) * 0.5;
+      if (r.bob) r.bob.position.y = -0.12 * dp;
+      r.armL.rotation.set(-dp * 1.9 - ring, 0, -0.12 - dp * 0.4);
+      r.armR.rotation.set(-dp * 1.7 + ring, 0, 0.12 + dp * 0.4);
+      r.legL.rotation.set(dp * 0.4 + ring * 0.6, 0, 0);
+      r.legR.rotation.set(dp * 0.22 - ring * 0.6, 0, 0);
+      r.head.rotation.set(dp * 0.3, 0, dp * 0.8 + ring);
+      r.root.scale.set(1.08, 1.08, 1.08);
+      remote.squash = 0; remote.squashVel = 0;
+      CAST.settle(r, dt, 1.1);
       return;
     }
     const moving = !!target.moving;
+    // Stepped clock: hold the phase on a 12fps grid so the drawing boils
+    // like a cel even though the body itself interpolates smoothly.
     remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
-    const sw = Math.sin(remote.animPhase);
-    const cw = Math.cos(remote.animPhase);
+    if (remote.stepClock === undefined) { remote.stepClock = 0; remote.stepPhase = remote.animPhase; }
+    remote.stepClock += dt;
+    while (remote.stepClock >= 1 / 12) {
+      remote.stepClock -= 1 / 12;
+      const prev = Math.sin(remote.stepPhase);
+      remote.stepPhase = remote.animPhase;
+      // footfall squash, same idea as ENEMY's own step spring
+      if (moving && prev * Math.sin(remote.stepPhase) < 0) {
+        remote.squashVel = (remote.squashVel || 0) - 1.7;
+      }
+    }
+    const ph = remote.stepPhase;
+    const sw = E.snapSin(ph, 0.6);
+    const cw = Math.cos(ph);
     const walk = moving ? (target.sprinting ? 1.18 : 0.9) : 0;
 
+    // squash spring (mirrors ENEMY's), so remotes compress on each step
+    remote.squash = remote.squash || 0;
+    remote.squashVel = (remote.squashVel || 0) + (-remote.squash * 220 - (remote.squashVel || 0) * 15) * dt;
+    remote.squash = UTIL.clamp(remote.squash + remote.squashVel * dt, -0.24, 0.3);
+
     if (target.climbing) {
-      r.armL.rotation.set(-0.9 + sw * 0.7, 0, 0);
-      r.armR.rotation.set(-0.9 - sw * 0.7, 0, 0);
-      r.legL.rotation.set(sw * 0.38, 0, 0);
-      r.legR.rotation.set(-sw * 0.38, 0, 0);
-      r.torso.rotation.set(-0.10, 0, 0);
-      r.head.rotation.set(0, 0, 0);
+      r.armL.rotation.set(-0.9 + sw * 0.78, 0, -0.2);
+      r.armR.rotation.set(-0.9 - sw * 0.78, 0, 0.2);
+      r.legL.rotation.set(sw * 0.42, 0, 0);
+      r.legR.rotation.set(-sw * 0.42, 0, 0);
+      r.torso.rotation.set(-0.10, 0, sw * 0.05);
+      r.head.rotation.set(0.06, 0, -sw * 0.1);
       r.bob.position.y = 0;
+      r.root.scale.set(1.08, 1.08, 1.08);
+      CAST.settle(r, dt, 0.9);
       return;
     }
 
-    r.legL.rotation.set(-sw * 0.85 * walk, 0, 0);
-    r.legR.rotation.set(sw * 0.85 * walk, 0, 0);
-    r.armL.rotation.set(sw * 0.92 * walk, 0, -0.12 - walk * 0.08);
-    r.armR.rotation.set(-sw * 0.92 * walk, 0, 0.12 + walk * 0.08);
-    r.bob.position.y = Math.abs(cw) * 0.065 * walk + Math.sin(remote.animPhase * 0.34) * 0.012;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.045 * walk, 0, sw * 0.055 * walk);
-    r.head.rotation.set(0, 0, -sw * 0.08 * walk);
+    const contact = 1 - Math.abs(cw);
+    const stepSquash = contact * 0.10 * walk;
+    const breath = Math.sin(remote.animPhase * 0.34) * 0.014;
+    r.legL.rotation.set(-sw * 0.95 * walk, 0, 0);
+    r.legR.rotation.set(sw * 0.95 * walk, 0, 0);
+    r.armL.rotation.set(sw * 1.0 * walk, 0, -0.12 - walk * 0.14 - breath);
+    r.armR.rotation.set(-sw * 1.0 * walk, 0, 0.12 + walk * 0.14 + breath);
+    if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
+    if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
+    r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
+    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0, sw * 0.07 * walk);
+    r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
+    r.head.rotation.set(breath * 1.4, 0, -sw * 0.11 * walk);
+    // remote rigs are built at 1.08 scale; fold squash/stretch into it
+    const sq = 1 + remote.squash - stepSquash;
+    r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
+    CAST.settle(r, dt, 0.95);
   }
 
   function update(dt, running) {
