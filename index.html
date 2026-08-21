@@ -3083,11 +3083,186 @@ const PRIM = (() => {
     return geo;
   }
 
+  /* ---------------- hand-drawn form generators ----------------
+     Every prop on this farm used to be a box, a cylinder or a sphere, which
+     is exactly what "programmer art" looks like from the inside. These four
+     generators are the antidote: each one spends a handful of extra
+     triangles to buy a curved, tapered, slightly-wrong silhouette --
+     the rubberhose read.
+
+     Hard rule: none of them may call UTIL.rand(). PRIM.Batch invokes the
+     generator twice (once for the body, once for the matching ink shell)
+     and the two must come out identical, so all the randomness lives in the
+     caller's arguments. */
+
+  /* A tapered, drooping leaf blade, folded along a raised midrib so it
+     catches the toon ramp like a drawn leaf instead of a plank. Grows from
+     the origin along +X; droop bends it down, curl sweeps it sideways.
+     Corn leaves, grass tufts, weeds, straw and husks are all this shape. */
+  function bladeGeo(len, baseW, tipW, droop, curl, segs) {
+    segs = Math.max(2, segs || 3);
+    const pos = [], idx = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const w = Math.max(0.005, UTIL.lerp(baseW, tipW, Math.pow(t, 0.75))) * 0.5;
+      const y = -droop * t * t;
+      const z = curl * t * t;
+      pos.push(len * t, y + w * 0.7, z);        // 0 midrib
+      pos.push(len * t, y - w * 0.3, z - w);    // 1 left flank
+      pos.push(len * t, y - w * 0.3, z + w);    // 2 right flank
+    }
+    for (let i = 0; i < segs; i++) {
+      const a = i * 3, b = (i + 1) * 3;
+      idx.push(a, b, b + 1, a, b + 1, a + 1);              // upper-left face
+      idx.push(a, a + 2, b + 2, a, b + 2, b);              // upper-right face
+      idx.push(a + 1, b + 1, b + 2, a + 1, b + 2, a + 2);  // underside
+    }
+    const tip = segs * 3;
+    idx.push(0, 1, 2, tip, tip + 2, tip + 1);              // end caps
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  /* A bowed, tapered column swept along a bent centerline, vertically
+     centred on the origin. Fence posts, corn stalks, sign posts and tool
+     handles all lean and thin out with this instead of standing as perfect
+     extruded boxes. caps: 0 none, 1 top only (base buried in the ground),
+     2 both. */
+  function bowGeo(h, rBot, rTop, bowX, bowZ, sides, segs, caps) {
+    sides = Math.max(3, sides || 5); segs = Math.max(1, segs || 3);
+    caps = caps === undefined ? 2 : caps;
+    const pos = [], idx = [];
+    const bend = t => Math.sin(t * Math.PI * 0.72) / Math.sin(Math.PI * 0.72);
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs, k = bend(t);
+      const cx = bowX * k, cz = bowZ * k, r = UTIL.lerp(rBot, rTop, t);
+      const y = -h / 2 + h * t;
+      for (let s = 0; s < sides; s++) {
+        const a = (s / sides) * Math.PI * 2;
+        pos.push(cx + Math.cos(a) * r, y, cz + Math.sin(a) * r);
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      for (let s = 0; s < sides; s++) {
+        const s2 = (s + 1) % sides;
+        const a = i * sides + s, b = i * sides + s2;
+        const c = (i + 1) * sides + s, d = (i + 1) * sides + s2;
+        idx.push(a, c, d, a, d, b);
+      }
+    }
+    if (caps === 2) {
+      const ci = pos.length / 3;
+      pos.push(0, -h / 2, 0);
+      for (let s = 0; s < sides; s++) idx.push(ci, s, (s + 1) % sides);
+    }
+    if (caps >= 1) {
+      const ci = pos.length / 3, o = segs * sides;
+      pos.push(bowX, h / 2, bowZ);
+      for (let s = 0; s < sides; s++) idx.push(ci, o + (s + 1) % sides, o + s);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  /* A rail, rope or wire that droops between its ends. Swept along Z from
+     -len/2 to +len/2, so it drops straight into the slot a box rail used to
+     occupy -- same centre, same yaw, now with a belly. */
+  function sagGeo(len, rA, rB, sag, sides, segs) {
+    sides = Math.max(3, sides || 4); segs = Math.max(2, segs || 3);
+    const pos = [], idx = [];
+    for (let i = 0; i <= segs; i++) {
+      const t = i / segs;
+      const z = -len / 2 + len * t;
+      const y = -sag * Math.sin(t * Math.PI);
+      const r = UTIL.lerp(rA, rB, t) * (1 - 0.1 * Math.sin(t * Math.PI));
+      for (let s = 0; s < sides; s++) {
+        const a = (s / sides) * Math.PI * 2 + Math.PI / sides;
+        pos.push(Math.cos(a) * r, y + Math.sin(a) * r, z);
+      }
+    }
+    for (let i = 0; i < segs; i++) {
+      for (let s = 0; s < sides; s++) {
+        const s2 = (s + 1) % sides;
+        const a = i * sides + s, b = i * sides + s2;
+        const c = (i + 1) * sides + s, d = (i + 1) * sides + s2;
+        idx.push(a, d, c, a, b, d);
+      }
+    }
+    let ci = pos.length / 3;
+    pos.push(0, 0, -len / 2);
+    for (let s = 0; s < sides; s++) idx.push(ci, (s + 1) % sides, s);
+    ci = pos.length / 3;
+    const o = segs * sides;
+    pos.push(0, -sag * Math.sin(Math.PI) , len / 2);
+    for (let s = 0; s < sides; s++) idx.push(ci, o + s, o + (s + 1) % sides);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
+  /* A turned profile: `rows` is [[t, radius], ...] from base (t=0) to top
+     (t=1). Gives barrels a real belly, sacks a slump, pots a lip -- shapes
+     a straight cylinder cannot make. Vertically centred on the origin. */
+  function latheGeo(h, rows, sides) {
+    sides = Math.max(4, sides || 10);
+    const pos = [], idx = [];
+    for (let i = 0; i < rows.length; i++) {
+      const y = -h / 2 + h * rows[i][0], r = rows[i][1];
+      for (let s = 0; s < sides; s++) {
+        const a = (s / sides) * Math.PI * 2;
+        pos.push(Math.cos(a) * r, y, Math.sin(a) * r);
+      }
+    }
+    for (let i = 0; i < rows.length - 1; i++) {
+      for (let s = 0; s < sides; s++) {
+        const s2 = (s + 1) % sides;
+        const a = i * sides + s, b = i * sides + s2;
+        const c = (i + 1) * sides + s, d = (i + 1) * sides + s2;
+        idx.push(a, c, d, a, d, b);
+      }
+    }
+    let ci = pos.length / 3;
+    pos.push(0, -h / 2, 0);
+    for (let s = 0; s < sides; s++) idx.push(ci, s, (s + 1) % sides);
+    ci = pos.length / 3;
+    const o = (rows.length - 1) * sides;
+    pos.push(0, h / 2, 0);
+    for (let s = 0; s < sides; s++) idx.push(ci, o + (s + 1) % sides, o + s);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  }
+
   const _m = new THREE.Matrix4();
   const _q = new THREE.Quaternion();
   const _e = new THREE.Euler();
   const _p = new THREE.Vector3();
   const _s = new THREE.Vector3();
+
+  /* Several blades springing from one root, welded into a single geometry:
+     a grass clump, a spray of straw, a weed. Doing this here rather than
+     pushing each blade separately means one geometry (and one ink shell)
+     per clump instead of four, which matters when the farm carries a
+     thousand of them. spec: [len, baseW, droop, curl, yaw, pitch, ox, oz] */
+  function bladeClusterGeo(specs) {
+    const parts = [];
+    for (let i = 0; i < specs.length; i++) {
+      const s = specs[i];
+      parts.push(xform(bladeGeo(s[0], s[1], 0.011, s[2], s[3], 2),
+        s[6] || 0, 0, s[7] || 0, 0, s[4], s[5]));
+    }
+    return parts.length === 1 ? parts[0] : merge(parts);
+  }
 
   function xform(geo, x, y, z, rx, ry, rz, sx, sy, sz) {
     _e.set(rx || 0, ry || 0, rz || 0);
@@ -3146,6 +3321,45 @@ const PRIM = (() => {
        is only used to work out a constant-thickness ink shell. */
     custom(makeGeo, dims, x, y, z, rx, ry, rz) {
       return this._push(makeGeo, dims, x, y, z, rx, ry, rz, 0);
+    }
+    /* Same, but measures the generator's own bounding box for the shell so
+       callers of the organic generators below never have to hand-derive
+       dims (and never accidentally balloon an outline by understating one).
+
+       Generates ONCE and clones for the shell rather than going through
+       _push (which would call the generator a second time). These
+       generators run tens of thousands of times at load -- corn alone is
+       ~7000 of them -- so the saved pass is seconds off the boot. */
+    auto(makeGeo, x, y, z, rx, ry, rz) {
+      const g = makeGeo();
+      g.computeBoundingBox();
+      const bb = g.boundingBox;
+      const dx = Math.max(bb.max.x - bb.min.x, 0.02);
+      const dy = Math.max(bb.max.y - bb.min.y, 0.02);
+      const dz = Math.max(bb.max.z - bb.min.z, 0.02);
+      if (this.t > 0) {
+        const t = this.t, o = g.clone();
+        xform(o, 0, 0, 0, 0, 0, 0, (dx + t * 2) / dx, (dy + t * 2) / dy, (dz + t * 2) / dz);
+        this.shell.push(xform(o, x, y, z, rx, ry, rz));
+      }
+      this.body.push(xform(g, x, y, z, rx, ry, rz));
+      return this;
+    }
+    /* A whole grass clump / straw spray in one geometry. See bladeClusterGeo. */
+    tuft(specs, x, y, z) {
+      return this.auto(() => bladeClusterGeo(specs), x, y, z, 0, 0, 0);
+    }
+    blade(len, baseW, tipW, droop, curl, segs, x, y, z, rx, ry, rz) {
+      return this.auto(() => bladeGeo(len, baseW, tipW, droop, curl, segs), x, y, z, rx, ry, rz);
+    }
+    bow(h, rBot, rTop, bowX, bowZ, sides, segs, caps, x, y, z, rx, ry, rz) {
+      return this.auto(() => bowGeo(h, rBot, rTop, bowX, bowZ, sides, segs, caps), x, y, z, rx, ry, rz);
+    }
+    sag(len, rA, rB, drop, sides, segs, x, y, z, rx, ry, rz) {
+      return this.auto(() => sagGeo(len, rA, rB, drop, sides, segs), x, y, z, rx, ry, rz);
+    }
+    lathe(h, rows, sides, x, y, z, rx, ry, rz) {
+      return this.auto(() => latheGeo(h, rows, sides), x, y, z, rx, ry, rz);
     }
     torus(r, tube, rs, ts, arc, x, y, z, rx, ry, rz) {
       const d = (r + tube) * 2;
@@ -3213,7 +3427,10 @@ const PRIM = (() => {
     return mesh(geo, mat, o);
   }
 
-  return { warp, merge, xform, Batch, mesh, box, cyl, sph, cone, torus, hose };
+  return {
+    warp, merge, xform, Batch, mesh, box, cyl, sph, cone, torus, hose,
+    bladeGeo, bowGeo, sagGeo, latheGeo, bladeClusterGeo
+  };
 })();
 
 /* ============================== [WORLD] ============================== */
@@ -3777,12 +3994,10 @@ const LEVEL = (() => {
     RAY_TARGETS.push(g);
   }
 
-  /* Footpaths: one merged, unoutlined sheet of overlapping blobs. */
-  function buildPaths(parent) {
-    const b = new PRIM.Batch(MAT.flat(0xffffff, {
-      map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.9
-    }), 0);
-    const routes = [
+  /* The desire lines players actually walk. Hoisted out of buildPaths so
+     buildGroundDetail can press cart ruts and worn edges into the same
+     routes instead of guessing where the traffic goes. */
+  const PATH_ROUTES = [
       [
         [0, 31], [0, 24], [1, 18], [1.5, 12], [2, 7],          // gate to yard
         [4, 4], [6, 1], [6, -3], [5.6, -7.4],                   // yard to barn door
@@ -3819,8 +4034,14 @@ const LEVEL = (() => {
         [38, -53], [34, -48], [36, -43], [42, -40], [48, -40], // fenced yard loop around stable
         [56, -41], [61, -46], [60, -52], [57, -54]
       ]
-    ];
-    routes.forEach(route => {
+  ];
+
+  /* Footpaths: one merged, unoutlined sheet of overlapping blobs. */
+  function buildPaths(parent) {
+    const b = new PRIM.Batch(MAT.flat(0xffffff, {
+      map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.9
+    }), 0);
+    PATH_ROUTES.forEach(route => {
       for (let i = 0; i < route.length - 1; i++) {
         const a = route[i], c = route[i + 1];
         const steps = Math.ceil(Math.hypot(c[0] - a[0], c[1] - a[1]) / 0.9);
@@ -3916,11 +4137,18 @@ const LEVEL = (() => {
     // structural pieces made collision impossible to audit and made the map
     // change from load to load. Deliberate openings remain explicit in the
     // authored run list below.
+    // Posts are bowed, tapered and hand-hewn rather than extruded boxes:
+    // each one leans out of true along its own axis and thins toward the
+    // top, so a fence run reads as a wobbling drawn line instead of a comb.
+    // The collider is unchanged -- the bow stays well inside the 0.25 box.
+    const postH = [];
     for (let i = 0; i <= n; i++) {
       const p = points[i];
       const h = UTIL.rng(1.3, 1.7);
-      batch.box(0.17, h, 0.17, p.x, h / 2, p.z,
-        UTIL.rng(-.05, .05), ang, UTIL.rng(-.07, .07), 0.015);
+      postH.push(h);
+      batch.bow(h, UTIL.rng(0.085, 0.105), UTIL.rng(0.055, 0.075),
+        UTIL.rng(-0.09, 0.09), UTIL.rng(-0.09, 0.09), 5, 3, 2,
+        p.x, h / 2, p.z, UTIL.rng(-.04, .04), ang, UTIL.rng(-.06, .06));
       if (!opts.wall) WORLD.add(p.x, h / 2, p.z, 0.25, h, 0.25, 'fence');
     }
 
@@ -3931,10 +4159,19 @@ const LEVEL = (() => {
       const railLength = actualLength + 0.1;
       const upperY = UTIL.rng(0.95, 1.12);
       const lowerY = UTIL.rng(0.45, 0.6);
-      batch.box(0.1, 0.13, railLength, mx, upperY, mz,
-        0, ang, UTIL.rng(-.04, .04), 0.012);
-      batch.box(0.1, 0.13, railLength, mx, lowerY, mz,
-        0, ang, UTIL.rng(-.04, .04), 0.012);
+      // Rails droop between their posts. Same centre, same yaw, same slot
+      // the box rails occupied -- they just stopped being straight.
+      batch.sag(railLength, 0.065, 0.062, UTIL.rng(0.03, 0.09), 4, 3,
+        mx, upperY, mz, 0, ang, UTIL.rng(-.04, .04));
+      batch.sag(railLength, 0.062, 0.06, UTIL.rng(0.02, 0.07), 4, 3,
+        mx, lowerY, mz, 0, ang, UTIL.rng(-.04, .04));
+      // A slack wire strung post to post above the top rail. Costs almost
+      // nothing and it is the single line that sells "fence" from distance.
+      if (!opts.noWire) {
+        const wy = Math.min(postH[i], postH[i + 1]) - UTIL.rng(0.16, 0.3);
+        batch.sag(actualLength, 0.024, 0.024, UTIL.rng(0.09, 0.2), 3, 4,
+          mx, wy, mz, 0, ang, 0);
+      }
 
       if (opts.wall) {
         // Perimeter intervals use the same low vertical extent as the visible
@@ -4500,39 +4737,98 @@ const LEVEL = (() => {
   }
 
   /* ---------------- the field ---------------- */
+  /* ---------------- corn, the way a cartoonist draws it ----------------
+     The old plant was a cylinder with three boxes nailed through it at
+     random angles -- from any distance it read as a plus-sign, and the corn
+     is the single most-repeated silhouette on this farm (the field, and
+     every wall of the maze). One plant is now a bowed tapered stalk with
+     staggered blades that arc out of it and hang over, plus a nodding
+     tassel and the occasional fat ear.
+
+     Callers hand in shared batches, so an entire field or an entire maze is
+     still three merged meshes and three ink shells, not one draw call per
+     leaf. Keep the budget honest: `leaves`/`leafSegs`/`tassel` exist so the
+     hero field can afford detail the 1000-plant maze cannot. */
+  function cornBatches() {
+    return {
+      stalk: new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.03),
+      leaf: new PRIM.Batch(MAT.toon(PAL.olive), 0.03),
+      head: new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.028)
+    };
+  }
+  function cornBuild(bat, parent) {
+    bat.stalk.build(parent);
+    bat.leaf.build(parent, { ray: false });
+    bat.head.build(parent, { ray: false });
+  }
+  function cornPlant(bat, x, z, h, opts) {
+    opts = opts || {};
+    const leanA = UTIL.rng(0, 6.28), lean = UTIL.rng(0.04, 0.13) * h;
+    const bx = Math.cos(leanA) * lean, bz = Math.sin(leanA) * lean;
+    const segs = opts.stalkSegs || 2;
+    bat.stalk.bow(h, UTIL.rng(0.065, 0.085), 0.026, bx, bz, 4, segs, 1,
+      x, h / 2, z, 0, UTIL.rng(0, 1.5), 0);
+    // How far the stalk has drifted sideways at height fraction t.
+    const drift = t => Math.sin(t * Math.PI * 0.72) / Math.sin(Math.PI * 0.72);
+    const n = opts.leaves === undefined ? 3 : opts.leaves;
+    const lseg = opts.leafSegs || 2;
+    const t0 = opts.leafBase === undefined ? 0.3 : opts.leafBase;
+    let a = UTIL.rng(0, 6.28);
+    for (let i = 0; i < n; i++) {
+      const t = t0 + (i / n) * (0.88 - t0) + UTIL.rng(-0.03, 0.03);
+      a += 2.2 + UTIL.rng(-0.55, 0.55);
+      const len = UTIL.rng(0.8, 1.2) * (opts.leafScale || 1) * (1.2 - t * 0.5);
+      const k = drift(t);
+      bat.leaf.blade(len, UTIL.rng(0.2, 0.32) * (opts.leafWidth || 1), 0.014,
+        len * UTIL.rng(0.55, 0.85), UTIL.rng(-0.16, 0.16), lseg,
+        x + bx * k, h * t, z + bz * k, 0, -a, UTIL.rng(0.16, 0.5));
+    }
+    const tn = opts.tassel === undefined ? 2 : opts.tassel;
+    for (let i = 0; i < tn; i++) {
+      bat.head.blade(UTIL.rng(0.24, 0.4), 0.045, 0.012, UTIL.rng(0.08, 0.2), 0, 2,
+        x + bx, h - 0.04, z + bz, 0, -(a + i * 2.4), UTIL.rng(0.6, 1.05));
+    }
+    if (opts.ear && UTIL.rand() < opts.ear) {
+      const ea = a + 1.5, ey = h * UTIL.rng(0.4, 0.55), k = drift(ey / h);
+      bat.head.lathe(0.42, [[0, 0.025], [0.2, 0.1], [0.62, 0.11], [0.9, 0.065], [1, 0.02]], 6,
+        x + bx * k + Math.cos(ea) * 0.13, ey, z + bz * k + Math.sin(ea) * 0.13,
+        0, 0, UTIL.rng(0.45, 0.85));
+    }
+  }
+
   function buildField(parent) {
-    const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
-    const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
-    const heads = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.04);
+    const corn = cornBatches();
     const cabbage = new PRIM.Batch(MAT.toon(PAL.olive), 0.05);
     const dirt = new PRIM.Batch(MAT.toon(PAL.dirtDeep), 0);
 
     for (let row = 0; row < 5; row++) {
       const z = 11.2 + row * 2.1;
       dirt.plane(11, 1.1, 17.5, 0.03, z, -Math.PI / 2, 0, UTIL.rng(-.02, .02));
+      // Ridged furrow either side of the row, so a planted row sits in
+      // worked earth instead of on a painted stripe.
+      for (let f = -1; f <= 1; f += 2) {
+        dirt.box(11, 0.11, 0.34, 17.5, 0.05, z + f * 0.72, 0, UTIL.rng(-.012, .012), 0, 0.03);
+      }
       for (let i = 0; i < 7; i++) {
         const x = 12.6 + i * 1.6 + UTIL.rng(-.25, .25);
         const zz = z + UTIL.rng(-.25, .25);
         if ((row + i) % 3 === 0) {
-          // cabbage-ish head, nothing more
-          cabbage.sphere(UTIL.rng(0.3, 0.42), x, 0.26, zz, 1, 0.8, 1);
-        } else {
-          const h = UTIL.rng(1.5, 2.3);
-          const tilt = UTIL.rng(-.13, .13);
-          stalks.cyl(0.05, 0.08, h, 6, x, h / 2, zz, 0, 0, tilt);
-          for (let l = 0; l < 3; l++) {
-            const a = UTIL.rng(0, 6.28);
-            leaves.box(0.9, 0.05, 0.22, x + Math.cos(a) * 0.4, h * UTIL.rng(0.45, 0.85), zz + Math.sin(a) * 0.4,
-              0, a, UTIL.rng(-.5, -.15), 0.02);
+          // cabbage: a warped head sitting in its own splayed leaf skirt
+          const r = UTIL.rng(0.3, 0.42);
+          cabbage.sphere(r, x, r * 0.72, zz, 1, 0.8, 1);
+          const a0 = UTIL.rng(0, 6.28);
+          for (let l = 0; l < 4; l++) {
+            cabbage.blade(r * UTIL.rng(1.5, 2.1), r * 1.1, 0.02, r * 0.5, UTIL.rng(-.2, .2), 2,
+              x, r * 0.4, zz, 0, -(a0 + l * 1.57 + UTIL.rng(-.3, .3)), UTIL.rng(-0.15, 0.2));
           }
-          heads.cyl(0.09, 0.13, 0.42, 6, x + tilt * h * -0.5, h - 0.1, zz, 0, 0, tilt);
+        } else {
+          cornPlant(corn, x, zz, UTIL.rng(1.7, 2.5),
+            { leaves: 4, leafSegs: 3, stalkSegs: 3, tassel: 3, ear: 0.45 });
         }
       }
     }
     dirt.build(parent, { ray: false });
-    stalks.build(parent);
-    leaves.build(parent, { ray: false });
-    heads.build(parent, { ray: false });
+    cornBuild(corn, parent);
     cabbage.build(parent);
 
     // scarecrow-free: just a bare cross post, nothing wearing a face
@@ -4803,21 +5099,29 @@ const LEVEL = (() => {
       northEntrance: { c: NORTH_STABLE_EXIT_COL, r: 0 }
     };
 
-    const stalks = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.035);
-    const leaves = new PRIM.Batch(MAT.toon(PAL.olive), 0.04);
+    const corn = cornBatches();
+    const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.02);
     const WALL_H = 2.4;
     function cornWall(cx, cz, horizontal) {
       for (let i = 0; i < 5; i++) {
         const t = (i + 0.5) / 5 - 0.5;
         const x = horizontal ? cx + t * CELL : cx + UTIL.rng(-0.15, 0.15);
         const z = horizontal ? cz + UTIL.rng(-0.15, 0.15) : cz + t * CELL;
-        const h = UTIL.rng(2.1, 2.6);
-        stalks.cyl(0.06, 0.09, h, 6, x, h / 2, z, 0, 0, UTIL.rng(-.08, .08));
-        for (let l = 0; l < 2; l++) {
-          const a = UTIL.rng(0, 6.28);
-          leaves.box(0.85, 0.05, 0.2, x + Math.cos(a) * 0.35, h * UTIL.rng(0.5, 0.85), z + Math.sin(a) * 0.35,
-            0, a, UTIL.rng(-.4, -.1), 0.02);
-        }
+        // Maze corn is a *wall* first and a plant second: broad overlapping
+        // blades so a lane actually reads as enclosed, and a plain drooping
+        // top instead of a tassel (a thousand tassels at eye height read as
+        // thorns, not corn). Still capped at four blades a plant --
+        // multiplied by ~1000 walls, every triangle here is a thousand.
+        cornPlant(corn, x, z, UTIL.rng(2.1, 2.65),
+          { leaves: 4, leafSegs: 3, leafScale: 1.3, leafWidth: 1.45, tassel: 1, leafBase: 0.13 });
+      }
+      // Fallen leaf litter at the foot of the wall -- the lane floor stops
+      // being a bare plane and the wall stops floating on it.
+      for (let i = 0; i < 2; i++) {
+        const lx = horizontal ? cx + UTIL.rng(-CELL * 0.45, CELL * 0.45) : cx + UTIL.rng(-0.5, 0.5);
+        const lz = horizontal ? cz + UTIL.rng(-0.5, 0.5) : cz + UTIL.rng(-CELL * 0.45, CELL * 0.45);
+        litter.blade(UTIL.rng(0.4, 0.75), 0.16, 0.02, 0.05, UTIL.rng(-.3, .3), 2,
+          lx, 0.035, lz, 0, UTIL.rng(0, 6.28), UTIL.rng(-.06, .06));
       }
       WORLD.addFloor(cx, 0, cz, horizontal ? CELL : 0.5, WALL_H, horizontal ? 0.5 : CELL, 'corn_wall');
     }
@@ -4834,8 +5138,8 @@ const LEVEL = (() => {
         if (!o[3] && c === 0 && !westEntrance) cornWall(X0 + c * CELL, cz, false); // west perimeter
       }
     }
-    stalks.build(parent);
-    leaves.build(parent, { ray: false });
+    cornBuild(corn, parent);
+    litter.build(parent, { ray: false });
 
     // Render-only gateway frames make both openings readable through the tall
     // corn. They deliberately have no WORLD collider: the omitted corn walls
@@ -7061,6 +7365,519 @@ const LEVEL = (() => {
     });
   }
 
+  /* ---------------- set dressing ----------------
+     Clutter placed by hand, with intent, at the vantage points the farm is
+     actually read from -- each cluster is built to give its frame a
+     foreground, a midground and something to look past.
+
+     Everything in here is DECORATION ONLY: not one item registers a WORLD
+     solid. That is deliberate. Dressing gets packed into exactly the tight
+     spots (doorways, aisles, silo bases, orchard rows) where an extra
+     collider would silently pinch a route, and it is all either low enough
+     to step over, hung overhead, or pressed against a wall that already
+     blocks. The one exception is the west windbreak, which uses PROPS.tree
+     and is called out where it happens.
+
+     Nine merged batches carry the lot. */
+  function buildDressing(parent) {
+    const wood = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.038);
+    const pale = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) }), 0.034);
+    const iron = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.036);
+    const cloth = new PRIM.Batch(MAT.toon(PAL.dirt), 0.038);
+    const clay = new PRIM.Batch(MAT.toon(PAL.rust), 0.032);
+    const cord = new PRIM.Batch(MAT.toon(PAL.charcoal), 0.02);
+    const bulb = new PRIM.Batch(MAT.flat(PAL.mustard), 0.024);
+    const green = new PRIM.Batch(MAT.toon(PAL.olive), 0.03);
+    const spill = new PRIM.Batch(MAT.flat(0xffffff, {
+      map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.6
+    }), 0);
+
+    /* --- the vocabulary --- */
+    // A grain/feed sack: slumped, never a cylinder.
+    function sack(x, y, z, s, lean, yaw) {
+      const rows = [[0, 0.2], [0.2, 0.37], [0.52, 0.35], [0.8, 0.21], [0.94, 0.11], [1, 0.04]];
+      cloth.lathe(0.68 * s, rows.map(r => [r[0], r[1] * s]), 8,
+        x, y + 0.33 * s, z, lean || 0, yaw || 0, UTIL.rng(-.06, .06));
+    }
+    function pot(x, y, z, s) {
+      clay.lathe(0.34 * s, [[0, 0.16], [0.7, 0.25], [0.86, 0.26], [1, 0.3]].map(r => [r[0], r[1] * s]), 8,
+        x, y + 0.17 * s, z, UTIL.rng(-.05, .05), 0, UTIL.rng(-.05, .05));
+    }
+    function pail(x, y, z, s, tip) {
+      iron.lathe(0.32 * s, [[0, 0.14], [1, 0.19]].map(r => [r[0], r[1] * s]), 8,
+        x, y + 0.16 * s, z, tip || 0, 0, 0);
+      iron.torus(0.19 * s, 0.02, 4, 8, Math.PI, x, y + 0.32 * s, z, 0, UTIL.rng(0, 3), 0);
+    }
+    function coil(x, y, z, r) {
+      cord.torus(r, 0.05, 4, 9, Math.PI * 2, x, y + 0.05, z, Math.PI / 2, 0, 0);
+      cord.torus(r * 0.7, 0.05, 4, 9, Math.PI * 2, x, y + 0.14, z, Math.PI / 2, 0, 0);
+    }
+    function planks(x, z, n, yaw, bat) {
+      const b = bat || wood;
+      for (let i = 0; i < n; i++) {
+        b.box(UTIL.rng(1.9, 2.9), 0.09, UTIL.rng(0.24, 0.36),
+          x + UTIL.rng(-.12, .12), 0.05 + i * 0.1, z + UTIL.rng(-.14, .14),
+          0, yaw + UTIL.rng(-.1, .1), UTIL.rng(-.02, .02), 0.02);
+      }
+    }
+    // A long-handled tool propped against whatever is behind it.
+    function tool(x, z, yaw, lean, len, head) {
+      wood.bow(len, 0.05, 0.036, UTIL.rng(-.06, .06), 0, 5, 2, 2,
+        x, len / 2 * Math.cos(lean), z, 0, yaw, lean);
+      const hx = x - Math.sin(lean) * Math.sin(yaw) * len * 0.5;
+      const hz = x * 0 + z - Math.sin(lean) * Math.cos(yaw) * len * 0.5;
+      if (head === 'fork') {
+        for (let i = -1; i <= 1; i++) {
+          iron.bow(0.42, 0.022, 0.014, 0, 0, 4, 2, 2, hx + i * 0.09, 0.2, hz, 0, yaw, lean);
+        }
+      } else if (head === 'shovel') {
+        iron.box(0.3, 0.36, 0.05, hx, 0.18, hz, 0, yaw, lean, 0.02);
+      }
+    }
+    // Slack wire with bulbs hanging off it. Overhead, so it costs nothing in
+    // clearance and it draws a line right across a frame.
+    function bulbString(x0, z0, x1, z1, y, n, droop) {
+      const dx = x1 - x0, dz = z1 - z0;
+      const len = Math.hypot(dx, dz), ang = Math.atan2(dx, dz);
+      cord.sag(len, 0.022, 0.022, droop, 3, 7, (x0 + x1) / 2, y, (z0 + z1) / 2, 0, ang, 0);
+      for (let i = 0; i < n; i++) {
+        const t = (i + 0.5) / n, s = Math.sin(t * Math.PI);
+        bulb.lathe(0.21, [[0, 0.02], [0.22, 0.05], [0.6, 0.075], [1, 0.028]], 7,
+          x0 + dx * t, y - droop * s - 0.13, z0 + dz * t, 0, 0, 0);
+      }
+    }
+    function crateBox(x, y, z, s, yaw) {
+      wood.box(s, s, s, x, y + s / 2, z, UTIL.rng(-.03, .03), yaw, UTIL.rng(-.03, .03), s * 0.02);
+      wood.box(s * 1.02, 0.07, s * 1.02, x, y + s * 0.86, z, 0, yaw, 0, 0.012);
+    }
+    function windfall(x, z, r, n, col) {
+      for (let i = 0; i < n; i++) {
+        green.sphere(UTIL.rng(0.09, 0.15), x + UTIL.rng(-r, r), 0.1, z + UTIL.rng(-r, r), 1, 0.9, 1);
+      }
+    }
+
+    /* --- A. the yard: foreground clutter around the well --- */
+    planks(7.6, 15.2, 4, 0.5);
+    sack(1.9, 0, 14.6, 1.05, 0.1, 0); sack(2.5, 0, 14.2, 0.95, -0.14, 1);
+    sack(2.2, 0.5, 14.4, 0.9, 0.3, 2);
+    pail(6.2, 0, 12.4, 1, 0.5); pail(5.6, 0, 12.1, 0.9, 0);
+    coil(4.9, 0, 13.4, 0.34);
+    pot(0.6, 0, 12.2, 1); pot(1.1, 0, 12.5, 0.8); pot(0.9, 0.32, 12.3, 0.7);
+    spill.plane(3.4, 3.4, 2.2, 0.02, 14.4, -Math.PI / 2, 0, 0.4);
+    tool(-1.6, 11.0, 1.2, 0.34, 1.9, 'fork');
+    tool(-1.9, 11.3, 1.4, 0.42, 1.8, 'shovel');
+    crateBox(8.4, 0, 13.6, 0.78, 0.4);
+    crateBox(8.3, 0.78, 13.5, 0.6, -0.3);
+    // Bunting from the gate posts to the barn side -- the yard is the one
+    // place a player crosses every run, so it gets the strongest overhead line.
+    bulbString(-3.2, 29.6, 4.4, 24.0, 3.9, 5, 0.75);
+    bulbString(4.4, 24.0, 8.6, 17.4, 3.5, 4, 0.6);
+
+    /* --- B. barn approach: the empty midground west of the field fence --- */
+    planks(15.4, 3.2, 5, 1.3);
+    sack(17.2, 0, 1.4, 1.1, 0.12, 0); sack(17.9, 0, 1.0, 1.0, -0.2, 1);
+    crateBox(13.2, 0, 5.4, 0.85, 0.9); crateBox(13.1, 0.85, 5.3, 0.7, 0.2);
+    crateBox(14.1, 0, 5.8, 0.7, -0.4);
+    coil(12.4, 0, 4.2, 0.4);
+    pail(16.0, 0, 6.1, 1, -0.4);
+    spill.plane(5, 5, 15.0, 0.02, 3.4, -Math.PI / 2, 0, 0.9);
+    // A dropped wagon wheel, half sunk -- reads instantly at any distance.
+    iron.torus(0.62, 0.075, 5, 12, Math.PI * 2, 11.6, 0.3, 6.6, 1.32, 0.5, 0);
+    iron.torus(0.58, 0.05, 4, 10, Math.PI * 2, 18.6, 0.62, -0.6, 0.12, 0.9, 0);
+
+    /* --- C. the irrigation yard under the pipe run --- */
+    for (let i = 0; i < 5; i++) {
+      iron.cyl(0.16, 0.16, UTIL.rng(2.4, 3.4), 7,
+        4.2 + i * 0.36, 0.16 + (i > 2 ? 0.3 : 0), -21.6 + UTIL.rng(-.2, .2),
+        0, UTIL.rng(-.06, .06), Math.PI / 2);
+    }
+    planks(6.6, -18.6, 3, 0.2, pale);
+    sack(1.2, 0, -22.6, 1.1, 0.15, 0); sack(0.5, 0, -22.9, 1.0, -0.1, 1);
+    pail(2.9, 0, -18.2, 1.05, 0.6);
+    coil(3.4, 0, -22.2, 0.42);
+    iron.torus(0.5, 0.06, 4, 10, Math.PI * 2, 0.9, 1.1, -19.9, 0, 0, Math.PI / 2);
+    iron.torus(0.34, 0.05, 4, 9, Math.PI * 2, 8.9, 1.0, -19.9, 0, 0, Math.PI / 2);
+    spill.plane(6, 5, 3.0, 0.02, -21.0, -Math.PI / 2, 0, 0.2);
+    crateBox(7.4, 0, -22.8, 0.8, 0.6);
+
+    /* --- D. Seedling House interior (greenhouse vantage) ---
+       Shell spans x -51.5..-35.5, z -5..23; benches sit at x -47.5 / -39.5,
+       so the centre aisle and both side lanes stay completely clear. */
+    const GX = -43.5;
+    bulbString(GX, -3.6, GX, 21.6, 2.55, 8, 0.5);
+    for (let i = 0; i < 7; i++) {
+      const z = -3.2 + i * 4.1;
+      pot(-50.6 + UTIL.rng(-.2, .2), 0, z, UTIL.rng(0.8, 1.15));
+      if (UTIL.rand() < 0.6) pot(-50.4, 0.32, z + 0.3, 0.75);
+      pot(-36.4 + UTIL.rng(-.2, .2), 0, z + 1.6, UTIL.rng(0.8, 1.15));
+    }
+    [[-50.4, 0.5], [-49.8, 1.4], [-50.2, 2.2]].forEach(s => sack(s[0], 0, s[1], 1.0, 0.12, 0));
+    [[-36.6, 12.4], [-36.9, 13.3]].forEach(s => sack(s[0], 0, s[1], 0.95, -0.1, 1));
+    pail(-50.2, 0, 6.6, 1.05, 0.4); pail(-36.7, 0, 5.2, 0.95, 0);
+    coil(-36.6, 0, 17.0, 0.34);
+    tool(-50.9, -4.2, 0.25, 0.3, 2.0, 'fork');
+    tool(-50.6, -3.9, 0.1, 0.36, 1.9, 'shovel');
+    tool(-36.1, -4.0, -0.2, -0.32, 1.95, 'shovel');
+    planks(-50.6, 19.6, 4, 0.05, pale);
+    spill.plane(3.2, 3.2, -50.2, 0.02, 1.4, -Math.PI / 2, 0, 0.3);
+    spill.plane(2.6, 2.6, -36.6, 0.02, 12.8, -Math.PI / 2, 0, 1.1);
+
+    /* --- E. west silo row: the emptiest frame on the farm --- */
+    [9, -25, -59].forEach((bz, bi) => {
+      const SX = -79;
+      // Grain sacks and pallets stacked against the footing collar.
+      for (let i = 0; i < 5; i++) {
+        sack(SX + UTIL.rng(2.6, 4.4), 0, bz + UTIL.rng(-3.4, 3.4), UTIL.rng(0.95, 1.25),
+          UTIL.rng(-.16, .16), UTIL.rng(0, 3));
+      }
+      sack(SX + 3.2, 0.6, bz + 1.0, 1.0, 0.2, 1);
+      planks(SX + 4.6, bz - 4.4, 5, 0.7, pale);
+      planks(SX - 4.0, bz - 5.0, 4, 2.1);
+      crateBox(SX + 4.9, 0, bz + 3.6, 0.85, 0.5);
+      crateBox(SX + 4.8, 0.85, bz + 3.5, 0.7, -0.2);
+      crateBox(SX - 5.0, 0, bz - 2.8, 0.8, 1.1);
+      coil(SX + 3.9, 0, bz - 1.8, 0.44);
+      pail(SX - 4.2, 0, bz - 4.0, 1.1, 0.5);
+      // A long grain auger leaning off the tower -- the diagonal this
+      // vantage was missing entirely.
+      iron.bow(9.4, 0.24, 0.19, 0.5, 0, 6, 3, 2,
+        SX + 3.9, 3.5, bz + 5.2, 0.0, 0.55 + bi * 0.4, -0.62);
+      iron.box(0.7, 0.5, 0.7, SX + 6.6, 0.55, bz + 7.4, 0, 0.55 + bi * 0.4, 0, 0.03);
+      spill.plane(7, 7, SX + 3.6, 0.02, bz + 1.0, -Math.PI / 2, 0, bi);
+    });
+    // Windbreak inside the west fence. These DO carry colliders (PROPS.tree)
+    // -- they sit in the dead strip between the boundary fence and the silo
+    // ladders. Every z here is kept at least 7 m off a silo band (9 / -25 /
+    // -59) so no trunk ever lands on a ladder's bottom exit, and x is held
+    // back from the fence line so the row reads as a windbreak, not a hedge.
+    [[-82.5, 24, 1.0], [-82.2, 0, 0.9], [-82.7, -12, 1.05], [-82.3, -38, 0.95],
+     [-82.6, -48, 1.05], [-82.2, -70, 0.9]].forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
+
+    /* --- F. orchard floor at the north silo --- */
+    [[2.5, -63.5], [-2.0, -60.0], [6.0, -66.5], [-4.5, -66.0], [8.5, -61.0]].forEach((p, i) => {
+      crateBox(p[0], 0, p[1], 0.82, i * 0.7);
+      if (i % 2 === 0) crateBox(p[0] - 0.1, 0.82, p[1] + 0.08, 0.66, i * 0.4);
+      windfall(p[0] + 1.1, p[1] + 0.9, 0.8, 5);
+    });
+    // Ladder into the branches: two bowed rails and a run of rungs.
+    (function orchardLadder(x, z, yaw, lean, len) {
+      [-0.24, 0.24].forEach(o => {
+        pale.bow(len, 0.055, 0.045, UTIL.rng(-.05, .05), 0, 4, 3, 2,
+          x + Math.cos(yaw) * o, len / 2 * Math.cos(lean), z - Math.sin(yaw) * o, 0, yaw, lean);
+      });
+      for (let i = 1; i < 7; i++) {
+        const t = i / 7;
+        pale.box(0.5, 0.06, 0.07,
+          x - Math.sin(lean) * Math.sin(yaw) * (t - 0.5) * len, t * len * Math.cos(lean),
+          z - Math.sin(lean) * Math.cos(yaw) * (t - 0.5) * len, 0, yaw, lean, 0.012);
+      }
+    })(3.2, -67.4, 0.6, 0.28, 3.6);
+    coil(0.4, 0, -62.4, 0.4);
+    planks(-1.4, -68.2, 4, 1.1, pale);
+    spill.plane(6, 6, 2.6, 0.02, -64.6, -Math.PI / 2, 0, 0.7);
+
+    /* --- G. north barn frontage --- */
+    planks(45.2, -52.6, 5, 0.1);
+    sack(45.8, 0, -49.6, 1.1, 0.14, 0); sack(46.4, 0, -50.1, 1.0, -0.15, 2);
+    sack(46.1, 0.55, -49.9, 0.9, 0.2, 1);
+    crateBox(44.6, 0, -55.4, 0.85, 0.35); crateBox(44.5, 0.85, -55.3, 0.68, -0.5);
+    coil(46.6, 0, -54.0, 0.42);
+    pail(45.0, 0, -47.6, 1.05, 0.55);
+    iron.torus(0.6, 0.07, 5, 12, Math.PI * 2, 43.9, 0.34, -57.6, 1.35, 0.3, 0);
+    tool(44.2, -58.6, 0.4, 0.3, 2.0, 'fork');
+    bulbString(44.0, -44.0, 44.0, -56.0, 3.4, 5, 0.7);
+    spill.plane(6, 7, 45.4, 0.02, -52.0, -Math.PI / 2, 0, 0.5);
+
+    /* --- H. stable yard + maze mouth, so the east wing has a middle --- */
+    planks(43.4, -41.0, 4, 0.9);
+    sack(42.6, 0, -40.2, 1.05, 0.12, 1);
+    crateBox(53.4, 0, -41.6, 0.85, 0.6);
+    coil(52.6, 0, -40.6, 0.4);
+    crateBox(29.6, 0, 21.4, 0.8, 0.3);
+    planks(29.4, 15.6, 4, 1.5, pale);
+    sack(30.0, 0, 16.4, 1.0, 0.1, 0);
+
+    /* --- I. the far treeline: a horizon just beyond the boundary fence,
+       so every outward-facing frame ends on a silhouette instead of on
+       blank paper. Two batches, no colliders, nothing reachable. --- */
+    const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.05);
+    const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.055);
+    function farTree(x, z, s) {
+      const h = UTIL.rng(4.6, 7.8) * s;
+      const bx = UTIL.rng(-.7, .7), bz = UTIL.rng(-.7, .7);
+      trunkB.bow(h, 0.3 * s, 0.15 * s, bx, bz, 5, 3, 1, x, h / 2, z, 0, 0, 0);
+      const lobes = 2 + Math.floor(UTIL.rand() * 2);
+      for (let i = 0; i < lobes; i++) {
+        const a = UTIL.rng(0, 6.28), rr = UTIL.rng(0.2, 1.2) * s;
+        const R = UTIL.rng(1.3, 2.2) * s;
+        leafB.lathe(R * 1.7, [[0, R * 0.3], [0.26, R * 0.85], [0.55, R], [0.82, R * 0.78], [1, R * 0.22]], 7,
+          x + bx + Math.cos(a) * rr, h + UTIL.rng(-0.4, 0.9) * s, z + bz + Math.sin(a) * rr,
+          0, UTIL.rng(0, 3), UTIL.rng(-.08, .08));
+      }
+    }
+    const M0 = CONFIG.map;
+    // Belts sit 15-25 m OUTSIDE the boundary. Closer than that and a single
+    // canopy fills a whole frame from a vantage point standing near the
+    // fence -- which is exactly what happened at the west silos when this
+    // line was only 5 m out.
+    const belts = [
+      [M0.west - 15, M0.north - 12, M0.west - 22, M0.south + 12, 30], // west
+      [M0.west - 18, M0.north - 16, 46, M0.north - 24, 30],           // north
+      [80, M0.north - 18, 84, 26, 26],                                // east (bump)
+      [48, 30, 52, 44, 6],                                            // east (old line)
+      [M0.west - 20, M0.south + 18, 46, M0.south + 26, 26]            // south
+    ];
+    belts.forEach(b => {
+      for (let i = 0; i < b[4]; i++) {
+        const t = (i + UTIL.rng(0.05, 0.95)) / b[4];
+        farTree(UTIL.lerp(b[0], b[2], t) + UTIL.rng(-4.5, 4.5),
+          UTIL.lerp(b[1], b[3], t) + UTIL.rng(-4.5, 4.5), UTIL.rng(0.85, 1.35));
+      }
+    });
+    trunkB.build(parent, { ray: false });
+    leafB.build(parent, { ray: false });
+
+    wood.build(parent, { ray: false });
+    pale.build(parent, { ray: false });
+    iron.build(parent, { ray: false });
+    cloth.build(parent, { ray: false });
+    clay.build(parent, { ray: false });
+    cord.build(parent, { ray: false });
+    bulb.build(parent, { ray: false });
+    green.build(parent, { ray: false });
+    spill.build(parent, { ray: false });
+  }
+
+  /* ---------------- ground detail ----------------
+     The farm's ground was one 400x400 plane with a texture on it and
+     nothing else: no contour, no wear, no debris, no edge. Every prop
+     therefore sat ON the world instead of IN it, and the bottom half of
+     most frames was a blank slab.
+
+     This runs LAST, after every other builder, for two reasons: WORLD.solids
+     is complete (so the skirt pass can find every place a thing meets the
+     dirt without hand-authoring a single coordinate), and nothing here adds
+     a collider -- it is all decoration, so it cannot narrow a doorway,
+     a maze lane or a ladder approach. Six merged meshes for the whole farm.
+
+     Authored open ground: clumps go here rather than uniformly over the map,
+     so the eye gets foreground texture where players actually stand instead
+     of an even dusting of noise everywhere. */
+  const SCRUB_ZONES = [
+    // [x0, z0, x1, z1, clumps] -- the original farm
+    [-14, 18, 12, 33, 16],    // gate approach
+    [-13, 2, 11, 20, 18],     // yard
+    [8, 8, 27, 25, 14],       // field surrounds + maze approach
+    [10, -10, 22, 8, 16],     // barn approach: the flattest, emptiest frame
+    [-30, 4, -8, 27, 16],     // tower / shed side
+    [-18, -28, 11, -2, 18],   // windmill + irrigation strip
+    [-32, -30, -12, -12, 12], // ruins corner
+    [24, -28, 32, 8, 10],     // east boundary strip
+    // north pasture and the east wing
+    [-30, -51, 14, -33, 22],
+    [16, -51, 30, -33, 10],
+    [34, -57, 62, -36, 16],   // stable yard
+    [32, -72, 62, -58, 14],   // silo row / south barn
+    [-8, -72, 22, -52, 16],   // orchard + north silo base
+    // west wing
+    [-66, -70, -34, 20, 34],  // greenhouse yard
+    [-84, -70, -71, 20, 20]   // west silo boundary strip
+  ];
+
+  function buildGroundDetail(parent) {
+    const M = CONFIG.map;
+    const scrub = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.022);
+    const dry = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.022);
+    const chaff = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.025);
+    const chips = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.02);
+    const swell = new PRIM.Batch(MAT.toon(PAL.dirt), 0.035);
+    const track = new PRIM.Batch(MAT.toon(PAL.dirtDeep), 0);
+    const stain = new PRIM.Batch(MAT.flat(0xffffff, {
+      map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.5
+    }), 0);
+
+    // Only things that actually touch the ground. Decks, rails, pipes,
+    // basement walls and anything hanging in the air are skipped -- weeds
+    // sprouting off a catwalk would read as a bug, not as neglect.
+    const SKIP = /catwalk|rail|balance|deck|hatch|door|stair|ladder|plant|pipe/;
+    const surf = WORLD.solids.filter(s =>
+      s.minY > -0.45 && s.minY < 0.7 && s.maxY > 0.2 && !SKIP.test(s.tag));
+
+    /* Is (x,z) clear of every ground-touching solid by at least r? Used so
+       decoration never lands inside a wall, on a path a player walks, or
+       on top of a spawn pad. */
+    function clear(x, z, r) {
+      for (let i = 0; i < surf.length; i++) {
+        const s = surf[i];
+        if (x > s.minX - r && x < s.maxX + r && z > s.minZ - r && z < s.maxZ + r) return false;
+      }
+      return true;
+    }
+
+    /* A clump of grass: blades splayed from one root, each arcing up steeply
+       and falling over at the tip. Pitch stays high (57-83 deg) and droop
+       stays modest -- splay it flatter and the clump stops reading as grass
+       and starts reading as a bird's footprint pressed into the dirt. */
+    function tuft(bat, x, z, s, blades, y) {
+      const a0 = UTIL.rng(0, 6.28), n = blades || 4, specs = [];
+      for (let i = 0; i < n; i++) {
+        const len = UTIL.rng(0.3, 0.58) * s;
+        specs.push([len, UTIL.rng(0.09, 0.16) * s, len * UTIL.rng(0.22, 0.44),
+          UTIL.rng(-0.12, 0.12), -(a0 + i * (6.28 / n) + UTIL.rng(-0.45, 0.45)),
+          UTIL.rng(1.0, 1.45), UTIL.rng(-0.06, 0.06) * s, UTIL.rng(-0.06, 0.06) * s]);
+      }
+      bat.tuft(specs, x, y === undefined ? 0.012 : y, z);
+    }
+    function pebble(x, z, s) {
+      chaff.box(s, s * UTIL.rng(0.5, 0.85), s * UTIL.rng(0.7, 1.3), x, s * 0.3, z,
+        UTIL.rng(-.3, .3), UTIL.rng(0, 3.14), UTIL.rng(-.3, .3), s * 0.28);
+    }
+    function splinter(x, z) {
+      chips.box(UTIL.rng(0.3, 0.8), 0.045, UTIL.rng(0.07, 0.16), x, 0.03, z,
+        0, UTIL.rng(0, 3.14), UTIL.rng(-.06, .06), 0.012);
+    }
+
+    // ---- 1. contour: low earth swells so the ground has a horizon line
+    // that isn't a ruler edge. Kept under 0.3 m and well clear of anything
+    // solid, so they never fight the flat collision floor players walk on.
+    for (let i = 0; i < 110; i++) {
+      const x = UTIL.rng(M.west - 3, M.east - 2), z = UTIL.rng(M.north - 3, M.south + 2);
+      const r = UTIL.rng(1.5, 3.6);
+      if (!clear(x, z, r * 0.75 + 1.0)) continue;
+      const h = UTIL.rng(0.2, 0.36);
+      swell.lathe(h * 2, [[0.5, r], [0.74, r * 0.76], [0.92, r * 0.42], [1, 0.02]], 9,
+        x, 0, z, UTIL.rng(-.02, .02), UTIL.rng(0, 3.14), UTIL.rng(-.02, .02));
+      // Weeds hold on to the crown of a swell -- gives the contour a
+      // silhouette even before it catches a directional light.
+      const tn = 1 + Math.floor(UTIL.rand() * 3);
+      for (let k = 0; k < tn; k++) {
+        const ox = UTIL.rng(-r * 0.5, r * 0.5), oz = UTIL.rng(-r * 0.5, r * 0.5);
+        // sit the clump on the dome's actual surface, not inside it
+        const q = Math.min(1, Math.hypot(ox, oz) / r);
+        tuft(UTIL.rand() < 0.5 ? scrub : dry, x + ox, z + oz, UTIL.rng(0.9, 1.5), 4,
+          h * (1 - q * q) * 0.9);
+      }
+    }
+
+    // ---- 2. skirt: every solid that meets the dirt gets weeds, wear and
+    // dropped junk packed against its base. This is the single biggest
+    // "nothing floats" win and it needs no authored coordinates.
+    let skirted = 0;
+    for (let i = 0; i < surf.length && skirted < 620; i++) {
+      const s = surf[i];
+      const w = s.maxX - s.minX, d = s.maxZ - s.minZ;
+      const big = Math.max(w, d);
+      // Skip the very smallest colliders (loose cans and bottles) and stop
+      // the perimeter fence from eating the whole budget.
+      if (big < 0.3) continue;
+      if (UTIL.rand() > (big > 2 ? 0.85 : 0.42)) continue;
+      const n = big > 3 ? 3 : big > 1.2 ? 2 : 1;
+      for (let k = 0; k < n; k++) {
+        // Pick a point just outside a random edge of the footprint.
+        const side = Math.floor(UTIL.rand() * 4);
+        const t = UTIL.rng(0.1, 0.9), out = UTIL.rng(0.06, 0.34);
+        let x, z;
+        if (side === 0) { x = s.minX + w * t; z = s.minZ - out; }
+        else if (side === 1) { x = s.minX + w * t; z = s.maxZ + out; }
+        else if (side === 2) { x = s.minX - out; z = s.minZ + d * t; }
+        else { x = s.maxX + out; z = s.minZ + d * t; }
+        const r = UTIL.rand();
+        if (r < 0.62) tuft(UTIL.rand() < 0.72 ? scrub : dry, x, z, UTIL.rng(0.75, 1.35), 3);
+        else if (r < 0.82) pebble(x, z, UTIL.rng(0.1, 0.24));
+        else splinter(x, z);
+        skirted++;
+      }
+      // A scuff of bare dirt under the bigger footprints, so a barn or a
+      // silo sits in worked ground rather than on clean paper.
+      if (big > 2.4 && UTIL.rand() < 0.55) {
+        stain.plane(big * 1.5, Math.max(d, 1) * 1.5 + 1, (s.minX + s.maxX) / 2, 0.019,
+          (s.minZ + s.maxZ) / 2, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      }
+    }
+
+    // ---- 3. open ground: authored clumps in the zones players cross.
+    SCRUB_ZONES.forEach(zn => {
+      for (let c = 0; c < zn[4]; c++) {
+        const cx = UTIL.rng(zn[0], zn[2]), cz = UTIL.rng(zn[1], zn[3]);
+        if (!clear(cx, cz, 1.1)) continue;
+        const spread = UTIL.rng(0.9, 2.4);
+        const n = 2 + Math.floor(UTIL.rand() * 4);
+        for (let k = 0; k < n; k++) {
+          const x = cx + UTIL.rng(-spread, spread), z = cz + UTIL.rng(-spread, spread);
+          if (!clear(x, z, 0.5)) continue;
+          const r = UTIL.rand();
+          if (r < 0.66) tuft(UTIL.rand() < 0.62 ? scrub : dry, x, z, UTIL.rng(0.8, 1.5), 3);
+          else if (r < 0.86) pebble(x, z, UTIL.rng(0.12, 0.3));
+          else splinter(x, z);
+        }
+        if (UTIL.rand() < 0.4) stain.plane(spread * 2.4, spread * 2.4, cx, 0.017, cz, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      }
+    });
+
+    // ---- 4. wear: cart ruts pressed along the routes the footpath sheet
+    // already paints, plus dried-out cracks either side of them. Two thin
+    // dark lines are what turns a painted blob into a road.
+    PATH_ROUTES.forEach((route, ri) => {
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i], c = route[i + 1];
+        const dx = c[0] - a[0], dz = c[1] - a[1];
+        const len = Math.hypot(dx, dz);
+        if (len < 0.2) continue;
+        const ang = Math.atan2(dx, dz);
+        const nx = Math.cos(ang), nz = -Math.sin(ang);   // across the route
+        const steps = Math.max(1, Math.round(len / 1.6));
+        for (let s = 0; s < steps; s++) {
+          if (UTIL.rand() < 0.18) continue;              // ruts fade in and out
+          const t = (s + 0.5) / steps;
+          const mx = UTIL.lerp(a[0], c[0], t), mz = UTIL.lerp(a[1], c[1], t);
+          const gauge = UTIL.rng(0.5, 0.62);
+          [-1, 1].forEach(side => {
+            track.box(UTIL.rng(0.12, 0.2), 0.05, len / steps + 0.25,
+              mx + nx * gauge * side + UTIL.rng(-.05, .05), 0.022,
+              mz + nz * gauge * side + UTIL.rng(-.05, .05),
+              0, ang + UTIL.rng(-.05, .05), UTIL.rng(-.03, .03), 0.02);
+          });
+          // Trodden verge: weeds survive at the edge of a track, not on it.
+          if (ri < 3 && UTIL.rand() < 0.3) {
+            const off = UTIL.rng(1.5, 2.4) * (UTIL.rand() < 0.5 ? -1 : 1);
+            const vx = mx + nx * off, vz = mz + nz * off;
+            if (clear(vx, vz, 0.45)) tuft(dry, vx, vz, UTIL.rng(0.7, 1.2), 3);
+          }
+        }
+      }
+    });
+
+    // ---- 5. edge: a weed line and a scatter of stones just inside the
+    // perimeter fence, so the map ends in overgrowth instead of stopping
+    // dead at a line of posts on blank paper.
+    const edge = [
+      [M.west + 1.2, M.north + 2, M.west + 1.2, M.south - 1],
+      [M.east - 1.5, -30, M.east - 1.5, 24],
+      [M.west + 2, M.north + 1.5, 30, M.north + 1.5],
+      [-8, M.south - 0.5, 30, M.south - 0.5]
+    ];
+    edge.forEach(e => {
+      const len = Math.hypot(e[2] - e[0], e[3] - e[1]);
+      const n = Math.round(len / 2.6);
+      for (let i = 0; i < n; i++) {
+        const t = (i + UTIL.rng(0.1, 0.9)) / n;
+        const x = UTIL.lerp(e[0], e[2], t) + UTIL.rng(-0.9, 0.9);
+        const z = UTIL.lerp(e[1], e[3], t) + UTIL.rng(-0.9, 0.9);
+        if (!clear(x, z, 0.5)) continue;
+        tuft(UTIL.rand() < 0.5 ? scrub : dry, x, z, UTIL.rng(1.2, 2.0), 4);
+        if (UTIL.rand() < 0.35) pebble(x + UTIL.rng(-1, 1), z + UTIL.rng(-1, 1), UTIL.rng(0.15, 0.35));
+      }
+    });
+
+    scrub.build(parent, { ray: false });
+    dry.build(parent, { ray: false });
+    chaff.build(parent, { ray: false });
+    chips.build(parent, { ray: false });
+    swell.build(parent, { ray: false });
+    track.build(parent, { ray: false });
+    stain.build(parent, { ray: false });
+  }
+
   function build(scene) {
     UTIL.setSeed(90210);
     root = new THREE.Group();
@@ -7093,6 +7910,10 @@ const LEVEL = (() => {
     buildCatwalks(root);
     buildTowerCatwalk(root);
     buildBasement(root);
+    buildDressing(root);
+    // Last: reads the finished WORLD.solids list to dress every place a
+    // thing meets the dirt. Adds no colliders of its own.
+    buildGroundDetail(root);
     return root;
   }
 
