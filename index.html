@@ -24043,9 +24043,24 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Same acceleration and turn-rate reads the grunts get.
+       A boss is heavier, so the thresholds are lower and the impulses
+       bigger — a big body has to visibly commit to starting and to
+       stopping, and it banks harder when it swings a turn. */
+    const bAccel = (speed - (e.lastSpeed || 0)) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel || 0, UTIL.clamp(bAccel * 0.05, -1.2, 1.2), 8, dt);
+    if (bAccel > 8) e.squashVel += UTIL.clamp(bAccel * 0.08, 0, 3);
+    else if (bAccel < -10) e.squashVel -= UTIL.clamp(-bAccel * 0.09, 0, 4.5);
+    let bYaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (bYaw > Math.PI) bYaw -= Math.PI * 2; else if (bYaw < -Math.PI) bYaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn || 0, UTIL.clamp(bYaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 7, dt);
+
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    e.squashLag = UTIL.damp(e.squashLag || 0, e.squash, 14, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.045, 0, 0.18), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
     e.group.position.copy(e.pos);
@@ -24580,13 +24595,19 @@ const ENEMY = (() => {
        full extension, then ring back. `reach` still peaks and decays over
        the same windup/recover split the hit timing uses. */
     let reach = 0, pitch = 0, extra = 0;
+    /* On the same 12fps grid as everything else. This character is a static
+       mesh, so the whole-body transform *is* the animation — leaving it on
+       the 60fps timer made the one boss in the room the one thing in frame
+       that moved like a tween. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss2_melee') {
-      const c = attackCurve(e.timer, B2.windup, B2.recover, 0.26, 2.4);
+      const c = attackCurve(qt, B2.windup, B2.recover, 0.26, 2.4);
       reach = -c.anticip * 0.28 + c.strike;
       pitch = -c.anticip * 0.2 + c.strike * 0.24;
       extra = c.extra;
     } else if (e.state === 'boss2_smoke') {
-      reach = 0.15 + Math.sin(t * 14) * 0.08;
+      const qs = Math.floor(t * C.stepFPS) / C.stepFPS;
+      reach = 0.15 + Math.sin(qs * 14) * 0.08;
     }
     if (e.clawArms) {
       const extend = 0.34 * reach;
@@ -24602,10 +24623,16 @@ const ENEMY = (() => {
       e.clawArms.right.stretch.scale.z = st;
     }
 
-    const sq = 1 + e.squash + extra;
+    /* The lag twin sharpens the leading edge of an impact: while the squash
+       is still moving, the difference adds to it, so the compression bites
+       on the frame it lands and eases out after. On a rigged character this
+       is a wave up the body; on a single mesh it is all the overlap there
+       is to have. */
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction, 0);
+    e.group.rotation.set(pitch, e.yaw + correction, (e.turn || 0) * 0.12);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -24633,14 +24660,17 @@ const ENEMY = (() => {
     // additionally twists, so the whole silhouette rotates into the release
     // instead of only pitching.
     let pitch = 0, roll = 0, yawExtra = 0, extra = 0;
+    // stepped for the same reason as Bear Claw's: on a static mesh the
+    // whole-body transform is the whole animation
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss3_throw') {
-      const c = attackCurve(e.timer, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
+      const c = attackCurve(qt, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
       pitch = -c.anticip * 0.34 + c.strike * 0.3;
       yawExtra = c.anticip * 0.4 - c.strike * 0.55;
       roll = -c.anticip * 0.12 + c.strike * 0.16;
       extra = c.extra;
     } else if (e.state === 'boss3_melee') {
-      const c = attackCurve(e.timer, B3.windup, B3.recover, 0.26, 2.0);
+      const c = attackCurve(qt, B3.windup, B3.recover, 0.26, 2.0);
       pitch = -c.anticip * 0.22 + c.strike * 0.36;
       roll = c.anticip * 0.08 - c.strike * 0.12;
       extra = c.extra;
@@ -24649,10 +24679,11 @@ const ENEMY = (() => {
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
-    const sq = 1 + e.squash + extra;
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll);
+    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll + (e.turn || 0) * 0.12);
   }
 
   function pose(e, t) {
@@ -24788,18 +24819,39 @@ const ENEMY = (() => {
       r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.3, 1 + breath * 0.8);
       r.head.rotation.z = -sw * 0.09 * walk;
       r.head.rotation.x = -e.lean * 0.5 + breath * 1.4;
+      r.torso.rotation.z += (e.turn || 0) * 0.10;
+      /* Knees and elbows. A heavy character folds *less* at the knee than a
+         grunt but sinks deeper into each contact, so the swing fold is the
+         small half and the absorb is the large one. That difference is most
+         of what separates the Warden's walk from a grunt's. */
+      if (bend) {
+        bend[4] = -(0.26 * UTIL.clamp(-sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[6] = -(0.26 * UTIL.clamp(sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[0] = 0.30 * UTIL.clamp(sw, 0, 1) * walk;
+        bend[2] = 0.22 * UTIL.clamp(-sw, 0, 1) * walk;
+        bend[1] = cw * 0.12 * walk;
+        bend[3] = -cw * 0.12 * walk;
+      }
       let extra = 0;
       if (e.state === 'boss_melee') {
         const total = B.windup + B.recover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.windup / total;
         if (k < wk) {
           // gather: haul the arm back on an ease-in and squat into it
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.8, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.8, 0, 1));
           r.armR.rotation.x = -2.6 * coil;
           r.torso.rotation.x -= 0.3 * coil;
           r.torso.rotation.y = 0.55 * coil;
           stepSquash += coil * 0.14;
+          // load the whole body onto the back leg, striking elbow folded up
+          r.legL.rotation.x = -0.26 * coil;
+          r.legR.rotation.x = 0.14 * coil;
+          if (bend) {
+            bend[4] = -0.40 * coil; bend[6] = -0.16 * coil;
+            bend[2] = 1.05 * coil; bend[0] = 0.26 * coil;
+          }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const strike = a < 0.3 ? E.outBack(a / 0.3, 1.8) : 1 + E.ring((a - 0.3) / 0.7, 1.4, 4.5) * 0.15;
@@ -24807,17 +24859,27 @@ const ENEMY = (() => {
           r.torso.rotation.x += -0.3 + strike * 0.85;
           r.torso.rotation.y = 0.55 - strike * 1.05;
           extra = Math.sin(UTIL.clamp(a / 0.3, 0, 1) * Math.PI) * 0.16;
+          r.legL.rotation.x = -0.26 + strike * 0.38;
+          r.legR.rotation.x = 0.14 - strike * 0.24;
+          if (bend) {
+            // the forearm lags the shoulder through the swing
+            const whip = a < 0.3 ? E.outBack(UTIL.clamp((a - 0.07) / 0.3, 0, 1), 1.5) : strike;
+            bend[4] = -0.40 + strike * 0.32; bend[6] = -0.16 - strike * 0.14;
+            bend[2] = 1.05 - whip * 1.15; bend[0] = 0.26 - strike * 0.36;
+          }
         }
       } else if (e.state === 'boss_seed') {
         const total = B.seedWindup + B.seedRecover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.seedWindup / total;
         if (k < wk) {
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.85, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.85, 0, 1));
           r.armR.rotation.x = -1.35 - coil * 0.85;
           r.torso.rotation.x -= 0.2 * coil;
           r.torso.rotation.y = -0.26 * coil;
           stepSquash += coil * 0.1;
+          if (bend) { bend[2] = 0.75 * coil; bend[4] = -0.24 * coil; bend[6] = -0.24 * coil; }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const kick = 1 - E.outQuint(a);
@@ -24825,10 +24887,17 @@ const ENEMY = (() => {
           r.torso.rotation.x += 0.22 * kick;
           r.torso.rotation.y = -0.26 + 0.4 * kick;
           extra = kick * 0.18;
+          if (bend) { bend[2] = 0.75 * kick; bend[4] = -0.24 * kick; bend[6] = -0.24 * kick; }
         }
       } else {
         r.torso.rotation.y = 0;
       }
+      // hips take the compression a beat before the chest, same as the grunts
+      const bwave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+      r.bob.scale.set(1 - bwave * 0.5, 1 + bwave * 0.9, 1 - bwave * 0.5);
+      r.torso.scale.x *= 1 + bwave * 0.26;
+      r.torso.scale.y *= 1 - bwave * 0.55;
+      r.torso.scale.z *= 1 + bwave * 0.26;
       const sq = 1 + e.squash - stepSquash + extra;
       const scale = e.visualScale || 1;
       e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
