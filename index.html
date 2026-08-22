@@ -20428,7 +20428,9 @@ const CAST = (() => {
      Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
      tip toward +X. Left limbs are index 0/2, right 1/3. */
   const REST_BEND = [0.22, 0.22, -0.12, -0.12];
-  const REST_SPLAY = [0.15, -0.15, -0.05, 0.05];
+  // The leg splay is also doing a practical job: at ±0.05 the two shoes sat
+  // in the same place and interpenetrated on every standing frame.
+  const REST_SPLAY = [0.15, -0.15, -0.10, 0.10];
   // Slow, tiny wander on the resting curve so a parked character's noodles
   // are alive rather than frozen. Seeded per rig; a crowd never breathes in
   // unison.
@@ -24943,7 +24945,16 @@ const ENEMY = (() => {
        pulses in unison. */
     const idleAmt = 1 - UTIL.clamp(walk * 2.2, 0, 1);
     const breathPh = ts * 1.55 + seed;
-    const breath = Math.sin(breathPh) * (0.008 + idleAmt * 0.016);
+    const breath = Math.sin(breathPh) * (0.010 + idleAmt * 0.026);
+    /* An idle beat. Breathing and a head scan alone are not an idle — a
+       parked character was twelve near-identical drawings in a row, which is
+       the one thing that reads as "the animation has stopped" rather than
+       "the character is waiting". Every few seconds the body sinks and pops
+       back out of it, on a per-character schedule so a crowd of them never
+       does it together. Sits under everything else, so it also gives the
+       trail springs something to chase while the character is doing nothing. */
+    const beatPh = (ts * 0.31 + seed * 0.41) % 1;
+    const beat = beatPh < 0.30 ? Math.sin(beatPh / 0.30 * Math.PI) * idleAmt : 0;
     // Contact is the low point of the cycle; the body compresses into it
     // and stretches through the passing position.
     const contact = 1 - Math.abs(cw);
@@ -24953,13 +24964,17 @@ const ENEMY = (() => {
     const bounce = Math.pow(Math.abs(cw), 1.45) * 0.15 * gait;
     const stepSquash = contact * 0.17 * gait;
 
-    // weight shift: a slow lateral lean that holds on each foot
+    /* Weight shift: a slow lateral lean that holds on each foot. It used to
+       move the hips 2cm, which at any real distance is nothing — the hips
+       now travel far enough to actually sit over one leg, and tilt as they
+       go, with the shoulders counter-tilting above them. */
     const shiftPh = ts * 0.62 + seed * 1.7;
     const shift = E.snapSin(shiftPh, 0.62) * idleAmt;
-    r.bob.position.y = bounce + breath - stepSquash * 0.10;
-    r.bob.position.x = shift * 0.022;
-    r.torso.rotation.z = sw * 0.075 * gait + shift * 0.05;
-    r.torso.rotation.x = e.lean - breath * 0.9;
+    r.bob.position.y = bounce + breath - stepSquash * 0.10 - beat * 0.045;
+    r.bob.position.x = shift * 0.055;
+    r.bob.rotation.z = shift * 0.075;
+    r.torso.rotation.z = sw * 0.075 * gait - shift * 0.045;
+    r.torso.rotation.x = e.lean - breath * 0.9 + beat * 0.09;
     /* Hips and shoulders counter-rotate. This is the oldest trick in a walk
        cycle and the body was missing it entirely — the hip block stayed
        square to the camera for the whole cycle, which is exactly what made
@@ -25008,8 +25023,13 @@ const ENEMY = (() => {
          the hip pitch has already spent. The knee has to read as a knee,
          not as a squat. */
       const swing = gait > 0.02 ? gait : 0;
-      bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * swing - shift * 0.08;
-      bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing + shift * 0.08;
+      /* Standing, the loaded leg straightens and the free one breaks — that
+         alternation is the whole reason a weight shift reads as weight
+         rather than as sliding sideways. The beat folds both knees at once. */
+      bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(shift, 0, 1) * 0.22 - beat * 0.20;
+      bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20;
       bend[0] = 0.34 * UTIL.clamp(sw, 0, 1) * swing;
       bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing;
       // sideways bow in quadrature with the pitch: the hand traces an
@@ -25093,7 +25113,7 @@ const ENEMY = (() => {
            first four drawings of the wind-up are indistinguishable from
            standing still, so the anticipation reads as a hang rather than
            as a gather. */
-        const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
+        const coil = 0.22 * a + 0.78 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
         r.armR.rotation.x = -2.5 * coil;
         r.armR.rotation.z = 0.12 + 0.45 * coil;
         r.armL.rotation.x = 0.55 * coil;
