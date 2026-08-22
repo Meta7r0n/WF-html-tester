@@ -20490,7 +20490,11 @@ const CAST = (() => {
     // body must not keep the last frame of its own corpse.
     if (rig.head) rig.head.scale.setScalar(1);
     if (rig.torso) rig.torso.scale.setScalar(1);
-    if (rig.bob) { rig.bob.position.set(0, 0, 0); rig.bob.rotation.set(0, 0, 0); }
+    if (rig.bob) {
+      rig.bob.position.set(0, 0, 0);
+      rig.bob.rotation.set(0, 0, 0);
+      rig.bob.scale.setScalar(1);
+    }
     if (rig.footL) rig.footL.rotation.set(0, 0, 0);
     if (rig.footR) rig.footR.rotation.set(0, 0, 0);
   }
@@ -24934,7 +24938,7 @@ const ENEMY = (() => {
     if (e.state === 'alert') {
       /* Double-take: a fast recoil up onto the toes (stretch), then a
          settle. The `!` mark pops with a back-ease overshoot. */
-      const k = UTIL.clamp(e.timer / C.alertTime, 0, 1);
+      const k = UTIL.clamp(qt / C.alertTime, 0, 1);
       const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
       // Kept deliberately modest: the neck/head-trail springs multiply this
       // by a lot, and the double-take has to read as a recoil, not a fall.
@@ -24946,6 +24950,17 @@ const ENEMY = (() => {
       r.head.rotation.x = -0.14 * pop;
       // the pop is mostly vertical: rise onto the toes and stretch
       r.bob.position.y = bounce + breath + pop * 0.07;
+      /* The legs used to sit this out entirely, which is what made the
+         double-take read as a bust on a pedestal. Knees snap straight into
+         the rise, elbows fly open, and the toes point as the heels leave
+         the ground. */
+      if (bend) {
+        bend[4] = 0.15 * pop; bend[6] = 0.15 * pop;
+        bend[0] = -0.5 * pop; bend[2] = -0.5 * pop;
+        bend[1] = 0.28 * pop; bend[3] = -0.28 * pop;
+      }
+      if (r.footL) r.footL.rotation.x = 0.34 * pop;
+      if (r.footR) r.footR.rotation.x = 0.34 * pop;
       const markK = UTIL.clamp(k / 0.3, 0, 1);
       e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
@@ -24961,7 +24976,7 @@ const ENEMY = (() => {
          drifting home. */
       const st = e.def.stats;
       const total = st.windup + st.recover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const k = UTIL.clamp(qt / total, 0, 1);
       const wk = st.windup / total;
       if (k < wk) {
         const a = k / wk;
@@ -24978,6 +24993,20 @@ const ENEMY = (() => {
         const cs = 1 - coil * 0.16;
         e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
         r.bob.position.y = bounce + breath - coil * 0.06;
+        /* A swing is thrown from the ground up. The back leg loads, the
+           front knee opens to take the weight, and the striking elbow folds
+           right up so the arm is *short* at the top of the gather — which
+           is what makes it look like it is about to be thrown rather than
+           parked overhead. */
+        r.legL.rotation.x = -0.34 * coil;
+        r.legR.rotation.x = 0.18 * coil;
+        if (bend) {
+          bend[4] = -0.72 * coil; bend[6] = -0.30 * coil;
+          bend[2] = 0.95 * coil; bend[3] = -0.22 * coil;
+          bend[0] = 0.30 * coil;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 * coil;
+        if (r.footR) r.footR.rotation.x = 0.16 * coil;
       } else {
         const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
         // snap through in the first third with an overshoot, then settle
@@ -24992,6 +25021,19 @@ const ENEMY = (() => {
         // stretch out along the swing, then recover
         const ss = 1 + Math.sin(UTIL.clamp(a / 0.34, 0, 1) * Math.PI) * 0.18 + e.squash;
         e.group.scale.set(1 / Math.sqrt(ss), ss, 1 / Math.sqrt(ss));
+        /* Drive off the back foot: the loaded leg extends through the snap
+           and the elbow whips open a fraction behind the shoulder, so the
+           forearm is still catching up when the hand reaches the target. */
+        r.legL.rotation.x = -0.34 + strike * 0.46;
+        r.legR.rotation.x = 0.18 - strike * 0.30;
+        if (bend) {
+          const whip = a < 0.34 ? E.outBack(UTIL.clamp((a - 0.06) / 0.34, 0, 1), 1.5) : strike;
+          bend[4] = -0.72 + strike * 0.60; bend[6] = -0.30 - strike * 0.22;
+          bend[2] = 0.95 - whip * 1.05; bend[3] = -0.22 + whip * 0.30;
+          bend[0] = 0.30 - strike * 0.42;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 + strike * 0.5;
+        if (r.footR) r.footR.rotation.x = 0.16 - strike * 0.38;
       }
     } else if (e.state === 'shine') {
       // Hold the flashlight out front — but a hand-held light never sits
@@ -25004,12 +25046,17 @@ const ENEMY = (() => {
       r.torso.rotation.y = 0.08;
       r.head.rotation.x = -0.04 + j * 0.6;
       r.head.rotation.y = j * 1.2;
+      // braced stance: weight back on a bent knee, aiming elbow half folded
+      if (bend) {
+        bend[4] = -0.30; bend[6] = -0.12;
+        bend[2] = 0.55 + j * 0.5;
+      }
     }
 
     if (e.state === 'stagger') {
       /* Getting hit is a shudder, not a lean. Ring it out so the whole
          body rattles and comes to rest instead of sliding back linearly. */
-      const k = UTIL.clamp(e.timer / C.staggerTime, 0, 1);
+      const k = UTIL.clamp(qt / C.staggerTime, 0, 1);
       const decay = 1 - E.outCubic(k);
       const shake = E.ring(k, 2.6, 3.2) * decay;
       r.torso.rotation.x = -0.55 * decay + shake * 0.22;
@@ -25018,6 +25065,22 @@ const ENEMY = (() => {
       r.head.rotation.z = shake * 0.5;
       r.armL.rotation.x = -0.5 * decay - shake * 0.7;
       r.armR.rotation.x = -0.5 * decay + shake * 0.7;
+      /* Knees buckle under the hit and rattle back, and the body drops onto
+         them — without this the character absorbed a shotgun blast standing
+         on two straight pillars. One leg braces back so the stagger has a
+         direction instead of being a symmetric wobble. */
+      r.legL.rotation.x = -0.30 * decay + shake * 0.24;
+      r.legR.rotation.x = 0.16 * decay - shake * 0.20;
+      if (bend) {
+        bend[4] = -0.80 * decay - shake * 0.35;
+        bend[6] = -0.55 * decay + shake * 0.40;
+        bend[0] = 0.45 * decay + shake * 0.55;
+        bend[2] = 0.45 * decay - shake * 0.55;
+        bend[1] = shake * 0.30; bend[3] = shake * 0.30;
+      }
+      r.bob.position.y = bounce - 0.09 * decay + shake * 0.03;
+      if (r.footL) r.footL.rotation.x = -0.2 * decay;
+      if (r.footR) r.footR.rotation.x = 0.24 * decay;
     }
   }
 
