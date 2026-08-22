@@ -20379,7 +20379,14 @@ const CAST = (() => {
       handL: arms[0].hand, handR: arms[1].hand,
       legL: legs[0].joint, legR: legs[1].joint,
       legLMid: legs[0].mid, legRMid: legs[1].mid,
-      footL: legs[0].foot, footR: legs[1].foot
+      footL: legs[0].foot, footR: legs[1].foot,
+      /* [RUBBERHOSE] Pose-requested extra bend at the elbows/knees, in
+         TRAIL_LIMBS order (armL, armR, legL, legR): [x, z] per limb. A pose
+         function writes into this instead of touching the mid joints, and
+         settle() folds it in under the trail springs and then clears it —
+         so a pose that asks for nothing falls back to the resting curve
+         rather than to a straight rod. */
+      bend: new Float32Array(8)
     };
   }
 
@@ -20408,6 +20415,35 @@ const CAST = (() => {
     ['armR', 'armRMid', 0.85, 0.55, 1.15, 0.7],
     ['legL', 'legLMid', 0.72, 0.30, 0.8, 0.4],
     ['legR', 'legRMid', 0.72, 0.30, 0.8, 0.4]
+  ];
+
+  /* [RUBBERHOSE] A hose has no straight state. The trail springs above only
+     bend a limb while its parent is *moving*, so a character standing still
+     — which is most of them, most of the time — went right back to being a
+     pair of rods. These are the angles the mid joints hold when nothing is
+     asking for anything: elbows carried out and forward with the forearms
+     turned in toward the body, knees softly broken back. The silhouette is
+     then two arcs meeting at an angle in every single frame.
+
+     Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
+     tip toward +X. Left limbs are index 0/2, right 1/3. */
+  const REST_BEND = [0.22, 0.22, -0.17, -0.17];
+  const REST_SPLAY = [0.15, -0.15, -0.05, 0.05];
+  // Slow, tiny wander on the resting curve so a parked character's noodles
+  // are alive rather than frozen. Seeded per rig; a crowd never breathes in
+  // unison.
+  const REST_DRIFT = 0.045;
+
+  /* Hands and feet are the last link and the loosest: a glove keeps swinging
+     after the wrist has stopped and a shoe flops on the ankle. Target is the
+     accumulated chain angle (shoulder + elbow), so the whip builds along the
+     limb instead of every joint lagging the torso by the same amount.
+     [tip, joint, mid, x-gain, z-gain, x-limit, z-limit] */
+  const TRAIL_TIPS = [
+    ['handL', 'armL', 'armLMid', 0.42, 0.40, 0.75, 0.6],
+    ['handR', 'armR', 'armRMid', 0.42, 0.40, 0.75, 0.6],
+    ['footL', 'legL', 'legLMid', 0.38, 0.26, 0.5, 0.35],
+    ['footR', 'legR', 'legRMid', 0.38, 0.26, 0.5, 0.35]
   ];
   const SPRING_K = 175, SPRING_D = 13.5;
   // How fast the "lead" filter chases the stepped pose. High enough that the
@@ -20438,9 +20474,15 @@ const CAST = (() => {
   function settleReset(rig) {
     if (!rig) return;
     rig.trailState = null;
+    rig.settleT = 0;
+    if (rig.bend) rig.bend.fill(0);
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const m = rig[TRAIL_LIMBS[i][1]];
-      if (m) m.rotation.set(0, 0, 0);
+      if (m) m.rotation.set(REST_BEND[i], 0, REST_SPLAY[i]);
+    }
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const tip = rig[TRAIL_TIPS[i][0]];
+      if (tip) tip.rotation.set(0, 0, 0);
     }
     if (rig.neck) { rig.neck.rotation.set(0, 0, 0); rig.neck.position.y = 0.50; }
     if (rig.headTrail) { rig.headTrail.rotation.set(0, 0, 0); rig.headTrail.scale.setScalar(1); }
@@ -20455,6 +20497,9 @@ const CAST = (() => {
 
   // channel base offsets into trailState (3 floats each)
   const CH_NECK_X = 24, CH_NECK_Z = 27, CH_TRAIL_X = 30, CH_TRAIL_Z = 33, CH_BOB = 36;
+  // hands and feet: 4 tips x 2 axes, starting after the 13 channels above,
+  // then 4 floats recording the pitch offset each tip was given last frame.
+  const CH_TIP = 39, CH_TIP_APPLIED = CH_TIP + 24;
 
   function settle(rig, dt, gain) {
     if (!rig || !rig.armLMid) return;
@@ -20465,9 +20510,9 @@ const CAST = (() => {
     const h = dt > 0.034 ? 0.034 : (dt > 0 ? dt : 0.0001);
     let s = rig.trailState;
     if (!s) {
-      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z and the
-      // vertical bob = 13 channels x 3 floats.
-      s = rig.trailState = new Float32Array(39);
+      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z, the
+      // vertical bob, and 4 tips x 2 axes = 21 channels x 3 floats.
+      s = rig.trailState = new Float32Array(CH_TIP_APPLIED + 4);
       let k = 0;
       for (let i = 0; i < TRAIL_LIMBS.length; i++) {
         const j = rig[TRAIL_LIMBS[i][0]];
@@ -20477,17 +20522,50 @@ const CAST = (() => {
         k += 6;
       }
     }
+    // Phase for the resting-curve wander. Seeded off the rig's own object id
+    // so two characters side by side never noodle in step.
+    rig.settleT = (rig.settleT || 0) + h;
+    const drift = rig.settleT * 0.9 + (rig.root ? rig.root.id * 0.618 : 0);
+    const bend = rig.bend;
 
     let k = 0;
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const cfg = TRAIL_LIMBS[i];
       const j = rig[cfg[0]], m = rig[cfg[1]];
       if (j && m) {
-        m.rotation.x = clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
-        m.rotation.z = clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
+        /* rest curve + whatever the pose asked for + the trail. The rest and
+           pose terms are outside the clamp because they are authored angles,
+           not spring output — only the lag is bounded. */
+        const restX = REST_BEND[i] + Math.sin(drift + i * 1.7) * REST_DRIFT;
+        const restZ = REST_SPLAY[i] + Math.cos(drift * 0.77 + i * 2.3) * REST_DRIFT * 0.6;
+        m.rotation.x = restX + (bend ? bend[i * 2] : 0) +
+          clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
+        m.rotation.z = restZ + (bend ? bend[i * 2 + 1] : 0) +
+          clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
       }
       k += 6;
     }
+
+    /* Extremities last, and loosest. The tip's target is the whole chain
+       above it, so the lag accumulates outward: shoulder leads, elbow
+       trails it, glove trails the elbow. Feet keep whatever pitch the pose
+       gave them (the toe flick) and get the flop added on top — which is
+       why the pitch is applied as a delta against last frame's offset
+       rather than assigned: hands are posed by nobody, so a plain `+=`
+       would integrate itself into a windmill within a few seconds. */
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const cfg = TRAIL_TIPS[i];
+      const tip = rig[cfg[0]], j = rig[cfg[1]], m = rig[cfg[2]];
+      if (!tip || !j || !m) continue;
+      const c = CH_TIP + i * 6;
+      const off = clampTo(
+        trailStep(s, c, j.rotation.x + m.rotation.x, h) * cfg[3] * g, cfg[5]);
+      tip.rotation.x += off - s[CH_TIP_APPLIED + i];
+      s[CH_TIP_APPLIED + i] = off;
+      tip.rotation.z = clampTo(
+        trailStep(s, c + 3, j.rotation.z + m.rotation.z, h) * cfg[4] * g, cfg[6]);
+    }
+    if (bend) bend.fill(0);
 
     // Head: lags the combined torso+head pose, and lags the body's vertical
     // bounce so the skull keeps rising for a frame after the hips stop.
@@ -22713,6 +22791,16 @@ const ENEMY = (() => {
       // entity's whole life so a crowd never breathes in unison.
       idleSeed: UTIL.rng(0, 12.56),
       squash: 0, squashVel: 0,
+      /* [RUBBERHOSE] A delayed copy of `squash`. The difference between the
+         two is the compression wave travelling up the body — the hips take
+         an impact on the frame it lands, the chest a beat later. Scaling the
+         whole group by one number made every part of the figure change size
+         on the same frame, which is the one thing a drawn squash never does. */
+      squashLag: 0,
+      /* Speed and heading carried from last frame so the body can react to
+         its own acceleration: dig in to start, skid to stop, bank into a
+         turn. Nothing in the sim reads these — they are purely for drawing. */
+      lastSpeed: 0, accel: 0, turn: 0,
       lean: 0,
       lastSeen: -99,
       losTimer: UTIL.rng(0, C.losInterval),
@@ -23651,7 +23739,8 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.scale.set(1, 1, 1);
     e.group.rotation.set(0, e.yaw, 0);
-    e.squash = e.squashVel = 0;
+    e.squash = e.squashVel = e.squashLag = 0;
+    e.lastSpeed = e.accel = e.turn = 0;
     // Clear the corpse's squash/blink/trail state or the revived body wears
     // the last frame of its own death.
     CAST.settleReset(e.rig);
@@ -24586,9 +24675,21 @@ const ENEMY = (() => {
     // is stepped, exactly like a cel over a moving pan.
     const ts = Math.floor(t * C.stepFPS) / C.stepFPS;
     const seed = e.idleSeed || 0;
+    /* ...and so does every *state* clock. The walk and the idle boil were
+       stepped but attack, alert, stagger and death still ran off the raw
+       60fps timer, so a swing was a smooth lerp bolted onto a stepped body.
+       Quantising the state timer here is what turns those into held drawings
+       with snaps between them. Gameplay still reads the unquantised
+       `e.timer` for its hit windows, so nothing about the timing of a blow
+       changes — only how many drawings it is made of. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
+    // Bend requests for the elbows/knees; CAST.settle folds them in under
+    // the trail springs and clears the array. Index order matches
+    // TRAIL_LIMBS: armL, armR, legL, legR, each [x, z].
+    const bend = r.bend;
 
     if (e.state === 'dead') {
-      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const k = UTIL.clamp(qt / C.corpseTime, 0, 1);
       // Collapse fast, then hold, then pop out of existence — the old
       // version faded linearly across the whole corpse time, which is the
       // one timing a cartoon never uses.
@@ -24617,7 +24718,17 @@ const ENEMY = (() => {
       r.armR.rotation.z = 0.12 + fall * 0.45;
       r.legL.rotation.x = fall * 0.5 + wob * 0.8;
       r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      // Knees give way rather than staying two straight rods sticking out of
+      // a folded body — the legs collapse under it and keep jittering.
+      if (bend) {
+        bend[4] = -0.85 * fall - wob * 0.5;
+        bend[6] = -0.55 * fall + wob * 0.55;
+        bend[0] = 0.5 * fall + wob * 0.6;
+        bend[2] = 0.7 * fall - wob * 0.7;
+      }
       r.bob.position.y = -fall * 0.10;
+      // The wave runs through a corpse too: the hips flatten hardest.
+      r.bob.scale.set(1 + impact * 0.22, 1 - impact * 0.3, 1 + impact * 0.22);
       if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
       return;
     }
@@ -24716,9 +24827,9 @@ const ENEMY = (() => {
     /* ---------------- walk cycle ----------------
        `snapSin` holds the limb at each extreme and rips it through the
        middle, which is the difference between a mechanical pendulum and a
-       drawn one. The mid joints are NOT touched here — CAST.settle() bends
-       them from the shoulder's own angular velocity, so the noodle bows
-       backwards through the swing and whips through at the top. */
+       drawn one. The mid joints get their lag from CAST.settle() — the
+       noodle bows backwards through the swing and whips through at the top
+       — and their *authored* fold from `bend` below. */
     const sw = E.snapSin(e.stepPhase, 0.6);
     const cw = Math.cos(e.stepPhase);
     const gait = UTIL.clamp(walk * (0.9 + 0.25 * walk), 0, 1.05);
@@ -24776,10 +24887,49 @@ const ENEMY = (() => {
     // arms breathe out from the body and drift with the weight shift
     r.armL.rotation.z += -breath * 1.1 - shift * 0.07;
     r.armR.rotation.z += breath * 1.1 - shift * 0.07;
+    /* Banking: a body that turns hard leans into the turn and the head
+       leads it. Nothing about the steering changes — this is the drawing
+       admitting that the character has mass. */
+    const bank = e.turn || 0;
+    r.torso.rotation.z += bank * 0.13;
+    r.head.rotation.z -= bank * 0.10;
+    r.head.rotation.y += bank * 0.22;
+    // Digging in / pulling up. Positive accel pitches the body forward into
+    // the run; braking throws it back past vertical before it settles.
+    r.torso.rotation.x += (e.accel || 0) * 0.18;
 
-    // squash and stretch on top of everything
+    /* ---------------- knees, elbows and the hand arc ----------------
+       The knee folds while the leg is behind and swinging through, and
+       absorbs on the contact frame; both are what stop the legs reading as
+       two rods pivoting at the hip. The elbow tucks on the forward reach so
+       the arm shortens through the swing and extends on the way back —
+       a hand travelling on a straight line is the tell the brief calls out,
+       and combining pitch with this fold puts it on a curve. */
+    if (bend) {
+      const swing = gait > 0.02 ? gait : 0;
+      bend[4] = -(0.62 * UTIL.clamp(-sw, 0, 1) + 0.20 * contact) * swing - shift * 0.10;
+      bend[6] = -(0.62 * UTIL.clamp(sw, 0, 1) + 0.20 * contact) * swing + shift * 0.10;
+      bend[0] = 0.42 * UTIL.clamp(sw, 0, 1) * swing;
+      bend[2] = 0.42 * UTIL.clamp(-sw, 0, 1) * swing;
+      // sideways bow in quadrature with the pitch: the hand traces an
+      // ellipse rather than sweeping a flat plane
+      bend[1] = cw * 0.16 * swing;
+      bend[3] = -cw * 0.16 * swing;
+    }
+
+    /* ---------------- squash and stretch on top of everything ----------
+       The group scale is the whole-figure compression, and on its own it
+       just makes the drawing shorter. `wave` is the part of it the hips
+       have already taken but the chest has not yet felt: the hips overshoot
+       the compression, the torso counter-stretches against it, and the
+       squash arrives at the head a couple of frames after the feet. */
     const sq = 1 + e.squash - stepSquash;
     e.group.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
 
     if (e.state === 'alert') {
       /* Double-take: a fast recoil up onto the toes (stretch), then a
@@ -25138,10 +25288,33 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Impulses on the two moments the old code ignored:
+       breaking into a run and pulling up out of one. A cartoon body is
+       heavy — it has to gather before it goes and it cannot stop dead, so
+       acceleration in either direction is paid for with a squash and a
+       lean that overshoots. The threshold keeps ordinary steering noise and
+       the shove-past-a-corner nudge out of it. */
+    const accelNow = (speed - e.lastSpeed) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel, UTIL.clamp(accelNow * 0.05, -1.2, 1.2), 9, dt);
+    if (accelNow > 11) e.squashVel += UTIL.clamp(accelNow * 0.06, 0, 2.2);
+    else if (accelNow < -13) e.squashVel -= UTIL.clamp(-accelNow * 0.07, 0, 3.4);
+    /* Banking into a turn. yawRate is set by faceTowards/steer through
+       e.yaw; differencing it here is cheaper than plumbing a rate out of
+       every caller, and a wrapped yaw only misfires on a frame where the
+       enemy spun a full half-turn, which the clamp swallows. */
+    let dyaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn, UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
+
     // springs
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    // The lag chases the squash but never catches it while it is moving;
+    // pose() draws the difference as a wave up the body.
+    e.squashLag = UTIL.damp(e.squashLag, e.squash, 17, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.05, 0, 0.22), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
 
