@@ -9658,7 +9658,11 @@ const LEVEL = (() => {
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
     northBarnAccessAt, setNorthBarnAccess, setAllNorthBarnAccess, isNorthBarnAccessOpen,
-    setNorthBarnRailing, setCraftingScreenText
+    setNorthBarnRailing, setCraftingScreenText,
+    // Exposed for the walkability audit: set dressing is what silently
+    // pinches a lane, so the probe checks the authored desire lines against
+    // the finished collider list rather than against a copy that can drift.
+    debugPathRoutes: () => PATH_ROUTES
   };
 })();
 
