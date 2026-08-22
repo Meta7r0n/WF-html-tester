@@ -11556,9 +11556,35 @@ const WEAPON = (() => {
     return g;
   }
 
+  /* A hand-wobbled flash card. A perfectly regular star reads as clip art;
+     every point here gets its own length and its own angular jitter, and
+     three of them are pre-built per gun so consecutive shots do not stamp
+     the same drawing twice (see fireGun, which rolls one per trigger pull).
+     Geometry is built once at gun-build time and only swapped, never
+     regenerated -- nothing here runs in the firing hot path. */
+  function drawnFlashGeometry(points, inner, outer, seedTwist) {
+    const s = new THREE.Shape();
+    const n = points * 2;
+    for (let i = 0; i < n; i++) {
+      const jitter = Math.sin(i * 2.7 + seedTwist) * 0.16 + Math.sin(i * 5.3 + seedTwist * 2) * 0.09;
+      const a = i / n * Math.PI * 2 - Math.PI / 2 + jitter * 0.35;
+      const r = (i % 2 ? inner : outer) * (1 + jitter);
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+    }
+    s.closePath();
+    return new THREE.ShapeGeometry(s);
+  }
+
   function flashes(parent, y, z, scale) {
-    const f1 = new THREE.Mesh(starGeometry(5, 0.07, 0.26),
+    const variants = [
+      drawnFlashGeometry(5, 0.07, 0.30, 0.0),
+      drawnFlashGeometry(6, 0.06, 0.26, 1.7),
+      drawnFlashGeometry(4, 0.09, 0.33, 3.4)
+    ];
+    const f1 = new THREE.Mesh(variants[0],
       new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    f1.userData.flashVariants = variants;
     f1.position.set(0, y, z);
     f1.scale.setScalar(scale || 1);
     f1.visible = false;
@@ -12393,6 +12419,9 @@ const WEAPON = (() => {
     recoilVel += d.recoilBack * 46;
     squashVel += currentId === 'fieldhand' ? 4.8 : 9.2;
     flashTimer = VIEW.muzzleFlashTime;
+    // Roll a different drawn flash card per trigger pull (see flashes()).
+    const fv = model.flash.userData.flashVariants;
+    if (fv) model.flash.geometry = fv[Math.floor(UTIL.rng(0, fv.length - 0.001))];
     model.flash.rotation.z = UTIL.rng(0, 6.28);
     model.flash2.rotation.z = UTIL.rng(0, 6.28);
     const fs = UTIL.rng(0.84, 1.22);
@@ -12408,6 +12437,14 @@ const WEAPON = (() => {
 
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
+    // The drawn muzzle burst lives in the world, not on the viewmodel card:
+    // a bold ink flash silhouette, sparks down the bore line, and smoke that
+    // curls off the muzzle and dissipates on cartoon timing.
+    FX.muzzleBurst(_muzzleWorld, _d, {
+      scale: d.pellets > 1 ? 1.35 : (currentId === 'pipePopper' ? 1.1 : 0.95),
+      sparks: d.pellets > 1 ? 5 : 3,
+      smoke: d.pellets > 1 ? 3 : 2
+    });
     // Hoisted out of the loop: solo play should not allocate a network payload
     // per pellet, and every pellet now relays consistently instead of only the
     // ones that happened to connect.
@@ -13354,8 +13391,12 @@ const THROWABLE = (() => {
     else buildGrenadeVisual(root, 1);
     active.push({
       id: currentId, def: def, root: root, pos: pos, vel: vel,
-      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius
+      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius,
+      // trail cadence + total airtime, for the follow-through in update()
+      trailT: 0, age: 0
     });
+    // A cartoon throw has a wind-up puff at the release point.
+    FX.trail(pos, { scale: 0.20, life: 0.34 });
     AUDIO.throwable('throw');
     UI.crosshairKick();
     return true;
@@ -13417,6 +13458,12 @@ const THROWABLE = (() => {
     projectile.root.position.copy(p);
     projectile.root.rotation.x += (v.z * 1.8 + 2.6) * dt;
     projectile.root.rotation.z -= (v.x * 1.8 - 1.9) * dt;
+    // Follow-through: stretch along the arc while it is really moving and
+    // squash back as it slows, so a thrown object has some rubberhose give
+    // instead of tumbling as a rigid lump.
+    const speed = Math.hypot(v.x, v.y, v.z);
+    const stretch = 1 + UTIL.clamp(speed / 26, 0, 1) * 0.30;
+    projectile.root.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
   }
 
   /* Every thrown grenade builds fresh geometry (including a TubeGeometry for
@@ -13566,11 +13613,24 @@ const THROWABLE = (() => {
     for (let i = active.length - 1; i >= 0; i--) {
       const projectile = active[i];
       projectile.timer -= dt;
+      projectile.age = (projectile.age || 0) + dt;
       let remaining = dt;
       while (remaining > 0) {
         const step = Math.min(remaining, 1 / 90);
         physicsStep(projectile, step);
         remaining -= step;
+      }
+      // Smoke trail behind the arc, emitted on the FX layer's own drawn
+      // clock so it is a row of discrete puffs, not a continuous smear.
+      // A lit fuse (dynamite) also throws sparks.
+      projectile.trailT -= dt;
+      const moving = projectile.vel.lengthSq() > 1.4;
+      if (moving && projectile.trailT <= 0) {
+        projectile.trailT = CONFIG.fx.trailInterval;
+        FX.trail(projectile.root.position, { scale: 0.11, life: 0.30 });
+        if (projectile.id === 'dynamite') {
+          FX.trail(projectile.root.position, { scale: 0.07, life: 0.18, star: true, color: PAL.mustard });
+        }
       }
       if (projectile.timer <= 0) {
         detonate(projectile);
@@ -13599,6 +13659,10 @@ const THROWABLE = (() => {
       lob.root.position.y += Math.sin(k * Math.PI) * 2.2;
       lob.root.rotation.x += dt * 7;
       lob.root.rotation.z += dt * 4;
+      // same drawn trail the player's own throws leave
+      if (FX.onFxFrame && k < 0.95) {
+        FX.trail(lob.root.position, { scale: 0.13, life: 0.3, color: PAL.mustardDk });
+      }
       if (k >= 1) {
         scene.remove(lob.root);
         disposeVisual(lob.root);
@@ -20956,22 +21020,15 @@ const ENEMY = (() => {
     e.headProxy.raycast = NO_RAY;
     e.bodyProxy.raycast = NO_RAY;
     AUDIO.enemyDie(e.def.voice.pitch);
-    // scatter petals
+    // Cartoon exit: the body is swallowed by an ink puff, dizzy stars fly
+    // off it and a lettered punchline lands on top. Bosses get a bigger one.
     _v.set(e.pos.x, e.pos.y + 1.28, e.pos.z);
-    for (let i = 0; i < 12; i++) {
-      _v2.set(UTIL.rng(-2.4, 2.4), UTIL.rng(1.6, 4.6), UTIL.rng(-2.4, 2.4));
-      FX.spawnParticle(_v, _v2, {
-        map: TEX.star(i % 2 ? PAL.mustard : PAL.mustardDk),
-        s0: UTIL.rng(0.16, 0.3), s1: 0.02, life: UTIL.rng(0.6, 1.1), grav: 7,
-        spin: UTIL.rng(-9, 9)
-      });
-    }
-    for (let i = 0; i < 5; i++) {
-      _v2.set(UTIL.rng(-1, 1), UTIL.rng(0.5, 2), UTIL.rng(-1, 1));
-      FX.spawnParticle(_v, _v2, {
-        map: TEX.puff(PAL.cream), s0: 0.3, s1: 0.9, life: 0.7, grav: -1
-      });
-    }
+    const bossKill = !!(e.isBoss || e.isBoss2 || e.isBoss3 || e.isGardener);
+    FX.poof(_v, {
+      scale: bossKill ? 1.9 : 1,
+      color: bossKill ? PAL.rust : PAL.mustard,
+      word: bossKill ? 'K.O.!' : undefined
+    });
     if (e.isGardener) {
       e.respawnAt = 0;
       UI.setBoss(false, 0, e.maxHp, 'defeated', 'The Gardener');
