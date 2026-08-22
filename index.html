@@ -72,6 +72,11 @@
        are simply gone, they never fade out politely. */
     --hud-spring:cubic-bezier(.2,1.55,.35,1);
     --hud-snap:cubic-bezier(.5,0,.9,.6);
+    /* Resting tilt of a posted boss bill; each bill overrides it so a stack
+       reads as three slips pasted up by hand. Declared here because keyframes
+       resolve it per element and an undeclared one would silently kill the
+       whole transform. */
+    --bill-tilt:.7deg;
     /* Backing-less HUD text (chips, counters, the kill tally) gets a full
        eight-way ink edge rather than a four-way cross -- the cross leaves
        diagonal gaps that let a bright background bleed through the letter
@@ -238,21 +243,24 @@
     transition:opacity .14s ease,transform .34s var(--hud-spring);
   }
   body.touch-device #weaponInventory.on{pointer-events:none;}
+  /* Same printed card, at chip scale, with the slot number stamped on a
+     keycap. Nothing here is its own design any more. */
   .weapon-slot-btn{
-    display:flex;align-items:center;gap:5px;min-height:26px;max-width:126px;padding:4px 6px;
+    display:flex;align-items:center;gap:5px;min-height:25px;max-width:124px;padding:3px 6px;
     pointer-events:auto;cursor:pointer;border:2.5px solid var(--ink);
-    border-radius:6px 9px 7px 8px;background:#F3E5CC;color:var(--ink);
-    box-shadow:2px 3px 0 rgba(22,18,15,.55);font:900 9px/1 var(--hud-slab);
-    letter-spacing:.6px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
+    border-radius:6px 9px 7px 8px;background:var(--hud-card);color:var(--ink);
+    box-shadow:2px 3px 0 rgba(18,15,12,.55);font:900 9px/1 var(--hud-slab);
+    letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
     transition:transform .12s var(--hud-spring),background .1s ease,opacity .1s ease;
   }
   .weapon-slot-btn:nth-child(even){transform:rotate(1deg);}
   .weapon-slot-btn kbd{
     display:grid;place-items:center;min-width:17px;height:17px;padding:0 3px;
-    border:2px solid var(--ink);border-radius:4px;background:var(--blue);font:900 9px/1 "Courier New",monospace;
+    border:2px solid var(--ink);border-radius:4px;background:var(--blue);
+    color:var(--ink);font:900 9px/1 "Courier New",monospace;
   }
   .weapon-slot-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(1px) rotate(-1deg) scale(1.04);box-shadow:1px 2px 0 rgba(22,18,15,.7);}
+  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(1px) rotate(-1deg) scale(1.04);box-shadow:1px 2px 0 rgba(18,15,12,.7);}
   .weapon-slot-btn:active{transform:translateY(2px) rotate(0deg);}
 
   /* ---------- Top-right: run clock ----------
@@ -476,7 +484,7 @@
   #downedHud{
     position:fixed;left:50%;bottom:21%;z-index:32;transform:translateX(-50%) rotate(-1deg);
     display:none;pointer-events:none;text-align:center;color:var(--cream);
-    font:900 13px/1.1 var(--hud-slab);letter-spacing:2.6px;text-transform:uppercase;
+    font:900 13px/1.1 var(--hud-slab);letter-spacing:1.8px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
   }
   #downedHud.on{display:block;animation:hudDrop .34s var(--hud-spring) both;}
@@ -543,8 +551,8 @@
     position:fixed;left:50%;bottom:76px;z-index:33;max-width:min(52vw,286px);
     transform:translate(-50%,14px) scale(.84) rotate(-4deg);opacity:0;pointer-events:none;
     padding:6px 12px 7px;
-    font:900 10px/1.3 var(--hud-slab);letter-spacing:1.2px;text-transform:uppercase;
-    color:var(--rust-deep);text-align:center;
+    font:900 10px/1.3 var(--hud-slab);letter-spacing:.9px;text-transform:uppercase;
+    color:var(--hud-stamp);text-align:center;
     transition:opacity .11s ease .04s,transform .14s var(--hud-snap);
   }
   #pickupToast.on{
@@ -552,34 +560,36 @@
     transition:opacity .12s ease,transform .36s var(--hud-spring);
   }
   #tally{
-    position:fixed;left:18px;top:14px;z-index:30;
-    font:900 9.5px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
+    position:fixed;left:18px;top:13px;z-index:30;
+    font:900 10px/1 var(--hud-slab);letter-spacing:1.6px;text-transform:uppercase;
     color:var(--cream);opacity:0;transition:opacity .2s ease;transform:rotate(-1deg);
     text-shadow:var(--hud-ink-edge);
   }
-  #tally.on{opacity:.92;}
-  #tally b{color:var(--mustard);font-size:13px;margin-left:2px;}
+  #tally.on{opacity:.94;}
+  #tally b{color:var(--mustard);font-size:14px;margin-left:3px;}
 
   /* ---------- Free-for-all live scoreboard ---------- */
   #ffaScoreboard{
-    position:fixed;right:18px;top:14px;z-index:30;list-style:none;margin:0;padding:0;
+    position:fixed;right:18px;top:13px;z-index:30;list-style:none;margin:0;padding:0;
     opacity:0;transition:opacity .2s ease;transform:rotate(1deg);
-    font:900 10px/1.5 var(--hud-slab);letter-spacing:1px;text-transform:uppercase;
+    font:900 10px/1.5 var(--hud-slab);letter-spacing:.9px;text-transform:uppercase;
     text-align:right;
   }
   #ffaScoreboard.on{opacity:1;}
   #ffaScoreboard li{
     color:var(--cream);text-shadow:var(--hud-ink-edge);
   }
-  #ffaScoreboard li.team-a{color:var(--rust);}
-  #ffaScoreboard li.team-b{color:var(--blue);}
-  #ffaScoreboard li.me{color:var(--mustard);}
+  /* Team colour lives in the score, not the name: --rust and --blue are both
+     mid-value and go to mush over a mid-value frame, where cream does not. */
+  #ffaScoreboard li.team-a b{color:#E08A66;}
+  #ffaScoreboard li.team-b b{color:var(--blue);}
+  #ffaScoreboard li.me b{color:var(--mustard);}
   #ffaScoreboard li b{margin-left:6px;}
   #ffaScoreboard li.team-totals{
     display:flex;gap:14px;justify-content:flex-end;margin-bottom:5px;
     padding-bottom:5px;border-bottom:2px solid var(--ink);
   }
-  #ffaScoreboard li.team-totals span.team-a{color:var(--rust);}
+  #ffaScoreboard li.team-totals span.team-a{color:#E08A66;}
   #ffaScoreboard li.team-totals span.team-b{color:var(--blue);}
 
   /* ---------- Deathmatch kill feed ----------
@@ -609,7 +619,7 @@
   #killcamCaption{
     position:fixed;left:50%;bottom:12%;z-index:34;transform:translate(-50%,10px) scale(.9);
     display:none;pointer-events:none;text-align:center;
-    font:900 17px/1 var(--hud-slab);letter-spacing:2px;text-transform:uppercase;
+    font:900 17px/1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
     color:var(--cream);text-shadow:var(--hud-ink-edge);
     opacity:0;transition:opacity .2s ease,transform .18s var(--hud-snap);
   }
@@ -716,11 +726,13 @@
   #voiceChip{
     display:flex;align-items:center;gap:6px;margin-bottom:6px;
     color:var(--cream);font:900 8.5px/1 var(--hud-slab);
-    letter-spacing:1.4px;text-transform:uppercase;
+    letter-spacing:1.1px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
     opacity:0;transition:opacity .18s ease,transform .3s var(--hud-spring);transform:rotate(1deg);
   }
-  #voiceChip.on{opacity:.55;}
+  /* .55 was low enough that the ink edge went translucent too and the chip
+     turned to smoke over a bright frame. Idle voice is quiet, not ghosted. */
+  #voiceChip.on{opacity:.78;}
   #voiceChip.talking{opacity:1;transform:rotate(1deg) scale(1.06);}
   #voiceChip b{
     display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;
@@ -753,48 +765,68 @@
   }
 
   /* ---------- Mini-boss status ----------
-     A printed bill posted at the top of the frame, not a health bar. Three
-     slots can be live at once so each is deliberately shallow (~40px) and
-     they stack tight. Enters with a drop-and-settle. */
-  .boss-bill{
-    position:fixed;left:50%;z-index:31;width:min(268px,40vw);
-    padding:6px 10px 7px;text-align:center;color:var(--ink);
-    opacity:0;pointer-events:none;
-    transition:opacity .12s ease .03s,transform .15s var(--hud-snap);
+     A bill posted at the top of the frame, not a health bar. Three can be
+     live at once, which is what made this the heaviest thing in the overlay:
+     three cards, each with a name, a state, a gauge and a line of advice,
+     took up 160px down the middle of the screen for the whole fight.
+
+     The advice is the part with a shelf life. `small` is only printed while
+     the bill is `.fresh` -- the first few seconds after it is posted or its
+     state changes (UI.setBoss* owns the class) -- and then the bill folds
+     down to a name and a gauge and stays there. A three-boss stack settles
+     from ~160px to ~108px without losing anything the player still needs. */
+  /* The three bills are a stack, not three fixed slots. When only the second
+     boss is up its bill used to hang at top:66px with an empty gap above it,
+     and a collapsed hint left a hole rather than closing it. */
+  #bossStack{
+    position:fixed;left:50%;top:14px;z-index:31;width:min(252px,38vw);
+    display:flex;flex-direction:column;gap:6px;
+    transform:translateX(-50%);pointer-events:none;
   }
-  .boss-bill.on{
-    opacity:1;
-    transition:opacity .16s ease,transform .42s var(--hud-spring);
+  .boss-bill{
+    display:none;padding:5px 10px 6px;text-align:center;color:var(--ink);
+    pointer-events:none;
+  }
+  /* An animation, not a transition: these enter from display:none, which a
+     transition would skip straight past. Same reason #downedHud uses one. */
+  .boss-bill.on{display:block;animation:billPost .42s var(--hud-spring) both;}
+  @keyframes billPost{
+    0%  {opacity:0;transform:translateY(-11px) scale(.9) rotate(2.4deg)}
+    100%{opacity:1;transform:translateY(0) scale(1) rotate(var(--bill-tilt))}
   }
   .boss-bill > div:first-child{
-    font:900 10px/1.1 var(--hud-slab);letter-spacing:2.2px;text-transform:uppercase;
+    font:900 10.5px/1.1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
   }
-  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1.2px;margin-left:6px;}
+  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1px;margin-left:6px;}
   .boss-bar{
-    height:8px;margin-top:5px;border:2px solid var(--ink);border-radius:5px;
-    background:#161210;overflow:hidden;
+    height:8px;margin-top:5px;border:2.5px solid var(--ink);border-radius:5px;
+    background:var(--hud-well);overflow:hidden;
   }
   .boss-bar > i{
     display:block;width:100%;height:100%;
-    box-shadow:inset 0 -3px 0 rgba(22,18,15,.28),inset 0 2px 0 rgba(255,251,242,.2);
+    box-shadow:inset 0 -3px 0 rgba(22,18,15,.3);
     transition:width .2s var(--hud-spring);
   }
-  /* One line only: three bills can be posted at once, so a wrapping hint
-     would push the stack into the crosshair. */
+  /* One line only, and only while the bill is fresh: three bills can be
+     posted at once, so neither a wrapping hint nor a permanent one can be
+     allowed to push the stack down towards the crosshair. */
   .boss-bill small{
-    display:block;margin-top:4px;font:800 7.5px/1.2 var(--hud-slab);
-    letter-spacing:1.2px;text-transform:uppercase;color:rgba(22,18,15,.62);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:block;height:0;margin-top:0;overflow:hidden;opacity:0;
+    font:800 7.5px/1.2 var(--hud-slab);
+    letter-spacing:.9px;text-transform:uppercase;color:var(--hud-ink-2);
+    white-space:nowrap;text-overflow:ellipsis;
+    transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .14s ease;
   }
-  #bossHud {top:14px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.7deg);}
-  #boss2Hud{top:66px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(-.6deg);}
-  #boss3Hud{top:118px;transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.5deg);}
-  #bossHud.on {transform:translateX(-50%) translateY(0) scale(1) rotate(.7deg);}
-  #boss2Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(-.6deg);}
-  #boss3Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(.5deg);}
+  .boss-bill.fresh small{
+    height:10px;margin-top:4px;opacity:1;
+    transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .2s ease;
+  }
+  /* Bills pasted up by hand sit at slightly different angles. */
+  #boss2Hud{--bill-tilt:-.7deg;}
+  #boss3Hud{--bill-tilt:.5deg;}
   #bossHudName b{color:var(--rust-deep);}
   #boss2HudName b{color:var(--blue-deep);}
-  #boss3HudName b{color:var(--rust-deep);}
+  #boss3HudName b{color:var(--olive-deep);}
   #bossHudFill{background:var(--rust);}
   #boss2HudFill{background:var(--blue-deep);}
   #boss3HudFill{background:var(--mustard);}
@@ -816,7 +848,9 @@
     transform:rotate(-1.4deg) scale(.94);
   }
   #radar.on{opacity:1;transform:rotate(-1.4deg) scale(1);}
-  #radar.on.quiet{opacity:.34;transform:rotate(-1.4deg) scale(.84);}
+  #radar.on.quiet{opacity:.38;transform:rotate(-1.4deg) scale(.84);}
+  /* Underground, which floor you are on is still worth saying. */
+  #radar.on.quiet.underground{opacity:.6;}
   #radarCanvas{
     display:block;width:74px;height:74px;border:3px solid var(--ink);
     border-radius:50%;background:var(--hud-card-flat);
@@ -839,9 +873,7 @@
   /* Short viewports (720p and every laptop below it) -- pull the top-of-frame
      furniture in so three boss bills plus the kill feed still fit. */
   @media (max-height:620px){
-    #bossHud {top:10px;}
-    #boss2Hud{top:54px;}
-    #boss3Hud{top:98px;}
+    #bossStack{top:10px;gap:5px;}
     #killFeed{top:100px;}
     #announcerBanner{top:20%;font-size:22px;}
     #questBoard{width:min(40vw,178px);padding:7px 9px 8px;}
@@ -852,10 +884,10 @@
   @media (prefers-reduced-motion: reduce){
     #crosshair,#interactHint,#pickupToast,#ammo,#weaponInventory,#throwableHud,
     #jaysHud,.buffChip,#voiceChip,#killFeed .line,#killcamCaption,#questBoard,
-    .boss-bill,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
+    .boss-bill,.boss-bill small,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
       transition-duration:.12s !important;transition-timing-function:ease !important;
     }
-    #announcerBanner.on,#downedHud.on{animation:none;}
+    #announcerBanner.on,#downedHud.on,.boss-bill.on{animation:none;}
     #reloadTag.on{animation:none;}
   }
 
@@ -1684,6 +1716,8 @@
     <div id="devConsoleInputBar"><b>&gt;</b><span id="devConsoleInput"></span></div>
   </div>
   <div id="announcerBanner" aria-live="polite"></div>
+  <!-- Boss bills stack; slots that are not posted take no room. -->
+  <div id="bossStack">
   <div id="bossHud" class="boss-bill hud-ticket" aria-live="polite">
     <div id="bossHudName"><span id="bossHudLabel">Carrot Warden</span> <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar" class="boss-bar"><i id="bossHudFill"></i></div>
@@ -1698,6 +1732,7 @@
     <div id="boss3HudName">Beat Slayer <b id="boss3HudState">Circling</b></div>
     <div id="boss3HudBar" class="boss-bar"><i id="boss3HudFill"></i></div>
     <small id="boss3HudHint">Keeps his distance -- watch for the boombox</small>
+  </div>
   </div>
   <div id="radar" aria-label="Proximity radar">
     <div id="radarTitle"><b id="radarLayer">Surface</b></div>
@@ -16360,6 +16395,28 @@ const UI = (() => {
     if (el.crewLeft) el.crewLeft.classList.add('hidden');
   }
 
+  /* A boss bill's advice line is news, not furniture. It is printed for
+     BILL_FRESH seconds after the bill goes up or its state changes, then the
+     bill folds down to a name and a gauge for the rest of the fight (see
+     `.boss-bill.fresh small`). With three bosses live that is the difference
+     between 160px and 108px of centre-frame. */
+  const BILL_FRESH = 5;
+  const billFresh = { bossHud: 0, boss2Hud: 0, boss3Hud: 0 };
+  const billState = { bossHud: '', boss2Hud: '', boss3Hud: '' };
+  function markBillFresh(key, state) {
+    if (billState[key] === state) return;
+    billState[key] = state;
+    billFresh[key] = BILL_FRESH;
+    if (el[key]) el[key].classList.add('fresh');
+  }
+  function updateBills(dt) {
+    for (const key in billFresh) {
+      if (billFresh[key] <= 0) continue;
+      billFresh[key] -= dt;
+      if (billFresh[key] <= 0 && el[key]) el[key].classList.remove('fresh');
+    }
+  }
+
   // This HUD slot is shared by two distinct single-player encounters --
   // Carrot Warden (33 kills) and, later, The Gardener -- unlike boss2/boss3's
   // dedicated one-boss-per-slot HUDs, so the name has to be passed in each
@@ -16367,36 +16424,39 @@ const UI = (() => {
   function setBoss(active, hp, maxHp, state, name) {
     if (!el.bossHud) return;
     el.bossHud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.bossHud = ''; return; }
     if (name && el.bossHudLabel) el.bossHudLabel.textContent = name;
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.bossHudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.bossHudState.textContent = state === 'defeated' ? 'Wilted' : (state === 'active' ? 'Awake' : 'Incoming');
     el.bossHudHint.textContent = state === 'active' ? 'Head shots hit for 1.5×' : 'The barn has a new problem';
+    markBillFresh('bossHud', state);
   }
 
   function setBoss2(active, hp, maxHp, state) {
     if (!el.boss2Hud) return;
     el.boss2Hud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.boss2Hud = ''; return; }
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.boss2HudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.boss2HudState.textContent = state === 'defeated' ? 'Retreated' : (state === 'active' ? 'Prowling' : 'Incoming');
     el.boss2HudHint.textContent = state === 'active' ? 'Watch for the smoke cloud' : 'Something is watching the tree line';
+    markBillFresh('boss2Hud', state);
   }
 
   function setBoss3(active, hp, maxHp, state) {
     if (!el.boss3Hud) return;
     el.boss3Hud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.boss3Hud = ''; return; }
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.boss3HudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.boss3HudState.textContent = state === 'defeated' ? 'Fled' : (state === 'active' ? 'Circling' : 'Incoming');
     // Short enough to stay on one line in the boss bill at 720p.
     el.boss3HudHint.textContent = state === 'active' ? 'Watch for the boombox' : 'A beat, somewhere out there';
+    markBillFresh('boss3Hud', state);
   }
 
   // Bear Claw's stun-chance claw swipe (see PLAYER.grantStun). Same
@@ -16451,15 +16511,17 @@ const UI = (() => {
     let sameLayer = 0, otherLayer = 0, sameEnemies = 0;
 
     ctx.clearRect(0, 0, size, size);
-    // Opaque: the dial has to hold its own black against a dark, shadowed
-    // frame, and against the film overlays sitting on top of it.
-    ctx.fillStyle = '#1A1512';
+    // Printed on the same cream stock as every card in the overlay, with an
+    // ink graticule. The dial used to be a near-black disc, which punched a
+    // hole in any dark frame and sat as a blot on any bright one -- the
+    // charcoal-plate failure, in canvas form.
+    ctx.fillStyle = '#F3E4C8';
     ctx.fillRect(0, 0, size, size);
     ctx.save();
     ctx.translate(center, center);
-    // The dial is drawn at 132px and displayed at 80px, so the graticule
+    // The dial is drawn at 132px and displayed at 74px, so the graticule
     // needs more weight and contrast than it looks like it should on canvas.
-    ctx.strokeStyle = 'rgba(160,196,220,.55)';
+    ctx.strokeStyle = 'rgba(22,18,15,.34)';
     ctx.lineWidth = 2.4;
     [radius * 0.5, radius].forEach(r => {
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
@@ -16483,28 +16545,32 @@ const UI = (() => {
       const scale = Math.min(1, distance / CONFIG.radar.range);
       const x = right / distance * radius * scale;
       const y = down / distance * radius * scale;
-      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#C96B45');
+      // Blips keep their ink ring on a cream face -- the ring is what makes
+      // a mustard boss blip separate from cream paper at 74px.
+      ctx.fillStyle = c.type === 'player' ? '#5C7E99' : (c.boss ? '#E8A33D' : '#A85A3C');
       ctx.strokeStyle = '#120F0D';
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 2.6;
       ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 5.4 : (c.boss ? 7.4 : 6), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Player marker and forward tick.
-    ctx.fillStyle = '#F6E9D2';
+    // Player marker and forward tick -- solid ink on the cream face.
+    ctx.fillStyle = '#1F1B18';
     ctx.strokeStyle = '#120F0D';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 
-    const label = layer === 'basement' ? 'Basement' : 'Surface';
-    el.radarLayer.textContent = label;
+    el.radarLayer.textContent = layer === 'basement' ? 'Basement' : 'Surface';
     if (sameEnemies > 0) el.radarSignal.textContent = sameEnemies + ' hostile';
     else if (sameLayer > 0) el.radarSignal.textContent = sameLayer + ' contact';
     else if (otherLayer > 0) el.radarSignal.textContent = otherLayer + (layer === 'basement' ? ' above' : ' below');
     else el.radarSignal.textContent = 'Clear';
-    // "Clear" is the default state and carries no information -- dim it so
-    // the only time the dial says anything loudly is when it has news.
-    el.radarSignal.classList.toggle('quiet', sameLayer === 0 && otherLayer === 0);
+    // Nothing on either layer is the default state and carries no news, so
+    // the whole dial -- captions included -- drops back to a quiet ghost of
+    // itself and springs up the moment something is actually out there.
+    // Which floor you are on is the one thing worth printing while quiet.
+    el.radar.classList.toggle('quiet', sameLayer === 0 && otherLayer === 0);
+    el.radar.classList.toggle('underground', layer === 'basement');
   }
 
   function toast(message, seconds) {
@@ -16995,6 +17061,7 @@ const UI = (() => {
     setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
     setStun(PLAYER.stunRemaining);
     setSlow(PLAYER.slowRemaining);
+    updateBills(dt);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
