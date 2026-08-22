@@ -26968,12 +26968,40 @@ const COOP = (() => {
       r.legL.rotation.set(dp * 0.4 + ring * 0.6, 0, 0);
       r.legR.rotation.set(dp * 0.22 - ring * 0.6, 0, 0);
       r.head.rotation.set(dp * 0.3, 0, dp * 0.8 + ring);
+      // Knees fold under the falling body instead of staying two straight
+      // rods sticking out of it, and the elbows keep rattling after the
+      // shoulders have stopped.
+      if (r.bend) {
+        r.bend[4] = -0.85 * dp - ring * 0.5; r.bend[6] = -0.55 * dp + ring * 0.55;
+        r.bend[0] = 0.55 * dp + ring * 0.6; r.bend[2] = 0.75 * dp - ring * 0.7;
+      }
+      if (r.bob) r.bob.scale.set(1 + dp * 0.14, 1 - dp * 0.18, 1 + dp * 0.14);
       r.root.scale.set(1.08, 1.08, 1.08);
-      remote.squash = 0; remote.squashVel = 0;
+      remote.squash = 0; remote.squashVel = 0; remote.squashLag = 0;
       CAST.settle(r, dt, 1.1);
       return;
     }
     const moving = !!target.moving;
+    /* [RUBBERHOSE] Break into a run and pull up out of one. The snapshot
+       already carries `moving` and `sprinting`; the frame they change is
+       the frame the body has to pay for the change, so kick the same squash
+       spring the footfalls use. Nothing new goes over the wire. */
+    const gear = moving ? (target.sprinting ? 2 : 1) : 0;
+    if (remote.lastGear === undefined) remote.lastGear = gear;
+    if (gear > remote.lastGear) remote.squashVel = (remote.squashVel || 0) + 2.4;
+    else if (gear < remote.lastGear) remote.squashVel = (remote.squashVel || 0) - 3.0;
+    remote.lastGear = gear;
+    /* Bank into a turn. The group's yaw is damped toward target.yaw a few
+       lines above this in update(); differencing it here reads the actual
+       rendered turn rate rather than the raw network value, so a remote
+       that snaps 180 degrees on a bad packet does not throw the body with
+       it. */
+    let dyaw = remote.group.rotation.y - (remote.lastYaw === undefined
+      ? remote.group.rotation.y : remote.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    remote.lastYaw = remote.group.rotation.y;
+    remote.turn = UTIL.damp(remote.turn || 0,
+      UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
     // Stepped clock: hold the phase on a 12fps grid so the drawing boils
     // like a cel even though the body itself interpolates smoothly.
     remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
@@ -26997,6 +27025,9 @@ const COOP = (() => {
     remote.squash = remote.squash || 0;
     remote.squashVel = (remote.squashVel || 0) + (-remote.squash * 220 - (remote.squashVel || 0) * 15) * dt;
     remote.squash = UTIL.clamp(remote.squash + remote.squashVel * dt, -0.24, 0.3);
+    // ...and its delayed twin, so the compression travels up the body
+    // instead of the whole figure changing size on one frame.
+    remote.squashLag = UTIL.damp(remote.squashLag || 0, remote.squash, 17, dt);
 
     if (target.climbing) {
       r.armL.rotation.set(-0.9 + sw * 0.78, 0, -0.2);
@@ -27005,7 +27036,13 @@ const COOP = (() => {
       r.legR.rotation.set(-sw * 0.42, 0, 0);
       r.torso.rotation.set(-0.10, 0, sw * 0.05);
       r.head.rotation.set(0.06, 0, -sw * 0.1);
+      // hauling on the rungs: the pulling elbow folds, the reaching one opens
+      if (r.bend) {
+        r.bend[0] = 0.55 + sw * 0.55; r.bend[2] = 0.55 - sw * 0.55;
+        r.bend[4] = -0.45 - sw * 0.30; r.bend[6] = -0.45 + sw * 0.30;
+      }
       r.bob.position.y = 0;
+      r.bob.scale.setScalar(1);
       r.root.scale.set(1.08, 1.08, 1.08);
       CAST.settle(r, dt, 0.9);
       return;
@@ -27021,12 +27058,33 @@ const COOP = (() => {
     if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
     if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
     r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0, sw * 0.07 * walk);
+    const bank = remote.turn || 0;
+    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0,
+      sw * 0.07 * walk + bank * 0.13);
     r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
-    r.head.rotation.set(breath * 1.4, 0, -sw * 0.11 * walk);
+    r.head.rotation.set(breath * 1.4, bank * 0.22, -sw * 0.11 * walk - bank * 0.10);
+    /* Knees and elbows, same grammar as the local grunts: the knee folds
+       while the leg is behind and absorbs on the contact frame, and the
+       elbow tucks in quadrature with the arm pitch so the glove travels an
+       ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
+       a parked teammate is never standing on two straight rods. */
+    if (r.bend) {
+      r.bend[4] = -(0.60 * UTIL.clamp(-sw, 0, 1) + 0.20 * contact) * walk - 0.06;
+      r.bend[6] = -(0.60 * UTIL.clamp(sw, 0, 1) + 0.20 * contact) * walk - 0.06;
+      r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
+      r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
+      r.bend[1] = cw * 0.15 * walk;
+      r.bend[3] = -cw * 0.15 * walk;
+    }
     // remote rigs are built at 1.08 scale; fold squash/stretch into it
     const sq = 1 + remote.squash - stepSquash;
     r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
+    // hips take the compression first, chest counter-stretches against it
+    const wave = UTIL.clamp(remote.squash - (remote.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
     CAST.settle(r, dt, 0.95);
   }
 
