@@ -9148,49 +9148,6 @@ const FX = (() => {
     burstRing(point, normal, 0.14 * sc, (big ? 1.9 : 1.35) * sc, 0.34, PAL.cream);
   }
 
-  /* Cartoon hit: ink splat decal, a burst of dust stars, a smoke ring. */
-  function impact(point, normal, opts) {
-    opts = opts || {};
-    // decal -- skipped for surfaces tagged noDecal (signposts: see
-    // PROPS.signPost) so their readable text can't get papered over by a
-    // stacked-up shotgun blast. Sparks/dust/smoke below still play either way.
-    if (!opts.noDecal) {
-      const d = decals[decalIdx = (decalIdx + 1) % decals.length];
-      d.mesh.position.copy(point).addScaledVector(normal, 0.022);
-      _v.copy(point).add(normal);
-      d.mesh.lookAt(_v);
-      d.mesh.rotation.z = UTIL.rng(0, 6.28);
-      const sc = UTIL.rng(0.28, 0.46) * (opts.scale || 1);
-      d.mesh.scale.set(sc, sc, sc);
-      d.mesh.material.opacity = 0.92;
-      d.mesh.visible = true;
-      d.life = 14;
-    }
-
-    // dust stars kicking off the surface
-    const n = opts.big ? 9 : 5;
-    for (let i = 0; i < n; i++) {
-      _v.copy(normal).multiplyScalar(UTIL.rng(1.4, 3.2));
-      _v.x += UTIL.rng(-1.7, 1.7); _v.y += UTIL.rng(0.4, 2.4); _v.z += UTIL.rng(-1.7, 1.7);
-      spawnParticle(point, _v, {
-        map: TEX.star(i % 2 ? PAL.cream : PAL.mustard),
-        s0: UTIL.rng(0.13, 0.26), s1: 0.02,
-        life: UTIL.rng(0.26, 0.5), grav: 6
-      });
-    }
-    // ink puffs hanging in the air
-    for (let i = 0; i < 3; i++) {
-      _v.copy(normal).multiplyScalar(UTIL.rng(0.4, 1.1));
-      _v.x += UTIL.rng(-.5, .5); _v.y += UTIL.rng(.2, .9); _v.z += UTIL.rng(-.5, .5);
-      spawnParticle(point, _v, {
-        map: TEX.puff(PAL.cream), s0: UTIL.rng(0.16, 0.3), s1: 0.5,
-        life: UTIL.rng(0.4, 0.7), grav: -0.6, spin: UTIL.rng(-1.5, 1.5)
-      });
-    }
-    // smoke ring
-    burstRing(point, normal, 0.18, 1.48, 0.42, PAL.cream);
-  }
-
   function burstRing(point, normal, startScale, endScale, life, color) {
     const r = rings[ringIdx = (ringIdx + 1) % rings.length];
     r.mesh.position.copy(point).addScaledVector(normal, 0.06);
