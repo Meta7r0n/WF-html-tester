@@ -2814,7 +2814,10 @@ const CONFIG = {
     }
   },
   weaponView: {
-    swayAmount: 0.028, swayLerp: 8, bobAmount: 0.028, muzzleFlashTime: 0.09
+    // muzzleFlashTime covers three drawn flash frames (see WEAPON.update),
+    // so it wants to be long enough that each one lands on at least two
+    // rendered frames at 60fps.
+    swayAmount: 0.034, swayLerp: 8, bobAmount: 0.038, muzzleFlashTime: 0.105
   },
   pickup: {
     collectRadius: 1.18, bobHeight: 0.13, bobSpeed: 2.4, spinSpeed: 0.7,
@@ -12166,13 +12169,142 @@ const WEAPON = (() => {
   let meleeTimer = 0, meleeSide = 1;
   let recoil = 0, recoilVel = 0, squash = 0, squashVel = 0;
   let swayX = 0, swayY = 0, tSwayX = 0, tSwayY = 0, bobPhase = 0;
-  let flashTimer = 0;
+  let flashTimer = 0, flashLen = 0.001, flashSpin = 0, flashSpin2 = 0, flashGain = 1;
   let damageMult = 1, damageMultTimer = 0;
   // Scrap Railgun charge-up.
   let charging = false, chargeTimer = 0;
   // Spray Torch continuous stream.
   let flameTickTimer = 0, flameDry = false;
   const reloadMarks = [0.18, 0.5, 0.82];
+
+  /* ===================== [VIEWMODEL FEEL] =========================
+     Rubberhose gunfeel. Everything a shot does to the viewmodel is a
+     separate damped spring, so a shot reads as one impulse with a kick
+     AND a settle instead of a single frame of jitter:
+
+       recoil/recoilVel  straight back into the shoulder  (+Z)
+       rise/riseVel      muzzle climb                     (pitch)
+       side/sideVel      lateral whip                     (yaw)
+       roll/rollVel      barrel roll                      (roll)
+       squash/squashVel  squash-and-stretch along the bore
+
+     Each weapon's FEEL entry sets the spring's stiffness and damping,
+     which is what actually separates "punches hard and slow" (the
+     Glizzy Gat: low stiffness, low damping, a long lazy settle) from
+     "chatters" (the Fieldhand/Seed Spitter: high stiffness, short
+     settle, shots stacking on top of each other).                  */
+  let rise = 0, riseVel = 0, side = 0, sideVel = 0, roll = 0, rollVel = 0;
+  // Anticipation: a 2-3 frame forward lunge fired on the same frame as
+  // the shot. The bullet still leaves immediately (nothing about
+  // hit registration or the coop relay is delayed) -- this is purely the
+  // animator's cheat where the gun leans into the blast before the kick
+  // throws it back, which is what makes the kick read as an impulse.
+  let anticTimer = 0, anticLen = 0.001;
+  // Weapon swap: the outgoing gun is dropped out of frame before the
+  // incoming one is whipped up into it.
+  let swapOutId = null, swapTimer = 0, swapOutLen = 0.001;
+  let drawTimer = 0, drawLen = 0.001, pendingDraw = false;
+  let built = false;
+  // Held-pose blends, all damped 0..1.
+  let adsK = 0, adsVel = 0, sprintK = 0;
+  // Inertia: the gun lags the camera and the player's footwork, then
+  // leads back past rest instead of stopping dead.
+  let inX = 0, inVX = 0, inY = 0, inVY = 0;
+  let lagStrafe = 0, lagFwd = 0;
+  // Landing/step impacts shove the whole rig.
+  let jolt = 0, joltVel = 0, wasGrounded = true, fallSpeed = 0;
+  // Quantised "boil" so a held weapon is never perfectly still, on the
+  // same clock as the rest of the game's hand-drawn wobble.
+  let boilAcc = 0, boilX = 0, boilY = 0, boilR = 0;
+  // Reload choreography scratch, written every frame reloading is true.
+  const RL = { pitch: 0, roll: 0, yaw: 0, drop: 0, push: 0, forend: 0, part: 0, part2: 0, scale: 0 };
+
+  /* Per-weapon feel. `kick` scales the whole impulse; `stiff`/`damp` are
+     the spring constants (w = sqrt(stiff), zeta = damp / 2w -- every
+     entry here is deliberately under 1.0 so each shot overshoots home);
+     `reload` picks which choreography plays. Anything not listed falls
+     back to FEEL_ANY. */
+  const FEEL = {
+    unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.06, reload: 'none' },
+    pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.09, reload: 'pump' },
+    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.085, reload: 'break' },
+    tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.075, reload: 'wheel' },
+    fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.085, reload: 'mag' },
+    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.10, reload: 'pump' },
+    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.10, reload: 'cell' },
+    sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.085, reload: 'can' },
+    portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.09, reload: 'cell' },
+    seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.09, reload: 'drum' },
+    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.11, reload: 'bolt' },
+    chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
+    theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
+    knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.07, reload: 'none' }
+  };
+  const FEEL_ANY = {
+    kick: 0.8, stiff: 210, damp: 15, rise: 1, side: 1, roll: 1,
+    flash: 1, shell: 0.45, draw: 0.28, holster: 0.12, reload: 'mag'
+  };
+  function feelFor(id) { return FEEL[id || currentId] || FEEL_ANY; }
+
+  // Peak displacement of an impulse response is roughly v0/w, so scaling
+  // the impulse BY w makes these numbers mean "peak travel", independent
+  // of how fast that particular weapon's spring happens to be.
+  const KICK_BACK = 0.185;   // metres of travel at kick 1.0
+  const KICK_RISE = 0.085;   // radians of muzzle climb at kick 1.0
+  const KICK_SIDE = 0.055;
+  const KICK_ROLL = 0.075;
+
+  /* One damped-spring step, substepped so a frame hitch cannot make the
+     spring explode (these run stiff enough to go unstable past ~20ms). */
+  function springStep(x, v, stiff, damping, dt) {
+    let n = 1;
+    if (dt > 0.0125) n = Math.min(6, Math.ceil(dt / 0.0125));
+    const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      v += (-x * stiff - v * damping) * h;
+      x += v * h;
+    }
+    _spring.x = x; _spring.v = v;
+  }
+  const _spring = { x: 0, v: 0 };
+
+  // Cartoon easing. easeOutBack overshoots past its target and settles
+  // back -- the shape every snap in here uses.
+  function easeOutBack(k, over) {
+    const s = over === undefined ? 1.7 : over;
+    const t = k - 1;
+    return t * t * ((s + 1) * t + s) + 1;
+  }
+  function easeOutCubic(k) { const t = 1 - k; return 1 - t * t * t; }
+  function easeInCubic(k) { return k * k * k; }
+  // A hit that rings out: one hard strike, then a decaying wobble.
+  function ring(k, cycles, decay) {
+    return Math.sin(k * Math.PI * 2 * cycles) * Math.exp(-k * decay);
+  }
+
+  /* The shot impulse. `scale` lets a weaker action (a melee shove, the
+     Spray Torch's tag) reuse the same springs at reduced strength. Each
+     channel gets v0 = travel * w so the FEEL numbers above read as peak
+     displacement rather than as raw velocity. */
+  function applyKick(scale, amountOverride) {
+    const f = feelFor();
+    const w = Math.sqrt(f.stiff);
+    const amount = amountOverride !== undefined
+      ? amountOverride : f.kick * (scale === undefined ? 1 : scale);
+    // Wilder shots when the mag is nearly out -- a small, free bit of
+    // character that makes the last round of a magazine feel loose.
+    const wobble = UTIL.rng(0.86, 1.18);
+    recoilVel += KICK_BACK * amount * w * wobble;
+    riseVel += KICK_RISE * amount * f.rise * w * UTIL.rng(0.82, 1.2);
+    // Side/roll flip sign shot to shot so a burst wanders instead of
+    // tracking one straight line.
+    sideVel += KICK_SIDE * amount * f.side * w * UTIL.rng(-1.15, 0.55);
+    rollVel += KICK_ROLL * amount * f.roll * w * UTIL.rng(-0.5, 1.2);
+    // Negative: the blast drives the gun into itself, and the spring
+    // throws it back out long a couple of frames later.
+    squashVel -= 4.5 + 6.5 * Math.min(1.6, amount);
+    anticTimer = anticLen = UTIL.clamp(0.030 + amount * 0.016, 0.028, 0.062);
+  }
 
   const _o = new THREE.Vector3();
   const _d = new THREE.Vector3();
@@ -12218,12 +12350,16 @@ const WEAPON = (() => {
       new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     f1.position.set(0, y, z);
     f1.scale.setScalar(scale || 1);
+    // Kept so update()'s flash animation can scale *relative* to whatever
+    // size this particular gun's muzzle was authored at.
+    f1.userData.baseScale = scale || 1;
     f1.visible = false;
     parent.add(f1);
     const f2 = new THREE.Mesh(starGeometry(6, 0.05, 0.16),
       new THREE.MeshBasicMaterial({ color: PAL.mustard, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
     f2.position.set(0, y, z - 0.02);
     f2.scale.setScalar(scale || 1);
+    f2.userData.baseScale = scale || 1;
     f2.visible = false;
     parent.add(f2);
     return { flash: f1, flash2: f2 };
@@ -12311,12 +12447,17 @@ const WEAPON = (() => {
     const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
 
     PRIM.box(0.14, 0.16, 0.34, steel, { pos: [0, 0, -0.12], parent: g, warp: 0.006, outline: 0.012, ray: false });
-    PRIM.cyl(0.115, 0.115, 0.19, 10, steelLight, { pos: [0, 0.025, -0.3], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.013, ray: false });
+    // The cylinder is its own group so the reload can actually swing it out
+    // of the frame and shake the brass loose (see reloadPose's 'wheel').
+    const cylinder = new THREE.Group();
+    cylinder.position.set(0, 0.025, -0.3);
+    g.add(cylinder);
+    PRIM.cyl(0.115, 0.115, 0.19, 10, steelLight, { rot: [0, 0, Math.PI / 2], parent: cylinder, outline: 0.013, ray: false });
     for (let i = 0; i < 6; i++) {
       const a = i / 6 * Math.PI * 2;
       PRIM.cyl(0.016, 0.016, 0.205, 6, MAT.toon(PAL.charcoal), {
-        pos: [Math.cos(a) * 0.065, 0.025 + Math.sin(a) * 0.065, -0.3],
-        rot: [0, 0, Math.PI / 2], parent: g, outline: 0.004, ray: false
+        pos: [Math.cos(a) * 0.065, Math.sin(a) * 0.065, 0],
+        rot: [0, 0, Math.PI / 2], parent: cylinder, outline: 0.004, ray: false
       });
     }
     PRIM.cyl(0.042, 0.052, 0.72, 10, steel, { pos: [0, 0.025, -0.67], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
@@ -12327,6 +12468,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.025, -1.13, 0.78);
     models.tinSixer = {
       root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      part: cylinder, partKind: 'wheel',
+      movers: [{ part: cylinder, p: [0, 0.025, -0.3], r: [0, 0, 0] }],
       base: [0.31, -0.3, -0.5], rot: [0.02, -0.08, 0.015]
     };
   }
@@ -12344,7 +12487,14 @@ const WEAPON = (() => {
     PRIM.cyl(0.075, 0.045, 0.14, 9, MAT.toon(PAL.mustardDk), { pos: [0, 0.045, -1.12], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
     PRIM.box(0.14, 0.17, 0.38, timber, { pos: [0, -0.03, 0.37], rot: [-0.12, 0, 0], parent: g, warp: 0.01, outline: 0.013, ray: false });
     PRIM.box(0.13, 0.22, 0.14, timber, { pos: [0, -0.18, 0.02], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
-    PRIM.box(0.12, 0.31, 0.12, MAT.toon(PAL.mustardDk), { pos: [0, -0.19, -0.25], rot: [-0.17, 0, 0], parent: g, warp: 0.006, outline: 0.012, ray: false });
+    // The magazine is its own group so reloadPose's 'mag' can drop it out
+    // of the well and shove a fresh one back in.
+    const mag = new THREE.Group();
+    mag.position.set(0, -0.19, -0.25);
+    mag.rotation.set(-0.17, 0, 0);
+    g.add(mag);
+    PRIM.box(0.12, 0.31, 0.12, MAT.toon(PAL.mustardDk), { parent: mag, warp: 0.006, outline: 0.012, ray: false });
+    PRIM.box(0.13, 0.03, 0.13, MAT.toon(PAL.rustDeep), { pos: [0, -0.16, 0], parent: mag, outline: 0.008, ray: false });
     const handguard = new THREE.Group();
     handguard.position.set(0, 0, -0.52);
     g.add(handguard);
@@ -12356,6 +12506,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.045, -1.22, 0.72);
     models.fieldhand = {
       root: g, forend: handguard, flash: fx.flash, flash2: fx.flash2,
+      part: mag, partKind: 'mag',
+      movers: [{ part: mag, p: [0, -0.19, -0.25], r: [-0.17, 0, 0] }],
       base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
     };
   }
@@ -12633,6 +12785,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.02, -1.0, 0.85);
     models.seedSpitter = {
       root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      part: drum, partKind: 'drum',
+      movers: [{ part: drum, p: [0, -0.13, -0.28], r: [0, 0, 0] }],
       base: [0.28, -0.27, -0.5], rot: [0.02, -0.08, 0.02]
     };
   }
@@ -12765,10 +12919,15 @@ const WEAPON = (() => {
     }));
 
     // Bolt handle, jutting out the right side -- reads as the manual cycle.
+    // Grouped so the reload can throw it back and slam it home; the whole
+    // point of a bolt-action's long reload is watching the bolt work.
+    const bolt = new THREE.Group();
+    bolt.position.set(0, 0, -0.02);
+    g.add(bolt);
     PRIM.cyl(0.014, 0.014, 0.14, 6, boltMat, {
-      pos: [0.08, 0, -0.02], rot: [0, 0, Math.PI / 2 - 0.5], parent: g, outline: 0.006, ray: false
+      pos: [0.08, 0, 0], rot: [0, 0, Math.PI / 2 - 0.5], parent: bolt, outline: 0.006, ray: false
     });
-    PRIM.sph(0.024, boltMat, { pos: [0.145, -0.045, -0.02], parent: g, outline: 0.007, ray: false });
+    PRIM.sph(0.024, boltMat, { pos: [0.145, -0.045, 0], parent: bolt, outline: 0.007, ray: false });
 
     // Grip, at the back of the bun.
     PRIM.box(0.09, 0.16, 0.11, MAT.toon(PAL.rustDeep), {
@@ -12783,6 +12942,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.04, -1.0, 0.75);
     models.glizzyGat = {
       root: g, forend: forend, flash: fx.flash, flash2: fx.flash2,
+      part: bolt, partKind: 'bolt',
+      movers: [{ part: bolt, p: [0, 0, -0.02], r: [0, 0, 0] }],
       base: [0.27, -0.26, -0.46], rot: [0.03, -0.09, 0.02]
     };
   }
@@ -12861,17 +13022,28 @@ const WEAPON = (() => {
     buildGlizzyGat();
     buildHandsAndBoots();
 
-    for (let i = 0; i < 8; i++) {
-      const m = PRIM.cyl(0.024, 0.024, 0.072, 8, MAT.toon(i % 2 ? PAL.rust : PAL.mustardDk), {
-        parent: rig, outline: 0.007, ray: false
+    // Spent brass. A stubby tapered case rather than a plain cylinder --
+    // at viewmodel scale a straight tube tumbling past the lens reads as a
+    // flat card, a rimmed one reads as a shell.
+    for (let i = 0; i < 10; i++) {
+      const m = PRIM.cyl(0.0165, 0.0135, 0.052, 7, MAT.toon(i % 2 ? PAL.mustard : PAL.mustardDk), {
+        parent: rig, outline: 0.005, ray: false
+      });
+      PRIM.cyl(0.019, 0.019, 0.012, 7, MAT.toon(PAL.rustDeep), {
+        pos: [0, -0.026, 0], parent: m, outline: 0.005, ray: false
       });
       m.visible = false;
-      casings.push({ mesh: m, life: 0, vel: new THREE.Vector3(), spin: new THREE.Vector3() });
+      casings.push({
+        mesh: m, life: 0, len: 1, base: 1,
+        vel: new THREE.Vector3(), spin: new THREE.Vector3()
+      });
     }
 
     RAY_TARGETS.length = rayCount;
     initInventory();
     setCurrent('pipePopper', true, true);
+    built = true;
+    swapOutId = null; drawTimer = 0; pendingDraw = false;
   }
 
   function stateFor(id) { return inventory[id || currentId]; }
@@ -12899,7 +13071,19 @@ const WEAPON = (() => {
     model.root.position.set(base[0], base[1], base[2]);
     model.root.rotation.set(rot[0], rot[1], rot[2]);
     model.root.scale.set(1, 1, 1);
-    if (model.forend) model.forend.position.z = id === 'pipePopper' ? -0.44 : id === 'sprayTorch' ? -0.28 : -0.52;
+    if (model.forend) {
+      model.forend.position.z = id === 'pipePopper' ? -0.44 : id === 'sprayTorch' ? -0.28 : -0.52;
+      // Cached here, where the forend is at its authored rest position, so
+      // update() can offset from it without a per-weapon lookup table.
+      model.forendZ0 = model.forend.position.z;
+    }
+    if (model.movers) {
+      for (let i = 0; i < model.movers.length; i++) {
+        const mv = model.movers[i];
+        mv.part.position.set(mv.p[0], mv.p[1], mv.p[2]);
+        mv.part.rotation.set(mv.r[0], mv.r[1], mv.r[2]);
+      }
+    }
     if (model.lighterPivot) {
       const rest = model.lighterRestPos;
       model.readyK = 0;
@@ -12929,6 +13113,7 @@ const WEAPON = (() => {
       if (!silent) UI.toast(d.name + ' has not been found yet', 1.25);
       return false;
     }
+    const prevId = currentId;
     currentId = id;
     reloading = false;
     reloadTimer = 0;
@@ -12949,6 +13134,31 @@ const WEAPON = (() => {
     // can right, see buildSprayTorch) instead of the generic two-fisted
     // rifle grip every other gun shares.
     armedHands.visible = d.kind === 'gun';
+    /* Draw/holster. Everything above already switched the *state* over --
+       ammo, HUD, hit rules -- so nothing about firing or the coop relay
+       waits on the animation. All that is deferred is which model is on
+       screen: the outgoing gun keeps rendering while it drops out of
+       frame (see update()'s swap block), then the incoming one is whipped
+       up into place with an overshoot. The very first build has nothing
+       to holster and skips straight to the held pose. */
+    if (built && prevId !== id && models[prevId]) {
+      // A swap interrupted mid-swap: drop whatever was on its way out
+      // rather than stacking two holsters.
+      if (swapOutId && models[swapOutId] && swapOutId !== prevId) models[swapOutId].root.visible = false;
+      swapOutId = prevId;
+      swapOutLen = Math.max(0.02, feelFor(prevId).holster);
+      swapTimer = 0;
+      pendingDraw = true;
+      models[prevId].root.visible = true;
+      models[id].root.visible = false;
+      // Hands belong to whichever gun is actually on screen.
+      armedHands.visible = DEFS[prevId].kind === 'gun';
+      drawTimer = 0;
+    } else {
+      swapOutId = null;
+      pendingDraw = false;
+      drawTimer = built ? (drawLen = Math.max(0.02, feelFor(id).draw)) : 0;
+    }
     syncHUD();
     if (!silent) UI.toast(d.name, 0.75);
     return true;
@@ -12970,16 +13180,26 @@ const WEAPON = (() => {
     return false;
   }
 
+  /* Spent brass: flicked hard up and to the right so it clears the frame
+     in a quarter second instead of drifting across it, tumbling fast
+     enough to smear. Weapons that eject nothing (Portal Gun, Spray
+     Torch, the melee props) carry shell:0 in FEEL and are skipped. */
   function ejectCasing(id) {
+    const f = feelFor(id);
+    if (!f.shell) return;
     for (let i = 0; i < casings.length; i++) {
       const s = casings[i];
       if (s.life > 0) continue;
-      s.life = id === 'fieldhand' ? 0.48 : 0.72;
+      s.life = s.len = UTIL.rng(0.52, 0.66);
+      s.base = f.shell;
       s.mesh.visible = true;
-      s.mesh.position.set(0.3, -0.24, -0.42);
-      s.mesh.scale.setScalar(id === 'pipePopper' ? 1.2 : 0.82);
-      s.vel.set(UTIL.rng(0.5, 1.0), UTIL.rng(0.9, 1.5), UTIL.rng(-0.2, 0.4));
-      s.spin.set(UTIL.rng(-12, 12), UTIL.rng(-12, 12), UTIL.rng(-12, 12));
+      // Out of the ejection port, not out of the shooter's fist.
+      s.mesh.position.set(0.30 + UTIL.rng(-0.02, 0.02), -0.20, -0.40 + UTIL.rng(-0.03, 0.03));
+      s.mesh.rotation.set(UTIL.rng(0, 6.28), UTIL.rng(0, 6.28), UTIL.rng(0, 6.28));
+      // Squashed on the way out, springing round again mid-flight.
+      s.mesh.scale.set(f.shell * 0.55, f.shell * 1.7, f.shell * 0.55);
+      s.vel.set(UTIL.rng(1.15, 1.75), UTIL.rng(1.55, 2.15), UTIL.rng(0.30, 0.72));
+      s.spin.set(UTIL.rng(-26, 26), UTIL.rng(-18, 18), UTIL.rng(-26, 26));
       return;
     }
   }
@@ -13008,7 +13228,10 @@ const WEAPON = (() => {
     s.reserve -= moved;
     reloading = false;
     reloadTimer = 0;
-    squashVel += 6;
+    // The mag going home slams the gun shut: compress, then ring out.
+    squashVel -= 7;
+    riseVel -= 0.35;
+    joltVel -= 0.9;
     syncHUD();
   }
 
@@ -13047,14 +13270,11 @@ const WEAPON = (() => {
     UI.crosshairKick();
     AUDIO.gunshot(currentId);
 
-    recoilVel += d.recoilBack * 46;
-    squashVel += currentId === 'fieldhand' ? 4.8 : 9.2;
-    flashTimer = VIEW.muzzleFlashTime;
-    model.flash.rotation.z = UTIL.rng(0, 6.28);
-    model.flash2.rotation.z = UTIL.rng(0, 6.28);
-    const fs = UTIL.rng(0.84, 1.22);
-    model.flash.scale.setScalar(fs * (currentId === 'pipePopper' ? 1 : 0.76));
-    model.flash2.scale.setScalar(fs * UTIL.rng(0.95, 1.3) * (currentId === 'pipePopper' ? 1 : 0.76));
+    applyKick(1);
+    flashTimer = flashLen = VIEW.muzzleFlashTime;
+    flashSpin = UTIL.rng(0, 6.28);
+    flashSpin2 = UTIL.rng(0, 6.28);
+    flashGain = UTIL.rng(0.88, 1.16);
     model.flash.visible = model.flash2.visible = true;
     ejectCasing(currentId);
 
@@ -13273,8 +13493,7 @@ const WEAPON = (() => {
     }
     AUDIO.gunshot('sprayTorch');
     UI.crosshairKick();
-    recoilVel += 1.6;
-    squashVel += 2.2;
+    applyKick(1, 0.32);
     return true;
   }
 
@@ -13299,8 +13518,10 @@ const WEAPON = (() => {
     });
     AUDIO.melee(d.kind === 'melee' ? 'unarmed' : 'gun', connected);
     UI.crosshairKick();
-    recoilVel += connected ? 5.4 : 2.4;
-    squashVel += connected ? 7 : 3;
+    // A connecting swing is a real impact, not a scaled-down gunshot --
+    // fixed magnitude, so a heavy gun's quick-melee does not inherit its
+    // firing kick.
+    applyKick(1, connected ? 1.15 : 0.5);
     syncHUD();
     return true;
   }
@@ -13319,6 +13540,134 @@ const WEAPON = (() => {
     }
     if (added > 0) syncHUD();
     return added;
+  }
+
+  /* ===================== [RELOAD CHOREOGRAPHY] =====================
+     Every reload is the same four-beat cartoon shape --
+
+        ANTICIPATION  the gun dips the *wrong* way and compresses
+        SNAP          it slams into the working pose, overshooting it
+        WORK          the actual business, different per weapon
+        RETURN        it snaps home, overshooting past rest
+        SETTLE        and rings out
+
+     -- laid over the weapon's own reloadTime, which is untouched. k is
+     0..1 across that same duration, so nothing that keys off reloadTime
+     (finishReload, the AUDIO.reloadClick marks, the HUD) changes at all.
+     Results are written into RL, which update() adds onto the held pose. */
+  function seg(k, a, b) { return UTIL.clamp((k - a) / Math.max(1e-4, b - a), 0, 1); }
+
+  function reloadPose(style, k) {
+    RL.pitch = RL.roll = RL.yaw = RL.drop = RL.push = 0;
+    RL.forend = RL.part = RL.part2 = RL.scale = 0;
+
+    // Anticipation lives entirely in the first tenth: a short counter-move
+    // away from wherever the gun is about to go.
+    const antic = Math.sin(seg(k, 0, 0.11) * Math.PI);
+    // The gun's travel into and back out of the working pose. Both ends
+    // use a backing ease, so it arrives past the pose and leaves past rest.
+    const into = easeOutBack(seg(k, 0.09, 0.30), 1.9);
+    const outof = easeOutBack(seg(k, 0.74, 0.90), 1.75);
+    const hold = into - outof;
+    // The final ring-out, so it never just stops.
+    const settle = ring(seg(k, 0.86, 1), 1.6, 5.2) * (1 - seg(k, 0.86, 1)) * 0.5;
+    // Where inside the pose the actual work happens.
+    const work = seg(k, 0.28, 0.74);
+
+    RL.scale = -antic * 0.16 + settle * 0.30;
+
+    switch (style) {
+      // Break-action and pump shotguns: rock the gun back and left, then
+      // drive the forend through two hard strokes.
+      case 'pump': {
+        // Two strokes. The forend slides, but the gun rocks with it --
+        // a pump you can only see on the forend reads as a static prop.
+        const stroke = Math.sin(work * Math.PI * 2);
+        const shove = Math.abs(stroke);
+        RL.pitch = hold * 0.40 - antic * 0.22 + settle * 0.30 - shove * hold * 0.16;
+        RL.roll = hold * 0.52 + settle * 0.26 + stroke * hold * 0.13;
+        RL.drop = hold * 0.15 + antic * 0.05;
+        RL.push = hold * 0.05 + stroke * hold * 0.085;
+        RL.yaw = stroke * hold * 0.06;
+        RL.forend = -shove * 0.22;
+        RL.scale += -shove * hold * 0.10;
+        break;
+      }
+      case 'break':
+        // Hinge the whole gun open, shake the empties out, snap it shut.
+        RL.pitch = hold * 0.95 - antic * 0.30 + settle * 0.55;
+        RL.roll = hold * 0.30 + Math.sin(work * Math.PI * 6) * hold * 0.10 + settle * 0.3;
+        RL.drop = hold * 0.24 + antic * 0.06;
+        RL.push = -hold * 0.07;
+        RL.yaw = Math.sin(work * Math.PI * 6) * hold * 0.07;
+        break;
+      // Revolver: swing the cylinder out to the left, shake the brass
+      // loose, flick it shut.
+      case 'wheel':
+        RL.roll = hold * 0.92 - antic * 0.35 + settle * 0.6;
+        RL.pitch = hold * 0.26 + antic * -0.12 + settle * 0.25;
+        RL.drop = hold * 0.13;
+        RL.push = -hold * 0.07;
+        // Two hard shakes to dump the cases, then the cylinder slaps back.
+        RL.yaw = Math.sin(work * Math.PI * 4) * hold * 0.16;
+        RL.part = seg(k, 0.30, 0.42) - seg(k, 0.62, 0.72);
+        break;
+      // Box magazine: tip the gun left, rip the mag, ram a new one home,
+      // then a slap on the base and back to the shoulder.
+      case 'mag':
+        RL.roll = hold * 0.58 - antic * 0.24 + settle * 0.4;
+        RL.pitch = hold * 0.30 - antic * 0.16 + settle * 0.28;
+        RL.drop = hold * 0.19 + antic * 0.05;
+        RL.push = hold * 0.06 - Math.max(0, Math.sin(seg(k, 0.56, 0.68) * Math.PI)) * 0.07;
+        // mag drops out fast, new one is shoved up slow, then a slap
+        RL.part = easeOutCubic(seg(k, 0.26, 0.40)) - easeOutCubic(seg(k, 0.46, 0.62));
+        RL.part2 = Math.sin(seg(k, 0.62, 0.72) * Math.PI) * 0.6;
+        break;
+      // Sunflower drum: the same swap, but the drum also spins up as it
+      // seats, which is the whole gag of the weapon.
+      case 'drum':
+        RL.roll = hold * 0.50 - antic * 0.22 + settle * 0.38;
+        RL.pitch = hold * 0.26 - antic * 0.14 + settle * 0.24;
+        RL.drop = hold * 0.20 + antic * 0.05;
+        RL.part = easeOutCubic(seg(k, 0.24, 0.40)) - easeOutCubic(seg(k, 0.48, 0.64));
+        RL.part2 = easeOutCubic(seg(k, 0.50, 0.94)) * Math.PI * 4;
+        break;
+      // Bolt-action: the gun barely leaves the shoulder. All the weight is
+      // in the bolt -- a hard pull, a beat, then a shove and a clack.
+      case 'bolt':
+        RL.pitch = hold * 0.20 - antic * 0.14 + settle * 0.34;
+        RL.roll = hold * 0.34 - antic * 0.10 + settle * 0.30;
+        RL.drop = hold * 0.07;
+        // Recoil-shaped counter-shove as the bolt is thrown back and forward.
+        RL.push = easeOutCubic(seg(k, 0.26, 0.40)) * 0.055
+                - easeOutCubic(seg(k, 0.56, 0.66)) * 0.075;
+        RL.part = easeOutCubic(seg(k, 0.26, 0.40)) - easeInCubic(seg(k, 0.56, 0.68));
+        RL.yaw = Math.sin(seg(k, 0.56, 0.70) * Math.PI) * 0.09;
+        break;
+      // Battery/portal cell: turn the gun over to the right, pull the
+      // spent cell, punch a fresh one in.
+      case 'cell':
+        RL.roll = -hold * 0.85 + antic * 0.30 - settle * 0.5;
+        RL.pitch = hold * 0.42 - antic * 0.20 + settle * 0.32;
+        RL.drop = hold * 0.18 + antic * 0.05;
+        RL.push = -hold * 0.06 - Math.max(0, Math.sin(seg(k, 0.52, 0.66) * Math.PI)) * 0.09;
+        RL.forend = -Math.abs(Math.sin(work * Math.PI)) * 0.13;
+        break;
+      // Spray can: hurl the spent can up out of frame and catch a new one
+      // on the way down.
+      case 'can':
+        RL.pitch = -hold * 0.55 + antic * 0.28 + settle * 0.5;
+        RL.drop = -hold * 0.10 + antic * 0.08;
+        RL.roll = hold * 0.25 + settle * 0.3;
+        RL.forend = Math.sin(work * Math.PI) * 0.34;
+        break;
+      default:
+        RL.pitch = hold * 0.55 - antic * 0.22 + settle * 0.32;
+        RL.roll = hold * 0.42 + settle * 0.28;
+        RL.drop = hold * 0.17 + antic * 0.05;
+        RL.forend = Math.sin(work * Math.PI * 2) * 0.10;
+        break;
+    }
   }
 
   /* Hot Sauce power-up. Only ever extends an already-running boost, same
@@ -13457,18 +13806,15 @@ const WEAPON = (() => {
       if (flameModel.flash2) flameModel.flash2.visible = false;
     }
 
-    let reloadPitch = 0, reloadRoll = 0, reloadDrop = 0, forendZ = 0;
+    RL.pitch = RL.roll = RL.yaw = RL.drop = RL.push = 0;
+    RL.forend = RL.part = RL.part2 = RL.scale = 0;
     if (reloading) {
       const d = defFor();
       reloadTimer += dt;
+      // Same clock as before: reloadTime is untouched, and finishReload
+      // still lands on exactly the same frame it always did.
       const k = UTIL.clamp(reloadTimer / d.reloadTime, 0, 1);
-      const openK = UTIL.clamp(k / 0.22, 0, 1);
-      const closeK = UTIL.clamp((k - 0.78) / 0.22, 0, 1);
-      const hold = openK - closeK;
-      reloadPitch = hold * 0.62;
-      reloadRoll = hold * 0.45;
-      reloadDrop = hold * 0.17;
-      forendZ = Math.sin(UTIL.clamp((k - 0.2) / 0.6, 0, 1) * Math.PI * 2) * 0.09;
+      reloadPose(feelFor().reload, k);
       while (reloadStage < reloadMarks.length && k >= reloadMarks[reloadStage]) {
         AUDIO.reloadClick(reloadStage === reloadMarks.length - 1 ? 'close' : 'shell');
         reloadStage++;
@@ -13484,58 +13830,249 @@ const WEAPON = (() => {
       }
     }
 
-    recoilVel += (-recoil * 260 - recoilVel * 22) * dt;
-    recoil += recoilVel * dt;
-    recoil = UTIL.clamp(recoil, -0.05, 0.4);
-    squashVel += (-squash * 300 - squashVel * 17) * dt;
-    squash += squashVel * dt;
-    squash = UTIL.clamp(squash, -0.35, 0.45);
+    const f = feelFor();
 
+    /* ---- the shot impulse, one damped spring per channel ---- */
+    springStep(recoil, recoilVel, f.stiff, f.damp, dt);
+    recoil = UTIL.clamp(_spring.x, -0.12, 0.42); recoilVel = _spring.v;
+    springStep(rise, riseVel, f.stiff * 1.06, f.damp * 0.92, dt);
+    rise = UTIL.clamp(_spring.x, -0.14, 0.55); riseVel = _spring.v;
+    springStep(side, sideVel, f.stiff * 0.84, f.damp * 1.05, dt);
+    side = UTIL.clamp(_spring.x, -0.24, 0.24); sideVel = _spring.v;
+    springStep(roll, rollVel, f.stiff * 0.9, f.damp * 0.88, dt);
+    roll = UTIL.clamp(_spring.x, -0.34, 0.34); rollVel = _spring.v;
+    springStep(squash, squashVel, 300, 15, dt);
+    squash = UTIL.clamp(_spring.x, -0.45, 0.34); squashVel = _spring.v;
+
+    // Anticipation: strongest on the frame the trigger is read, gone two
+    // or three frames later, by which point the kick springs have taken
+    // over. The read is "the gun leans in, then gets thrown back".
+    let antic = 0;
+    if (anticTimer > 0) {
+      anticTimer = Math.max(0, anticTimer - dt);
+      antic = anticTimer / anticLen;
+    }
+    const lunge = UTIL.clamp(0.055 * f.kick, 0.018, 0.105);
+
+    /* ---- mouse-look lag, then lead ---- */
     tSwayX = UTIL.damp(tSwayX, 0, 3.2, dt);
     tSwayY = UTIL.damp(tSwayY, 0, 3.2, dt);
     swayX = UTIL.damp(swayX, tSwayX, VIEW.swayLerp, dt);
     swayY = UTIL.damp(swayY, tSwayY, VIEW.swayLerp, dt);
-    // Aim (RMB): only the weapon model's own cosmetic sway steadies up --
-    // never the real mouse-look, which would just feel laggy.
-    if (PLAYER.aiming) { swayX *= 0.35; swayY *= 0.35; }
+    // A second, springier channel on top of the old damped sway: the gun
+    // trails a fast flick and then swings back past centre instead of
+    // arriving politely. addLook() feeds it.
+    springStep(inX, inVX, 148, 12.5, dt);
+    inX = UTIL.clamp(_spring.x, -0.10, 0.10); inVX = _spring.v;
+    springStep(inY, inVY, 148, 12.5, dt);
+    inY = UTIL.clamp(_spring.x, -0.10, 0.10); inVY = _spring.v;
+
+    /* ---- footwork: the weapon lags a change of direction, then leads ---- */
+    const mv = INPUT.moveAxes();
+    lagStrafe = UTIL.damp(lagStrafe, mv.x, 7.5, dt);
+    lagFwd = UTIL.damp(lagFwd, mv.y, 6.2, dt);
+    const leadX = UTIL.clamp(mv.x - lagStrafe, -1, 1);
+    const leadZ = UTIL.clamp(mv.y - lagFwd, -1, 1);
+
+    /* ---- landing shove ---- */
+    if (!PLAYER.grounded) fallSpeed = PLAYER.velocity.y;
+    if (!wasGrounded && PLAYER.grounded) joltVel -= UTIL.clamp(Math.abs(fallSpeed) / 11, 0.12, 1.3) * 4.6;
+    wasGrounded = PLAYER.grounded;
+    springStep(jolt, joltVel, 205, 14.5, dt);
+    jolt = UTIL.clamp(_spring.x, -0.22, 0.22); joltVel = _spring.v;
+
+    /* ---- boil: a quantised hand-drawn wobble on the same clock as the
+       rest of the game's linework, so a held weapon is never dead still ---- */
+    boilAcc += dt;
+    const boilStep = 1 / Math.max(4, CONFIG.fx.boilFPS || 12);
+    let boilGuard = 0;
+    while (boilAcc >= boilStep && boilGuard++ < 4) {
+      boilAcc -= boilStep;
+      boilX = UTIL.rng(-1, 1); boilY = UTIL.rng(-1, 1); boilR = UTIL.rng(-1, 1);
+    }
+    if (boilAcc >= boilStep) boilAcc = 0;
 
     const sr = PLAYER.speedRatio;
-    if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9 * (0.7 + sr * 0.8);
-    const bobAmt = VIEW.bobAmount * sr;
-    const bx = Math.sin(bobPhase) * bobAmt;
-    const by = Math.abs(Math.cos(bobPhase)) * bobAmt * 0.8;
-    const idle = 1 - sr;
-    const ix = Math.sin(time * 1.15) * 0.008 * idle;
-    const iy = Math.sin(time * 1.6 + 1.1) * 0.009 * idle;
-
     const d = defFor(), model = models[currentId];
+
+    /* ---- sprint carry ---- */
+    const sprintOn = PLAYER.sprinting && !PLAYER.aiming && !reloading
+      && fireTimer <= 0.02 && meleeTimer <= 0 && !swapOutId && drawTimer <= 0;
+    sprintK = UTIL.damp(sprintK, sprintOn ? 1 : 0, sprintOn ? 7.5 : 10.5, dt);
+
+    /* ---- ADS: a spring, not a lerp. It arrives slightly past the sight
+       line and settles back onto it, which is what reads as "deliberate"
+       rather than as a linear pull-in. The FOV half of ADS is untouched
+       (see the GAME loop) so scopeFov/adsFov behave exactly as before. ---- */
+    const adsOn = PLAYER.aiming && !reloading && !swapOutId && drawTimer <= 0;
+    springStep(adsK - (adsOn ? 1 : 0), adsVel, 200, 20.5, dt);
+    adsK = UTIL.clamp(_spring.x + (adsOn ? 1 : 0), -0.12, 1.14); adsVel = _spring.v;
+    const steady = 1 - UTIL.clamp(adsK, 0, 1) * 0.74;
+
+    /* ---- bob: a real figure-eight with weight on the down-beat, and a
+       roll that only really shows up at a sprint ---- */
+    if (PLAYER.grounded && sr > 0.05) bobPhase += dt * 9 * (0.7 + sr * 0.8);
+    const bobAmt = VIEW.bobAmount * sr * steady;
+    const bx = Math.sin(bobPhase) * bobAmt * (1 + sprintK * 0.85);
+    const by = (Math.abs(Math.cos(bobPhase)) - 0.5) * bobAmt * 1.25 * (1 + sprintK * 0.75);
+    const broll = Math.sin(bobPhase * 0.5) * bobAmt * 0.85 * (1 + sprintK * 1.6);
+
+    /* ---- idle: breathing on one slow period, a wrist tremor on two much
+       faster ones, none of which divide into each other, so a standing
+       weapon drifts forever without visibly looping ---- */
+    const idle = (1 - UTIL.clamp(sr * 1.35, 0, 1)) * steady;
+    const tremor = Math.sin(time * 5.3 + 0.6) * 0.26 + Math.sin(time * 8.9) * 0.13;
+    const ix = (Math.sin(time * 0.77) * 0.0135 + Math.sin(time * 1.93 + 2.2) * 0.005 + tremor * 0.0038) * idle;
+    const iy = (Math.sin(time * 1.05) * 0.0165 + Math.sin(time * 1.62 + 1.1) * 0.006 + tremor * 0.003) * idle;
+    const iroll = (Math.sin(time * 0.62 + 2.1) * 0.030 + tremor * 0.009) * idle;
+
+    /* ---- weapon swap. The outgoing gun is still on screen and still
+       falling; the incoming one is hidden until it lands. Only the
+       *rendering* is deferred -- ammo, HUD and the fire path all switched
+       over in setCurrent(). ---- */
+    let swapE = 0;
+    if (swapOutId) {
+      swapTimer += dt;
+      const sk = UTIL.clamp(swapTimer / swapOutLen, 0, 1);
+      swapE = easeInCubic(sk);
+      const om = models[swapOutId];
+      if (om && om.root) {
+        const ob = om.base || [0, 0, 0], orr = om.rot || [0, 0, 0];
+        om.root.position.set(ob[0] + swapE * 0.17, ob[1] - swapE * 0.98, ob[2] + swapE * 0.11);
+        om.root.rotation.set(orr[0] - swapE * 1.35, orr[1] + swapE * 0.55, orr[2] + swapE * 0.72);
+        om.root.scale.setScalar(1 - swapE * 0.14);
+      }
+      if (sk >= 1) {
+        if (om && om.root) om.root.visible = false;
+        swapOutId = null;
+        swapE = 1;
+        if (pendingDraw) { pendingDraw = false; drawLen = Math.max(0.02, f.draw); drawTimer = drawLen; }
+        if (model && model.root) model.root.visible = true;
+        armedHands.visible = d.kind === 'gun';
+        joltVel -= 1.9;
+      }
+    }
+
+    /* ---- draw: up from below the frame, overshooting the held pose ---- */
+    let drawOff = 0;
+    if (drawTimer > 0) {
+      drawTimer = Math.max(0, drawTimer - dt);
+      const dk = UTIL.clamp(1 - drawTimer / drawLen, 0, 1);
+      drawOff = 1 - easeOutBack(dk, 1.9);
+    }
+    // While the old gun is still falling the new one is parked offscreen,
+    // so it never flickers in behind it.
+    const hidden = swapOutId ? 1 : 0;
+    drawOff = drawOff + hidden;
+
     const meleeTotal = d.kind === 'melee' ? d.fireInterval : 0.5;
     const meleeK = meleeTimer > 0 ? 1 - meleeTimer / meleeTotal : 0;
     const swing = meleeTimer > 0 ? Math.sin(UTIL.clamp(meleeK, 0, 1) * Math.PI) : 0;
 
     if (d.kind === 'gun' || d.kind === 'flame') {
+      /* ADS pose: centre the gun on the sight line and pull it back
+         toward the eye. Derived once per model from its held pose so
+         every weapon gets one without a hand-authored second transform. */
+      if (!model.aim) {
+        model.aim = [model.base[0] * 0.10, model.base[1] * 0.60 + 0.055, model.base[2] + 0.075];
+        model.aimRot = [model.rot[0] * 0.20, model.rot[1] * 0.12, model.rot[2] * 0.12];
+      }
+      const px = UTIL.lerp(model.base[0], model.aim[0], adsK);
+      const py = UTIL.lerp(model.base[1], model.aim[1], adsK);
+      const pz = UTIL.lerp(model.base[2], model.aim[2], adsK);
+      const rx = UTIL.lerp(model.rot[0], model.aimRot[0], adsK);
+      const ry = UTIL.lerp(model.rot[1], model.aimRot[1], adsK);
+      const rz = UTIL.lerp(model.rot[2], model.aimRot[2], adsK);
+
       model.root.position.set(
-        model.base[0] + swayX + bx + ix - swing * 0.23,
-        model.base[1] + swayY + by + iy - reloadDrop + recoil * 0.28 + swing * 0.1,
-        model.base[2] + recoil - swing * 0.2
+        px + (swayX + inX) * steady + bx + ix - leadX * 0.055
+          + sprintK * 0.115 - swing * 0.23 + swapE * 0.17,
+        py + (swayY + inY) * steady + by + iy - RL.drop + recoil * 0.20 + rise * 0.09
+          - sprintK * 0.155 + swing * 0.10 - drawOff * 0.58,
+        pz + recoil - antic * lunge + leadZ * 0.05 + RL.push
+          + sprintK * 0.10 - swing * 0.20 - drawOff * 0.07
       );
       model.root.rotation.set(
-        model.rot[0] + reloadPitch - recoil * 0.85 + iy * 0.6 + swing * 0.48,
-        model.rot[1] - swayX * 1.6 + ix * 0.5 - swing * 0.72 * meleeSide,
-        model.rot[2] + reloadRoll + swayY * 0.9 - recoil * 0.4 + swing * 0.38 * meleeSide
+        rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + swing * 0.48
+          + sprintK * 0.52 + drawOff * -1.18 + jolt * 0.55,
+        ry + RL.yaw - (swayX + inX) * 1.5 * steady + ix * 0.5 + side + leadX * 0.10
+          - swing * 0.72 * meleeSide - sprintK * 0.56 + drawOff * 0.62,
+        rz + RL.roll + (swayY + inY) * 0.85 * steady + iroll + broll + roll
+          + swing * 0.38 * meleeSide + sprintK * 0.46 + drawOff * -0.64
       );
-      model.root.scale.set(1 - squash * 0.35, 1 - squash * 0.35, 1 + squash * 0.55);
+      // Squash-and-stretch along the bore. A shot compresses the gun into
+      // itself, then it springs back long -- the anticipation frame is the
+      // one place it stretches *before* anything happens.
+      const sq = squash + antic * 0.20 + RL.scale;
+      model.root.scale.set(1 - sq * 0.22, 1 - sq * 0.26, 1 + sq * 0.50);
       if (model.forend) {
-        const forendBaseZ = currentId === 'pipePopper' ? -0.44 : currentId === 'sprayTorch' ? -0.28 : -0.52;
-        model.forend.position.z = forendBaseZ + forendZ + recoil * 0.5;
+        if (model.forendZ0 === undefined) model.forendZ0 = model.forend.position.z;
+        model.forend.position.z = model.forendZ0 + RL.forend + recoil * 0.42;
       }
-      armedHands.position.set(swayX * 0.35 - swing * 0.12, swayY * 0.35 + by * 0.4 + swing * 0.06, -swing * 0.1);
-      armedHands.rotation.z = swayY * 0.25 + swing * 0.28 * meleeSide;
+      /* The one moving part each weapon has of its own -- the revolver's
+         cylinder, the carbine's magazine, the sniper's bolt, the Seed
+         Spitter's sunflower drum. RL.part is that part's own 0..1 driver
+         out of the reload choreography; RL.part2 is its second channel
+         (the mag slap, the drum spin-up). Without these the long reloads
+         are a gun tilting and waiting, which is what they used to be. */
+      if (model.part && model.movers) {
+        const m0 = model.movers[0];
+        const p = model.part, rp = RL.part, rp2 = RL.part2;
+        switch (model.partKind) {
+          case 'wheel':
+            // Cylinder swings out to the left and rolls as it goes.
+            p.position.set(m0.p[0] - rp * 0.105, m0.p[1] - rp * 0.012, m0.p[2] + rp * 0.015);
+            p.rotation.set(m0.r[0], m0.r[1] - rp * 1.25, m0.r[2] + rp * 2.9);
+            break;
+          case 'mag':
+            // Drops out of the well, then a fresh one is rammed home.
+            p.position.set(m0.p[0], m0.p[1] - rp * 0.42, m0.p[2] + rp * 0.05);
+            p.rotation.set(m0.r[0] + rp * 0.55, m0.r[1], m0.r[2] - rp * 0.3);
+            p.scale.set(1, 1 + rp2 * 0.10, 1);
+            break;
+          case 'drum':
+            p.position.set(m0.p[0], m0.p[1] - rp * 0.34, m0.p[2] + rp * 0.06);
+            p.rotation.set(m0.r[0], m0.r[1] + rp2, m0.r[2] + rp * 0.7);
+            break;
+          case 'bolt':
+            // Thrown straight back, held, then slammed forward. The tiny
+            // lift on the way out is the handle rotating up off its notch.
+            p.position.set(m0.p[0], m0.p[1] + rp * 0.022, m0.p[2] + rp * 0.19);
+            p.rotation.set(m0.r[0], m0.r[1], m0.r[2] - rp * 1.15);
+            break;
+          default:
+            p.position.set(m0.p[0], m0.p[1], m0.p[2] + rp * 0.1);
+            break;
+        }
+      }
+      /* The arms follow the gun rather than being keyed to it: a lagging
+         translation plus a little roll, so the wrists trail the barrel and
+         catch up. Rotations here pivot about the camera, so they stay
+         small -- a big one swings a glove straight through the lens. */
+      armedHands.position.set(
+        (swayX + inX) * 0.32 * steady + sprintK * 0.06 - swing * 0.12 + swapE * 0.10,
+        (swayY + inY) * 0.32 * steady + by * 0.45 - sprintK * 0.11 + swing * 0.06
+          - drawOff * 0.52 - swapE * 0.80,
+        recoil * 0.26 - swing * 0.10 - drawOff * 0.05
+      );
+      armedHands.rotation.set(
+        rise * 0.30 + jolt * 0.20,
+        side * 0.35,
+        (swayY + inY) * 0.22 * steady + swing * 0.28 * meleeSide + roll * 0.55
+          + sprintK * 0.30 + iroll * 0.5
+      );
       // Scrap Railgun's magnifying-glass lens builds a glow as the charge
       // fills, so the shot always telegraphs itself before it goes off.
       if (model.chargeGlow) {
         const k = charging ? UTIL.clamp(chargeTimer / d.chargeTime, 0, 1) : 0;
-        model.chargeGlow.scale.setScalar(1 + k * 0.9);
+        // The whole gun winds up with the charge -- pulled back and
+        // shivering -- so the release has something to release from.
+        model.chargeGlow.scale.setScalar(1 + k * 0.9 + Math.sin(time * 40) * k * 0.12);
+        if (k > 0) {
+          model.root.position.z += k * 0.05;
+          model.root.rotation.x += Math.sin(time * 46) * k * 0.012;
+          model.root.rotation.z += Math.sin(time * 37 + 1) * k * 0.016;
+        }
       }
       // Spray Torch: the left hand's lighter closes in on the can's nozzle
       // the instant the player is spraying OR just aiming (readying it
@@ -13556,32 +14093,50 @@ const WEAPON = (() => {
       // usual camera-relative offset would balloon to fill much of the
       // frame -- simplest fix is to duck it out of view while actually
       // scoped, same as any other real scope hiding the gun behind glass.
-      // The crosshair (already visible) stands in as the reticle.
-      if (currentId === 'glizzyGat') model.root.visible = !PLAYER.aiming;
+      // The crosshair (already visible) stands in as the reticle. It now
+      // rides the ADS spring rather than PLAYER.aiming directly, so the
+      // rifle is *lifted* toward the scope line for a few frames before it
+      // ducks out -- same end state, no pop.
+      if (currentId === 'glizzyGat') model.root.visible = !swapOutId && adsK < 0.62;
     } else {
       const base = model.base || [0, 0, 0];
       const rot = model.rot || [0, 0, 0];
       model.root.position.set(
-        base[0] + swayX * 0.4 + bx - swing * 0.16,
-        base[1] + swayY * 0.4 + by + swing * 0.08,
-        base[2] - swing * 0.18
+        base[0] + (swayX + inX) * 0.55 + bx + ix * 0.8 - leadX * 0.05
+          + sprintK * 0.11 - swing * 0.16 + swapE * 0.15,
+        base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.14
+          + swing * 0.08 - drawOff * 0.62,
+        base[2] + leadZ * 0.045 + sprintK * 0.09 - swing * 0.18 + drawOff * 0.2
       );
       model.root.rotation.set(
-        rot[0] - swing * 0.15,
-        rot[1] + swing * 0.12 * meleeSide,
-        rot[2] + swing * 0.08 * meleeSide
+        rot[0] - swing * 0.15 + iy * 0.5 + sprintK * 0.45 + drawOff * -1.1 + jolt * 0.5,
+        rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 - sprintK * 0.5 + drawOff * 0.55,
+        rot[2] + swing * 0.08 * meleeSide + iroll + broll + sprintK * 0.4 + drawOff * -0.6
       );
+      const msq = squash + RL.scale;
+      model.root.scale.set(1 - msq * 0.18, 1 - msq * 0.2, 1 + msq * 0.34);
       // Unarmed fists keep their old individual punch animation. Special
       // melee models (currently the chainsaw) swing as one complete weapon.
       if (currentId === 'unarmed') {
-        fistLeft.position.z = -0.47 - (meleeSide < 0 ? swing * 0.54 : 0);
-        fistRight.position.z = -0.52 - (meleeSide > 0 ? swing * 0.54 : 0);
-        fistLeft.position.y = -0.27 + (meleeSide < 0 ? swing * 0.1 : 0);
-        fistRight.position.y = -0.3 + (meleeSide > 0 ? swing * 0.1 : 0);
+        // Overlapping action: the idle hand drifts on its own slower
+        // rhythm than the punching one, so the pair never look pinned.
+        const drift = Math.sin(time * 1.4) * 0.012 * idle;
+        fistLeft.position.z = -0.47 - (meleeSide < 0 ? swing * 0.62 : 0) + drift;
+        fistRight.position.z = -0.52 - (meleeSide > 0 ? swing * 0.62 : 0) - drift;
+        fistLeft.position.y = -0.27 + (meleeSide < 0 ? swing * 0.13 : 0) - drift * 0.6;
+        fistRight.position.y = -0.3 + (meleeSide > 0 ? swing * 0.13 : 0) + drift * 0.6;
+        // Squash the fist that is actually travelling.
+        const ls = meleeSide < 0 ? 1 + swing * 0.30 : 1;
+        const rs = meleeSide > 0 ? 1 + swing * 0.30 : 1;
+        fistLeft.scale.set(1.18 / (ls * 0.75 + 0.25), 1.18 / (ls * 0.75 + 0.25), 1.18 * ls);
+        fistRight.scale.set(1.18 / (rs * 0.75 + 0.25), 1.18 / (rs * 0.75 + 0.25), 1.18 * rs);
       }
     }
 
-    rig.position.set(0, 0, 0);
+    // The whole rig takes the landing shove and the 12fps boil, so the
+    // weapon, the hands and the boots all move as one drawn object.
+    rig.position.set(boilX * 0.0032, jolt * 0.10 + boilY * 0.0032, 0);
+    rig.rotation.set(jolt * 0.30, 0, boilR * 0.0048);
     const bootRevealRaw = UTIL.clamp((-PLAYER.pitch - 1.12) / Math.max(0.01, CONFIG.player.pitchLimit - 1.12), 0, 1);
     const bootReveal = bootRevealRaw * bootRevealRaw * (3 - 2 * bootRevealRaw);
     boots.visible = bootReveal > 0.015;
@@ -13591,25 +14146,52 @@ const WEAPON = (() => {
     boots.children[0].position.z = Math.sin(bobPhase) * 0.07;
     boots.children[1].position.z = -Math.sin(bobPhase) * 0.07;
 
+    /* Muzzle flash as three drawn frames rather than a strobe: an ignition
+       pop, one big ragged burst, then a thin remnant, each held for a
+       couple of rendered frames. Both stars counter-rotate between frames
+       so the shape changes instead of just scaling. */
     if (flashTimer > 0) {
       flashTimer -= dt;
-      const on = Math.floor(flashTimer * CONFIG.fx.weaponStepFPS * 3) % 2 === 0;
-      if (model.flash) {
-        model.flash.visible = on;
-        model.flash2.visible = on;
+      if (model.flash && model.flash2) {
+        const fk = UTIL.clamp(1 - flashTimer / flashLen, 0, 1);
+        const fi = Math.min(2, Math.floor(fk * 3));
+        const g = flashGain * f.flash;
+        const b1 = model.flash.userData.baseScale || 1;
+        const b2 = model.flash2.userData.baseScale || 1;
+        const s1 = [0.40, 0.84, 0.44][fi] * g * b1;
+        const s2 = [0.78, 0.52, 0.98][fi] * g * b2;
+        model.flash.visible = fi !== 2;
+        model.flash2.visible = true;
+        // Squashed across the bore on the big frame -- a burst, not a disc.
+        model.flash.scale.set(s1 * 1.18, s1 * 0.86, s1);
+        model.flash2.scale.set(s2 * 0.9, s2 * 1.15, s2);
+        model.flash.rotation.z = flashSpin + fi * 0.85;
+        model.flash2.rotation.z = flashSpin2 - fi * 1.25;
       }
-      if (flashTimer <= 0) setMuzzleVisible(false);
+      if (flashTimer <= 0) { flashTimer = 0; setMuzzleVisible(false); }
     }
 
+    /* Spent brass: squashed coming out of the port, springing round in
+       flight, thinning to nothing as it leaves frame. */
     for (let i = 0; i < casings.length; i++) {
       const s = casings[i];
       if (s.life <= 0) continue;
       s.life -= dt;
       if (s.life <= 0) { s.mesh.visible = false; continue; }
-      s.vel.y -= 4.2 * dt;
+      const ck = UTIL.clamp(1 - s.life / s.len, 0, 1);
+      s.vel.y -= 8.2 * dt;
+      s.vel.multiplyScalar(1 - Math.min(0.55, 1.5 * dt));
       s.mesh.position.addScaledVector(s.vel, dt);
       s.mesh.rotation.x += s.spin.x * dt;
+      s.mesh.rotation.y += s.spin.y * dt;
       s.mesh.rotation.z += s.spin.z * dt;
+      const round = Math.min(1, ck * 4.5);
+      const fade = Math.max(0.02, s.base * (1 - Math.max(0, ck - 0.72) * 3.4));
+      s.mesh.scale.set(
+        fade * UTIL.lerp(0.55, 1, round),
+        fade * UTIL.lerp(1.7, 1, round),
+        fade * UTIL.lerp(0.55, 1, round)
+      );
     }
 
     updateLaserSight(camera, active);
@@ -13635,18 +14217,35 @@ const WEAPON = (() => {
   function addLook(dx, dy) {
     tSwayX = UTIL.clamp(tSwayX - dx * 0.00016, -VIEW.swayAmount, VIEW.swayAmount);
     tSwayY = UTIL.clamp(tSwayY + dy * 0.00016, -VIEW.swayAmount, VIEW.swayAmount);
+    // A springy second channel: a fast flick throws the weapon out and it
+    // swings back through centre, rather than easing politely into place.
+    inVX -= dx * 0.0011;
+    inVY += dy * 0.0011;
   }
 
   function reset() {
     initInventory();
     fireTimer = reloadTimer = meleeTimer = recoil = recoilVel = squash = squashVel = 0;
+    rise = riseVel = side = sideVel = roll = rollVel = 0;
+    inX = inVX = inY = inVY = jolt = joltVel = 0;
+    lagStrafe = lagFwd = 0;
+    adsK = adsVel = sprintK = 0;
+    anticTimer = 0;
+    swapTimer = 0;
+    pendingDraw = false;
     reloading = false;
     charging = false;
     chargeTimer = 0;
     flameTickTimer = 0;
     flameDry = false;
     if (typeof FX !== 'undefined' && FX.clearSprayTags) FX.clearSprayTags();
+    if (swapOutId && models[swapOutId]) models[swapOutId].root.visible = false;
+    swapOutId = null;
     setCurrent('pipePopper', true, true);
+    // A respawn is not a weapon swap -- come up already holding it.
+    swapOutId = null;
+    drawTimer = 0;
+    if (models[currentId]) models[currentId].root.visible = true;
   }
 
   return {
