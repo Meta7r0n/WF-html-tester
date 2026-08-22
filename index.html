@@ -1040,25 +1040,16 @@
     transform:scale(.9) rotate(.8deg);transform-origin:right top;
   }
   body.touch-device #ammo.on{transform:scale(.9) rotate(.8deg);}
-  body.touch-device #throwableHud{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(92px,calc(env(safe-area-inset-top) + 80px));bottom:auto;
-    transform:scale(.9) rotate(1deg);transform-origin:right top;
-  }
-  body.touch-device #throwableHud.on{transform:scale(.9) rotate(1deg);}
-  body.touch-device #jaysHud{
-    position:fixed;right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(114px,calc(env(safe-area-inset-top) + 102px));
-    margin-bottom:0;transform:scale(.9) rotate(1deg);transform-origin:right top;
-  }
-  body.touch-device #jaysHud.on{transform:scale(.9) rotate(1deg);}
+  /* The throwable and Jays counts are rows on the arms/vitals cards now, so
+     the three fixed-position rules that used to place them separately on
+     touch are gone with them. */
   body.touch-device #downedHud{bottom:29%;font-size:12px;}
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
-  body.touch-device .boss-bill{width:min(60vw,250px);transform-origin:top center;}
-  body.touch-device #bossHud {top:max(12px,env(safe-area-inset-top));}
-  body.touch-device #boss2Hud{top:max(56px,calc(env(safe-area-inset-top) + 44px));}
-  body.touch-device #boss3Hud{top:max(100px,calc(env(safe-area-inset-top) + 88px));}
-  body.touch-device #bossHud.on {transform:translateX(-50%) scale(.88) rotate(.7deg);}
-  body.touch-device #boss2Hud.on{transform:translateX(-50%) scale(.88) rotate(-.6deg);}
-  body.touch-device #boss3Hud.on{transform:translateX(-50%) scale(.88) rotate(.5deg);}
+  body.touch-device .boss-bill{transform-origin:top center;}
+  body.touch-device #bossStack{
+    top:max(12px,env(safe-area-inset-top));width:min(60vw,250px);
+    transform:translateX(-50%) scale(.88);transform-origin:top center;
+  }
   body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.86) rotate(.8deg);transform-origin:top right}
   /* No Tab key on a phone: the board only ever peeks, so it can sit in the
      middle-left dead zone where nothing else lives. */
