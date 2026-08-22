@@ -25016,6 +25016,17 @@ const ENEMY = (() => {
     r.torso.scale.y *= 1 - wave * 0.62;
     r.torso.scale.z *= 1 + wave * 0.30;
 
+    /* The neutral pose, snapshotted before any state branch overwrites it.
+       An attack used to end on the last frame of its own follow-through and
+       sit there for the rest of the recovery — eight dead drawings with the
+       arm still stuck out where the blow left it. A cartoon recovery drifts
+       back to guard; `_n*` is what it drifts back TO. */
+    const nArmLX = r.armL.rotation.x, nArmRX = r.armR.rotation.x;
+    const nArmLZ = r.armL.rotation.z, nArmRZ = r.armR.rotation.z;
+    const nTorX = r.torso.rotation.x, nTorY = r.torso.rotation.y;
+    const nHeadX = r.head.rotation.x, nHeadY = r.head.rotation.y;
+    const nLegLX = r.legL.rotation.x, nLegRX = r.legR.rotation.x;
+
     if (e.state === 'alert') {
       /* Double-take: a fast recoil up onto the toes (stretch), then a
          settle. The `!` mark pops with a back-ease overshoot. */
@@ -25077,10 +25088,13 @@ const ENEMY = (() => {
         // squat into the wind-up: squash down and widen
         const cs = 1 - coil * 0.16;
         e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
-        // Shallower than it looks it should be: the knee fold below already
-        // drops the hips, and the two together used to bury the shorts in
-        // the shoes.
-        r.bob.position.y = bounce + breath - coil * 0.035;
+        /* Shallower than it looks it should be: the knee fold below already
+           drops the hips, and the two together used to bury the shorts in
+           the shoes. The early dip is separate and is doing different work
+           — it is the weight settling before the gather, so the first two
+           or three drawings of the wind-up have something in them. */
+        const dip = Math.sin(UTIL.clamp(a / 0.32, 0, 1) * Math.PI) * 0.026;
+        r.bob.position.y = bounce + breath - coil * 0.035 - dip;
         /* A swing is thrown from the ground up. The back leg loads, the
            front knee opens to take the weight, and the striking elbow folds
            right up so the arm is *short* at the top of the gather — which
@@ -25122,6 +25136,25 @@ const ENEMY = (() => {
         }
         if (r.footL) r.footL.rotation.x = -0.28 + strike * 0.5;
         if (r.footR) r.footR.rotation.x = 0.16 - strike * 0.38;
+        /* Drift back to guard over the tail of the recovery. Held poses are
+           the style, but a hold is a *pose* — the follow-through frozen
+           mid-air is just the animation having stopped. Kept short of 1 so
+           the character is still visibly returning when the next state
+           takes over, rather than arriving early and waiting. */
+        const back = E.outCubic(UTIL.clamp((a - 0.42) / 0.58, 0, 1)) * 0.88;
+        if (back > 0) {
+          r.armR.rotation.x += (nArmRX - r.armR.rotation.x) * back;
+          r.armR.rotation.z += (nArmRZ - r.armR.rotation.z) * back;
+          r.armL.rotation.x += (nArmLX - r.armL.rotation.x) * back;
+          r.armL.rotation.z += (nArmLZ - r.armL.rotation.z) * back;
+          r.torso.rotation.x += (nTorX - r.torso.rotation.x) * back;
+          r.torso.rotation.y += (nTorY - r.torso.rotation.y) * back;
+          r.head.rotation.x += (nHeadX - r.head.rotation.x) * back;
+          r.head.rotation.y += (nHeadY - r.head.rotation.y) * back;
+          r.legL.rotation.x += (nLegLX - r.legL.rotation.x) * back;
+          r.legR.rotation.x += (nLegRX - r.legR.rotation.x) * back;
+          if (bend) for (let i = 0; i < 8; i++) bend[i] *= 1 - back;
+        }
       }
     } else if (e.state === 'shine') {
       // Hold the flashlight out front — but a hand-held light never sits
