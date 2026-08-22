@@ -12813,7 +12813,20 @@ const PLAYER = (() => {
     get aiming() { return aiming; },
     get layerId() { return layerId; },
     get pitch() { return pitch; },
-    get yaw() { return yaw; }
+    get yaw() { return yaw; },
+
+    /* Aim the camera from code. yaw and pitch are otherwise written only by
+       the mouse-look block above, and are exposed as getters -- so `PLAYER.yaw
+       = x` from outside is a silent no-op in sloppy mode, which is exactly
+       what it had been doing in the dev console and in every screenshot
+       harness we have. Frames we believed were framed on the north barn or
+       the windmill were pointing wherever the player happened to be facing.
+       Pitch is clamped on the same limit the mouse path uses, so a scripted
+       look can never reach a pose the player could not. */
+    setLook(y, p) {
+      if (Number.isFinite(y)) yaw = y;
+      if (Number.isFinite(p)) pitch = UTIL.clamp(p, -C.pitchLimit, C.pitchLimit);
+    }
   };
 })();
 
@@ -27241,14 +27254,21 @@ const DEVCONSOLE = (() => {
   function cmdTp(args) {
     const x = parseFloat(args[0]), z = parseFloat(args[1]);
     if (!Number.isFinite(x) || !Number.isFinite(z)) {
-      log('Usage: tp <x> <z> -- current position: ' +
-        PLAYER.position.x.toFixed(1) + ', ' + PLAYER.position.z.toFixed(1), 'err');
+      log('Usage: tp <x> <z> [yaw] [pitch] -- current position: ' +
+        PLAYER.position.x.toFixed(1) + ', ' + PLAYER.position.z.toFixed(1) +
+        '  facing: ' + PLAYER.yaw.toFixed(2) + ', ' + PLAYER.pitch.toFixed(2), 'err');
       return;
     }
     const y = WORLD.groundAt(x, z, PLAYER.position.y + 0.8, PLAYER.layerId);
     PLAYER.position.set(x, y, z);
     PLAYER.velocity.set(0, 0, 0);
-    log('Teleported to ' + x.toFixed(1) + ', ' + z.toFixed(1), 'ok');
+    // Optional facing. Arriving somewhere while still pointed the way you
+    // happened to be walking makes tp awkward for checking a specific view.
+    const yaw = parseFloat(args[2]), pitch = parseFloat(args[3]);
+    if (Number.isFinite(yaw) || Number.isFinite(pitch)) PLAYER.setLook(yaw, pitch);
+    log('Teleported to ' + x.toFixed(1) + ', ' + z.toFixed(1) +
+        (Number.isFinite(yaw) || Number.isFinite(pitch)
+          ? ' facing ' + PLAYER.yaw.toFixed(2) + ', ' + PLAYER.pitch.toFixed(2) : ''), 'ok');
   }
 
   // Grants the barn key + all 3 crafting components -- the actual grind
