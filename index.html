@@ -2831,8 +2831,25 @@ const CONFIG = {
     rallyHornHeal: 30, rallyHornShield: 20, rallyHornRadius: 12
   },
   fx: {
-    maxDecals: 34, maxParticles: 190, maxTracers: 14,
+    maxDecals: 34, maxParticles: 240, maxTracers: 14,
     boilFPS: 12, weaponStepFPS: 15,
+    /* Rubberhose cartoons are animated on 2s and 3s -- roughly 12 drawings a
+       second -- and the single loudest tell that an effect was generated
+       rather than drawn is that it interpolates smoothly at 60fps. Every FX
+       sprite therefore holds its pose between ticks of this clock: physics
+       still integrates every frame, but position, scale, rotation and
+       opacity are only *committed* on an fxStepFPS boundary. The camera and
+       the world stay smooth; only the drawn layer steps. Same idea as the
+       existing 12fps prop `boil` above and the 24Hz film grain shuffle. */
+    fxStepFPS: 12,
+    // Number of expanding ink rings in the pool (impacts + explosions).
+    maxRings: 14,
+    /* Effect density per render tier -- FX are the easiest thing to walk
+       back on a software rasteriser, so every burst multiplies its particle
+       counts by this. Read through RENDERCORE.quality at spawn time. */
+    detailByQuality: { high: 1, medium: 0.7, low: 0.42 },
+    // Smoke/spark trail cadence on thrown and launched objects, in seconds.
+    trailInterval: 0.055,
     boilAmount: 0.014,
     // Scrap Railgun's cosmetic flying junk (trophy/hot dog/rubber chicken).
     maxJunkProjectiles: 6, junkFlightTime: 0.22,
@@ -3151,26 +3168,68 @@ const TEX = (() => {
     return t;
   }
 
-  // ink splat used for bullet decals
+  /* ------------------------------------------------------- FX ink shapes
+     Everything below is drawn the way an inker would draw it: a closed
+     shape filled flat, then re-stroked with a heavy black contour, with a
+     deliberate wobble in the radii so no edge is machine-perfect. The
+     silhouette is what reads at speed, so every FX sprite gets a real
+     outline and a real hole/negative space rather than a soft gradient.
+     All of these are cached forever -- nothing here runs in a hot path. */
+
+  // A closed hand-wobbled polar shape. `fn(i, t)` returns the radius.
+  function inkShape(x, n, fn) {
+    x.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const t = i / n, a = t * Math.PI * 2 - Math.PI / 2;
+      const r = fn(i, t);
+      const px = Math.cos(a) * r, py = Math.sin(a) * r;
+      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+    }
+    x.closePath();
+  }
+  // Fill flat, then lay the contour on top at `lw` px.
+  function inkFill(x, fill, lw, alpha) {
+    x.fillStyle = fill;
+    x.fill();
+    x.strokeStyle = 'rgba(18,15,13,' + (alpha === undefined ? 0.96 : alpha) + ')';
+    x.lineWidth = lw; x.lineJoin = 'round'; x.lineCap = 'round';
+    x.stroke();
+  }
+
+  // ink splat used for bullet decals -- a torn blot with cast-off ticks,
+  // not a circle. Reads as ink hitting a surface and skidding.
   function splat() {
     if (cache.splat) return cache.splat;
     const w = 128, c = cv(w, w), x = c.getContext('2d');
     x.clearRect(0, 0, w, w);
-    x.fillStyle = 'rgba(20,16,13,.92)';
-    x.beginPath();
-    const cx = w / 2, cy = w / 2, pts = 13;
-    for (let i = 0; i <= pts; i++) {
-      const a = i / pts * Math.PI * 2;
-      const r = w * (0.20 + (i % 2 ? 0.055 : 0.085) * Math.sin(i * 3.1) + UTIL.rng(0, .05));
-      const px = cx + Math.cos(a) * r, py = cy + Math.sin(a) * r;
-      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
-    }
-    x.closePath(); x.fill();
-    // satellite dots
-    for (let i = 0; i < 7; i++) {
-      x.globalAlpha = UTIL.rng(.4, .85);
+    x.translate(w / 2, w / 2);
+    x.fillStyle = 'rgba(20,16,13,.94)';
+    // Torn main blot: alternating long/short lobes with a random bias so one
+    // side always runs heavier than the other, like a real spatter.
+    const bias = UTIL.rng(0, 6.28);
+    inkShape(x, 22, (i) => {
+      const a = i / 22 * Math.PI * 2;
+      const lobe = 0.055 * Math.sin(i * 2.6) + 0.035 * Math.sin(i * 5.1 + 1.3);
+      const lean = 0.03 * Math.cos(a - bias);
+      return w * (0.185 + lobe + lean + UTIL.rng(0, 0.035));
+    });
+    x.fill();
+    // radiating cast-off ticks -- tapered, drawn from the rim outward
+    for (let i = 0; i < 9; i++) {
+      const a = UTIL.rng(0, 6.28), r0 = w * 0.19, len = UTIL.rng(w * 0.05, w * 0.22);
+      x.lineWidth = UTIL.rng(1.6, 4.4); x.lineCap = 'round';
+      x.strokeStyle = 'rgba(20,16,13,' + UTIL.rng(0.45, 0.9) + ')';
       x.beginPath();
-      x.arc(cx + UTIL.rng(-52, 52), cy + UTIL.rng(-52, 52), UTIL.rng(1.5, 5.5), 0, 6.3);
+      x.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      x.lineTo(Math.cos(a) * (r0 + len) + UTIL.rng(-3, 3), Math.sin(a) * (r0 + len) + UTIL.rng(-3, 3));
+      x.stroke();
+    }
+    // satellite droplets
+    for (let i = 0; i < 8; i++) {
+      x.globalAlpha = UTIL.rng(.4, .85);
+      const a = UTIL.rng(0, 6.28), r = UTIL.rng(w * 0.22, w * 0.45);
+      x.beginPath();
+      x.ellipse(Math.cos(a) * r, Math.sin(a) * r, UTIL.rng(1.4, 5), UTIL.rng(1.4, 4), a, 0, 6.3);
       x.fill();
     }
     x.globalAlpha = 1;
@@ -3178,42 +3237,284 @@ const TEX = (() => {
     return cache.splat;
   }
 
-  // little four-point cartoon star (particles + muzzle sparks)
+  // Drawn ink star -- uneven points, heavy contour, a little highlight
+  // notch. Used for sparks, dust kicks and death stars.
   function star(color) {
     const key = 'star' + color;
     if (cache[key]) return cache[key];
     const w = 96, c = cv(w, w), x = c.getContext('2d');
     x.translate(w / 2, w / 2);
-    x.fillStyle = hex(color);
-    x.strokeStyle = 'rgba(18,15,13,.95)'; x.lineWidth = 5; x.lineJoin = 'round';
-    x.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = i / 8 * Math.PI * 2 - Math.PI / 2;
-      const r = i % 2 ? w * 0.13 : w * 0.44;
-      const px = Math.cos(a) * r, py = Math.sin(a) * r;
-      if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
-    }
-    x.closePath(); x.fill(); x.stroke();
+    const pts = 5 + Math.floor(UTIL.rng(0, 2.99));
+    inkShape(x, pts * 2, (i) => {
+      const out = i % 2 === 0;
+      return w * (out ? UTIL.rng(0.36, 0.44) : UTIL.rng(0.11, 0.17));
+    });
+    inkFill(x, hex(color), 5.5);
     cache[key] = new THREE.CanvasTexture(c);
     return cache[key];
   }
 
-  // soft puff / smoke blob
+  // Cartoon smoke/dust puff: overlapping lobes, one outline around the
+  // whole silhouette (drawn by stroking each lobe, then knocking the
+  // interior lines back out with a second fill pass).
   function puff(color) {
     const key = 'puff' + color;
     if (cache[key]) return cache[key];
-    const w = 96, c = cv(w, w), x = c.getContext('2d');
+    const w = 128, c = cv(w, w), x = c.getContext('2d');
     x.translate(w / 2, w / 2);
-    x.fillStyle = hex(color);
-    x.strokeStyle = 'rgba(18,15,13,.9)'; x.lineWidth = 4;
-    const lobes = 6;
-    x.beginPath();
+    const lobes = 7, R = w * 0.17;
+    const rr = [];
+    for (let i = 0; i < lobes; i++) rr.push(w * UTIL.rng(0.13, 0.19));
+    // pass 1: stroke every lobe so the union picks up a contour
+    x.strokeStyle = 'rgba(18,15,13,.96)'; x.lineWidth = 6; x.lineJoin = 'round';
     for (let i = 0; i < lobes; i++) {
-      const a = i / lobes * Math.PI * 2;
-      x.moveTo(Math.cos(a) * 16, Math.sin(a) * 16);
-      x.arc(Math.cos(a) * 16, Math.sin(a) * 16, 17 + (i % 2) * 3, 0, 6.3);
+      const a = i / lobes * Math.PI * 2 + 0.2;
+      x.beginPath();
+      x.arc(Math.cos(a) * R, Math.sin(a) * R, rr[i], 0, 6.3);
+      x.stroke();
     }
-    x.fill(); x.stroke();
+    x.beginPath();
+    x.arc(0, 0, w * 0.15, 0, 6.3);
+    x.stroke();
+    // pass 2: fill the union, which erases the interior strokes and leaves
+    // only the outer contour standing
+    x.fillStyle = hex(color);
+    for (let i = 0; i < lobes; i++) {
+      const a = i / lobes * Math.PI * 2 + 0.2;
+      x.beginPath();
+      x.arc(Math.cos(a) * R, Math.sin(a) * R, rr[i] - 1.5, 0, 6.3);
+      x.fill();
+    }
+    x.beginPath(); x.arc(0, 0, w * 0.15, 0, 6.3); x.fill();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Jagged comic impact burst -- the "POW" shape. Long uneven spikes with a
+     heavy contour and an inner shape in a second colour so it still reads
+     when it is only on screen for two frames. */
+  function bang(color, inner) {
+    const key = 'bang' + color + '_' + inner;
+    if (cache[key]) return cache[key];
+    const w = 192, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    const n = 11;
+    const spikes = [];
+    for (let i = 0; i < n; i++) spikes.push(UTIL.rng(0.34, 0.47));
+    inkShape(x, n * 2, (i) => {
+      const out = i % 2 === 0;
+      return w * (out ? spikes[(i / 2) % n] : UTIL.rng(0.14, 0.21));
+    });
+    inkFill(x, hex(color), 7);
+    // inner burst, rotated off the outer one so the two silhouettes read apart
+    x.save();
+    x.rotate(Math.PI / n);
+    inkShape(x, n * 2, (i) => w * (i % 2 === 0 ? UTIL.rng(0.19, 0.27) : UTIL.rng(0.07, 0.11)));
+    inkFill(x, hex(inner === undefined ? PAL.cream : inner), 4.5, 0.8);
+    x.restore();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Radiating speed lines -- the single most "drawn" piece of punctuation
+     in the whole kit. Tapered ink strokes fired outward from a hole in the
+     middle, uneven in length and weight so it looks inked, not generated. */
+  function lines(color) {
+    const key = 'lines' + color;
+    if (cache[key]) return cache[key];
+    const w = 192, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    x.lineCap = 'butt'; x.lineJoin = 'round';
+    const n = 11;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + UTIL.rng(-0.09, 0.09);
+      const r0 = w * UTIL.rng(0.13, 0.20);
+      const r1 = w * UTIL.rng(0.42, 0.50);
+      const half = UTIL.rng(0.035, 0.075);
+      // A tapered wedge: wide at the outer end, pinched to nothing inboard.
+      x.beginPath();
+      x.moveTo(Math.cos(a) * r0, Math.sin(a) * r0);
+      x.lineTo(Math.cos(a + half) * r1, Math.sin(a + half) * r1);
+      x.lineTo(Math.cos(a - half) * r1, Math.sin(a - half) * r1);
+      x.closePath();
+      x.fillStyle = i % 4 === 0 ? hex(color) : 'rgba(18,15,13,.94)';
+      x.fill();
+      // a second, shorter tick between the long ones -- uneven rhythm is
+      // what stops a fan of lines from reading as a machine-made starburst
+      if (i % 2 === 0) {
+        const b = a + Math.PI / n;
+        const q0 = w * 0.20, q1 = w * UTIL.rng(0.28, 0.36), qh = UTIL.rng(0.018, 0.034);
+        x.beginPath();
+        x.moveTo(Math.cos(b) * q0, Math.sin(b) * q0);
+        x.lineTo(Math.cos(b + qh) * q1, Math.sin(b + qh) * q1);
+        x.lineTo(Math.cos(b - qh) * q1, Math.sin(b - qh) * q1);
+        x.closePath();
+        x.fillStyle = 'rgba(18,15,13,.85)';
+        x.fill();
+      }
+    }
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Expanding shock ring, drawn as an ink annulus with a wobbling weight
+     rather than a 3D torus -- a torus reads as a hula hoop lying in the
+     scene, this reads as a line an animator drew on the cel. */
+  function ring(color) {
+    const key = 'ring' + color;
+    if (cache[key]) return cache[key];
+    const w = 160, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    // outer contour
+    inkShape(x, 26, (i) => w * (0.42 + 0.018 * Math.sin(i * 1.7) + UTIL.rng(0, 0.012)));
+    x.fillStyle = 'rgba(18,15,13,.95)';
+    x.fill();
+    // colour band inside the contour
+    inkShape(x, 26, (i) => w * (0.385 + 0.016 * Math.sin(i * 1.7 + 0.4)));
+    x.fillStyle = hex(color);
+    x.fill();
+    // punch the hole
+    x.globalCompositeOperation = 'destination-out';
+    inkShape(x, 26, (i) => w * (0.315 + 0.020 * Math.sin(i * 2.1 + 2.2)));
+    x.fillStyle = '#000'; x.fill();
+    x.globalCompositeOperation = 'source-over';
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Angular debris splinter. Flat fill, heavy contour, one interior line so
+     it does not read as a blob when it tumbles. */
+  function chunk(color) {
+    const key = 'chunk' + color;
+    if (cache[key]) return cache[key];
+    const w = 64, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    inkShape(x, 6, () => w * UTIL.rng(0.20, 0.40));
+    inkFill(x, hex(color), 6);
+    x.strokeStyle = 'rgba(18,15,13,.55)'; x.lineWidth = 2.5;
+    x.beginPath(); x.moveTo(-w * 0.10, -w * 0.06); x.lineTo(w * 0.12, w * 0.09); x.stroke();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Curling smoke wisp -- a comma that tapers into a hooked tail. This is
+     what makes muzzle smoke read as drawn rather than as a fading blob. */
+  function curl(color) {
+    const key = 'curl' + color;
+    if (cache[key]) return cache[key];
+    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    x.beginPath();
+    // head
+    x.arc(-w * 0.10, w * 0.06, w * 0.20, 0.5, 5.4);
+    // tail hooking up and over
+    x.quadraticCurveTo(w * 0.30, w * 0.02, w * 0.30, -w * 0.20);
+    x.quadraticCurveTo(w * 0.29, -w * 0.36, w * 0.10, -w * 0.33);
+    x.quadraticCurveTo(w * 0.20, -w * 0.22, w * 0.14, -w * 0.13);
+    x.quadraticCurveTo(w * 0.04, -w * 0.06, -w * 0.02, -w * 0.12);
+    x.closePath();
+    inkFill(x, hex(color), 5.5);
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Big silhouette-forward blast cloud: a stack of cumulus lobes with one
+     heavy black contour around the whole mass. Explosions are built out of
+     three of these at different sizes so the shape stays readable as a
+     black-edged mushroom instead of a fog of sprites. */
+  function cloud(color) {
+    const key = 'cloud' + color;
+    if (cache[key]) return cache[key];
+    const w = 256, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    const lobes = [];
+    const n = 9;
+    for (let i = 0; i < n; i++) {
+      const a = i / n * Math.PI * 2 + UTIL.rng(-0.12, 0.12);
+      const d = w * UTIL.rng(0.17, 0.25);
+      lobes.push([Math.cos(a) * d, Math.sin(a) * d * 0.86, w * UTIL.rng(0.12, 0.19)]);
+    }
+    lobes.push([0, 0, w * 0.21]);
+    lobes.push([w * 0.06, -w * 0.07, w * 0.18]);
+    x.strokeStyle = 'rgba(18,15,13,.97)'; x.lineWidth = 9; x.lineJoin = 'round';
+    lobes.forEach(l => { x.beginPath(); x.arc(l[0], l[1], l[2], 0, 6.3); x.stroke(); });
+    x.fillStyle = hex(color);
+    lobes.forEach(l => { x.beginPath(); x.arc(l[0], l[1], l[2] - 2, 0, 6.3); x.fill(); });
+    // a couple of interior contour ticks so the mass has some drawn volume
+    x.strokeStyle = 'rgba(18,15,13,.42)'; x.lineWidth = 4;
+    for (let i = 0; i < 4; i++) {
+      const l = lobes[i * 2 % lobes.length];
+      x.beginPath();
+      x.arc(l[0], l[1], l[2] * 0.62, 2.4, 4.6);
+      x.stroke();
+    }
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Bold drawn muzzle-flash silhouettes. Three genuinely different shapes
+     (spiked star, lopsided splash, three-prong fork) so repeated fire does
+     not stamp the same picture over and over. */
+  function blast(color, variant) {
+    const key = 'blast' + color + '_' + variant;
+    if (cache[key]) return cache[key];
+    const w = 192, c = cv(w, w), x = c.getContext('2d');
+    x.translate(w / 2, w / 2);
+    if (variant === 1) {
+      // lopsided splash: one dominant lobe, a couple of stubs
+      x.beginPath();
+      x.moveTo(0, 0);
+      x.quadraticCurveTo(w * 0.16, -w * 0.30, w * 0.44, -w * 0.10);
+      x.quadraticCurveTo(w * 0.30, w * 0.02, w * 0.40, w * 0.20);
+      x.quadraticCurveTo(w * 0.14, w * 0.12, w * 0.05, w * 0.34);
+      x.quadraticCurveTo(-w * 0.04, w * 0.10, -w * 0.26, w * 0.16);
+      x.quadraticCurveTo(-w * 0.12, -w * 0.02, -w * 0.30, -w * 0.22);
+      x.quadraticCurveTo(-w * 0.04, -w * 0.12, 0, 0);
+      x.closePath();
+    } else if (variant === 2) {
+      // three-prong fork
+      x.beginPath();
+      const prong = (a, len, wide) => {
+        x.moveTo(Math.cos(a - wide) * w * 0.10, Math.sin(a - wide) * w * 0.10);
+        x.lineTo(Math.cos(a) * w * len, Math.sin(a) * w * len);
+        x.lineTo(Math.cos(a + wide) * w * 0.10, Math.sin(a + wide) * w * 0.10);
+      };
+      prong(-Math.PI / 2, 0.46, 1.05);
+      prong(-Math.PI / 2 + 2.2, 0.38, 1.0);
+      prong(-Math.PI / 2 - 2.2, 0.41, 1.0);
+      x.arc(0, 0, w * 0.13, 0, 6.3);
+    } else {
+      // spiked star, long thin points
+      inkShape(x, 18, (i) => w * (i % 2 === 0 ? UTIL.rng(0.38, 0.48) : UTIL.rng(0.09, 0.14)));
+    }
+    inkFill(x, hex(color), 7);
+    // hot core
+    inkShape(x, 10, () => w * UTIL.rng(0.10, 0.15));
+    x.fillStyle = hex(PAL.white); x.fill();
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
+  /* Comic impact lettering on a jagged burst -- 1930s title-card energy.
+     Reserved for the loudest beats (explosions, a kill) so it stays a
+     punchline rather than wallpaper. */
+  function word(text, color) {
+    const key = 'word' + text + color;
+    if (cache[key]) return cache[key];
+    const w = 256, h = 160, c = cv(w, h), x = c.getContext('2d');
+    x.translate(w / 2, h / 2);
+    x.save();
+    x.scale(1, h / w);
+    inkShape(x, 24, (i) => w * (i % 2 === 0 ? UTIL.rng(0.36, 0.46) : UTIL.rng(0.26, 0.32)));
+    inkFill(x, hex(color), 8);
+    x.restore();
+    x.rotate(-0.09);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.lineJoin = 'round';
+    x.font = '900 italic 76px Rockwell, Georgia, serif';
+    x.lineWidth = 15; x.strokeStyle = hex(PAL.ink); x.strokeText(text, 0, 2);
+    x.lineWidth = 5; x.strokeStyle = hex(PAL.white); x.strokeText(text, 0, 2);
+    x.fillStyle = hex(PAL.cream); x.fillText(text, 0, 2);
     cache[key] = new THREE.CanvasTexture(c);
     return cache[key];
   }
@@ -3360,7 +3661,11 @@ const TEX = (() => {
     return cache[key];
   }
 
-  return { ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot, grainDataURL, scratchDataURL, finish };
+  return {
+    ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot,
+    bang, lines, ring, chunk, curl, cloud, blast, word,
+    grainDataURL, scratchDataURL, finish
+  };
 })();
 
 /* ================================ [MAT] ============================== */
@@ -9788,9 +10093,13 @@ const FX = (() => {
   // everyone else -- since there are only ever a handful on screen at once,
   // unlike the high-churn pools above.
   const laserDots = new Map();
-  let decalIdx = 0, ringIdx = 0, tracerIdx = 0;
+  let decalIdx = 0, ringIdx = 0, tracerIdx = 0, partIdx = 0;
   let muzzleLight = null;
   let boilAcc = 0, boilFrame = 0;
+  /* The drawn-animation clock. Everything in the FX layer holds its pose
+     between ticks of this (see CONFIG.fx.fxStepFPS) so effects animate on
+     2s/3s like cel animation instead of sliding at monitor rate. */
+  let fxAcc = 0, fxFrame = 0, fxTick = false;
   // Scrap Railgun's cosmetic flying junk.
   const junkProjectiles = [];
   let junkIdx = 0;
@@ -9805,6 +10114,8 @@ const FX = (() => {
   const _q = new THREE.Quaternion();
   const _basis = new THREE.Matrix4();
   const UP = new THREE.Vector3(0, 1, 0);
+  // Shared immutable zero velocity for pinned sprites (bangs, speed lines).
+  const ZERO = new THREE.Vector3(0, 0, 0);
 
   /* Scrap Railgun's comic payload -- built once per pool slot (see init),
      one random pick shown per shot. Small, cheap, purely cosmetic. */
@@ -9866,7 +10177,15 @@ const FX = (() => {
       s.visible = false;
       s.renderOrder = 3;
       scene.add(s);
-      particles.push({ sprite: s, life: 0, max: 1, vel: new THREE.Vector3(), grav: 0, s0: 1, s1: 1, spin: 0, kind: i % maps.length });
+      particles.push({
+        sprite: s, life: 0, max: 1,
+        // `pos` is the physical position, integrated every frame; the sprite
+        // only receives it on an FX-clock tick, which is what makes the
+        // motion read as drawn frames rather than a smooth slide.
+        pos: new THREE.Vector3(), vel: new THREE.Vector3(),
+        grav: 0, drag: 0, s0: 1, s1: 1, spin: 0, rot: 0,
+        pop: 0, fade: 1, kind: i % maps.length
+      });
     }
 
     // --- tracer pool ---
@@ -9884,16 +10203,21 @@ const FX = (() => {
     }
 
     // --- expanding ink rings ---
-    for (let i = 0; i < 8; i++) {
-      const m = new THREE.Mesh(
-        new THREE.TorusGeometry(0.5, 0.07, 5, 14),
-        new THREE.MeshBasicMaterial({ color: PAL.cream, transparent: true, opacity: 1, depthWrite: false })
-      );
+    // A TorusGeometry ring reads as a hula hoop lying in the world; a flat
+    // quad carrying the hand-inked TEX.ring reads as a line an animator
+    // drew on the cel. Same orientation semantics (see burstRing), better
+    // silhouette, and one triangle pair instead of 140.
+    const ringGeo = new THREE.PlaneGeometry(1, 1);
+    for (let i = 0; i < CONFIG.fx.maxRings; i++) {
+      const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+        map: TEX.ring(PAL.cream), color: 0xffffff, transparent: true,
+        opacity: 1, depthWrite: false, side: THREE.DoubleSide, fog: true
+      }));
       m.visible = false;
       m.renderOrder = 3;
       m.raycast = function () {};
       scene.add(m);
-      rings.push({ mesh: m, life: 0, maxLife: 0.42, s0: 0.18, s1: 1.48 });
+      rings.push({ mesh: m, life: 0, maxLife: 0.42, s0: 0.18, s1: 1.48, spin: 0 });
     }
 
     muzzleLight = new THREE.PointLight(0xFFE9A8, 0, 12, 2);
@@ -9937,32 +10261,115 @@ const FX = (() => {
     }
   }
 
+  /* Effect density for the current render tier. FX are the cheapest thing
+     to walk back on a software rasteriser, so every burst scales its counts
+     through here rather than being switched off wholesale. */
+  function detail() {
+    const q = (typeof RENDERCORE !== 'undefined' && RENDERCORE.quality) || 'high';
+    const d = CONFIG.fx.detailByQuality[q];
+    return d === undefined ? 1 : d;
+  }
+  // Count for a burst, never below `floor` so the shape of an effect survives
+  // even on the lowest tier -- a cartoon impact with no star is not an impact.
+  function count(n, floor) {
+    return Math.max(floor === undefined ? 1 : floor, Math.round(n * detail()));
+  }
+
+  /* Pool acquisition: rotating cursor first (so slots are reused evenly and
+     a burst does not all land on one index), and if the pool is saturated,
+     steal whichever slot has the least life left rather than always
+     clobbering particles[0]. No allocation on any path. */
+  function acquireParticle() {
+    const n = particles.length;
+    for (let i = 0; i < n; i++) {
+      const c = particles[(partIdx + i) % n];
+      if (c.life <= 0) { partIdx = (partIdx + i + 1) % n; return c; }
+    }
+    let worst = particles[0];
+    for (let i = 1; i < n; i++) if (particles[i].life < worst.life) worst = particles[i];
+    return worst;
+  }
+
   function spawnParticle(pos, vel, opts) {
     opts = opts || {};
-    // find a free slot, else steal the oldest
-    let p = null;
-    for (let i = 0; i < particles.length; i++) {
-      const c = particles[(i + (decalIdx * 7)) % particles.length];
-      if (c.life <= 0) { p = c; break; }
-    }
-    if (!p) p = particles[0];
+    const p = acquireParticle();
     p.life = p.max = opts.life || UTIL.rng(0.28, 0.55);
     p.vel.copy(vel);
     p.grav = opts.grav === undefined ? 5 : opts.grav;
+    p.drag = opts.drag === undefined ? 0 : opts.drag;
     p.s0 = opts.s0 || 0.22;
     p.s1 = opts.s1 === undefined ? 0.04 : opts.s1;
     p.spin = opts.spin === undefined ? UTIL.rng(-6, 6) : opts.spin;
+    // `pop`: fraction of the life spent overshooting past s1 before settling.
+    // Squash-and-stretch for sprites -- a drawn puff snaps open, it does not
+    // ease open. 0 keeps the old straight s0 -> s1 ramp.
+    p.pop = opts.pop === undefined ? 0 : opts.pop;
+    // `fade`: fraction of the life at which the sprite starts dissolving.
+    // Cartoon timing is hold-then-vanish, not a linear ramp to nothing.
+    p.fade = opts.fade === undefined ? 0 : opts.fade;
+    p.rot = opts.rot === undefined ? UTIL.rng(0, 6.28) : opts.rot;
+    p.pos.copy(pos);
     p.sprite.position.copy(pos);
     p.sprite.material.map = opts.map || p.sprite.material.map;
     p.sprite.material.opacity = 1;
-    p.sprite.material.rotation = UTIL.rng(0, 6.28);
+    p.sprite.material.rotation = p.rot;
     p.sprite.scale.setScalar(p.s0);
     p.sprite.visible = true;
+    return p;
   }
 
-  /* Cartoon hit: ink splat decal, a burst of dust stars, a smoke ring. */
+  /* ---------------------------------------------------- drawn FX pieces
+     Small named builders so every effect below is assembled from the same
+     vocabulary: an ink star, a fan of speed lines, a puff of smoke, a
+     splinter of debris. */
+
+  // The bright jagged POW that punctuates a hit. Snaps open over two drawn
+  // frames and is gone by the third -- it is punctuation, not a lingering
+  // sprite.
+  function inkBang(point, scale, color, inner) {
+    spawnParticle(point, ZERO, {
+      map: TEX.bang(color === undefined ? PAL.mustard : color, inner),
+      s0: scale * 0.35, s1: scale, pop: 0.55, fade: 0.45,
+      life: 0.20, grav: 0, spin: UTIL.rng(-1.2, 1.2)
+    });
+  }
+
+  // Radiating speed lines. Always bigger than the bang they sit under, and
+  // always shorter-lived, so the eye reads "lines flashed, then the shape."
+  function speedLines(point, scale, color) {
+    spawnParticle(point, ZERO, {
+      map: TEX.lines(color === undefined ? PAL.cream : color),
+      s0: scale * 0.30, s1: scale, pop: 0, fade: 0.30,
+      life: 0.16, grav: 0, spin: UTIL.rng(-0.6, 0.6)
+    });
+  }
+
+  // Curling smoke that rises, swells and dissipates on cartoon timing.
+  function smokeCurl(point, vel, scale, life, color) {
+    spawnParticle(point, vel, {
+      map: TEX.curl(color === undefined ? PAL.creamDim : color),
+      s0: scale * 0.42, s1: scale, pop: 0.25, fade: 0.42,
+      life: life, grav: -0.55, drag: 0.9, spin: UTIL.rng(-1.6, 1.6)
+    });
+  }
+
+  const DEBRIS_COLORS = [PAL.charcoal, PAL.dirtDeep, PAL.creamDim, PAL.rustDeep];
+  function debris(point, vel, scale, life) {
+    spawnParticle(point, vel, {
+      map: TEX.chunk(DEBRIS_COLORS[Math.floor(UTIL.rng(0, 3.999))]),
+      s0: scale, s1: scale * 0.72, fade: 0.55,
+      life: life, grav: UTIL.rng(9, 15), spin: UTIL.rng(-18, 18)
+    });
+  }
+
+  /* Cartoon hit: an ink splat on the surface, a bang, a fan of speed lines,
+     debris, dust puffs and an expanding ink ring. The old version was five
+     stars and three puffs -- correct ingredients, no punctuation and no
+     silhouette. */
   function impact(point, normal, opts) {
     opts = opts || {};
+    const big = !!opts.big;
+    const sc = opts.scale || 1;
     // decal -- skipped for surfaces tagged noDecal (signposts: see
     // PROPS.signPost) so their readable text can't get papered over by a
     // stacked-up shotgun blast. Sparks/dust/smoke below still play either way.
@@ -9972,35 +10379,74 @@ const FX = (() => {
       _v.copy(point).add(normal);
       d.mesh.lookAt(_v);
       d.mesh.rotation.z = UTIL.rng(0, 6.28);
-      const sc = UTIL.rng(0.28, 0.46) * (opts.scale || 1);
-      d.mesh.scale.set(sc, sc, sc);
+      const s = UTIL.rng(0.28, 0.46) * sc;
+      d.mesh.scale.set(s, s, s);
       d.mesh.material.opacity = 0.92;
       d.mesh.visible = true;
       d.life = 14;
     }
 
-    // dust stars kicking off the surface
-    const n = opts.big ? 9 : 5;
-    for (let i = 0; i < n; i++) {
-      _v.copy(normal).multiplyScalar(UTIL.rng(1.4, 3.2));
+    // Lift the punctuation off the surface a little so it is not z-fighting
+    // the wall it is drawn against.
+    _v3.copy(point).addScaledVector(normal, 0.05);
+
+    // 1. the drawn hit itself. Lines go first and biggest so they sit behind
+    // the star; the star is the thing the eye is meant to land on, so it is
+    // held for three drawn frames while everything else is gone in two.
+    speedLines(_v3, (big ? 2.3 : 1.5) * sc, big ? PAL.mustard : PAL.cream);
+    inkBang(_v3, (big ? 1.5 : 1.0) * sc, big ? PAL.mustard : PAL.cream,
+            big ? PAL.white : PAL.creamDim);
+
+    // 2. splinters kicking back along the normal
+    const nd = count(big ? 6 : 4, 2);
+    for (let i = 0; i < nd; i++) {
+      _v.copy(normal).multiplyScalar(UTIL.rng(2.2, 4.6));
+      _v.x += UTIL.rng(-1.9, 1.9); _v.y += UTIL.rng(0.6, 2.8); _v.z += UTIL.rng(-1.9, 1.9);
+      debris(_v3, _v, UTIL.rng(0.07, 0.15) * sc, UTIL.rng(0.34, 0.62));
+    }
+
+    // 3. a couple of ink stars for sparkle
+    const ns = count(big ? 4 : 2, 1);
+    for (let i = 0; i < ns; i++) {
+      _v.copy(normal).multiplyScalar(UTIL.rng(1.6, 3.4));
       _v.x += UTIL.rng(-1.7, 1.7); _v.y += UTIL.rng(0.4, 2.4); _v.z += UTIL.rng(-1.7, 1.7);
-      spawnParticle(point, _v, {
+      spawnParticle(_v3, _v, {
         map: TEX.star(i % 2 ? PAL.cream : PAL.mustard),
-        s0: UTIL.rng(0.13, 0.26), s1: 0.02,
-        life: UTIL.rng(0.26, 0.5), grav: 6
+        s0: UTIL.rng(0.13, 0.24) * sc, s1: 0.02, fade: 0.4,
+        life: UTIL.rng(0.24, 0.44), grav: 6
       });
     }
-    // ink puffs hanging in the air
-    for (let i = 0; i < 3; i++) {
-      _v.copy(normal).multiplyScalar(UTIL.rng(0.4, 1.1));
-      _v.x += UTIL.rng(-.5, .5); _v.y += UTIL.rng(.2, .9); _v.z += UTIL.rng(-.5, .5);
-      spawnParticle(point, _v, {
-        map: TEX.puff(PAL.cream), s0: UTIL.rng(0.16, 0.3), s1: 0.5,
-        life: UTIL.rng(0.4, 0.7), grav: -0.6, spin: UTIL.rng(-1.5, 1.5)
+
+    // 4. dust hanging in the air. Pushed out to a ring around the hit rather
+    // than stacked on top of it -- three cream puffs sitting on the star is
+    // what turned the old burst into a featureless white blob.
+    const np = count(big ? 4 : 3, 2);
+    for (let i = 0; i < np; i++) {
+      const a = (i / np) * Math.PI * 2 + UTIL.rng(-0.5, 0.5);
+      // Tangent frame around the surface normal, so the puffs ring the hit
+      // on the plane of the wall rather than in world XZ. Seed axis is the
+      // one least aligned with the normal, which can never be degenerate.
+      const ax = Math.abs(normal.x), ay = Math.abs(normal.y), az = Math.abs(normal.z);
+      if (ax <= ay && ax <= az) _v2.set(1, 0, 0);
+      else if (ay <= az) _v2.set(0, 1, 0);
+      else _v2.set(0, 0, 1);
+      _v2.cross(normal).normalize();
+      _v.crossVectors(normal, _v2);
+      const spread = UTIL.rng(0.22, 0.44) * sc * (big ? 1.4 : 1);
+      _v2.multiplyScalar(Math.cos(a) * spread);
+      _v.multiplyScalar(Math.sin(a) * spread).add(_v2).add(_v3);
+      _v2.copy(normal).multiplyScalar(UTIL.rng(0.4, 1.0));
+      _v2.x += UTIL.rng(-.5, .5); _v2.y += UTIL.rng(.3, 1.1); _v2.z += UTIL.rng(-.5, .5);
+      spawnParticle(_v, _v2, {
+        map: TEX.puff(i % 3 === 0 ? PAL.blueGray : PAL.creamDim),
+        s0: UTIL.rng(0.10, 0.18) * sc, s1: UTIL.rng(0.36, 0.58) * sc,
+        pop: 0.3, fade: 0.4,
+        life: UTIL.rng(0.42, 0.78), grav: -0.6, drag: 1.2, spin: UTIL.rng(-1.5, 1.5)
       });
     }
-    // smoke ring
-    burstRing(point, normal, 0.18, 1.48, 0.42, PAL.cream);
+
+    // 5. the shock ring, flat against the surface it hit
+    burstRing(point, normal, 0.14 * sc, (big ? 1.9 : 1.35) * sc, 0.34, PAL.cream);
   }
 
   function burstRing(point, normal, startScale, endScale, life, color) {
@@ -10008,44 +10454,219 @@ const FX = (() => {
     r.mesh.position.copy(point).addScaledVector(normal, 0.06);
     _v.copy(point).add(normal);
     r.mesh.lookAt(_v);
+    // The drawn ring carries its colour in the texture, so the material tint
+    // stays white and the inked contour keeps its true black.
+    r.mesh.material.map = TEX.ring(color === undefined ? PAL.cream : color);
+    r.mesh.rotation.z += UTIL.rng(0, 6.28);
     r.mesh.scale.setScalar(startScale);
-    r.mesh.material.color.setHex(color === undefined ? PAL.cream : color);
-    r.mesh.material.opacity = 0.9;
+    r.mesh.material.opacity = 0.95;
     r.mesh.visible = true;
     r.life = r.maxLife = life;
     r.s0 = startScale;
     r.s1 = endScale;
   }
 
-  /* A layered paper-and-ink blast shared by grenades and future explosives. */
+  /* A big, bold, silhouette-forward blast. The shape reads first: three
+     black-edged ink clouds snap open into a mushroom, a white-hot core
+     flashes for two drawn frames, speed lines fire outward, and only then
+     do the debris and the smoke tail come off it. Comic punctuation, not a
+     physically-plausible fireball. */
+  const BOOM_WORDS = ['BLAM!', 'POW!', 'KA-BOOM!', 'WHAM!'];
   function explosion(point, radius) {
     radius = radius || 5;
-    burstRing(point, UP, 0.22, radius * 0.72, 0.58, PAL.mustard);
-    burstRing(point, new THREE.Vector3(1, 0, 0), 0.18, radius * 0.54, 0.48, PAL.cream);
-    burstRing(point, new THREE.Vector3(0, 0, 1), 0.18, radius * 0.54, 0.48, PAL.rust);
+    const R = radius * 0.62;  // visual scale unit -- blastRadius is a gameplay number
 
-    for (let i = 0; i < 28; i++) {
-      const a = UTIL.rng(0, Math.PI * 2);
-      const speed = UTIL.rng(3.2, 8.8);
+    // 1. the flash: white-hot core + a fan of speed lines, ~2 drawn frames
+    speedLines(point, R * 4.0, PAL.mustard);
+    spawnParticle(point, ZERO, {
+      map: TEX.blast(PAL.white, 0), s0: R * 0.8, s1: R * 2.6,
+      pop: 0.5, fade: 0.30, life: 0.17, grav: 0, spin: UTIL.rng(-1, 1)
+    });
+    inkBang(point, R * 2.0, PAL.mustard, PAL.white);
+
+    // 2. the silhouette: an ink-outlined mushroom that swells, holds, sinks.
+    // These are the shape of the explosion; everything else is trim. The
+    // three lobes are deliberately on separate steps of the value scale --
+    // a dark mass low and behind, a mid body, one bright cap on top -- so
+    // the cloud has modelling instead of reading as one white blob, and so
+    // an explosion actually puts some black on screen.
+    const CLOUDS = [
+      { off: [-R * 0.30, R * 0.10, -R * 0.35], s: R * 2.7, col: PAL.blueGrayDk, life: 1.15, rise: 0.8 },
+      { off: [R * 0.42, R * 0.30, 0], s: R * 2.1, col: PAL.blueGray, life: 1.0, rise: 1.1 },
+      { off: [-R * 0.10, R * 0.85, R * 0.25], s: R * 1.8, col: PAL.creamDim, life: 0.9, rise: 1.6 },
+      { off: [R * 0.05, R * 1.35, 0], s: R * 1.2, col: PAL.cream, life: 0.8, rise: 2.1 }
+    ];
+    for (let i = 0; i < CLOUDS.length; i++) {
+      const c = CLOUDS[i];
+      _v2.set(point.x + c.off[0], point.y + c.off[1], point.z + c.off[2]);
+      _v.set(UTIL.rng(-0.5, 0.5), c.rise, UTIL.rng(-0.5, 0.5));
+      spawnParticle(_v2, _v, {
+        map: TEX.cloud(c.col), s0: R * 0.35, s1: c.s,
+        pop: 0.42, fade: 0.55, life: c.life,
+        grav: -0.4, drag: 1.6, spin: UTIL.rng(-0.8, 0.8)
+      });
+    }
+
+    // 3. shock rings: one flat on the ground, one facing the camera plane
+    burstRing(point, UP, 0.25, radius * 1.05, 0.44, PAL.mustard);
+    burstRing(point, new THREE.Vector3(0, 0, 1), 0.20, radius * 0.85, 0.36, PAL.cream);
+
+    // 4. debris thrown clear on real arcs
+    const nd = count(14, 5);
+    for (let i = 0; i < nd; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(4.0, 10.5);
+      _v.set(Math.cos(a) * speed, UTIL.rng(3.0, 9.0), Math.sin(a) * speed);
+      debris(point, _v, UTIL.rng(0.10, 0.24), UTIL.rng(0.55, 1.05));
+    }
+    // 5. ink stars flung out with them
+    const ns = count(10, 4);
+    for (let i = 0; i < ns; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(3.2, 8.8);
       _v.set(Math.cos(a) * speed, UTIL.rng(1.6, 7.2), Math.sin(a) * speed);
       spawnParticle(point, _v, {
         map: TEX.star(i % 3 === 0 ? PAL.rust : (i % 2 ? PAL.cream : PAL.mustard)),
-        s0: UTIL.rng(0.18, 0.42), s1: 0.025,
+        s0: UTIL.rng(0.22, 0.5), s1: 0.03, fade: 0.5,
         life: UTIL.rng(0.42, 0.9), grav: UTIL.rng(5, 9), spin: UTIL.rng(-12, 12)
       });
     }
-    for (let i = 0; i < 11; i++) {
-      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(0.8, 3.4);
-      _v.set(Math.cos(a) * speed, UTIL.rng(0.3, 2.1), Math.sin(a) * speed);
-      spawnParticle(point, _v, {
-        map: TEX.puff(i % 3 === 0 ? PAL.blueGray : PAL.cream),
-        s0: UTIL.rng(0.3, 0.58), s1: UTIL.rng(1.0, 1.7),
-        life: UTIL.rng(0.65, 1.1), grav: -0.35, spin: UTIL.rng(-2, 2)
+
+    // 6. the tail: curling smoke that lingers after the shape has gone
+    const nc = count(7, 3);
+    for (let i = 0; i < nc; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(0.7, 2.6);
+      _v2.set(point.x + Math.cos(a) * R * 0.5, point.y + UTIL.rng(0, R * 0.6), point.z + Math.sin(a) * R * 0.5);
+      _v.set(Math.cos(a) * speed, UTIL.rng(0.8, 2.4), Math.sin(a) * speed);
+      smokeCurl(_v2, _v, UTIL.rng(R * 0.7, R * 1.5), UTIL.rng(1.1, 1.9),
+                i % 3 === 0 ? PAL.blueGray : PAL.creamDim);
+    }
+
+    // 7. the punchline, held a beat longer than the flash so it lands
+    if (detail() > 0.5) {
+      _v2.set(point.x, point.y + R * 1.6, point.z);
+      _v.set(UTIL.rng(-0.4, 0.4), 1.5, UTIL.rng(-0.4, 0.4));
+      spawnParticle(_v2, _v, {
+        map: TEX.word(BOOM_WORDS[Math.floor(UTIL.rng(0, 3.999))], PAL.mustard),
+        s0: R * 0.4, s1: R * 1.8, pop: 0.45, fade: 0.55,
+        life: 0.62, grav: -0.6, drag: 2.2, rot: UTIL.rng(-0.16, 0.16), spin: 0
       });
     }
+
+    // The blast light used to peak at 6.2, which was tuned before the render
+    // core's highlight shoulder existed -- it now clips the whole frame flat
+    // to white instead of reading as a flash. Kept punchy, kept under the
+    // shoulder.
     muzzleLight.position.copy(point);
-    muzzleLight.intensity = 6.2;
+    muzzleLight.intensity = 3.6;
     muzzleLight.visible = true;
+  }
+
+  /* Muzzle punctuation, in world space at the barrel tip. The viewmodel
+     keeps its own flat flash card (see WEAPON.flashes); this is the drawn
+     burst that reads out in the world -- a bold flash silhouette with real
+     shape variety, sparks along the bore line, and smoke that curls off the
+     muzzle and dissipates on cartoon timing. */
+  function muzzleBurst(pos, dir, opts) {
+    opts = opts || {};
+    const s = opts.scale === undefined ? 1 : opts.scale;
+    // Push the drawn burst a little down the bore so the gun body does not
+    // eat it when the viewmodel draws on top.
+    _v3.copy(pos).addScaledVector(dir, 0.16 * s);
+
+    spawnParticle(_v3, ZERO, {
+      map: TEX.blast(PAL.mustard, Math.floor(UTIL.rng(0, 2.999))),
+      s0: 0.16 * s, s1: UTIL.rng(0.44, 0.66) * s,
+      pop: 0.5, fade: 0.2, life: 0.10, grav: 0,
+      rot: UTIL.rng(0, 6.28), spin: UTIL.rng(-3, 3)
+    });
+
+    const nk = count(opts.sparks === undefined ? 3 : opts.sparks, 1);
+    for (let i = 0; i < nk; i++) {
+      _v.copy(dir).multiplyScalar(UTIL.rng(5, 11));
+      _v.x += UTIL.rng(-1.6, 1.6); _v.y += UTIL.rng(-0.6, 1.6); _v.z += UTIL.rng(-1.6, 1.6);
+      spawnParticle(_v3, _v, {
+        map: TEX.star(i % 2 ? PAL.mustard : PAL.white),
+        s0: UTIL.rng(0.06, 0.13) * s, s1: 0.01, fade: 0.35,
+        life: UTIL.rng(0.10, 0.20), grav: 4, spin: UTIL.rng(-10, 10)
+      });
+    }
+
+    const nc = count(opts.smoke === undefined ? 2 : opts.smoke, 1);
+    for (let i = 0; i < nc; i++) {
+      _v.copy(dir).multiplyScalar(UTIL.rng(0.6, 1.7));
+      _v.x += UTIL.rng(-0.5, 0.5); _v.y += UTIL.rng(0.5, 1.3); _v.z += UTIL.rng(-0.5, 0.5);
+      smokeCurl(_v3, _v, UTIL.rng(0.22, 0.42) * s, UTIL.rng(0.55, 0.95),
+                i % 2 ? PAL.creamDim : PAL.blueGray);
+    }
+  }
+
+  /* The all-purpose cartoon vanish: a body is swallowed by an ink puff,
+     stars fly off it, and a word lands on top. Used for enemy deaths, where
+     "readable and funny" beats "anatomically plausible". */
+  const POOF_WORDS = ['POW!', 'WHAM!', 'BONK!', 'ZOWIE!'];
+  function poof(point, opts) {
+    opts = opts || {};
+    const s = opts.scale === undefined ? 1 : opts.scale;
+
+    speedLines(point, 2.6 * s, PAL.cream);
+    inkBang(point, 1.5 * s, opts.color === undefined ? PAL.mustard : opts.color, PAL.white);
+
+    // the swallowing cloud -- three lobes so the silhouette is irregular
+    for (let i = 0; i < 3; i++) {
+      _v2.set(point.x + UTIL.rng(-0.35, 0.35) * s, point.y + UTIL.rng(-0.2, 0.45) * s,
+              point.z + UTIL.rng(-0.35, 0.35) * s);
+      _v.set(UTIL.rng(-0.6, 0.6), UTIL.rng(0.7, 1.6), UTIL.rng(-0.6, 0.6));
+      spawnParticle(_v2, _v, {
+        map: TEX.cloud(i === 1 ? PAL.cream : PAL.creamDim),
+        s0: 0.4 * s, s1: UTIL.rng(1.5, 2.2) * s,
+        pop: 0.4, fade: 0.5, life: UTIL.rng(0.65, 0.95),
+        grav: -0.5, drag: 1.8, spin: UTIL.rng(-0.9, 0.9)
+      });
+    }
+
+    // dizzy stars flung off the top
+    const ns = count(9, 4);
+    for (let i = 0; i < ns; i++) {
+      const a = UTIL.rng(0, Math.PI * 2), speed = UTIL.rng(1.8, 4.4);
+      _v.set(Math.cos(a) * speed, UTIL.rng(2.2, 5.2), Math.sin(a) * speed);
+      spawnParticle(point, _v, {
+        map: TEX.star(i % 2 ? PAL.mustard : PAL.mustardDk),
+        s0: UTIL.rng(0.18, 0.34) * s, s1: 0.03, fade: 0.5,
+        life: UTIL.rng(0.6, 1.1), grav: 7, spin: UTIL.rng(-11, 11)
+      });
+    }
+
+    const nc = count(3, 1);
+    for (let i = 0; i < nc; i++) {
+      _v.set(UTIL.rng(-0.7, 0.7), UTIL.rng(0.7, 1.7), UTIL.rng(-0.7, 0.7));
+      smokeCurl(point, _v, UTIL.rng(0.6, 1.1) * s, UTIL.rng(0.9, 1.5), PAL.creamDim);
+    }
+
+    if (opts.word !== false && detail() > 0.5) {
+      _v2.set(point.x, point.y + 0.85 * s, point.z);
+      _v.set(UTIL.rng(-0.3, 0.3), 1.3, UTIL.rng(-0.3, 0.3));
+      spawnParticle(_v2, _v, {
+        map: TEX.word(opts.word || POOF_WORDS[Math.floor(UTIL.rng(0, 3.999))], PAL.rust),
+        s0: 0.3 * s, s1: 1.25 * s, pop: 0.45, fade: 0.55,
+        life: 0.58, grav: -0.5, drag: 2.4, rot: UTIL.rng(-0.18, 0.18), spin: 0
+      });
+    }
+  }
+
+  /* Follow-through for anything flying: a puff of smoke shed behind a
+     thrown or launched object. Callers own the cadence (see
+     CONFIG.fx.trailInterval) so this stays a single cheap spawn. */
+  function trail(pos, opts) {
+    opts = opts || {};
+    _v.set(UTIL.rng(-0.25, 0.25), UTIL.rng(0.1, 0.5), UTIL.rng(-0.25, 0.25));
+    spawnParticle(pos, _v, {
+      map: opts.star
+        ? TEX.star(opts.color === undefined ? PAL.mustard : opts.color)
+        : TEX.curl(opts.color === undefined ? PAL.creamDim : opts.color),
+      s0: (opts.scale || 0.16), s1: (opts.scale || 0.16) * 1.9,
+      pop: 0.2, fade: 0.3,
+      life: opts.life || UTIL.rng(0.28, 0.46),
+      grav: -0.3, drag: 1.4, spin: UTIL.rng(-2.4, 2.4)
+    });
   }
 
   function tracer(from, to) {
@@ -10195,39 +10816,71 @@ const FX = (() => {
       w.obj.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
     }
 
-    // --- particles (stepped scale/spin, smooth motion) ---
+    /* --- the drawn-animation clock -----------------------------------
+       Physics below still integrates every frame, but nothing the eye can
+       see is committed except on a tick of this clock. That is the whole
+       trick: an effect that jumps between 12 poses a second reads as
+       drawings, and one that slides at 60fps reads as a particle system,
+       even when the artwork is identical. */
+    fxAcc += dt;
+    const fxStep = 1 / CONFIG.fx.fxStepFPS;
+    fxTick = fxAcc >= fxStep;
+    if (fxTick) { fxAcc %= fxStep; fxFrame++; }
+
+    // --- particles: smooth physics, drawn on 12s ---
     for (let i = 0; i < particles.length; i++) {
       const p = particles[i];
       if (p.life <= 0) continue;
       p.life -= dt;
       if (p.life <= 0) { p.sprite.visible = false; continue; }
       p.vel.y -= p.grav * dt;
-      p.sprite.position.addScaledVector(p.vel, dt);
+      if (p.drag > 0) p.vel.multiplyScalar(Math.max(0, 1 - p.drag * dt));
+      p.pos.addScaledVector(p.vel, dt);
+      p.rot += p.spin * dt;
+      if (!fxTick) continue;
+
       const k = 1 - p.life / p.max;
-      const qk = Math.floor(k * CONFIG.fx.weaponStepFPS) / CONFIG.fx.weaponStepFPS;
-      p.sprite.scale.setScalar(UTIL.lerp(p.s0, p.s1, qk));
-      p.sprite.material.rotation += p.spin * dt;
-      p.sprite.material.opacity = UTIL.clamp(1 - qk * qk, 0, 1);
+      // Scale: snap out past the target (`pop`) and settle back, which is
+      // squash-and-stretch for a billboard. With pop 0 this is the plain ramp.
+      let s;
+      if (p.pop > 0 && k < p.pop) {
+        s = UTIL.lerp(p.s0, p.s1 * 1.22, k / p.pop);
+      } else if (p.pop > 0) {
+        s = UTIL.lerp(p.s1 * 1.22, p.s1, (k - p.pop) / (1 - p.pop));
+      } else {
+        s = UTIL.lerp(p.s0, p.s1, k);
+      }
+      // Opacity: hold full, then dissolve. Cartoon FX do not fade in from
+      // the first frame, they exist and then they stop existing.
+      const f = p.fade;
+      const o = k <= f ? 1 : 1 - (k - f) / (1 - f);
+      p.sprite.position.copy(p.pos);
+      p.sprite.scale.setScalar(s);
+      p.sprite.material.rotation = p.rot;
+      p.sprite.material.opacity = UTIL.clamp(o * o, 0, 1);
     }
 
-    // --- tracers ---
+    // --- tracers: two drawn frames, on/off, no ramp ---
     for (let i = 0; i < tracers.length; i++) {
       const tr = tracers[i];
       if (tr.life <= 0) continue;
       tr.life -= dt;
       if (tr.life <= 0) { tr.mesh.visible = false; continue; }
-      tr.mesh.material.opacity = tr.life / 0.075;
+      if (fxTick) tr.mesh.material.opacity = tr.life > 0.045 ? 1 : 0.5;
     }
 
-    // --- rings ---
+    // --- rings: stepped expansion, so the line pops outward frame by frame ---
     for (let i = 0; i < rings.length; i++) {
       const r = rings[i];
       if (r.life <= 0) continue;
       r.life -= dt;
       if (r.life <= 0) { r.mesh.visible = false; continue; }
+      if (!fxTick) continue;
       const k = 1 - r.life / r.maxLife;
-      r.mesh.scale.setScalar(UTIL.lerp(r.s0, r.s1, k));
-      r.mesh.material.opacity = 0.9 * (1 - k);
+      // ease-out: the ring throws itself open and then coasts
+      const ek = 1 - (1 - k) * (1 - k);
+      r.mesh.scale.setScalar(UTIL.lerp(r.s0, r.s1, ek));
+      r.mesh.material.opacity = 0.95 * (1 - k * k);
     }
 
     // --- decals fade only when they are about to be recycled ---
@@ -10253,10 +10906,17 @@ const FX = (() => {
       if (j.life <= 0) { j.root.visible = false; continue; }
       const k = 1 - j.life / CONFIG.fx.junkFlightTime;
       j.root.position.lerpVectors(j.from, j.to, k);
-      j.root.position.y += Math.sin(k * Math.PI) * 0.35;
+      // Exaggerated arc + a stretch along flight, so launched junk has some
+      // follow-through instead of sliding down a straight line.
+      j.root.position.y += Math.sin(k * Math.PI) * 0.55;
+      const stretch = 1 + Math.sin(k * Math.PI) * 0.28;
+      j.root.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
       j.root.rotation.x += j.spin.x * dt;
       j.root.rotation.y += j.spin.y * dt;
       j.root.rotation.z += j.spin.z * dt;
+      // smoke shed behind it, on the drawn clock so the trail is a row of
+      // discrete puffs rather than a continuous smear
+      if (fxTick && k < 0.92) trail(j.root.position, { scale: 0.11, life: 0.24, color: PAL.creamDim });
     }
   }
 
@@ -10328,6 +10988,11 @@ const FX = (() => {
 
   return {
     init, update, impact, explosion, tracer, trace, spawnParticle, muzzleFlashLight, hitWobbler,
+    muzzleBurst, poof, trail, burstRing, speedLines, inkBang, smokeCurl,
+    // The drawn-animation clock, so callers that emit their own trails can
+    // stay on the same 12fps cadence instead of smearing at frame rate.
+    get onFxFrame() { return fxTick; },
+    get fxFrame() { return fxFrame; },
     launchJunk, sprayTag, clearSprayTags, setSprayImage,
     setLaserDot, hideLaserDot, removeLaserDot
   };
@@ -12345,9 +13010,35 @@ const WEAPON = (() => {
     return g;
   }
 
+  /* A hand-wobbled flash card. A perfectly regular star reads as clip art;
+     every point here gets its own length and its own angular jitter, and
+     three of them are pre-built per gun so consecutive shots do not stamp
+     the same drawing twice (see fireGun, which rolls one per trigger pull).
+     Geometry is built once at gun-build time and only swapped, never
+     regenerated -- nothing here runs in the firing hot path. */
+  function drawnFlashGeometry(points, inner, outer, seedTwist) {
+    const s = new THREE.Shape();
+    const n = points * 2;
+    for (let i = 0; i < n; i++) {
+      const jitter = Math.sin(i * 2.7 + seedTwist) * 0.16 + Math.sin(i * 5.3 + seedTwist * 2) * 0.09;
+      const a = i / n * Math.PI * 2 - Math.PI / 2 + jitter * 0.35;
+      const r = (i % 2 ? inner : outer) * (1 + jitter);
+      const x = Math.cos(a) * r, y = Math.sin(a) * r;
+      if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+    }
+    s.closePath();
+    return new THREE.ShapeGeometry(s);
+  }
+
   function flashes(parent, y, z, scale) {
-    const f1 = new THREE.Mesh(starGeometry(5, 0.07, 0.26),
+    const variants = [
+      drawnFlashGeometry(5, 0.07, 0.30, 0.0),
+      drawnFlashGeometry(6, 0.06, 0.26, 1.7),
+      drawnFlashGeometry(4, 0.09, 0.33, 3.4)
+    ];
+    const f1 = new THREE.Mesh(variants[0],
       new THREE.MeshBasicMaterial({ color: 0xFFF3C4, transparent: true, depthWrite: false, side: THREE.DoubleSide, fog: false }));
+    f1.userData.flashVariants = variants;
     f1.position.set(0, y, z);
     f1.scale.setScalar(scale || 1);
     // Kept so update()'s flash animation can scale *relative* to whatever
@@ -13275,6 +13966,11 @@ const WEAPON = (() => {
     flashSpin = UTIL.rng(0, 6.28);
     flashSpin2 = UTIL.rng(0, 6.28);
     flashGain = UTIL.rng(0.88, 1.16);
+    // Roll a different drawn flash card per trigger pull (see flashes()). The
+    // spin/scale that used to be set here now lives in update()'s three-frame
+    // flash animation -- only the *shape* has to be chosen at the trigger.
+    const fv = model.flash.userData.flashVariants;
+    if (fv) model.flash.geometry = fv[Math.floor(UTIL.rng(0, fv.length - 0.001))];
     model.flash.visible = model.flash2.visible = true;
     ejectCasing(currentId);
 
@@ -13285,6 +13981,14 @@ const WEAPON = (() => {
 
     _o.copy(camera.position);
     PLAYER.forwardVector(_d);
+    // The drawn muzzle burst lives in the world, not on the viewmodel card:
+    // a bold ink flash silhouette, sparks down the bore line, and smoke that
+    // curls off the muzzle and dissipates on cartoon timing.
+    FX.muzzleBurst(_muzzleWorld, _d, {
+      scale: d.pellets > 1 ? 1.35 : (currentId === 'pipePopper' ? 1.1 : 0.95),
+      sparks: d.pellets > 1 ? 5 : 3,
+      smoke: d.pellets > 1 ? 3 : 2
+    });
     // Hoisted out of the loop: solo play should not allocate a network payload
     // per pellet, and every pellet now relays consistently instead of only the
     // ones that happened to connect.
@@ -14610,8 +15314,12 @@ const THROWABLE = (() => {
     else buildGrenadeVisual(root, 1);
     active.push({
       id: currentId, def: def, root: root, pos: pos, vel: vel,
-      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius
+      timer: def.fuse, layerId: PLAYER.layerId, radius: def.radius,
+      // trail cadence + total airtime, for the follow-through in update()
+      trailT: 0, age: 0
     });
+    // A cartoon throw has a wind-up puff at the release point.
+    FX.trail(pos, { scale: 0.20, life: 0.34 });
     AUDIO.throwable('throw');
     UI.crosshairKick();
     return true;
@@ -14673,6 +15381,12 @@ const THROWABLE = (() => {
     projectile.root.position.copy(p);
     projectile.root.rotation.x += (v.z * 1.8 + 2.6) * dt;
     projectile.root.rotation.z -= (v.x * 1.8 - 1.9) * dt;
+    // Follow-through: stretch along the arc while it is really moving and
+    // squash back as it slows, so a thrown object has some rubberhose give
+    // instead of tumbling as a rigid lump.
+    const speed = Math.hypot(v.x, v.y, v.z);
+    const stretch = 1 + UTIL.clamp(speed / 26, 0, 1) * 0.30;
+    projectile.root.scale.set(1 / Math.sqrt(stretch), stretch, 1 / Math.sqrt(stretch));
   }
 
   /* Every thrown grenade builds fresh geometry (including a TubeGeometry for
@@ -14822,11 +15536,24 @@ const THROWABLE = (() => {
     for (let i = active.length - 1; i >= 0; i--) {
       const projectile = active[i];
       projectile.timer -= dt;
+      projectile.age = (projectile.age || 0) + dt;
       let remaining = dt;
       while (remaining > 0) {
         const step = Math.min(remaining, 1 / 90);
         physicsStep(projectile, step);
         remaining -= step;
+      }
+      // Smoke trail behind the arc, emitted on the FX layer's own drawn
+      // clock so it is a row of discrete puffs, not a continuous smear.
+      // A lit fuse (dynamite) also throws sparks.
+      projectile.trailT -= dt;
+      const moving = projectile.vel.lengthSq() > 1.4;
+      if (moving && projectile.trailT <= 0) {
+        projectile.trailT = CONFIG.fx.trailInterval;
+        FX.trail(projectile.root.position, { scale: 0.11, life: 0.30 });
+        if (projectile.id === 'dynamite') {
+          FX.trail(projectile.root.position, { scale: 0.07, life: 0.18, star: true, color: PAL.mustard });
+        }
       }
       if (projectile.timer <= 0) {
         detonate(projectile);
@@ -14855,6 +15582,10 @@ const THROWABLE = (() => {
       lob.root.position.y += Math.sin(k * Math.PI) * 2.2;
       lob.root.rotation.x += dt * 7;
       lob.root.rotation.z += dt * 4;
+      // same drawn trail the player's own throws leave
+      if (FX.onFxFrame && k < 0.95) {
+        FX.trail(lob.root.position, { scale: 0.13, life: 0.3, color: PAL.mustardDk });
+      }
       if (k >= 1) {
         scene.remove(lob.root);
         disposeVisual(lob.root);
@@ -22610,22 +23341,15 @@ const ENEMY = (() => {
     e.headProxy.raycast = NO_RAY;
     e.bodyProxy.raycast = NO_RAY;
     AUDIO.enemyDie(e.def.voice.pitch);
-    // scatter petals
+    // Cartoon exit: the body is swallowed by an ink puff, dizzy stars fly
+    // off it and a lettered punchline lands on top. Bosses get a bigger one.
     _v.set(e.pos.x, e.pos.y + 1.28, e.pos.z);
-    for (let i = 0; i < 12; i++) {
-      _v2.set(UTIL.rng(-2.4, 2.4), UTIL.rng(1.6, 4.6), UTIL.rng(-2.4, 2.4));
-      FX.spawnParticle(_v, _v2, {
-        map: TEX.star(i % 2 ? PAL.mustard : PAL.mustardDk),
-        s0: UTIL.rng(0.16, 0.3), s1: 0.02, life: UTIL.rng(0.6, 1.1), grav: 7,
-        spin: UTIL.rng(-9, 9)
-      });
-    }
-    for (let i = 0; i < 5; i++) {
-      _v2.set(UTIL.rng(-1, 1), UTIL.rng(0.5, 2), UTIL.rng(-1, 1));
-      FX.spawnParticle(_v, _v2, {
-        map: TEX.puff(PAL.cream), s0: 0.3, s1: 0.9, life: 0.7, grav: -1
-      });
-    }
+    const bossKill = !!(e.isBoss || e.isBoss2 || e.isBoss3 || e.isGardener);
+    FX.poof(_v, {
+      scale: bossKill ? 1.9 : 1,
+      color: bossKill ? PAL.rust : PAL.mustard,
+      word: bossKill ? 'K.O.!' : undefined
+    });
     if (e.isGardener) {
       e.respawnAt = 0;
       UI.setBoss(false, 0, e.maxHp, 'defeated', 'The Gardener');
