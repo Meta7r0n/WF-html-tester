@@ -3118,15 +3118,29 @@ const TEX = (() => {
     return cache.metal;
   }
 
+  /* The sky is the brightest large area in every outdoor frame, which makes
+     it the thing that sets the top of the tonal range for the whole game.
+     The old gradient ran dark-at-zenith (#6E93B0, luma 0.55) through a dull
+     #CFC1BE at eye level, and that eye-level band was measurably the p99 of
+     nearly every frame: it printed at 227 and nothing else in the scene got
+     near it. The frame had no white in it because the sky had no white in it,
+     and no amount of exposure/white-point tuning could add one without
+     dragging the midtones up with it.
+     So the gradient now carries a real paper-white band where the horizon
+     sits. Distant geometry still fogs toward the cooler CONFIG.render.fogColor
+     and therefore silhouettes *against* that white instead of dissolving into
+     it, which is where the depth separation comes from. The zenith stays the
+     deepest tone so the sky still reads as a sky and not as a blank wall. */
   function sky() {
     if (cache.sky) return cache.sky;
     const w = 8, h = 256, c = cv(w, h), x = c.getContext('2d');
     const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0.00, '#6E93B0');
-    g.addColorStop(0.32, hex(PAL.blue));
-    g.addColorStop(0.60, '#CFC1BE');
-    g.addColorStop(0.80, hex(PAL.peach));
-    g.addColorStop(1.00, hex(PAL.peachDeep));
+    g.addColorStop(0.00, '#8AAEC8');        // zenith: deepest, still airy
+    g.addColorStop(0.30, hex(PAL.blue));
+    g.addColorStop(0.55, '#D8E3EA');        // the band that lifts toward paper
+    g.addColorStop(0.72, hex(PAL.white));   // horizon: true white lives here
+    g.addColorStop(0.88, hex(PAL.cream));
+    g.addColorStop(1.00, hex(PAL.peach));   // below the horizon line
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
@@ -3569,6 +3583,7 @@ const RENDERCORE = (() => {
     'uniform float uGamma;',
     'uniform float uKnee;',
     'uniform float uKneeInv;',
+    'uniform float uKneeWhite;',
     'uniform float uContrast;',
     'uniform float uSaturation;',
     'uniform float uSatRoll;',
@@ -3642,11 +3657,27 @@ const RENDERCORE = (() => {
     //    viewed through, and the thing that puts material back into every
     //    surface lit only by fill. See CONFIG.render.grade.gamma.
     '  col = pow(col, vec3(uGamma));',
-    // 3. Shoulder. Above the knee, roll into the last stop asymptotically
-    //    rather than clamping, so highlights keep separating from one
-    //    another instead of fusing into a single flat white.
-    '  vec3 over = max(vec3(0.0), col - uKnee);',
-    '  col = min(col, vec3(uKnee)) + (1.0 - uKnee) * (1.0 - exp(-over * uKneeInv));',
+    // 3. Shoulder. Above the knee, roll into the last stop rather than
+    //    clamping, so highlights keep separating from one another instead of
+    //    fusing into a single flat white.
+    //
+    //    This used to be `1 - exp(-over/(1-knee))`, which asymptotes: it
+    //    approaches the last stop but NEVER arrives, for any finite input.
+    //    With knee 0.80 the hardest possible highlight in the game printed
+    //    at 236 and the realistic brightest surface at ~227 -- the frame had
+    //    a structural ceiling and true paper white was simply unreachable, no
+    //    matter how the exposure/white/key knobs were tuned. It also had a
+    //    slope discontinuity at the knee (the exp form starts with slope
+    //    1/(1-knee) = 5x), so highlights actually *accelerated* as they
+    //    entered the shoulder before compressing.
+    //
+    //    The quadratic below compresses [uKnee, uKneeWhite] into [uKnee, 1.0]
+    //    and reaches a true 1.0 at a finite input. Keeping uKneeWhite at
+    //    knee + 2*(1-knee) makes the join exactly C1 -- slope 1 on both
+    //    sides -- so the shoulder rolls off smoothly instead of popping.
+    '  float sw = max(1e-4, uKneeWhite - uKnee);',
+    '  vec3 s = clamp((col - uKnee) / sw, 0.0, 1.0);',
+    '  col = min(col, vec3(uKnee)) + (1.0 - uKnee) * (s * (2.0 - s));',
     // 4. A light S on top, purely for snap; the gamma and shoulder have
     //    already done the shaping.
     '  col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);',
@@ -3674,6 +3705,18 @@ const RENDERCORE = (() => {
   /* ------------------------------------------------------------ film clock
      Grain, gate weave and projector flicker all step together on one
      low-rate clock. 60Hz noise fizzes like video; 24Hz noise reads as film. */
+  /* Input value that the highlight shoulder lands on a true 1.0. Defaults to
+     the C1-continuous choice -- knee + 2*(1 - knee) -- which makes the
+     shoulder join the straight part of the curve at matching slope. Override
+     `grade.kneeWhite` to trade smoothness for headroom: a larger value gives
+     a longer, gentler roll that needs brighter input to reach paper white, a
+     smaller one snaps to white sooner. */
+  function kneeWhite(grade) {
+    const k = Math.min(0.999, Math.max(0, grade.knee));
+    const auto = k + 2 * (1 - k);
+    return Math.max(k + 1e-3, grade.kneeWhite || auto);
+  }
+
   function filmHash(n) {
     const s = Math.sin(n * 12.9898) * 43758.5453;
     return s - Math.floor(s);
@@ -3726,6 +3769,7 @@ const RENDERCORE = (() => {
         uGamma: { value: grade.gamma },
         uKnee: { value: grade.knee },
         uKneeInv: { value: 1 / Math.max(0.01, 1 - grade.knee) },
+        uKneeWhite: { value: kneeWhite(grade) },
         uContrast: { value: grade.contrast },
         uSaturation: { value: grade.saturation },
         uSatRoll: { value: grade.satRoll },
@@ -4048,6 +4092,7 @@ const RENDERCORE = (() => {
     u.uGamma.value = grade.gamma;
     u.uKnee.value = grade.knee;
     u.uKneeInv.value = 1 / Math.max(0.01, 1 - grade.knee);
+    u.uKneeWhite.value = kneeWhite(grade);
     u.uContrast.value = grade.contrast;
     u.uSaturation.value = grade.saturation;
     u.uSatRoll.value = grade.satRoll;
