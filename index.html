@@ -20427,7 +20427,7 @@ const CAST = (() => {
 
      Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
      tip toward +X. Left limbs are index 0/2, right 1/3. */
-  const REST_BEND = [0.22, 0.22, -0.17, -0.17];
+  const REST_BEND = [0.22, 0.22, -0.12, -0.12];
   const REST_SPLAY = [0.15, -0.15, -0.05, 0.05];
   // Slow, tiny wander on the resting curve so a parked character's noodles
   // are alive rather than frozen. Seeded per rig; a crowd never breathes in
@@ -20438,12 +20438,20 @@ const CAST = (() => {
      after the wrist has stopped and a shoe flops on the ankle. Target is the
      accumulated chain angle (shoulder + elbow), so the whip builds along the
      limb instead of every joint lagging the torso by the same amount.
+
+     Gains are deliberately small. The first pass ran the feet at 0.38/0.26
+     and the shoes — which are large, pale and read as a hard silhouette —
+     swung 40 degrees off the ankle on every step, which looks like broken
+     feet rather than loose ones. The same applies to the right hand, which
+     on several characters is holding a scythe or a rifle: what reads as a
+     nice bit of overlap on a bare glove reads as flailing a pole around
+     when there is a metre of prop attached to it.
      [tip, joint, mid, x-gain, z-gain, x-limit, z-limit] */
   const TRAIL_TIPS = [
-    ['handL', 'armL', 'armLMid', 0.42, 0.40, 0.75, 0.6],
-    ['handR', 'armR', 'armRMid', 0.42, 0.40, 0.75, 0.6],
-    ['footL', 'legL', 'legLMid', 0.38, 0.26, 0.5, 0.35],
-    ['footR', 'legR', 'legRMid', 0.38, 0.26, 0.5, 0.35]
+    ['handL', 'armL', 'armLMid', 0.26, 0.20, 0.45, 0.30],
+    ['handR', 'armR', 'armRMid', 0.26, 0.20, 0.45, 0.30],
+    ['footL', 'legL', 'legLMid', 0.19, 0.10, 0.28, 0.16],
+    ['footR', 'legR', 'legRMid', 0.19, 0.10, 0.28, 0.16]
   ];
   const SPRING_K = 175, SPRING_D = 13.5;
   // How fast the "lead" filter chases the stepped pose. High enough that the
@@ -24910,15 +24918,19 @@ const ENEMY = (() => {
        a hand travelling on a straight line is the tell the brief calls out,
        and combining pitch with this fold puts it on a curve. */
     if (bend) {
+      /* Held down deliberately: a fold much past this and the character
+         spends the walk crouching, because the bend eats leg length that
+         the hip pitch has already spent. The knee has to read as a knee,
+         not as a squat. */
       const swing = gait > 0.02 ? gait : 0;
-      bend[4] = -(0.62 * UTIL.clamp(-sw, 0, 1) + 0.20 * contact) * swing - shift * 0.10;
-      bend[6] = -(0.62 * UTIL.clamp(sw, 0, 1) + 0.20 * contact) * swing + shift * 0.10;
-      bend[0] = 0.42 * UTIL.clamp(sw, 0, 1) * swing;
-      bend[2] = 0.42 * UTIL.clamp(-sw, 0, 1) * swing;
+      bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * swing - shift * 0.08;
+      bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing + shift * 0.08;
+      bend[0] = 0.34 * UTIL.clamp(sw, 0, 1) * swing;
+      bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing;
       // sideways bow in quadrature with the pitch: the hand traces an
       // ellipse rather than sweeping a flat plane
-      bend[1] = cw * 0.16 * swing;
-      bend[3] = -cw * 0.16 * swing;
+      bend[1] = cw * 0.14 * swing;
+      bend[3] = -cw * 0.14 * swing;
     }
 
     /* ---------------- squash and stretch on top of everything ----------
@@ -24980,8 +24992,12 @@ const ENEMY = (() => {
       const wk = st.windup / total;
       if (k < wk) {
         const a = k / wk;
-        // gather: ease-in, then hold the coiled pose for the last 25%
-        const coil = E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
+        /* gather: ease-in, then hold the coiled pose for the last 25%. The
+           small linear pedestal matters at 12fps — on a pure quartic the
+           first four drawings of the wind-up are indistinguishable from
+           standing still, so the anticipation reads as a hang rather than
+           as a gather. */
+        const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
         r.armR.rotation.x = -2.5 * coil;
         r.armR.rotation.z = 0.12 + 0.45 * coil;
         r.armL.rotation.x = 0.55 * coil;
@@ -24992,16 +25008,19 @@ const ENEMY = (() => {
         // squat into the wind-up: squash down and widen
         const cs = 1 - coil * 0.16;
         e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
-        r.bob.position.y = bounce + breath - coil * 0.06;
+        // Shallower than it looks it should be: the knee fold below already
+        // drops the hips, and the two together used to bury the shorts in
+        // the shoes.
+        r.bob.position.y = bounce + breath - coil * 0.035;
         /* A swing is thrown from the ground up. The back leg loads, the
            front knee opens to take the weight, and the striking elbow folds
            right up so the arm is *short* at the top of the gather — which
            is what makes it look like it is about to be thrown rather than
            parked overhead. */
-        r.legL.rotation.x = -0.34 * coil;
-        r.legR.rotation.x = 0.18 * coil;
+        r.legL.rotation.x = -0.30 * coil;
+        r.legR.rotation.x = 0.16 * coil;
         if (bend) {
-          bend[4] = -0.72 * coil; bend[6] = -0.30 * coil;
+          bend[4] = -0.44 * coil; bend[6] = -0.18 * coil;
           bend[2] = 0.95 * coil; bend[3] = -0.22 * coil;
           bend[0] = 0.30 * coil;
         }
@@ -25024,11 +25043,11 @@ const ENEMY = (() => {
         /* Drive off the back foot: the loaded leg extends through the snap
            and the elbow whips open a fraction behind the shoulder, so the
            forearm is still catching up when the hand reaches the target. */
-        r.legL.rotation.x = -0.34 + strike * 0.46;
-        r.legR.rotation.x = 0.18 - strike * 0.30;
+        r.legL.rotation.x = -0.30 + strike * 0.42;
+        r.legR.rotation.x = 0.16 - strike * 0.28;
         if (bend) {
           const whip = a < 0.34 ? E.outBack(UTIL.clamp((a - 0.06) / 0.34, 0, 1), 1.5) : strike;
-          bend[4] = -0.72 + strike * 0.60; bend[6] = -0.30 - strike * 0.22;
+          bend[4] = -0.44 + strike * 0.36; bend[6] = -0.18 - strike * 0.16;
           bend[2] = 0.95 - whip * 1.05; bend[3] = -0.22 + whip * 0.30;
           bend[0] = 0.30 - strike * 0.42;
         }
@@ -25072,13 +25091,13 @@ const ENEMY = (() => {
       r.legL.rotation.x = -0.30 * decay + shake * 0.24;
       r.legR.rotation.x = 0.16 * decay - shake * 0.20;
       if (bend) {
-        bend[4] = -0.80 * decay - shake * 0.35;
-        bend[6] = -0.55 * decay + shake * 0.40;
+        bend[4] = -0.52 * decay - shake * 0.28;
+        bend[6] = -0.36 * decay + shake * 0.32;
         bend[0] = 0.45 * decay + shake * 0.55;
         bend[2] = 0.45 * decay - shake * 0.55;
         bend[1] = shake * 0.30; bend[3] = shake * 0.30;
       }
-      r.bob.position.y = bounce - 0.09 * decay + shake * 0.03;
+      r.bob.position.y = bounce - 0.06 * decay + shake * 0.03;
       if (r.footL) r.footL.rotation.x = -0.2 * decay;
       if (r.footR) r.footR.rotation.x = 0.24 * decay;
     }
@@ -27069,8 +27088,8 @@ const COOP = (() => {
        ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
        a parked teammate is never standing on two straight rods. */
     if (r.bend) {
-      r.bend[4] = -(0.60 * UTIL.clamp(-sw, 0, 1) + 0.20 * contact) * walk - 0.06;
-      r.bend[6] = -(0.60 * UTIL.clamp(sw, 0, 1) + 0.20 * contact) * walk - 0.06;
+      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk - 0.05;
       r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
       r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
       r.bend[1] = cw * 0.15 * walk;
