@@ -24926,14 +24926,20 @@ const ENEMY = (() => {
     const cw = Math.cos(e.stepPhase);
     const gait = UTIL.clamp(walk * (0.9 + 0.25 * walk), 0, 1.05);
 
+    /* The right hand carries the prop on characters that have one, and a
+       metre of scythe on the end of a full-amplitude swing windmills right
+       across the silhouette every step. You carry a polearm, you do not
+       swing it while walking — damping the loaded arm is what an animator
+       would do, and it costs the empty-handed characters nothing. */
+    const propArm = e.def.hand ? 0.45 : 1;
     r.legL.rotation.x = -sw * 0.72 * gait;
     r.legR.rotation.x = sw * 0.72 * gait;
     r.armL.rotation.x = sw * 1.05 * gait;
-    r.armR.rotation.x = -sw * 1.05 * gait;
+    r.armR.rotation.x = -sw * 1.05 * gait * propArm;
     // Arms swing OUT as well as forward, so the noodle clears the torso and
     // its curve is actually visible in silhouette rather than buried in it.
     r.armL.rotation.z = -0.12 - walk * 0.3 - Math.abs(sw) * 0.16 * gait;
-    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait;
+    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait * propArm;
     // toes flick up on the forward reach and point on the push-off
     if (r.footL) r.footL.rotation.x = -sw * 0.34 * gait;
     if (r.footR) r.footR.rotation.x = sw * 0.34 * gait;
@@ -25031,11 +25037,11 @@ const ENEMY = (() => {
       bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing
         - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20;
       bend[0] = 0.34 * UTIL.clamp(sw, 0, 1) * swing;
-      bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing;
+      bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing * propArm;
       // sideways bow in quadrature with the pitch: the hand traces an
       // ellipse rather than sweeping a flat plane
       bend[1] = cw * 0.14 * swing;
-      bend[3] = -cw * 0.14 * swing;
+      bend[3] = -cw * 0.14 * swing * propArm;
     }
 
     /* ---------------- squash and stretch on top of everything ----------
