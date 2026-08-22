@@ -12884,7 +12884,15 @@ const WEAPON = (() => {
   let drawTimer = 0, drawLen = 0.001, pendingDraw = false;
   let built = false;
   // Held-pose blends, all damped 0..1.
-  let adsK = 0, adsVel = 0, sprintK = 0;
+  let adsK = 0, adsVel = 0, sprintK = 0, sprintVel = 0;
+  /* The hands ride the gun's own transform rather than being keyed
+     alongside it -- one spring per channel of the gun's offset from its
+     rest pose, so the gloves stay on the grip but arrive late. See the
+     follow block in update(). */
+  const HAND = {
+    px: 0, pvx: 0, py: 0, pvy: 0, pz: 0, pvz: 0,
+    rx: 0, rvx: 0, ry: 0, rvy: 0, rz: 0, rvz: 0
+  };
   // Inertia: the gun lags the camera and the player's footwork, then
   // leads back past rest instead of stopping dead.
   let inX = 0, inVX = 0, inY = 0, inVY = 0;
@@ -12946,6 +12954,15 @@ const WEAPON = (() => {
   }
   const _spring = { x: 0, v: 0 };
 
+  /* The same step written about an arbitrary rest point instead of zero:
+     the kick springs all pull toward 0, but a follow spring has to chase a
+     target that moves every frame. Result is left in _spring like the
+     others so both share one call convention. */
+  function followStep(x, v, target, stiff, damping, dt) {
+    springStep(x - target, v, stiff, damping, dt);
+    _spring.x += target;
+  }
+
   // Cartoon easing. easeOutBack overshoots past its target and settles
   // back -- the shape every snap in here uses.
   function easeOutBack(k, over) {
@@ -12983,6 +13000,10 @@ const WEAPON = (() => {
     squashVel -= 4.5 + 6.5 * Math.min(1.6, amount);
     anticTimer = anticLen = UTIL.clamp(0.030 + amount * 0.016, 0.028, 0.062);
   }
+
+  const _handM = new THREE.Matrix4();
+  const _handE = new THREE.Euler();
+  const _ZERO3 = [0, 0, 0];
 
   const _o = new THREE.Vector3();
   const _d = new THREE.Vector3();
@@ -13794,8 +13815,13 @@ const WEAPON = (() => {
       model.lighterPivot.position.set(rest[0], rest[1], rest[2]);
     }
     if (armedHands) {
-      armedHands.position.set(0, 0, 0);
-      armedHands.rotation.set(0, 0, 0);
+      // Zero offset from the gun's rest pose, which is where the gloves
+      // were authored -- the follow springs in update() take it from here.
+      HAND.px = HAND.pvx = HAND.py = HAND.pvy = HAND.pz = HAND.pvz = 0;
+      HAND.rx = HAND.rvx = HAND.ry = HAND.rvy = HAND.rz = HAND.rvz = 0;
+      armedHands.matrixAutoUpdate = false;
+      armedHands.matrix.identity();
+      armedHands.matrixWorldNeedsUpdate = true;
     }
   }
 
@@ -14612,10 +14638,14 @@ const WEAPON = (() => {
     const sr = PLAYER.speedRatio;
     const d = defFor(), model = models[currentId];
 
-    /* ---- sprint carry ---- */
+    /* ---- sprint carry. A spring, not a damp: the weapon has to swing
+       past the carry pose going into a run and past the held pose coming
+       out of one. An exponential ease between two poses reads as a
+       dissolve; the overshoot is what gives the transition mass. ---- */
     const sprintOn = PLAYER.sprinting && !PLAYER.aiming && !reloading
       && fireTimer <= 0.02 && meleeTimer <= 0 && !swapOutId && drawTimer <= 0;
-    sprintK = UTIL.damp(sprintK, sprintOn ? 1 : 0, sprintOn ? 7.5 : 10.5, dt);
+    springStep(sprintK - (sprintOn ? 1 : 0), sprintVel, 132, 13.5, dt);
+    sprintK = UTIL.clamp(_spring.x + (sprintOn ? 1 : 0), -0.18, 1.18); sprintVel = _spring.v;
 
     /* ---- ADS: a spring, not a lerp. It arrives slightly past the sight
        line and settles back onto it, which is what reads as "deliberate"
@@ -14633,6 +14663,16 @@ const WEAPON = (() => {
     const bx = Math.sin(bobPhase) * bobAmt * (1 + sprintK * 0.85);
     const by = (Math.abs(Math.cos(bobPhase)) - 0.5) * bobAmt * 1.25 * (1 + sprintK * 0.75);
     const broll = Math.sin(bobPhase * 0.5) * bobAmt * 0.85 * (1 + sprintK * 1.6);
+
+    /* ---- stride: the sprint carry is not a static pose. Over a run the
+       gun swings across the body on the stride period and dips on each
+       footfall, and the cant lags the swing by a quarter cycle so the two
+       never peak on the same frame -- offset peaks are most of what makes
+       a run cycle read as a body rather than as one oscillator. ---- */
+    const stride = sprintK * UTIL.clamp(sr * 1.3, 0, 1);
+    const runYaw = Math.sin(bobPhase * 0.5) * 0.115 * stride;
+    const runPitch = (Math.abs(Math.sin(bobPhase)) - 0.55) * 0.09 * stride;
+    const runRoll = Math.sin(bobPhase * 0.5 + 1.5) * 0.135 * stride;
 
     /* ---- idle: breathing on one slow period, a wrist tremor on two much
        faster ones, none of which divide into each other, so a standing
@@ -14701,21 +14741,27 @@ const WEAPON = (() => {
       const ry = UTIL.lerp(model.rot[1], model.aimRot[1], adsK);
       const rz = UTIL.lerp(model.rot[2], model.aimRot[2], adsK);
 
+      /* Sprint carry: the gun drops off the sight line, cants over and
+         angles ACROSS the body so the barrel crosses the lower-left of
+         frame. The pose this replaced yawed the muzzle right and pitched
+         it up by 30 degrees on each of three axes at once, which stood the
+         weapon on end and pushed it out through the top of the frame --
+         a run has to lower the weapon, never raise it. */
       model.root.position.set(
         px + (swayX + inX) * steady + bx + ix - leadX * 0.055
-          + sprintK * 0.115 - swing * 0.23 + swapE * 0.17,
+          + sprintK * 0.05 - swing * 0.23 + swapE * 0.17,
         py + (swayY + inY) * steady + by + iy - RL.drop + recoil * 0.20 + rise * 0.09
-          - sprintK * 0.155 + swing * 0.10 - drawOff * 0.58,
+          - sprintK * 0.06 + swing * 0.10 - drawOff * 0.58,
         pz + recoil - antic * lunge + leadZ * 0.05 + RL.push
-          + sprintK * 0.10 - swing * 0.20 - drawOff * 0.07
+          + sprintK * 0.09 - swing * 0.20 - drawOff * 0.07
       );
       model.root.rotation.set(
         rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + swing * 0.48
-          + sprintK * 0.52 + drawOff * -1.18 + jolt * 0.55,
+          - sprintK * 0.22 + runPitch + drawOff * -1.18 + jolt * 0.55,
         ry + RL.yaw - (swayX + inX) * 1.5 * steady + ix * 0.5 + side + leadX * 0.10
-          - swing * 0.72 * meleeSide - sprintK * 0.56 + drawOff * 0.62,
+          - swing * 0.72 * meleeSide + sprintK * 0.20 + runYaw + drawOff * 0.62,
         rz + RL.roll + (swayY + inY) * 0.85 * steady + iroll + broll + roll
-          + swing * 0.38 * meleeSide + sprintK * 0.46 + drawOff * -0.64
+          + swing * 0.38 * meleeSide + sprintK * 0.30 + runRoll + drawOff * -0.64
       );
       // Squash-and-stretch along the bore. A shot compresses the gun into
       // itself, then it springs back long -- the anticipation frame is the
@@ -14762,22 +14808,6 @@ const WEAPON = (() => {
             break;
         }
       }
-      /* The arms follow the gun rather than being keyed to it: a lagging
-         translation plus a little roll, so the wrists trail the barrel and
-         catch up. Rotations here pivot about the camera, so they stay
-         small -- a big one swings a glove straight through the lens. */
-      armedHands.position.set(
-        (swayX + inX) * 0.32 * steady + sprintK * 0.06 - swing * 0.12 + swapE * 0.10,
-        (swayY + inY) * 0.32 * steady + by * 0.45 - sprintK * 0.11 + swing * 0.06
-          - drawOff * 0.52 - swapE * 0.80,
-        recoil * 0.26 - swing * 0.10 - drawOff * 0.05
-      );
-      armedHands.rotation.set(
-        rise * 0.30 + jolt * 0.20,
-        side * 0.35,
-        (swayY + inY) * 0.22 * steady + swing * 0.28 * meleeSide + roll * 0.55
-          + sprintK * 0.30 + iroll * 0.5
-      );
       // Scrap Railgun's magnifying-glass lens builds a glow as the charge
       // fills, so the shot always telegraphs itself before it goes off.
       if (model.chargeGlow) {
@@ -14814,21 +14844,28 @@ const WEAPON = (() => {
       // rides the ADS spring rather than PLAYER.aiming directly, so the
       // rifle is *lifted* toward the scope line for a few frames before it
       // ducks out -- same end state, no pop.
-      if (currentId === 'glizzyGat') model.root.visible = !swapOutId && adsK < 0.62;
+      if (currentId === 'glizzyGat') {
+        model.root.visible = !swapOutId && adsK < 0.62;
+        // The hands are on that rifle now, so they duck out with it --
+        // a pair of gloves gripping thin air is worse than neither.
+        if (!swapOutId) armedHands.visible = model.root.visible;
+      }
     } else {
       const base = model.base || [0, 0, 0];
       const rot = model.rot || [0, 0, 0];
       model.root.position.set(
         base[0] + (swayX + inX) * 0.55 + bx + ix * 0.8 - leadX * 0.05
-          + sprintK * 0.11 - swing * 0.16 + swapE * 0.15,
-        base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.14
+          + sprintK * 0.05 - swing * 0.16 + swapE * 0.15,
+        base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.07
           + swing * 0.08 - drawOff * 0.62,
-        base[2] + leadZ * 0.045 + sprintK * 0.09 - swing * 0.18 + drawOff * 0.2
+        base[2] + leadZ * 0.045 + sprintK * 0.10 - swing * 0.18 + drawOff * 0.2
       );
+      // Same lowered, canted sprint carry the guns use -- fists drop and
+      // pump across the body rather than being hoisted into the lens.
       model.root.rotation.set(
-        rot[0] - swing * 0.15 + iy * 0.5 + sprintK * 0.45 + drawOff * -1.1 + jolt * 0.5,
-        rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 - sprintK * 0.5 + drawOff * 0.55,
-        rot[2] + swing * 0.08 * meleeSide + iroll + broll + sprintK * 0.4 + drawOff * -0.6
+        rot[0] - swing * 0.15 + iy * 0.5 - sprintK * 0.18 + runPitch * 0.8 + drawOff * -1.1 + jolt * 0.5,
+        rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 + sprintK * 0.18 + runYaw + drawOff * 0.55,
+        rot[2] + swing * 0.08 * meleeSide + iroll + broll + sprintK * 0.30 + runRoll + drawOff * -0.6
       );
       const msq = squash + RL.scale;
       model.root.scale.set(1 - msq * 0.18, 1 - msq * 0.2, 1 + msq * 0.34);
@@ -14848,6 +14885,55 @@ const WEAPON = (() => {
         fistLeft.scale.set(1.18 / (ls * 0.75 + 0.25), 1.18 / (ls * 0.75 + 0.25), 1.18 * ls);
         fistRight.scale.set(1.18 / (rs * 0.75 + 0.25), 1.18 / (rs * 0.75 + 0.25), 1.18 * rs);
       }
+    }
+
+    /* ---- the hands are carried BY the weapon --------------------------
+       Every frame we take the transform that maps whichever gun is on
+       screen from its authored rest pose to wherever the pose stack has
+       actually put it, spring the hands toward that transform, and apply
+       the result. A glove therefore cannot drift off the grip however
+       extreme the pose gets -- the old version copied a hand-picked
+       fraction of a handful of the gun's channels, so a sprint or a hard
+       kick left the gloves hanging in open air -- while the springs still
+       land it two or three frames late and swing it past on the way back,
+       which is the overlapping action a rigid parent could not give.
+
+       The rotation pivots about the gun's own origin (the receiver, i.e.
+       roughly the trigger hand) rather than about the camera, so the
+       gloves turn with the weapon; the arm hoses' shoulder ends sit
+       behind the near plane and sweep out of sight. While a weapon is
+       being holstered the hands follow the OUTGOING gun down out of
+       frame, since that is the one still being rendered. */
+    const hm = (swapOutId && models[swapOutId]) || model;
+    if (hm && hm.root && armedHands.visible) {
+      const hb = hm.base || _ZERO3, hr = hm.rot || _ZERO3;
+      followStep(HAND.px, HAND.pvx, hm.root.position.x - hb[0], 470, 27, dt);
+      HAND.px = _spring.x; HAND.pvx = _spring.v;
+      followStep(HAND.py, HAND.pvy, hm.root.position.y - hb[1], 470, 27, dt);
+      HAND.py = _spring.x; HAND.pvy = _spring.v;
+      followStep(HAND.pz, HAND.pvz, hm.root.position.z - hb[2], 560, 31, dt);
+      HAND.pz = _spring.x; HAND.pvz = _spring.v;
+      // Rotation trails a little further than translation: the wrists are
+      // the last thing to catch up with a barrel that has already moved.
+      followStep(HAND.rx, HAND.rvx, hm.root.rotation.x - hr[0], 330, 22, dt);
+      HAND.rx = _spring.x; HAND.rvx = _spring.v;
+      followStep(HAND.ry, HAND.rvy, hm.root.rotation.y - hr[1], 330, 22, dt);
+      HAND.ry = _spring.x; HAND.rvy = _spring.v;
+      followStep(HAND.rz, HAND.rvz, hm.root.rotation.z - hr[2], 300, 20, dt);
+      HAND.rz = _spring.x; HAND.rvz = _spring.v;
+
+      if (!hm.restInv) {
+        hm.restInv = new THREE.Matrix4()
+          .makeRotationFromEuler(_handE.set(hr[0], hr[1], hr[2]))
+          .setPosition(hb[0], hb[1], hb[2]).invert();
+      }
+      _handM
+        .makeRotationFromEuler(_handE.set(hr[0] + HAND.rx, hr[1] + HAND.ry, hr[2] + HAND.rz))
+        .setPosition(hb[0] + HAND.px, hb[1] + HAND.py, hb[2] + HAND.pz)
+        .multiply(hm.restInv);
+      armedHands.matrixAutoUpdate = false;
+      armedHands.matrix.copy(_handM);
+      armedHands.matrixWorldNeedsUpdate = true;
     }
 
     // The whole rig takes the landing shove and the 12fps boil, so the
@@ -14946,7 +15032,7 @@ const WEAPON = (() => {
     rise = riseVel = side = sideVel = roll = rollVel = 0;
     inX = inVX = inY = inVY = jolt = joltVel = 0;
     lagStrafe = lagFwd = 0;
-    adsK = adsVel = sprintK = 0;
+    adsK = adsVel = sprintK = sprintVel = 0;
     anticTimer = 0;
     swapTimer = 0;
     pendingDraw = false;
