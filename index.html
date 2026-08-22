@@ -12100,20 +12100,20 @@ const WEAPON = (() => {
      `reload` picks which choreography plays. Anything not listed falls
      back to FEEL_ANY. */
   const FEEL = {
-    unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.09, reload: 'none' },
-    pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.13, reload: 'pump' },
-    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.12, reload: 'break' },
-    tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.11, reload: 'wheel' },
-    fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.12, reload: 'mag' },
-    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.14, reload: 'pump' },
-    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.14, reload: 'cell' },
-    sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.12, reload: 'can' },
-    portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.13, reload: 'cell' },
-    seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.13, reload: 'drum' },
-    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.42, holster: 0.16, reload: 'bolt' },
-    chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.13, reload: 'none' },
-    theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.13, reload: 'none' },
-    knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.10, reload: 'none' }
+    unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.06, reload: 'none' },
+    pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.09, reload: 'pump' },
+    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.085, reload: 'break' },
+    tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.075, reload: 'wheel' },
+    fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.085, reload: 'mag' },
+    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.10, reload: 'pump' },
+    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.10, reload: 'cell' },
+    sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.085, reload: 'can' },
+    portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.09, reload: 'cell' },
+    seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.09, reload: 'drum' },
+    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.11, reload: 'bolt' },
+    chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
+    theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
+    knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.07, reload: 'none' }
   };
   const FEEL_ANY = {
     kick: 0.8, stiff: 210, damp: 15, rise: 1, side: 1, roll: 1,
@@ -12322,12 +12322,17 @@ const WEAPON = (() => {
     const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
 
     PRIM.box(0.14, 0.16, 0.34, steel, { pos: [0, 0, -0.12], parent: g, warp: 0.006, outline: 0.012, ray: false });
-    PRIM.cyl(0.115, 0.115, 0.19, 10, steelLight, { pos: [0, 0.025, -0.3], rot: [0, 0, Math.PI / 2], parent: g, outline: 0.013, ray: false });
+    // The cylinder is its own group so the reload can actually swing it out
+    // of the frame and shake the brass loose (see reloadPose's 'wheel').
+    const cylinder = new THREE.Group();
+    cylinder.position.set(0, 0.025, -0.3);
+    g.add(cylinder);
+    PRIM.cyl(0.115, 0.115, 0.19, 10, steelLight, { rot: [0, 0, Math.PI / 2], parent: cylinder, outline: 0.013, ray: false });
     for (let i = 0; i < 6; i++) {
       const a = i / 6 * Math.PI * 2;
       PRIM.cyl(0.016, 0.016, 0.205, 6, MAT.toon(PAL.charcoal), {
-        pos: [Math.cos(a) * 0.065, 0.025 + Math.sin(a) * 0.065, -0.3],
-        rot: [0, 0, Math.PI / 2], parent: g, outline: 0.004, ray: false
+        pos: [Math.cos(a) * 0.065, Math.sin(a) * 0.065, 0],
+        rot: [0, 0, Math.PI / 2], parent: cylinder, outline: 0.004, ray: false
       });
     }
     PRIM.cyl(0.042, 0.052, 0.72, 10, steel, { pos: [0, 0.025, -0.67], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
@@ -12338,6 +12343,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.025, -1.13, 0.78);
     models.tinSixer = {
       root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      part: cylinder, partKind: 'wheel',
+      movers: [{ part: cylinder, p: [0, 0.025, -0.3], r: [0, 0, 0] }],
       base: [0.31, -0.3, -0.5], rot: [0.02, -0.08, 0.015]
     };
   }
@@ -12355,7 +12362,14 @@ const WEAPON = (() => {
     PRIM.cyl(0.075, 0.045, 0.14, 9, MAT.toon(PAL.mustardDk), { pos: [0, 0.045, -1.12], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false });
     PRIM.box(0.14, 0.17, 0.38, timber, { pos: [0, -0.03, 0.37], rot: [-0.12, 0, 0], parent: g, warp: 0.01, outline: 0.013, ray: false });
     PRIM.box(0.13, 0.22, 0.14, timber, { pos: [0, -0.18, 0.02], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
-    PRIM.box(0.12, 0.31, 0.12, MAT.toon(PAL.mustardDk), { pos: [0, -0.19, -0.25], rot: [-0.17, 0, 0], parent: g, warp: 0.006, outline: 0.012, ray: false });
+    // The magazine is its own group so reloadPose's 'mag' can drop it out
+    // of the well and shove a fresh one back in.
+    const mag = new THREE.Group();
+    mag.position.set(0, -0.19, -0.25);
+    mag.rotation.set(-0.17, 0, 0);
+    g.add(mag);
+    PRIM.box(0.12, 0.31, 0.12, MAT.toon(PAL.mustardDk), { parent: mag, warp: 0.006, outline: 0.012, ray: false });
+    PRIM.box(0.13, 0.03, 0.13, MAT.toon(PAL.rustDeep), { pos: [0, -0.16, 0], parent: mag, outline: 0.008, ray: false });
     const handguard = new THREE.Group();
     handguard.position.set(0, 0, -0.52);
     g.add(handguard);
@@ -12367,6 +12381,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.045, -1.22, 0.72);
     models.fieldhand = {
       root: g, forend: handguard, flash: fx.flash, flash2: fx.flash2,
+      part: mag, partKind: 'mag',
+      movers: [{ part: mag, p: [0, -0.19, -0.25], r: [-0.17, 0, 0] }],
       base: [0.27, -0.29, -0.52], rot: [0.02, -0.08, 0.02]
     };
   }
@@ -12644,6 +12660,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.02, -1.0, 0.85);
     models.seedSpitter = {
       root: g, forend: null, flash: fx.flash, flash2: fx.flash2,
+      part: drum, partKind: 'drum',
+      movers: [{ part: drum, p: [0, -0.13, -0.28], r: [0, 0, 0] }],
       base: [0.28, -0.27, -0.5], rot: [0.02, -0.08, 0.02]
     };
   }
@@ -12776,10 +12794,15 @@ const WEAPON = (() => {
     }));
 
     // Bolt handle, jutting out the right side -- reads as the manual cycle.
+    // Grouped so the reload can throw it back and slam it home; the whole
+    // point of a bolt-action's long reload is watching the bolt work.
+    const bolt = new THREE.Group();
+    bolt.position.set(0, 0, -0.02);
+    g.add(bolt);
     PRIM.cyl(0.014, 0.014, 0.14, 6, boltMat, {
-      pos: [0.08, 0, -0.02], rot: [0, 0, Math.PI / 2 - 0.5], parent: g, outline: 0.006, ray: false
+      pos: [0.08, 0, 0], rot: [0, 0, Math.PI / 2 - 0.5], parent: bolt, outline: 0.006, ray: false
     });
-    PRIM.sph(0.024, boltMat, { pos: [0.145, -0.045, -0.02], parent: g, outline: 0.007, ray: false });
+    PRIM.sph(0.024, boltMat, { pos: [0.145, -0.045, 0], parent: bolt, outline: 0.007, ray: false });
 
     // Grip, at the back of the bun.
     PRIM.box(0.09, 0.16, 0.11, MAT.toon(PAL.rustDeep), {
@@ -12794,6 +12817,8 @@ const WEAPON = (() => {
     const fx = flashes(g, 0.04, -1.0, 0.75);
     models.glizzyGat = {
       root: g, forend: forend, flash: fx.flash, flash2: fx.flash2,
+      part: bolt, partKind: 'bolt',
+      movers: [{ part: bolt, p: [0, 0, -0.02], r: [0, 0, 0] }],
       base: [0.27, -0.26, -0.46], rot: [0.03, -0.09, 0.02]
     };
   }
@@ -13048,7 +13073,7 @@ const WEAPON = (() => {
       s.mesh.rotation.set(UTIL.rng(0, 6.28), UTIL.rng(0, 6.28), UTIL.rng(0, 6.28));
       // Squashed on the way out, springing round again mid-flight.
       s.mesh.scale.set(f.shell * 0.55, f.shell * 1.7, f.shell * 0.55);
-      s.vel.set(UTIL.rng(0.72, 1.15), UTIL.rng(1.05, 1.55), UTIL.rng(0.22, 0.58));
+      s.vel.set(UTIL.rng(1.15, 1.75), UTIL.rng(1.55, 2.15), UTIL.rng(0.30, 0.72));
       s.spin.set(UTIL.rng(-26, 26), UTIL.rng(-18, 18), UTIL.rng(-26, 26));
       return;
     }
@@ -13448,14 +13473,16 @@ const WEAPON = (() => {
         RL.pitch = hold * 0.95 - antic * 0.30 + settle * 0.55;
         RL.roll = hold * 0.30 + Math.sin(work * Math.PI * 6) * hold * 0.10 + settle * 0.3;
         RL.drop = hold * 0.24 + antic * 0.06;
+        RL.push = -hold * 0.07;
         RL.yaw = Math.sin(work * Math.PI * 6) * hold * 0.07;
         break;
       // Revolver: swing the cylinder out to the left, shake the brass
       // loose, flick it shut.
       case 'wheel':
-        RL.roll = hold * 1.05 - antic * 0.35 + settle * 0.6;
-        RL.pitch = hold * 0.30 + antic * -0.12 + settle * 0.25;
+        RL.roll = hold * 0.92 - antic * 0.35 + settle * 0.6;
+        RL.pitch = hold * 0.26 + antic * -0.12 + settle * 0.25;
         RL.drop = hold * 0.13;
+        RL.push = -hold * 0.07;
         // Two hard shakes to dump the cases, then the cylinder slaps back.
         RL.yaw = Math.sin(work * Math.PI * 4) * hold * 0.16;
         RL.part = seg(k, 0.30, 0.42) - seg(k, 0.62, 0.72);
@@ -13498,7 +13525,7 @@ const WEAPON = (() => {
         RL.roll = -hold * 0.85 + antic * 0.30 - settle * 0.5;
         RL.pitch = hold * 0.42 - antic * 0.20 + settle * 0.32;
         RL.drop = hold * 0.18 + antic * 0.05;
-        RL.push = -Math.max(0, Math.sin(seg(k, 0.52, 0.66) * Math.PI)) * 0.09;
+        RL.push = -hold * 0.06 - Math.max(0, Math.sin(seg(k, 0.52, 0.66) * Math.PI)) * 0.09;
         RL.forend = -Math.abs(Math.sin(work * Math.PI)) * 0.13;
         break;
       // Spray can: hurl the spent can up out of frame and catch a new one
@@ -13836,7 +13863,7 @@ const WEAPON = (() => {
         px + (swayX + inX) * steady + bx + ix - leadX * 0.055
           + sprintK * 0.115 - swing * 0.23 + swapE * 0.17,
         py + (swayY + inY) * steady + by + iy - RL.drop + recoil * 0.20 + rise * 0.09
-          - sprintK * 0.155 + swing * 0.10 + drawOff * 0.80,
+          - sprintK * 0.155 + swing * 0.10 - drawOff * 0.58,
         pz + recoil - antic * lunge + leadZ * 0.05 + RL.push
           + sprintK * 0.10 - swing * 0.20 - drawOff * 0.07
       );
@@ -13857,6 +13884,42 @@ const WEAPON = (() => {
         if (model.forendZ0 === undefined) model.forendZ0 = model.forend.position.z;
         model.forend.position.z = model.forendZ0 + RL.forend + recoil * 0.42;
       }
+      /* The one moving part each weapon has of its own -- the revolver's
+         cylinder, the carbine's magazine, the sniper's bolt, the Seed
+         Spitter's sunflower drum. RL.part is that part's own 0..1 driver
+         out of the reload choreography; RL.part2 is its second channel
+         (the mag slap, the drum spin-up). Without these the long reloads
+         are a gun tilting and waiting, which is what they used to be. */
+      if (model.part && model.movers) {
+        const m0 = model.movers[0];
+        const p = model.part, rp = RL.part, rp2 = RL.part2;
+        switch (model.partKind) {
+          case 'wheel':
+            // Cylinder swings out to the left and rolls as it goes.
+            p.position.set(m0.p[0] - rp * 0.105, m0.p[1] - rp * 0.012, m0.p[2] + rp * 0.015);
+            p.rotation.set(m0.r[0], m0.r[1] - rp * 1.25, m0.r[2] + rp * 2.9);
+            break;
+          case 'mag':
+            // Drops out of the well, then a fresh one is rammed home.
+            p.position.set(m0.p[0], m0.p[1] - rp * 0.42, m0.p[2] + rp * 0.05);
+            p.rotation.set(m0.r[0] + rp * 0.55, m0.r[1], m0.r[2] - rp * 0.3);
+            p.scale.set(1, 1 + rp2 * 0.10, 1);
+            break;
+          case 'drum':
+            p.position.set(m0.p[0], m0.p[1] - rp * 0.34, m0.p[2] + rp * 0.06);
+            p.rotation.set(m0.r[0], m0.r[1] + rp2, m0.r[2] + rp * 0.7);
+            break;
+          case 'bolt':
+            // Thrown straight back, held, then slammed forward. The tiny
+            // lift on the way out is the handle rotating up off its notch.
+            p.position.set(m0.p[0], m0.p[1] + rp * 0.022, m0.p[2] + rp * 0.19);
+            p.rotation.set(m0.r[0], m0.r[1], m0.r[2] - rp * 1.15);
+            break;
+          default:
+            p.position.set(m0.p[0], m0.p[1], m0.p[2] + rp * 0.1);
+            break;
+        }
+      }
       /* The arms follow the gun rather than being keyed to it: a lagging
          translation plus a little roll, so the wrists trail the barrel and
          catch up. Rotations here pivot about the camera, so they stay
@@ -13864,7 +13927,7 @@ const WEAPON = (() => {
       armedHands.position.set(
         (swayX + inX) * 0.32 * steady + sprintK * 0.06 - swing * 0.12 + swapE * 0.10,
         (swayY + inY) * 0.32 * steady + by * 0.45 - sprintK * 0.11 + swing * 0.06
-          + drawOff * 0.72 - swapE * 0.80,
+          - drawOff * 0.52 - swapE * 0.80,
         recoil * 0.26 - swing * 0.10 - drawOff * 0.05
       );
       armedHands.rotation.set(
@@ -13917,7 +13980,7 @@ const WEAPON = (() => {
         base[0] + (swayX + inX) * 0.55 + bx + ix * 0.8 - leadX * 0.05
           + sprintK * 0.11 - swing * 0.16 + swapE * 0.15,
         base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.14
-          + swing * 0.08 + drawOff * 0.9,
+          + swing * 0.08 - drawOff * 0.62,
         base[2] + leadZ * 0.045 + sprintK * 0.09 - swing * 0.18 + drawOff * 0.2
       );
       model.root.rotation.set(
@@ -13970,8 +14033,8 @@ const WEAPON = (() => {
         const g = flashGain * f.flash;
         const b1 = model.flash.userData.baseScale || 1;
         const b2 = model.flash2.userData.baseScale || 1;
-        const s1 = [0.42, 1.02, 0.48][fi] * g * b1;
-        const s2 = [0.86, 0.56, 1.10][fi] * g * b2;
+        const s1 = [0.40, 0.84, 0.44][fi] * g * b1;
+        const s2 = [0.78, 0.52, 0.98][fi] * g * b2;
         model.flash.visible = fi !== 2;
         model.flash2.visible = true;
         // Squashed across the bore on the big frame -- a burst, not a disc.
@@ -13991,7 +14054,7 @@ const WEAPON = (() => {
       s.life -= dt;
       if (s.life <= 0) { s.mesh.visible = false; continue; }
       const ck = UTIL.clamp(1 - s.life / s.len, 0, 1);
-      s.vel.y -= 6.4 * dt;
+      s.vel.y -= 8.2 * dt;
       s.vel.multiplyScalar(1 - Math.min(0.55, 1.5 * dt));
       s.mesh.position.addScaledVector(s.vel, dt);
       s.mesh.rotation.x += s.spin.x * dt;
