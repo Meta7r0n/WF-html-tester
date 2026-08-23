@@ -27,38 +27,56 @@
     --rust:#A85A3C;
     --rust-deep:#7E3F2A;
     --olive:#6E7A42;
+    --olive-deep:#4E5730;
     --jays:#8EAD4B;
     --ink:#16120F;
     --ink-soft:#2A231E;
 
     /* ---- HUD design tokens (see the "Play HUD" section below) ----
-       One place to tune the whole in-game overlay. The HUD is deliberately
-       built from two materials only: a CHARCOAL TAG (enamel plate riveted to
-       the corner of the frame -- the player's own readouts) and a PAPER
-       TICKET (a printed slip -- anything the world is telling you). Nothing
-       else gets a background. */
+       One place to tune the whole in-game overlay. The HUD is built from ONE
+       surface material and one backing-less one:
+
+         .hud-card  -- a printed card. Cream stock, a heavy black keyline, a
+                       cream gap and an inner ink hairline, and a hard offset
+                       shadow. A 1930s title card, not a UI panel.
+         ink-edged  -- cream lettering with a full ink edge and no background,
+                       for anything transient enough that a card would be
+                       furniture.
+
+       Why the surface is cream and not charcoal. A HUD surface has to survive
+       a blown-out cream sky AND a barn wall in shadow. A cream card is the
+       brightest object in a dark frame and its ink keyline is the darkest
+       object in a bright one, so one of the two always separates it. The
+       charcoal plate this replaces had only the keyline, at 30% alpha, and it
+       ghosted out completely against every dark frame the render now produces
+       -- exactly the failure the --cream-dim bug had already taught us once. */
     --hud-slab:"Rockwell","Rockwell Nova","Roboto Slab","Bookman Old Style","Bitstream Charter","Courier New",Georgia,serif;
-    /* Fully opaque on purpose. The film layers (#grain, #vignette) sit at
-       z-index 20/21 and the frame itself is now dark and heavily shadowed --
-       a translucent HUD surface reads as a ghost rectangle against both. Every
-       HUD surface is opaque and every HUD element sits above z-index 22. */
-    --hud-tag:linear-gradient(180deg,#241D18 0%,#1A1512 58%,#120F0D 100%);
-    --hud-tag-flat:#1A1512;
+    /* Fully opaque on purpose. The film layers sit at z-index 22 and the frame
+       itself is now dark and heavily shadowed -- a translucent HUD surface
+       reads as a ghost rectangle against both. */
+    --hud-card:linear-gradient(176deg,#FBF2DF 0%,#F3E4C8 54%,#E4D3AF 100%);
+    --hud-card-flat:#F3E4C8;
     --hud-paper:#F6E9D2;
-    --hud-line:2.5px;
-    --hud-drop:3px 4px 0 rgba(22,18,15,.45);
-    /* Charcoal tags have to survive BOTH backdrops: the current washed-out
-       cream farm, and the much darker, higher-contrast grade the render pass
-       is bringing. So every dark tag carries a cream keyline inside its ink
-       border AND a cream hairline rim outside it -- on a pale frame the ink
-       does the separating, on a dark frame the cream does. */
-    --hud-keyline:inset 0 0 0 1.5px rgba(246,233,210,.30),0 0 0 1px rgba(246,233,210,.26);
-    --hud-keyline-dark:inset 0 0 0 1.5px rgba(22,18,15,.16);
+    --hud-line:3px;
+    --hud-drop:3px 4px 0 rgba(18,15,12,.62);
+    /* The printed double rule: keyline, cream gap, ink hairline. This is what
+       makes a card read as something that was drawn and printed rather than
+       something a compositor stamped out. */
+    --hud-keyline:inset 0 0 0 1.6px var(--hud-card-flat),inset 0 0 0 3px rgba(22,18,15,.34);
+    /* Printed rule between rows on a card. */
+    --hud-rule:rgba(22,18,15,.30);
+    /* Ink trough for every gauge -- one well, one flat fill, no gradients. */
+    --hud-well:#191411;
     /* Overshoot-and-settle for anything arriving; a hard fast curve for
        anything leaving. Cartoon timing is asymmetric -- things snap in and
        are simply gone, they never fade out politely. */
     --hud-spring:cubic-bezier(.2,1.55,.35,1);
     --hud-snap:cubic-bezier(.5,0,.9,.6);
+    /* Resting tilt of a posted boss bill; each bill overrides it so a stack
+       reads as three slips pasted up by hand. Declared here because keyframes
+       resolve it per element and an undeclared one would silently kill the
+       whole transform. */
+    --bill-tilt:.7deg;
     /* Backing-less HUD text (chips, counters, the kill tally) gets a full
        eight-way ink edge rather than a four-way cross -- the cross leaves
        diagonal gaps that let a bright background bleed through the letter
@@ -67,6 +85,11 @@
     --hud-ink-edge:
       1.8px 0 0 var(--ink),-1.8px 0 0 var(--ink),0 1.8px 0 var(--ink),0 -1.8px 0 var(--ink),
       1.3px 1.3px 0 var(--ink),-1.3px 1.3px 0 var(--ink),1.3px -1.3px 0 var(--ink),-1.3px -1.3px 0 var(--ink);
+    /* Type roles ON a card. Headings are stamped rust, body is ink, and
+       anything secondary is ink at a lower ink load -- never a lighter grey,
+       which would go thin and digital at 8px. */
+    --hud-stamp:#7E3F2A;
+    --hud-ink-2:rgba(22,18,15,.62);
   }
 
   *{box-sizing:border-box;}
@@ -111,15 +134,19 @@
      ----------------------------------------------------------------
      Rules this overlay is built to, in priority order:
 
-       1. The frame belongs to the game. Only two things are permanently
-          on screen -- the crosshair and one small enamel tag in each
-          bottom corner. Everything else is transient, corner-anchored,
-          or lives behind a held key (Tab -> #questBoard).
-       2. Two materials only. `.hud-tag` = charcoal enamel plate, for the
-          player's own state. `.hud-ticket` = printed paper slip, for
-          anything the world is saying. Both carry a real ink keyline and
-          a hard offset shadow, which is also how we get true black into
-          a frame that is otherwise all cream.
+       1. The frame belongs to the game. Exactly THREE things are permanently
+          on screen -- the crosshair and one printed card in each bottom
+          corner. Everything else is transient, or lives behind a held key
+          (Tab -> #questBoard), or fades itself out when it has no news
+          (the radar). Each corner card is one object: the left one carries
+          pep, guard and Jays, the right one carries the gun and what you
+          can throw. Nothing gets its own separate floating box.
+       2. ONE surface material. `.hud-card` (`.hud-tag` and `.hud-ticket` are
+          the two names the markup already used for it) is printed cream
+          stock with a heavy ink keyline, an inner printed rule and a hard
+          offset shadow. Everything else is cream lettering with an ink edge
+          and NO background. There is no third style: no translucent panels,
+          no charcoal plates, no per-system chip designs.
        3. Nothing may enter the centre of the frame. The crosshair and the
           area around it stay clear; hints sit well below it, banners well
           above it.
@@ -127,19 +154,15 @@
           departures snap (--hud-snap). Never a symmetric linear fade.
      ================================================================ */
 
-  /* Charcoal enamel tag -- the player's own readouts. */
-  .hud-tag{
-    background:var(--hud-tag);
+  /* The printed card -- the overlay's only surface. `.hud-tag` (player
+     readouts) and `.hud-ticket` (things the world is telling you) are the
+     same stock; they differ only in what is printed on them. */
+  .hud-tag,.hud-ticket{
+    background:var(--hud-card);
     border:var(--hud-line) solid var(--ink);
-    border-radius:11px 13px 10px 14px;
+    border-radius:11px 14px 10px 13px;
     box-shadow:var(--hud-keyline),var(--hud-drop);
-  }
-  /* Printed paper slip -- anything the world is telling the player. */
-  .hud-ticket{
-    background:linear-gradient(178deg,#FFFBF2 0%,var(--hud-paper) 46%,#EBDABB 100%);
-    border:var(--hud-line) solid var(--ink);
-    border-radius:10px 13px 9px 12px;
-    box-shadow:var(--hud-keyline-dark),var(--hud-drop);
+    color:var(--ink);
   }
 
   /* ---------- Crosshair ---------- */
@@ -149,23 +172,27 @@
     transition:opacity .18s ease, transform .16s var(--hud-spring);
   }
   #crosshair.on{opacity:1;}
+  /* Cream core inside a solid ink ring, not the other way round. A reticle is
+     the one thing that may never wash out, and the cream centre is what
+     carries it over a barn wall in shadow -- the ink ring does the same job
+     over a blown-out sky. */
   #crosshair i{
-    position:absolute;background:var(--ink);border-radius:2px;
-    box-shadow:0 0 0 1.6px rgba(246,233,210,.62);
+    position:absolute;background:var(--cream);border-radius:2px;
+    box-shadow:0 0 0 1.9px var(--ink);
   }
   /* Tapered strokes: each tick is a touch heavier at the outer end, the way
      an inked line thickens where the nib lands. */
-  #crosshair .t{left:50%;top:1px;width:2.6px;height:9px;margin-left:-1.3px;transform:rotate(-2deg);}
-  #crosshair .b{left:50%;bottom:1px;width:2.6px;height:9px;margin-left:-1.3px;transform:rotate(3deg);}
-  #crosshair .l{top:50%;left:1px;height:2.6px;width:9px;margin-top:-1.3px;transform:rotate(2deg);}
-  #crosshair .r{top:50%;right:1px;height:2.6px;width:9px;margin-top:-1.3px;transform:rotate(-3deg);}
-  #crosshair .d{left:50%;top:50%;width:3.4px;height:3.4px;margin:-1.7px 0 0 -1.7px;border-radius:50%;}
+  #crosshair .t{left:50%;top:1px;width:2.8px;height:9px;margin-left:-1.4px;transform:rotate(-2deg);}
+  #crosshair .b{left:50%;bottom:1px;width:2.8px;height:9px;margin-left:-1.4px;transform:rotate(3deg);}
+  #crosshair .l{top:50%;left:1px;height:2.8px;width:9px;margin-top:-1.4px;transform:rotate(2deg);}
+  #crosshair .r{top:50%;right:1px;height:2.8px;width:9px;margin-top:-1.4px;transform:rotate(-3deg);}
+  #crosshair .d{left:50%;top:50%;width:3.6px;height:3.6px;margin:-1.8px 0 0 -1.8px;border-radius:50%;}
   #crosshair.kick{transform:scale(1.42) rotate(-3deg);}
   #interactHint{
     position:fixed;left:50%;top:calc(50% + 54px);z-index:33;
     transform:translate(-50%,9px) scale(.86) rotate(-3deg);opacity:0;pointer-events:none;
     padding:5px 10px;
-    color:var(--rust-deep);font:900 10px/1 var(--hud-slab);
+    color:var(--hud-stamp);font:900 10px/1 var(--hud-slab);
     letter-spacing:1.3px;text-transform:uppercase;white-space:nowrap;
     transition:opacity .1s ease .04s,transform .12s var(--hud-snap);
   }
@@ -174,14 +201,16 @@
     transition:opacity .1s ease,transform .3s var(--hud-spring);
   }
 
-  /* ---------- Bottom-right: the ammo tag ----------
-     Weapon name, shell marks and count are ONE object now instead of three
-     free-floating labels stacked up the right edge. Everything else that
-     used to live in this corner (inventory strip, throwable, reload nudge)
-     is transient and sits above it. */
+  /* ---------- Bottom-right: the arms card ----------
+     Weapon name, shell marks, count AND the throwable count are one printed
+     card. The throwable used to be a separate floating chip stacked above
+     this one; it is the same fact about what you are carrying, so it is now
+     a rule-separated row on the same card and collapses out when you have
+     none. Only the reload nudge and the inventory strip remain transient
+     above it. */
   #ammo{
     position:fixed;right:18px;bottom:16px;z-index:30;
-    padding:6px 11px 7px;user-select:none;
+    padding:5px 10px 6px;user-select:none;min-width:118px;
     opacity:0;transform:translateY(10px) scale(.9) rotate(1.6deg);
     transition:opacity .14s ease .04s,transform .16s var(--hud-snap);
   }
@@ -189,10 +218,12 @@
     opacity:1;transform:translateY(0) scale(1) rotate(.8deg);
     transition:opacity .16s ease,transform .38s var(--hud-spring);
   }
+  /* The stamped heading on the card: rust, tight, sitting on a printed rule. */
   #weaponName{
-    display:block;margin:0 0 4px;
-    font:900 9px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
-    color:rgba(246,233,210,.66);opacity:0;transition:opacity .2s ease;
+    display:block;margin:0 0 4px;padding-bottom:3px;
+    border-bottom:1.5px solid var(--hud-rule);
+    font:900 9px/1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
+    color:var(--hud-stamp);opacity:0;transition:opacity .2s ease;
   }
   #weaponName.on{opacity:1;}
   #weaponInventory{
@@ -212,34 +243,44 @@
     transition:opacity .14s ease,transform .34s var(--hud-spring);
   }
   body.touch-device #weaponInventory.on{pointer-events:none;}
+  /* Same printed card, at chip scale, with the slot number stamped on a
+     keycap. Nothing here is its own design any more. */
   .weapon-slot-btn{
-    display:flex;align-items:center;gap:5px;min-height:26px;max-width:126px;padding:4px 6px;
+    display:flex;align-items:center;gap:5px;min-height:25px;max-width:124px;padding:3px 6px;
     pointer-events:auto;cursor:pointer;border:2.5px solid var(--ink);
-    border-radius:6px 9px 7px 8px;background:#F3E5CC;color:var(--ink);
-    box-shadow:2px 3px 0 rgba(22,18,15,.55);font:900 9px/1 var(--hud-slab);
-    letter-spacing:.6px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
+    border-radius:6px 9px 7px 8px;background:var(--hud-card);color:var(--ink);
+    box-shadow:2px 3px 0 rgba(18,15,12,.55);font:900 9px/1 var(--hud-slab);
+    letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
     transition:transform .12s var(--hud-spring),background .1s ease,opacity .1s ease;
   }
   .weapon-slot-btn:nth-child(even){transform:rotate(1deg);}
   .weapon-slot-btn kbd{
     display:grid;place-items:center;min-width:17px;height:17px;padding:0 3px;
-    border:2px solid var(--ink);border-radius:4px;background:var(--blue);font:900 9px/1 "Courier New",monospace;
+    border:2px solid var(--ink);border-radius:4px;background:var(--blue);
+    color:var(--ink);font:900 9px/1 "Courier New",monospace;
   }
   .weapon-slot-btn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(1px) rotate(-1deg) scale(1.04);box-shadow:1px 2px 0 rgba(22,18,15,.7);}
+  .weapon-slot-btn.active{background:var(--mustard);transform:translateY(1px) rotate(-1deg) scale(1.04);box-shadow:1px 2px 0 rgba(18,15,12,.7);}
   .weapon-slot-btn:active{transform:translateY(2px) rotate(0deg);}
 
   /* ---------- Top-right: run clock ----------
-     Demoted from a boxed readout to a small stamped tick. Single-player
-     only (RUNSTATS.updateHud owns the .on toggle). */
+     A stamped tick, not a card. A clock that ticks every frame does not need
+     a printed surface of its own -- ink-edged lettering is enough, and it
+     takes a whole box out of the corner. Single-player only (RUNSTATS
+     .updateHud owns the .on toggle). */
   #runClock{
-    position:fixed;right:18px;top:14px;z-index:30;padding:4px 8px 5px;
-    text-align:right;font:900 11px/1 "Courier New",monospace;letter-spacing:.5px;
-    color:var(--cream);opacity:0;pointer-events:none;
+    position:fixed;right:18px;top:13px;z-index:30;padding:0;
+    background:none;border:0;box-shadow:none;
+    text-align:right;font:900 12px/1 "Courier New",monospace;letter-spacing:.3px;
+    color:var(--cream);text-shadow:var(--hud-ink-edge);
+    opacity:0;pointer-events:none;
     transform:rotate(.8deg);transition:opacity .22s ease;
   }
-  #runClock.on{opacity:.88}
-  #runClock small{display:block;margin-bottom:3px;font:900 7px/1 var(--hud-slab);letter-spacing:2px;color:var(--mustard);opacity:.9}
+  #runClock.on{opacity:.9}
+  #runClock small{
+    display:block;margin-bottom:3px;font:900 7.5px/1 var(--hud-slab);
+    letter-spacing:1.6px;color:var(--mustard);text-shadow:var(--hud-ink-edge);
+  }
 
   /* ---------- Field orders (hold Tab) ----------
      The two component trays used to sit across the bottom of the frame as
@@ -260,21 +301,21 @@
   /* Nothing left to track -> the slip does not exist. */
   #questBoard:not(:has(#componentHud.on)):not(:has(#shieldHud.on)){display:none;}
   .qb-head{
-    margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid rgba(22,18,15,.28);
-    color:var(--rust-deep);font:900 10px/1 var(--hud-slab);letter-spacing:2px;text-transform:uppercase;
+    margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid var(--hud-rule);
+    color:var(--hud-stamp);font:900 11px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
   }
-  .qb-head span{display:block;margin-top:4px;color:rgba(22,18,15,.42);font-size:7.5px;letter-spacing:1.4px;}
+  .qb-head span{display:block;margin-top:4px;color:var(--hud-ink-2);font-size:7.5px;letter-spacing:1.1px;}
   #componentHud,#shieldHud{display:none;}
   #componentHud.on,#shieldHud.on{display:block;}
   #shieldHud.on{margin-top:9px;}
   .qb-title{
-    margin:0 0 5px;color:var(--olive);font:900 8px/1 var(--hud-slab);
-    letter-spacing:1.8px;text-transform:uppercase;
+    margin:0 0 5px;color:var(--olive-deep);font:900 8.5px/1 var(--hud-slab);
+    letter-spacing:1.3px;text-transform:uppercase;
   }
   .component-slot{
     position:relative;margin-bottom:3px;padding:4px 7px 4px 18px;
-    background:rgba(22,18,15,.08);border:1.5px solid rgba(22,18,15,.34);border-radius:5px 7px 5px 8px;
-    color:var(--ink-soft);font:800 8.5px/1.2 var(--hud-slab);letter-spacing:.8px;text-transform:uppercase;
+    background:rgba(22,18,15,.07);border:1.5px solid rgba(22,18,15,.38);border-radius:5px 7px 5px 8px;
+    color:var(--ink-soft);font:800 8.5px/1.2 var(--hud-slab);letter-spacing:.6px;text-transform:uppercase;
   }
   /* Hand-ticked check box: an empty ring that fills with an ink tick. */
   .component-slot::before{
@@ -337,62 +378,75 @@
     transform:rotate(-3deg);transition:background .12s, opacity .12s, transform .12s var(--hud-spring);
   }
   #shells span:nth-child(even){transform:rotate(4deg);}
-  #shells span.spent{background:#6A6058;box-shadow:inset 0 -5px 0 #4B443E;opacity:.5;transform:rotate(-1deg) translateY(2px);}
+  /* A spent mark is a drawn empty case, not a faded one: opacity on cream
+     stock just makes it disappear, so it keeps full ink and goes hollow. */
+  #shells span.spent{background:var(--hud-card-flat);box-shadow:inset 0 -5px 0 rgba(22,18,15,.16);transform:rotate(-1deg) translateY(2px);}
   #ammoNum{
-    font:900 23px/.85 var(--hud-slab);letter-spacing:-.5px;color:var(--cream);
+    font:900 24px/.85 var(--hud-slab);letter-spacing:-.5px;color:var(--ink);
     transform:rotate(-1.5deg);white-space:nowrap;
   }
-  #ammoNum.low{color:var(--mustard);}
-  #ammoNum small{font-size:10px;letter-spacing:.5px;color:var(--cream);opacity:.55;}
-  #ammoNum.melee{font-size:12px;letter-spacing:1.6px;line-height:1.2;}
+  #ammoNum.low{color:var(--rust-deep);}
+  #ammoNum small{font-size:10px;letter-spacing:.5px;color:var(--hud-ink-2);}
+  #ammoNum.melee{font-size:12px;letter-spacing:1.4px;line-height:1.2;}
+  /* The throwable row, ruled off under the ammo count. Collapses to nothing
+     when the player has no throwable rather than leaving a hole in the card. */
+  #throwableHud{
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+    height:0;margin-top:0;padding-top:0;overflow:hidden;opacity:0;
+    border-top:0 solid var(--hud-rule);
+    color:var(--ink);font:900 9px/1 var(--hud-slab);
+    letter-spacing:1.1px;text-transform:uppercase;pointer-events:none;
+    transition:height .16s var(--hud-snap),margin-top .16s var(--hud-snap),
+               padding-top .16s var(--hud-snap),opacity .1s ease;
+  }
+  #throwableHud.on{
+    height:19px;margin-top:5px;padding-top:5px;opacity:1;
+    border-top-width:1.5px;
+    transition:height .24s var(--hud-spring),margin-top .24s var(--hud-spring),
+               padding-top .24s var(--hud-spring),opacity .16s ease;
+  }
+  #throwableHud.empty{opacity:.5;}
   #reloadTag{
-    position:fixed;right:18px;bottom:106px;z-index:30;
-    font:900 10px/1 var(--hud-slab);letter-spacing:1.8px;text-transform:uppercase;
+    position:fixed;right:18px;bottom:112px;z-index:30;
+    font:900 10px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
     color:var(--mustard);opacity:0;transform:rotate(-2deg);
     text-shadow:var(--hud-ink-edge);
   }
   #reloadTag.on{opacity:1;animation:nudge .46s steps(2,end) infinite;}
   @keyframes nudge{0%{transform:rotate(-2deg) translateY(0)}50%{transform:rotate(1.5deg) translateY(-3px)}100%{transform:rotate(-2deg) translateY(0)}}
 
-  /* Small circular badge -- the shared vocabulary for every countable
-     transient (throwables, Jays, buff timers). Ink ring, flat colour fill. */
+  /* Small circular badge -- the shared vocabulary for every countable thing
+     (throwables, Jays, buff timers). Ink ring, flat colour fill, cream
+     numeral: the one component that reads identically on a card and floating
+     over the frame, which is why every counter uses it. */
   .hud-pip{
     display:grid;place-items:center;min-width:19px;height:19px;padding:0 4px;
     border:2px solid var(--ink);border-radius:50%;background:var(--rust);
     color:var(--hud-paper);font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;
-    box-shadow:2px 2px 0 rgba(22,18,15,.42);
+    box-shadow:1.5px 2px 0 rgba(18,15,12,.5);
   }
-  #throwableHud{
-    position:fixed;right:18px;bottom:78px;z-index:30;
-    display:flex;align-items:center;gap:6px;pointer-events:none;
-    color:var(--cream);font:900 9px/1 var(--hud-slab);
-    letter-spacing:1.6px;text-transform:uppercase;
-    text-shadow:var(--hud-ink-edge);
-    opacity:0;transform:translateX(8px) scale(.9) rotate(1deg);
-    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
-  }
-  #throwableHud.on{
-    opacity:1;transform:translateX(0) scale(1) rotate(1deg);
-    transition:opacity .14s ease,transform .32s var(--hud-spring);
-  }
-  #throwableHud.empty{opacity:.42;}
 
-  /* Bottom-left transient stack: buffs, then Jays, then voice, then the
-     vitals tag itself. Column order is set by the markup. */
+  /* The Jays row on the vitals card -- same collapse behaviour as the
+     throwable row on the arms card, for the same reason. */
   #jaysHud{
-    display:flex;align-items:center;gap:6px;margin-bottom:6px;
-    color:var(--cream);font:900 9px/1 var(--hud-slab);
-    letter-spacing:1.6px;text-transform:uppercase;
-    text-shadow:var(--hud-ink-edge);
-    opacity:0;transform:translateX(-8px) scale(.9) rotate(1deg);
-    transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
+    display:flex;align-items:center;gap:6px;
+    height:0;margin-top:0;padding-top:0;overflow:hidden;opacity:0;
+    border-top:0 solid var(--hud-rule);
+    color:var(--ink);font:900 9px/1 var(--hud-slab);
+    letter-spacing:1.1px;text-transform:uppercase;
+    transition:height .16s var(--hud-snap),margin-top .16s var(--hud-snap),
+               padding-top .16s var(--hud-snap),opacity .1s ease;
   }
   #jaysHud.on{
-    opacity:1;transform:translateX(0) scale(1) rotate(1deg);
-    transition:opacity .14s ease,transform .32s var(--hud-spring);
+    height:19px;margin-top:5px;padding-top:5px;opacity:1;
+    border-top-width:1.5px;
+    transition:height .24s var(--hud-spring),margin-top .24s var(--hud-spring),
+               padding-top .24s var(--hud-spring),opacity .16s ease;
   }
-  #jaysHud.active{color:var(--jays, #8EAD4B);}
-  #jaysCount{background:var(--jays);}
+  #jaysHud.active{color:var(--olive-deep);}
+  #jaysHud small{color:var(--hud-ink-2);font-size:7px;letter-spacing:.8px;}
+  #jaysHud.active small{color:var(--olive-deep);}
+  #jaysCount{background:var(--jays);color:var(--ink);}
   #buffHud{display:flex;flex-direction:column;gap:3px;}
   .buffChip{
     display:flex;align-items:center;gap:6px;margin-bottom:0;
@@ -406,10 +460,14 @@
     opacity:1;height:19px;transform:translateX(0) scale(1);
     transition:opacity .14s ease,height .2s var(--hud-spring),transform .3s var(--hud-spring);
   }
+  /* Same badge as .hud-pip -- only the fill colour changes per buff. Keeping
+     the two in step by hand is what let six systems drift apart in the first
+     place, so this inherits the shape and overrides nothing but the fill. */
   .buffChip b{
     display:grid;place-items:center;min-width:19px;height:19px;padding:0 4px;
     border:2px solid var(--ink);border-radius:50%;color:var(--hud-paper);
-    font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;box-shadow:2px 2px 0 rgba(22,18,15,.42);
+    font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;
+    box-shadow:1.5px 2px 0 rgba(18,15,12,.5);
   }
   #buffIronHide b{background:#6C7E88;}
   #buffHotSauce b{background:#9C2F12;}
@@ -417,17 +475,16 @@
   #stunChip b{background:#8A2F2F;}
   #slowChip b{background:#3A5F73;}
   #pilotLifeChip b{background:var(--blue-deep);min-width:34px;border-radius:10px;}
-  #buffIronHide.on{color:#9FB4BE;}
-  #buffHotSauce.on{color:#D1481F;}
-  #buffJackrabbit.on{color:#E0B84A;}
-  #stunChip.on{color:#D46A6A;}
-  #slowChip.on{color:#7FB8D4;}
-  #pilotLifeChip.on{color:var(--blue);}
+  /* The word stays cream on every chip. Tinting the label to match the pip
+     was the old behaviour and it put mid-value text (#D46A6A, #7FB8D4) over a
+     mid-value frame with only an ink edge to save it. The pip carries the
+     colour; the word carries the contrast. */
+  .buffChip.on{color:var(--cream);}
 
   #downedHud{
     position:fixed;left:50%;bottom:21%;z-index:32;transform:translateX(-50%) rotate(-1deg);
     display:none;pointer-events:none;text-align:center;color:var(--cream);
-    font:900 13px/1.1 var(--hud-slab);letter-spacing:2.6px;text-transform:uppercase;
+    font:900 13px/1.1 var(--hud-slab);letter-spacing:1.8px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
   }
   #downedHud.on{display:block;animation:hudDrop .34s var(--hud-spring) both;}
@@ -437,11 +494,13 @@
     100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1) rotate(-1deg)}
   }
 
-  /* ---------- Bottom-left: the vitals tag ----------
-     Two rubberhose gauges on one enamel plate, each led by an inked icon
-     instead of a shouted word. The guard gauge collapses out of the plate
-     entirely while the player has no guard (UI.setShield toggles .has-guard),
-     so the common case is a single small pill. */
+  /* ---------- Bottom-left: the vitals card ----------
+     Pep, guard and Jays on ONE printed card, each row led by an inked icon
+     or pip instead of a shouted word. Both the guard gauge and the Jays row
+     collapse out of the card entirely when the player has neither (UI
+     .setShield toggles .has-guard, UI.setJays toggles #jaysHud.on), so the
+     common case is a single small gauge and the card grows only when the
+     player has actually earned another row. */
   #vitals{
     position:fixed;left:18px;bottom:16px;z-index:30;
     display:flex;flex-direction:column;align-items:flex-start;
@@ -449,12 +508,12 @@
   }
   #vitals.on{opacity:1;}
   #vitalsTag{
-    padding:7px 10px;
+    padding:6px 10px 7px;
     transform:rotate(-.8deg) scale(1);
     transition:transform .34s var(--hud-spring);
   }
   .vital-row{display:flex;align-items:center;gap:7px;}
-  .vital-ico{display:block;flex:0 0 auto;filter:drop-shadow(1.5px 2px 0 rgba(22,18,15,.5));}
+  .vital-ico{display:block;flex:0 0 auto;filter:drop-shadow(1.2px 1.6px 0 rgba(18,15,12,.42));}
   #guardRow{
     height:0;margin-top:0;overflow:hidden;opacity:0;
     transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .1s ease;
@@ -463,23 +522,25 @@
     height:15px;margin-top:6px;opacity:1;
     transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .16s ease;
   }
+  /* Every gauge is the same object: an ink well cut into the card with one
+     flat colour poured into it. No gradients, no glass, no glow. */
   #pepBar{
-    width:112px;height:14px;border:2.5px solid var(--ink);border-radius:9px;
-    background:#0D0B09;box-shadow:inset 1px 1px 0 rgba(0,0,0,.5);overflow:hidden;
+    width:110px;height:14px;border:2.5px solid var(--ink);border-radius:9px;
+    background:var(--hud-well);overflow:hidden;
   }
   #pepFill{
     height:100%;width:100%;background:var(--mustard);
-    box-shadow:inset 0 -4px 0 rgba(22,18,15,.24),inset 0 3px 0 rgba(255,251,242,.22);
+    box-shadow:inset 0 -4px 0 rgba(22,18,15,.26);
     transition:width .22s var(--hud-spring), background .2s ease;
   }
   #pepFill.hurt{background:var(--rust);}
   #shieldBar{
-    width:96px;height:9px;border:2px solid var(--ink);border-radius:6px;
-    background:#0D0B09;overflow:hidden;
+    width:94px;height:9px;border:2.5px solid var(--ink);border-radius:6px;
+    background:var(--hud-well);overflow:hidden;
   }
   #shieldFill{
     height:100%;width:0;background:var(--blue);
-    box-shadow:inset 0 -3px 0 rgba(22,18,15,.2);transition:width .22s var(--hud-spring);
+    box-shadow:inset 0 -3px 0 rgba(22,18,15,.22);transition:width .22s var(--hud-spring);
   }
 
   /* ---------- Pickup / objective slip ----------
@@ -490,8 +551,8 @@
     position:fixed;left:50%;bottom:76px;z-index:33;max-width:min(52vw,286px);
     transform:translate(-50%,14px) scale(.84) rotate(-4deg);opacity:0;pointer-events:none;
     padding:6px 12px 7px;
-    font:900 10px/1.3 var(--hud-slab);letter-spacing:1.2px;text-transform:uppercase;
-    color:var(--rust-deep);text-align:center;
+    font:900 10px/1.3 var(--hud-slab);letter-spacing:.9px;text-transform:uppercase;
+    color:var(--hud-stamp);text-align:center;
     transition:opacity .11s ease .04s,transform .14s var(--hud-snap);
   }
   #pickupToast.on{
@@ -499,48 +560,53 @@
     transition:opacity .12s ease,transform .36s var(--hud-spring);
   }
   #tally{
-    position:fixed;left:18px;top:14px;z-index:30;
-    font:900 9.5px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
+    position:fixed;left:18px;top:13px;z-index:30;
+    font:900 10px/1 var(--hud-slab);letter-spacing:1.6px;text-transform:uppercase;
     color:var(--cream);opacity:0;transition:opacity .2s ease;transform:rotate(-1deg);
     text-shadow:var(--hud-ink-edge);
   }
-  #tally.on{opacity:.92;}
-  #tally b{color:var(--mustard);font-size:13px;margin-left:2px;}
+  #tally.on{opacity:.94;}
+  #tally b{color:var(--mustard);font-size:14px;margin-left:3px;}
 
   /* ---------- Free-for-all live scoreboard ---------- */
   #ffaScoreboard{
-    position:fixed;right:18px;top:14px;z-index:30;list-style:none;margin:0;padding:0;
+    position:fixed;right:18px;top:13px;z-index:30;list-style:none;margin:0;padding:0;
     opacity:0;transition:opacity .2s ease;transform:rotate(1deg);
-    font:900 10px/1.5 var(--hud-slab);letter-spacing:1px;text-transform:uppercase;
+    font:900 10px/1.5 var(--hud-slab);letter-spacing:.9px;text-transform:uppercase;
     text-align:right;
   }
   #ffaScoreboard.on{opacity:1;}
   #ffaScoreboard li{
     color:var(--cream);text-shadow:var(--hud-ink-edge);
   }
-  #ffaScoreboard li.team-a{color:var(--rust);}
-  #ffaScoreboard li.team-b{color:var(--blue);}
-  #ffaScoreboard li.me{color:var(--mustard);}
+  /* Team colour lives in the score, not the name: --rust and --blue are both
+     mid-value and go to mush over a mid-value frame, where cream does not. */
+  #ffaScoreboard li.team-a b{color:#E08A66;}
+  #ffaScoreboard li.team-b b{color:var(--blue);}
+  #ffaScoreboard li.me b{color:var(--mustard);}
   #ffaScoreboard li b{margin-left:6px;}
   #ffaScoreboard li.team-totals{
     display:flex;gap:14px;justify-content:flex-end;margin-bottom:5px;
     padding-bottom:5px;border-bottom:2px solid var(--ink);
   }
-  #ffaScoreboard li.team-totals span.team-a{color:var(--rust);}
+  #ffaScoreboard li.team-totals span.team-a{color:#E08A66;}
   #ffaScoreboard li.team-totals span.team-b{color:var(--blue);}
 
-  /* ---------- Deathmatch kill feed ---------- */
+  /* ---------- Deathmatch kill feed ----------
+     Same printed card as everything else, at chip scale. It used to have its
+     own charcoal chip design, which was a third material and unreadable
+     against a dark frame. */
   #killFeed{
     position:fixed;right:18px;top:112px;z-index:30;
     display:flex;flex-direction:column;align-items:flex-end;gap:3px;
     pointer-events:none;
   }
   #killFeed .line{
-    font:900 9px/1.3 var(--hud-slab);letter-spacing:1px;text-transform:uppercase;
-    color:var(--cream);
-    background:var(--hud-tag-flat);border:1.6px solid var(--ink);
-    padding:3px 7px;border-radius:5px 7px 5px 8px;
-    box-shadow:0 0 0 1px rgba(246,233,210,.24),2px 2px 0 rgba(22,18,15,.5);
+    font:900 9px/1.3 var(--hud-slab);letter-spacing:.8px;text-transform:uppercase;
+    color:var(--ink);
+    background:var(--hud-card);border:2px solid var(--ink);
+    padding:3px 7px;border-radius:5px 8px 5px 7px;
+    box-shadow:2px 2px 0 rgba(18,15,12,.55);
     opacity:0;transform:translateX(14px) scale(.9) rotate(1.6deg);
     transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
   }
@@ -553,7 +619,7 @@
   #killcamCaption{
     position:fixed;left:50%;bottom:12%;z-index:34;transform:translate(-50%,10px) scale(.9);
     display:none;pointer-events:none;text-align:center;
-    font:900 17px/1 var(--hud-slab);letter-spacing:2px;text-transform:uppercase;
+    font:900 17px/1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
     color:var(--cream);text-shadow:var(--hud-ink-edge);
     opacity:0;transition:opacity .2s ease,transform .18s var(--hud-snap);
   }
@@ -602,10 +668,10 @@
   }
   #chatLog .line{
     font:700 11px/1.35 var(--hud-slab);
-    color:var(--cream);
-    background:var(--hud-tag-flat);border:1.6px solid var(--ink);
-    box-shadow:0 0 0 1px rgba(246,233,210,.2),2px 2px 0 rgba(22,18,15,.5);
-    padding:3px 8px;border-radius:5px 7px 5px 8px;word-break:break-word;
+    color:var(--ink);
+    background:var(--hud-card);border:2px solid var(--ink);
+    box-shadow:2px 2px 0 rgba(18,15,12,.55);
+    padding:3px 8px;border-radius:5px 8px 5px 7px;word-break:break-word;
     opacity:0;transform:translateY(8px) scale(.94);
     transition:opacity .12s ease .03s,transform .14s var(--hud-snap);
   }
@@ -613,20 +679,20 @@
     opacity:1;transform:translateY(0) scale(1);
     transition:opacity .14s ease,transform .3s var(--hud-spring);
   }
-  #chatLog .line b{color:var(--mustard);margin-right:5px;}
-  #chatLog .line.self b{color:var(--rust);}
+  #chatLog .line b{color:var(--hud-stamp);margin-right:5px;}
+  #chatLog .line.self b{color:var(--olive);}
   #chatInputBar{
     position:fixed;left:26px;bottom:132px;z-index:31;width:min(360px,44vw);
     display:none;align-items:center;gap:6px;
-    font:700 12px/1.35 var(--hud-slab);color:var(--cream);
-    background:var(--hud-tag-flat);border:2px solid var(--ink);border-radius:6px;padding:5px 9px;
-    box-shadow:0 0 0 1px rgba(246,233,210,.2),2px 3px 0 rgba(22,18,15,.5);
+    font:700 12px/1.35 var(--hud-slab);color:var(--ink);
+    background:var(--hud-card);border:2px solid var(--ink);border-radius:6px 8px 6px 7px;padding:5px 9px;
+    box-shadow:2px 3px 0 rgba(18,15,12,.55);
   }
   #chatInputBar.on{display:flex;}
-  #chatInputBar b{color:var(--mustard);white-space:nowrap;}
+  #chatInputBar b{color:var(--hud-stamp);white-space:nowrap;}
   #chatInputBar span{flex:1;word-break:break-word;}
   #chatInputBar span::after{
-    content:'';display:inline-block;width:2px;height:12px;background:var(--cream);
+    content:'';display:inline-block;width:2px;height:12px;background:var(--ink);
     margin-left:2px;vertical-align:middle;animation:chatCaret 1s steps(1) infinite;
   }
   @keyframes chatCaret{50%{opacity:0;}}
@@ -660,11 +726,13 @@
   #voiceChip{
     display:flex;align-items:center;gap:6px;margin-bottom:6px;
     color:var(--cream);font:900 8.5px/1 var(--hud-slab);
-    letter-spacing:1.4px;text-transform:uppercase;
+    letter-spacing:1.1px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
     opacity:0;transition:opacity .18s ease,transform .3s var(--hud-spring);transform:rotate(1deg);
   }
-  #voiceChip.on{opacity:.55;}
+  /* .55 was low enough that the ink edge went translucent too and the chip
+     turned to smoke over a bright frame. Idle voice is quiet, not ghosted. */
+  #voiceChip.on{opacity:.78;}
   #voiceChip.talking{opacity:1;transform:rotate(1deg) scale(1.06);}
   #voiceChip b{
     display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;
@@ -697,85 +765,115 @@
   }
 
   /* ---------- Mini-boss status ----------
-     A printed bill posted at the top of the frame, not a health bar. Three
-     slots can be live at once so each is deliberately shallow (~40px) and
-     they stack tight. Enters with a drop-and-settle. */
-  .boss-bill{
-    position:fixed;left:50%;z-index:31;width:min(268px,40vw);
-    padding:6px 10px 7px;text-align:center;color:var(--ink);
-    opacity:0;pointer-events:none;
-    transition:opacity .12s ease .03s,transform .15s var(--hud-snap);
+     A bill posted at the top of the frame, not a health bar. Three can be
+     live at once, which is what made this the heaviest thing in the overlay:
+     three cards, each with a name, a state, a gauge and a line of advice,
+     took up 160px down the middle of the screen for the whole fight.
+
+     The advice is the part with a shelf life. `small` is only printed while
+     the bill is `.fresh` -- the first few seconds after it is posted or its
+     state changes (UI.setBoss* owns the class) -- and then the bill folds
+     down to a name and a gauge and stays there. A three-boss stack settles
+     from ~160px to ~108px without losing anything the player still needs. */
+  /* The three bills are a stack, not three fixed slots. When only the second
+     boss is up its bill used to hang at top:66px with an empty gap above it,
+     and a collapsed hint left a hole rather than closing it. */
+  #bossStack{
+    position:fixed;left:50%;top:14px;z-index:31;width:min(252px,38vw);
+    display:flex;flex-direction:column;gap:6px;
+    transform:translateX(-50%);pointer-events:none;
   }
-  .boss-bill.on{
-    opacity:1;
-    transition:opacity .16s ease,transform .42s var(--hud-spring);
+  .boss-bill{
+    display:none;padding:5px 10px 6px;text-align:center;color:var(--ink);
+    pointer-events:none;
+  }
+  /* An animation, not a transition: these enter from display:none, which a
+     transition would skip straight past. Same reason #downedHud uses one. */
+  .boss-bill.on{display:block;animation:billPost .42s var(--hud-spring) both;}
+  @keyframes billPost{
+    0%  {opacity:0;transform:translateY(-11px) scale(.9) rotate(2.4deg)}
+    100%{opacity:1;transform:translateY(0) scale(1) rotate(var(--bill-tilt))}
   }
   .boss-bill > div:first-child{
-    font:900 10px/1.1 var(--hud-slab);letter-spacing:2.2px;text-transform:uppercase;
+    font:900 10.5px/1.1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
   }
-  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1.2px;margin-left:6px;}
+  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1px;margin-left:6px;}
   .boss-bar{
-    height:8px;margin-top:5px;border:2px solid var(--ink);border-radius:5px;
-    background:#161210;overflow:hidden;
+    height:8px;margin-top:5px;border:2.5px solid var(--ink);border-radius:5px;
+    background:var(--hud-well);overflow:hidden;
   }
   .boss-bar > i{
     display:block;width:100%;height:100%;
-    box-shadow:inset 0 -3px 0 rgba(22,18,15,.28),inset 0 2px 0 rgba(255,251,242,.2);
+    box-shadow:inset 0 -3px 0 rgba(22,18,15,.3);
     transition:width .2s var(--hud-spring);
   }
-  /* One line only: three bills can be posted at once, so a wrapping hint
-     would push the stack into the crosshair. */
+  /* One line only, and only while the bill is fresh: three bills can be
+     posted at once, so neither a wrapping hint nor a permanent one can be
+     allowed to push the stack down towards the crosshair. */
   .boss-bill small{
-    display:block;margin-top:4px;font:800 7.5px/1.2 var(--hud-slab);
-    letter-spacing:1.2px;text-transform:uppercase;color:rgba(22,18,15,.62);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:block;height:0;margin-top:0;overflow:hidden;opacity:0;
+    font:800 7.5px/1.2 var(--hud-slab);
+    letter-spacing:.9px;text-transform:uppercase;color:var(--hud-ink-2);
+    white-space:nowrap;text-overflow:ellipsis;
+    transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .14s ease;
   }
-  #bossHud {top:14px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.7deg);}
-  #boss2Hud{top:66px; transform:translateX(-50%) translateY(-10px) scale(.9) rotate(-.6deg);}
-  #boss3Hud{top:118px;transform:translateX(-50%) translateY(-10px) scale(.9) rotate(.5deg);}
-  #bossHud.on {transform:translateX(-50%) translateY(0) scale(1) rotate(.7deg);}
-  #boss2Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(-.6deg);}
-  #boss3Hud.on{transform:translateX(-50%) translateY(0) scale(1) rotate(.5deg);}
+  .boss-bill.fresh small{
+    height:10px;margin-top:4px;opacity:1;
+    transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .2s ease;
+  }
+  /* Bills pasted up by hand sit at slightly different angles. */
+  #boss2Hud{--bill-tilt:-.7deg;}
+  #boss3Hud{--bill-tilt:.5deg;}
   #bossHudName b{color:var(--rust-deep);}
   #boss2HudName b{color:var(--blue-deep);}
-  #boss3HudName b{color:var(--rust-deep);}
+  #boss3HudName b{color:var(--olive-deep);}
   #bossHudFill{background:var(--rust);}
   #boss2HudFill{background:var(--blue-deep);}
   #boss3HudFill{background:var(--mustard);}
 
   /* ---------- Proximity radar ----------
-     Shrunk to a small sensor disc and stripped of its "RADAR" caption --
-     a round dial in the corner does not need to announce that it is a dial. */
+     A printed dial on the same cream stock as every card, with an ink
+     graticule -- the old near-black disc was a hole punched in any dark
+     frame and a heavy blot on any bright one.
+
+     It also stops shouting when it has nothing: with no contact on either
+     layer the whole dial drops back to a quiet ghost of itself (.quiet, set
+     by drawRadar) and springs up the moment something is out there. The two
+     captions are gone in the quiet state for the same reason -- "SURFACE"
+     and "CLEAR" were two permanent labels carrying no information. */
   #radar{
-    position:fixed;left:18px;top:46px;width:80px;height:94px;z-index:30;
+    position:fixed;left:18px;top:44px;width:74px;height:86px;z-index:30;
     opacity:0;pointer-events:none;user-select:none;
-    transition:opacity .2s ease,transform .3s var(--hud-spring);
-    transform:rotate(-1deg) scale(.94);filter:drop-shadow(2.5px 3px 0 rgba(22,18,15,.34));
+    transition:opacity .24s ease,transform .34s var(--hud-spring);
+    transform:rotate(-1.4deg) scale(.94);
   }
-  #radar.on{opacity:.92;transform:rotate(-1deg) scale(1);}
+  #radar.on{opacity:1;transform:rotate(-1.4deg) scale(1);}
+  #radar.on.quiet{opacity:.38;transform:rotate(-1.4deg) scale(.84);}
+  /* Underground, which floor you are on is still worth saying. */
+  #radar.on.quiet.underground{opacity:.6;}
   #radarCanvas{
-    display:block;width:80px;height:80px;border:2.5px solid var(--ink);
-    border-radius:50%;background:var(--hud-tag-flat);
-    box-shadow:inset 0 0 0 1.5px rgba(246,233,210,.22),0 0 0 1px rgba(246,233,210,.26);
+    display:block;width:74px;height:74px;border:3px solid var(--ink);
+    border-radius:50%;background:var(--hud-card-flat);
+    box-shadow:inset 0 0 0 1.6px var(--hud-card-flat),inset 0 0 0 3px rgba(22,18,15,.30),
+               2.5px 3px 0 rgba(18,15,12,.55);
   }
   #radarTitle,#radarSignal{
     position:absolute;left:0;right:0;text-align:center;color:var(--cream);
-    font:900 7px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
+    font:900 7.5px/1 var(--hud-slab);letter-spacing:1.1px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
+    transition:opacity .2s ease;
   }
-  #radarTitle{top:-11px;opacity:.6;}
-  #radarSignal{bottom:0;color:var(--mustard);transition:opacity .2s ease;}
-  #radarSignal.quiet{opacity:.28;}
-
-  #jaysHud small{opacity:.55;font-size:7px;letter-spacing:1px;}
-  #jaysHud.active small{opacity:.85;}
+  #radarTitle{top:-11px;}
+  #radarSignal{bottom:0;color:var(--mustard);}
+  /* Nothing to report -> neither caption is printed at all. */
+  #radar.quiet #radarTitle,#radar.quiet #radarSignal{opacity:0;}
+  /* Underground is the exception: which floor you are on is real news. */
+  #radar.underground #radarTitle{opacity:1;}
 
   /* Short viewports (720p and every laptop below it) -- pull the top-of-frame
      furniture in so three boss bills plus the kill feed still fit. */
   @media (max-height:620px){
-    #bossHud {top:10px;}
-    #boss2Hud{top:54px;}
-    #boss3Hud{top:98px;}
+    #bossStack{top:10px;gap:5px;}
     #killFeed{top:100px;}
     #announcerBanner{top:20%;font-size:22px;}
     #questBoard{width:min(40vw,178px);padding:7px 9px 8px;}
@@ -786,10 +884,10 @@
   @media (prefers-reduced-motion: reduce){
     #crosshair,#interactHint,#pickupToast,#ammo,#weaponInventory,#throwableHud,
     #jaysHud,.buffChip,#voiceChip,#killFeed .line,#killcamCaption,#questBoard,
-    .boss-bill,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
+    .boss-bill,.boss-bill small,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
       transition-duration:.12s !important;transition-timing-function:ease !important;
     }
-    #announcerBanner.on,#downedHud.on{animation:none;}
+    #announcerBanner.on,#downedHud.on,.boss-bill.on{animation:none;}
     #reloadTag.on{animation:none;}
   }
 
@@ -942,25 +1040,16 @@
     transform:scale(.9) rotate(.8deg);transform-origin:right top;
   }
   body.touch-device #ammo.on{transform:scale(.9) rotate(.8deg);}
-  body.touch-device #throwableHud{
-    right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(92px,calc(env(safe-area-inset-top) + 80px));bottom:auto;
-    transform:scale(.9) rotate(1deg);transform-origin:right top;
-  }
-  body.touch-device #throwableHud.on{transform:scale(.9) rotate(1deg);}
-  body.touch-device #jaysHud{
-    position:fixed;right:max(64px,calc(env(safe-area-inset-right) + 52px));top:max(114px,calc(env(safe-area-inset-top) + 102px));
-    margin-bottom:0;transform:scale(.9) rotate(1deg);transform-origin:right top;
-  }
-  body.touch-device #jaysHud.on{transform:scale(.9) rotate(1deg);}
+  /* The throwable and Jays counts are rows on the arms/vitals cards now, so
+     the three fixed-position rules that used to place them separately on
+     touch are gone with them. */
   body.touch-device #downedHud{bottom:29%;font-size:12px;}
   body.touch-device #tally{left:max(14px,env(safe-area-inset-left));top:max(12px,env(safe-area-inset-top));}
-  body.touch-device .boss-bill{width:min(60vw,250px);transform-origin:top center;}
-  body.touch-device #bossHud {top:max(12px,env(safe-area-inset-top));}
-  body.touch-device #boss2Hud{top:max(56px,calc(env(safe-area-inset-top) + 44px));}
-  body.touch-device #boss3Hud{top:max(100px,calc(env(safe-area-inset-top) + 88px));}
-  body.touch-device #bossHud.on {transform:translateX(-50%) scale(.88) rotate(.7deg);}
-  body.touch-device #boss2Hud.on{transform:translateX(-50%) scale(.88) rotate(-.6deg);}
-  body.touch-device #boss3Hud.on{transform:translateX(-50%) scale(.88) rotate(.5deg);}
+  body.touch-device .boss-bill{transform-origin:top center;}
+  body.touch-device #bossStack{
+    top:max(12px,env(safe-area-inset-top));width:min(60vw,250px);
+    transform:translateX(-50%) scale(.88);transform-origin:top center;
+  }
   body.touch-device #runClock{right:8px;top:max(8px,env(safe-area-inset-top));transform:scale(.86) rotate(.8deg);transform-origin:top right}
   /* No Tab key on a phone: the board only ever peeks, so it can sit in the
      middle-left dead zone where nothing else lives. */
@@ -1548,15 +1637,20 @@
   <div id="interactHint" class="hud-ticket" aria-live="polite"></div>
 
   <div id="weaponInventory" aria-label="Weapon inventory"></div>
-  <!-- Bottom-right enamel tag: weapon, shell marks and count as one object. -->
+  <!-- Bottom-right card: everything you are holding. Weapon name, shell
+       marks, count and the throwable count are one printed object -- the
+       throwable row used to float separately above it. -->
   <div id="ammo" class="hud-tag">
     <div id="weaponName">Pipe Popper</div>
     <div id="ammoRow">
       <div id="shells"></div>
       <div id="ammoNum"><b>6</b> <small>/ 18</small></div>
     </div>
+    <div id="throwableHud" aria-live="polite">
+      <span id="throwableName">G · Grenade</span><b id="throwableCount" class="hud-pip">0</b>
+    </div>
   </div>
-  <div id="runClock" class="hud-tag" aria-label="Active run time"><small>Run</small><span>00:00.000</span></div>
+  <div id="runClock" aria-label="Active run time"><small>Run</small><span>00:00.000</span></div>
   <!-- Objectives live behind the detail key (Tab) and flash for a beat when
        a piece is found; they are not permanent furniture. -->
   <div id="questBoard" class="hud-ticket" aria-label="Field orders">
@@ -1575,9 +1669,6 @@
     </div>
   </div>
   <div id="reloadTag">Press R to reload</div>
-  <div id="throwableHud" aria-live="polite">
-    <span id="throwableName">G · Grenade</span><b id="throwableCount" class="hud-pip">0</b>
-  </div>
   <div id="downedHud" aria-live="polite">DOWNED <small id="downedHint">Double Barrel ready · fire twice to revive</small></div>
 
   <!-- Bottom-left: transient chips stacked above one enamel vitals tag. -->
@@ -1590,7 +1681,6 @@
       <div class="buffChip" id="slowChip"><b>0</b><span>Slowed</span></div>
       <div class="buffChip" id="pilotLifeChip"><b>0/3</b><span>Hangar Downs</span></div>
     </div>
-    <div id="jaysHud" aria-live="polite"><b id="jaysCount" class="hud-pip">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
     <div id="vitalsTag" class="hud-tag">
       <div class="vital-row">
@@ -1601,6 +1691,7 @@
         <svg class="vital-ico" width="12" height="13" viewBox="0 0 26 28" aria-hidden="true" focusable="false"><path d="M13 2.4 23.6 5.9v8.7c0 5.9-4.4 9.5-10.6 11-6.2-1.5-10.6-5.1-10.6-11V5.9z" fill="#8FB3CC" stroke="#16120F" stroke-width="3.8" stroke-linejoin="round"/></svg>
         <div id="shieldBar"><div id="shieldFill"></div></div>
       </div>
+      <div id="jaysHud" aria-live="polite"><b id="jaysCount" class="hud-pip">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
     </div>
   </div>
   <div id="pickupToast" class="hud-ticket"></div>
@@ -1616,6 +1707,8 @@
     <div id="devConsoleInputBar"><b>&gt;</b><span id="devConsoleInput"></span></div>
   </div>
   <div id="announcerBanner" aria-live="polite"></div>
+  <!-- Boss bills stack; slots that are not posted take no room. -->
+  <div id="bossStack">
   <div id="bossHud" class="boss-bill hud-ticket" aria-live="polite">
     <div id="bossHudName"><span id="bossHudLabel">Carrot Warden</span> <b id="bossHudState">Awake</b></div>
     <div id="bossHudBar" class="boss-bar"><i id="bossHudFill"></i></div>
@@ -1630,6 +1723,7 @@
     <div id="boss3HudName">Beat Slayer <b id="boss3HudState">Circling</b></div>
     <div id="boss3HudBar" class="boss-bar"><i id="boss3HudFill"></i></div>
     <small id="boss3HudHint">Keeps his distance -- watch for the boombox</small>
+  </div>
   </div>
   <div id="radar" aria-label="Proximity radar">
     <div id="radarTitle"><b id="radarLayer">Surface</b></div>
@@ -2097,6 +2191,26 @@ const CONFIG = {
     // Aim (RMB): a modest hip-aim zoom rather than a real scope -- there's
     // no scope model, just a tighter FOV that reads as "steadying up."
     adsFov: 58, adsFovLerp: 11,
+
+    /* ---- drawn surface finishes (see [TEX] surface / [MAT] applySurface) --
+       Global multipliers over the per-finish strengths, so the whole
+       hand-drawn layer can be dialled in or switched off from one place.
+       Live: MAT.syncSurface() re-reads all of this without rebuilding a
+       single material. */
+    texture: {
+      on: true,
+      mottle: 1.0,      // broad value break-up (wear, damp, uneven paint)
+      tooth: 1.0,       // fine paper grain
+      hatch: 1.0,       // ink line work on the shaded side of a form
+      grime: 1.0,       // dirt climbing the bottom of every standing surface
+      /* Which part of the light range the hatching lives in, as a pair of
+         ramps on the surface's own light term (albedo divided out, so a dark
+         red barn wall in full sun is "lit", not "shaded"). Hatch fades IN
+         above x..y and OUT above z..w. The lower ramp matters: without it
+         the hatch keeps darkening pixels that are already at true black and
+         quietly eats the shadow detail the grade works so hard to hold. */
+      band: [0.02, 0.13, 0.36, 0.86]
+    },
 
     /* ---- render core (see [RENDERCORE]) ---------------------------------
        Every expensive thing the render core does is gated behind a tier so
@@ -3067,6 +3181,216 @@ const TEX = (() => {
     ctx.globalAlpha = 1;
   }
 
+  /* ====================== drawn surface finishes ======================
+     Everything in the game used to be a flat colour with, at best, one
+     stretched decal map on it. A `map` cannot fix that on its own: PRIM.Batch
+     merges hundreds of boxes into one mesh and every box brought its own 0..1
+     UV square with it, so a 12-metre barn wall and a 30-centimetre crate get
+     exactly the same number of texture tiles. The wall smears, the crate goes
+     to moire, and neither reads as drawn.
+
+     A *finish* solves it from the other end. It is one packed 512px tile per
+     material family, sampled ONCE per fragment by object-space triplanar
+     projection in [MAT] -- so texel density follows the surface's real size,
+     whatever mesh it was merged into. Three independent masks ride in the
+     three channels, which is why one fetch buys three effects:
+
+       R  broad value mottle  -- damp patches, wear, uneven paint
+       G  fine tooth          -- the paper the thing was drawn on
+       B  ink hatch           -- line work, shown only where the surface has
+                                 already turned away from the key light
+
+     R and G are authored around mid-grey and B around white, because that is
+     the value each has to average to for the finish to *disappear* as the
+     texture mips down at distance rather than shifting the whole midground.
+     Hatching therefore fades out with range the way real cross-hatching does
+     when a drawing is reduced. */
+  const SURF = {};
+
+  /* Anything drawn near a tile edge has to come back on the opposite side or
+     the finish shows a grid across the whole farm. Returns the 1, 2 or 4
+     positions a mark of radius `r` at (px,py) must be stamped at. */
+  function wrapPts(s, px, py, r) {
+    const xs = [px], ys = [py];
+    if (px < r) xs.push(px + s); else if (px > s - r) xs.push(px - s);
+    if (py < r) ys.push(py + s); else if (py > s - r) ys.push(py - s);
+    const out = [];
+    for (let i = 0; i < xs.length; i++) for (let j = 0; j < ys.length; j++) out.push([xs[i], ys[j]]);
+    return out;
+  }
+
+  // Soft blotches -- the broad value break-up the R channel is built from.
+  function blobs(x, s, n, rMin, rMax, alpha, lightBias) {
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s), r = UTIL.rng(rMin, rMax);
+      const rgb = UTIL.rand() < (lightBias === undefined ? 0.42 : lightBias) ? '255,255,255' : '0,0,0';
+      const a = alpha * UTIL.rng(0.35, 1);
+      wrapPts(s, px, py, Math.min(r, s * 0.49)).forEach(p => {
+        const g = x.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
+        g.addColorStop(0, 'rgba(' + rgb + ',' + a + ')');
+        g.addColorStop(0.55, 'rgba(' + rgb + ',' + (a * 0.5) + ')');
+        g.addColorStop(1, 'rgba(' + rgb + ',0)');
+        x.fillStyle = g;
+        x.beginPath(); x.arc(p[0], p[1], r, 0, 6.3); x.fill();
+      });
+    }
+  }
+
+  // Dense stipple -- paper tooth, grit, corrosion pits.
+  function grit(x, s, n, rMin, rMax, alpha, lightBias) {
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s), r = UTIL.rng(rMin, rMax);
+      const ry = r * UTIL.rng(0.6, 1.5), rot = UTIL.rng(0, 3.14);
+      x.fillStyle = 'rgba(' + (UTIL.rand() < (lightBias === undefined ? 0.42 : lightBias) ? '255,255,255' : '0,0,0') +
+                    ',' + (alpha * UTIL.rng(0.3, 1)) + ')';
+      wrapPts(s, px, py, r + ry).forEach(p => {
+        x.beginPath(); x.ellipse(p[0], p[1], r, ry, rot, 0, 6.3); x.fill();
+      });
+    }
+  }
+
+  // Bowed strokes: wood fibre, metal scratches, cart ruts in the dirt.
+  function scratch(x, s, n, lMin, lMax, width, alpha, ang, spread, lightBias) {
+    x.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s);
+      const a = ang + UTIL.rng(-spread, spread), l = UTIL.rng(lMin, lMax);
+      const dx = Math.cos(a) * l, dy = Math.sin(a) * l;
+      const bow = UTIL.rng(-l * 0.14, l * 0.14);
+      const w = width * UTIL.rng(0.55, 1.6);
+      x.strokeStyle = 'rgba(' + (UTIL.rand() < (lightBias === undefined ? 0.3 : lightBias) ? '255,255,255' : '0,0,0') +
+                      ',' + (alpha * UTIL.rng(0.3, 1)) + ')';
+      x.lineWidth = w;
+      wrapPts(s, px, py, Math.max(Math.abs(dx), Math.abs(dy)) + w).forEach(p => {
+        x.beginPath();
+        x.moveTo(p[0], p[1]);
+        x.quadraticCurveTo(p[0] + dx * 0.5 - Math.sin(a) * bow, p[1] + dy * 0.5 + Math.cos(a) * bow,
+                           p[0] + dx, p[1] + dy);
+        x.stroke();
+      });
+    }
+  }
+
+  /* Parallel ink strokes for the hatch channel. Only the four directions that
+     are exactly periodic on a square tile are offered (0/45/90/135) and the
+     hand-wobble is one full sine period along the stroke, so both ends still
+     meet at the seam. A hatch that tiles badly is worse than no hatch --
+     the eye finds the repeat instantly. */
+  function hatch(x, s, dir, spacing, width, alpha, wob) {
+    const K = Math.max(1, Math.round(s / spacing)), d = s / K;
+    x.lineCap = 'round';
+    const run = (x0, y0, dx, dy, nx, ny, w, al, ph) => {
+      x.strokeStyle = 'rgba(0,0,0,' + al + ')';
+      x.lineWidth = w;
+      x.beginPath();
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16, o = Math.sin(t * 6.2832 + ph) * wob;
+        const px = x0 + dx * t + nx * o, py = y0 + dy * t + ny * o;
+        if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+      }
+      x.stroke();
+    };
+    for (let k = 0; k < K; k++) {
+      const a = k * d, w = width * UTIL.rng(0.6, 1.5), al = alpha * UTIL.rng(0.45, 1), ph = UTIL.rng(0, 6.28);
+      if (dir === 0) run(0, a, s, 0, 0, 1, w, al, ph);
+      else if (dir === 90) run(a, 0, 0, s, 1, 0, w, al, ph);
+      else if (dir === 45) { run(a, 0, s, s, 0.7, -0.7, w, al, ph); run(a - s, 0, s, s, 0.7, -0.7, w, al, ph); }
+      else { run(a, 0, -s, s, 0.7, 0.7, w, al, ph); run(a + s, 0, -s, s, 0.7, 0.7, w, al, ph); }
+    }
+  }
+
+  function chan(s, base, fn) {
+    const c = cv(s, s), x = c.getContext('2d');
+    x.fillStyle = base; x.fillRect(0, 0, s, s);
+    fn(x, s);
+    return x.getImageData(0, 0, s, s).data;
+  }
+
+  function pack(s, r, g, b) {
+    const R = chan(s, '#808080', r), G = chan(s, '#808080', g), B = chan(s, '#ffffff', b);
+    const c = cv(s, s), x = c.getContext('2d'), img = x.createImageData(s, s);
+    for (let i = 0; i < s * s; i++) {
+      img.data[i * 4]     = R[i * 4];
+      img.data[i * 4 + 1] = G[i * 4 + 1];
+      img.data[i * 4 + 2] = B[i * 4 + 2];
+      img.data[i * 4 + 3] = 255;
+    }
+    x.putImageData(img, 0, 0);
+    // Repeat is 1: a finish is scaled in the shader by world size, not by a
+    // UV multiplier. Anisotropy is doubled over the shared default because a
+    // finish is most often seen on the ground at a grazing angle.
+    const t = finish(c, 1, 1);
+    t.anisotropy = 8;
+    return t;
+  }
+
+  /* One packed tile per material family. Built on first use and kept
+     forever -- six textures for the whole game. */
+  function surface(kind) {
+    if (SURF[kind]) return SURF[kind];
+    const s = 512;
+    let t;
+    if (kind === 'wood') {
+      t = pack(s,
+        x => {                                  // sap streaks, plank seams, knots
+          blobs(x, s, 22, 40, 170, 0.11, 0.45);
+          scratch(x, s, 220, 90, 380, 2.4, 0.15, 0, 0.05, 0.32);
+          hatch(x, s, 0, s / 4, 5, 0.30, 2.4);  // the seams between boards
+          for (let i = 0; i < 5; i++) {         // knots, drawn as ringed ovals
+            const kx = UTIL.rng(0, s), ky = UTIL.rng(0, s);
+            for (let r = 1; r <= 4; r++) {
+              x.strokeStyle = 'rgba(0,0,0,' + (0.30 - r * 0.05) + ')';
+              x.lineWidth = 2.4;
+              wrapPts(s, kx, ky, r * 9).forEach(p => {
+                x.beginPath(); x.ellipse(p[0], p[1], r * 9, r * 6, 0.3, 0, 6.3); x.stroke();
+              });
+            }
+          }
+        },
+        x => { scratch(x, s, 700, 40, 190, 1.1, 0.14, 0, 0.03, 0.4); grit(x, s, 900, 0.4, 1.4, 0.16); },
+        x => hatch(x, s, 0, 11, 2.0, 0.34, 1.3));
+    } else if (kind === 'metal') {
+      t = pack(s,
+        x => {                                  // rolled sheet + rust blooms
+          scratch(x, s, 90, 200, 512, 5, 0.10, Math.PI / 2, 0.02, 0.5);
+          blobs(x, s, 30, 18, 90, 0.16, 0.25);
+          grit(x, s, 260, 1.5, 5, 0.20, 0.2);
+        },
+        x => { scratch(x, s, 420, 12, 70, 1.0, 0.16, 0, 3.14, 0.45); grit(x, s, 700, 0.4, 1.2, 0.13); },
+        x => { hatch(x, s, 90, 12, 2.1, 0.36, 1.0); hatch(x, s, 90, 61, 4.0, 0.22, 1.6); });
+    } else if (kind === 'stone') {
+      t = pack(s,
+        x => {                                  // aggregate + chips + a crack
+          blobs(x, s, 60, 14, 80, 0.17, 0.44);
+          grit(x, s, 900, 1.2, 5.5, 0.20);
+          scratch(x, s, 14, 90, 300, 2.2, 0.22, 0.6, 1.2, 0.1);
+        },
+        x => grit(x, s, 2600, 0.5, 2.0, 0.20),
+        x => { hatch(x, s, 45, 15, 2.0, 0.30, 1.6); hatch(x, s, 135, 34, 1.6, 0.20, 1.6); });
+    } else if (kind === 'earth') {
+      t = pack(s,
+        x => {                                  // trodden patches and cart ruts
+          blobs(x, s, 46, 30, 190, 0.17, 0.44);
+          scratch(x, s, 120, 120, 460, 6, 0.10, 0.35, 1.4, 0.35);
+          grit(x, s, 1400, 1.0, 6.0, 0.16);
+        },
+        x => { grit(x, s, 2800, 0.5, 2.4, 0.20); grit(x, s, 90, 3, 7, 0.16, 0.55); },
+        x => { hatch(x, s, 45, 26, 2.2, 0.26, 3.2); hatch(x, s, 135, 44, 1.8, 0.18, 3.2); });
+    } else if (kind === 'cloth') {
+      t = pack(s,
+        x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5); },
+        x => { hatch(x, s, 0, 6, 1.2, 0.10, 0.4); hatch(x, s, 90, 6, 1.2, 0.10, 0.4); grit(x, s, 500, 0.4, 1.2, 0.12); },
+        x => hatch(x, s, 135, 14, 2.0, 0.30, 1.4));
+    } else {                                    // 'paper': plaster, paint, skin
+      t = pack(s,
+        x => { blobs(x, s, 40, 30, 160, 0.12, 0.46); scratch(x, s, 40, 60, 220, 4, 0.07, Math.PI / 2, 0.25, 0.4); },
+        x => grit(x, s, 2400, 0.4, 1.8, 0.20),
+        x => { hatch(x, s, 45, 13, 1.9, 0.32, 1.5); hatch(x, s, 135, 29, 1.5, 0.20, 1.5); });
+    }
+    SURF[kind] = t;
+    return t;
+  }
+
   function ground() {
     if (cache.ground) return cache.ground;
     const w = 512, c = cv(w, w), x = c.getContext('2d');
@@ -3662,7 +3986,7 @@ const TEX = (() => {
   }
 
   return {
-    ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot,
+    ground, wood, metal, sky, surface, splat, star, puff, spray, shadow, sign, dot,
     bang, lines, ring, chunk, curl, cloud, blast, word,
     grainDataURL, scratchDataURL, finish
   };
@@ -3692,10 +4016,152 @@ const MAT = (() => {
     return ramp;
   }
 
+  /* ------------------------------------------------- surface finishes ----
+     What a finish is and why it is projected rather than UV-mapped is
+     documented at [TEX] surface(). This end owns the shading.
+
+     Per-finish numbers below: `scale` is texture tiles per world unit (so it
+     is a real physical size, not a UV count), the three strengths are how
+     much of each packed channel to use, and `grime` is [height, strength] for
+     the dirt that climbs the bottom of a standing surface.
+
+     `paper` is deliberately weak and finely scaled: it is the DEFAULT for
+     every toon material that does not name one, which means it lands on
+     characters, props and the viewmodel as well as walls. At 1.1 tiles per
+     unit a white glove sees a fraction of one tile -- a whisper of grain --
+     while a barn wall sees a dozen. Same material family, right density at
+     both ends. */
+  const FINISH = {
+    paper: { tex: 'paper', scale: 1.10, mottle: 0.16, tooth: 0.13, hatch: 0.42, grime: [0.45, 0.10] },
+    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, tooth: 0.17, hatch: 0.60, grime: [0.75, 0.26] },
+    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, tooth: 0.15, hatch: 0.52, grime: [0.70, 0.22] },
+    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, tooth: 0.19, hatch: 0.46, grime: [0.95, 0.30] },
+    earth: { tex: 'earth', scale: 0.085, mottle: 0.34, tooth: 0.22, hatch: 0.34, grime: [0, 0] },
+    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, tooth: 0.22, hatch: 0.50, grime: [0.40, 0.16] },
+    none:  null
+  };
+
+  /* Every finished material's live uniforms, so CONFIG.render.texture can be
+     re-read without rebuilding a single material (see syncSurface). */
+  const surfUniforms = [];
+
+  const SURF_VERT_DECL = [
+    'varying vec3 vSurfP;',
+    'varying vec3 vSurfN;',
+    'varying float vSurfY;'
+  ].join('\n');
+
+  /* Position and normal are captured in OBJECT space, before skinning and
+     before the model matrix. Object space is the right frame for two
+     separate reasons: a batched mesh was baked at world coordinates so its
+     object space already is world space, and a prop or a character carries
+     its texture with it instead of swimming through a world-space grid as it
+     moves. Only the grime term needs true height, so that -- and only that --
+     pays for the model-matrix multiply. */
+  const SURF_FRAG_DECL = [
+    'uniform sampler2D uSurf;',
+    'uniform float uSurfScale;',
+    'uniform vec3 uSurfAmt;',      // mottle, tooth, hatch
+    'uniform vec2 uGrime;',        // height, strength
+    'uniform vec3 uGrimeCol;',
+    'uniform vec4 uSurfBand;',
+    'varying vec3 vSurfP;',
+    'varying vec3 vSurfN;',
+    'varying float vSurfY;',
+    /* Triplanar, but picking the dominant axis instead of blending three
+       samples. Blending would cost three fetches to hide seams that only
+       appear on faces within a few degrees of 45 -- and these tiles are
+       isotropic noise, so the switch is invisible on them anyway. */
+    'vec3 wfSurfSample() {',
+    '  vec3 an = abs(vSurfN);',
+    '  vec2 uv = (an.y >= an.x && an.y >= an.z) ? vSurfP.xz : (an.x >= an.z ? vSurfP.zy : vSurfP.xy);',
+    '  return texture2D(uSurf, uv * uSurfScale).rgb;',
+    '}'
+  ].join('\n');
+
+  const SURF_ALBEDO = [
+    'vec3 wfS = wfSurfSample();',
+    'diffuseColor.rgb *= 1.0 + (wfS.r - 0.5) * 2.0 * uSurfAmt.x;',
+    'diffuseColor.rgb *= 1.0 + (wfS.g - 0.5) * 2.0 * uSurfAmt.y;',
+    // Dirt climbs the foot of every standing surface, broken up by the same
+    // mottle so the line where it stops is never a straight one.
+    'float wfG = uGrime.y * smoothstep(uGrime.x, 0.0, vSurfY) * (0.35 + 0.65 * (1.0 - wfS.r));',
+    'diffuseColor.rgb = mix(diffuseColor.rgb, uGrimeCol, clamp(wfG, 0.0, 1.0));'
+  ].join('\n');
+
+  /* Hatching goes on last, over the fogged frame, keyed on how much LIGHT the
+     surface caught rather than how dark it ended up -- albedo is divided back
+     out so a rust-red wall in full sun stays unhatched while a cream wall in
+     shade gets the lines. Fog lifts the term at range, which retires the
+     hatching into the distance exactly as it should. */
+  const SURF_HATCH = [
+    'float wfAlb = max(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.02);',
+    'float wfLit = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)) / wfAlb;',
+    'float wfSh = smoothstep(uSurfBand.x, uSurfBand.y, wfLit) * (1.0 - smoothstep(uSurfBand.z, uSurfBand.w, wfLit));',
+    'gl_FragColor.rgb *= 1.0 - (1.0 - wfS.b) * wfSh * uSurfAmt.z;'
+  ].join('\n');
+
+  function surfAmounts(f) {
+    const T = CONFIG.render.texture;
+    const on = T.on ? 1 : 0;
+    return {
+      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.tooth * T.tooth * on, f.hatch * T.hatch * on),
+      grime: new THREE.Vector2(f.grime[0], f.grime[1] * T.grime * on),
+      band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3])
+    };
+  }
+
+  function applySurface(m, f) {
+    const tex = TEX.surface(f.tex);
+    m.onBeforeCompile = function (sh) {
+      const a = surfAmounts(f);
+      sh.uniforms.uSurf = { value: tex };
+      sh.uniforms.uSurfScale = { value: f.scale };
+      sh.uniforms.uSurfAmt = { value: a.amt };
+      sh.uniforms.uGrime = { value: a.grime };
+      sh.uniforms.uGrimeCol = { value: new THREE.Color(PAL.dirtDeep) };
+      sh.uniforms.uSurfBand = { value: a.band };
+      sh.vertexShader = SURF_VERT_DECL + '\n' + sh.vertexShader
+        .replace('#include <begin_vertex>',
+                 '#include <begin_vertex>\nvSurfP = transformed;\nvSurfY = (modelMatrix * vec4(transformed, 1.0)).y;')
+        .replace('#include <beginnormal_vertex>',
+                 '#include <beginnormal_vertex>\nvSurfN = objectNormal;');
+      sh.fragmentShader = SURF_FRAG_DECL + '\n' + sh.fragmentShader
+        .replace('#include <map_fragment>', '#include <map_fragment>\n' + SURF_ALBEDO)
+        .replace('#include <dithering_fragment>', SURF_HATCH + '\n#include <dithering_fragment>');
+      surfUniforms.push({ f: f, u: sh.uniforms });
+    };
+    /* REQUIRED, not an optimisation. r128 keys the program cache on material
+       *parameters*; onBeforeCompile is not part of that key. Without a custom
+       key a finished material and a plain one hash identically and the second
+       one silently reuses the first one's program -- so either every material
+       gets the finish or none does, depending on compile order. One shared
+       key for all finishes is right: the injected source is identical and
+       only the uniform values differ, so this is still one program. */
+    m.customProgramCacheKey = function () { return 'wf-surf'; };
+  }
+
+  /* Re-read CONFIG.render.texture on every finished material already built.
+     Tuning the whole hand-drawn layer costs nothing at runtime, and the
+     quality tiers use it to drop hatching on low. */
+  function syncSurface() {
+    for (let i = 0; i < surfUniforms.length; i++) {
+      const e = surfUniforms[i], a = surfAmounts(e.f);
+      e.u.uSurfAmt.value.copy(a.amt);
+      e.u.uGrime.value.copy(a.grime);
+      e.u.uSurfBand.value.copy(a.band);
+    }
+  }
+
   function toon(color, opts) {
     opts = opts || {};
+    // Undeclared surfaces get `paper`: a flat untextured colour is never the
+    // right answer in this game, so the default has to be a finish.
+    const fname = opts.finish === undefined ? 'paper' : opts.finish;
+    const fin = FINISH[fname] || null;
     const key = 'toon|' + color + '|' + (opts.map ? opts.map.uuid : '-') + '|' + (opts.side || 0) +
-                '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity || 1);
+                '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity || 1) +
+                '|' + (fin ? fname : '-');
     if (cache.has(key)) return cache.get(key);
     const m = new THREE.MeshToonMaterial({
       color: color,
@@ -3705,6 +4171,7 @@ const MAT = (() => {
       transparent: !!opts.transparent,
       opacity: opts.opacity === undefined ? 1 : opts.opacity
     });
+    if (fin) applySurface(m, fin);
     cache.set(key, m);
     return m;
   }
@@ -3797,7 +4264,7 @@ const MAT = (() => {
     return inkMat;
   }
 
-  return { toon, flat, ink, gradientMap };
+  return { toon, flat, ink, gradientMap, syncSurface, FINISH };
 })();
 
 /* ================================ [INK] ============================== */
@@ -9658,7 +10125,11 @@ const LEVEL = (() => {
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
     nearNorthBarnHatch, setNorthBarnHatch, isNorthBarnHatchOpen,
     northBarnAccessAt, setNorthBarnAccess, setAllNorthBarnAccess, isNorthBarnAccessOpen,
-    setNorthBarnRailing, setCraftingScreenText
+    setNorthBarnRailing, setCraftingScreenText,
+    // Exposed for the walkability audit: set dressing is what silently
+    // pinches a lane, so the probe checks the authored desire lines against
+    // the finished collider list rather than against a copy that can drift.
+    debugPathRoutes: () => PATH_ROUTES
   };
 })();
 
@@ -16411,6 +16882,28 @@ const UI = (() => {
     if (el.crewLeft) el.crewLeft.classList.add('hidden');
   }
 
+  /* A boss bill's advice line is news, not furniture. It is printed for
+     BILL_FRESH seconds after the bill goes up or its state changes, then the
+     bill folds down to a name and a gauge for the rest of the fight (see
+     `.boss-bill.fresh small`). With three bosses live that is the difference
+     between 160px and 108px of centre-frame. */
+  const BILL_FRESH = 5;
+  const billFresh = { bossHud: 0, boss2Hud: 0, boss3Hud: 0 };
+  const billState = { bossHud: '', boss2Hud: '', boss3Hud: '' };
+  function markBillFresh(key, state) {
+    if (billState[key] === state) return;
+    billState[key] = state;
+    billFresh[key] = BILL_FRESH;
+    if (el[key]) el[key].classList.add('fresh');
+  }
+  function updateBills(dt) {
+    for (const key in billFresh) {
+      if (billFresh[key] <= 0) continue;
+      billFresh[key] -= dt;
+      if (billFresh[key] <= 0 && el[key]) el[key].classList.remove('fresh');
+    }
+  }
+
   // This HUD slot is shared by two distinct single-player encounters --
   // Carrot Warden (33 kills) and, later, The Gardener -- unlike boss2/boss3's
   // dedicated one-boss-per-slot HUDs, so the name has to be passed in each
@@ -16418,36 +16911,39 @@ const UI = (() => {
   function setBoss(active, hp, maxHp, state, name) {
     if (!el.bossHud) return;
     el.bossHud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.bossHud = ''; return; }
     if (name && el.bossHudLabel) el.bossHudLabel.textContent = name;
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.bossHudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.bossHudState.textContent = state === 'defeated' ? 'Wilted' : (state === 'active' ? 'Awake' : 'Incoming');
     el.bossHudHint.textContent = state === 'active' ? 'Head shots hit for 1.5×' : 'The barn has a new problem';
+    markBillFresh('bossHud', state);
   }
 
   function setBoss2(active, hp, maxHp, state) {
     if (!el.boss2Hud) return;
     el.boss2Hud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.boss2Hud = ''; return; }
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.boss2HudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.boss2HudState.textContent = state === 'defeated' ? 'Retreated' : (state === 'active' ? 'Prowling' : 'Incoming');
     el.boss2HudHint.textContent = state === 'active' ? 'Watch for the smoke cloud' : 'Something is watching the tree line';
+    markBillFresh('boss2Hud', state);
   }
 
   function setBoss3(active, hp, maxHp, state) {
     if (!el.boss3Hud) return;
     el.boss3Hud.classList.toggle('on', !!active);
-    if (!active) return;
+    if (!active) { billState.boss3Hud = ''; return; }
     const max = Math.max(1, maxHp || 1);
     const pct = UTIL.clamp((hp === undefined ? max : hp) / max, 0, 1);
     el.boss3HudFill.style.width = (pct * 100).toFixed(1) + '%';
     el.boss3HudState.textContent = state === 'defeated' ? 'Fled' : (state === 'active' ? 'Circling' : 'Incoming');
     // Short enough to stay on one line in the boss bill at 720p.
     el.boss3HudHint.textContent = state === 'active' ? 'Watch for the boombox' : 'A beat, somewhere out there';
+    markBillFresh('boss3Hud', state);
   }
 
   // Bear Claw's stun-chance claw swipe (see PLAYER.grantStun). Same
@@ -16502,15 +16998,17 @@ const UI = (() => {
     let sameLayer = 0, otherLayer = 0, sameEnemies = 0;
 
     ctx.clearRect(0, 0, size, size);
-    // Opaque: the dial has to hold its own black against a dark, shadowed
-    // frame, and against the film overlays sitting on top of it.
-    ctx.fillStyle = '#1A1512';
+    // Printed on the same cream stock as every card in the overlay, with an
+    // ink graticule. The dial used to be a near-black disc, which punched a
+    // hole in any dark frame and sat as a blot on any bright one -- the
+    // charcoal-plate failure, in canvas form.
+    ctx.fillStyle = '#F3E4C8';
     ctx.fillRect(0, 0, size, size);
     ctx.save();
     ctx.translate(center, center);
-    // The dial is drawn at 132px and displayed at 80px, so the graticule
+    // The dial is drawn at 132px and displayed at 74px, so the graticule
     // needs more weight and contrast than it looks like it should on canvas.
-    ctx.strokeStyle = 'rgba(160,196,220,.55)';
+    ctx.strokeStyle = 'rgba(22,18,15,.34)';
     ctx.lineWidth = 2.4;
     [radius * 0.5, radius].forEach(r => {
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
@@ -16534,28 +17032,32 @@ const UI = (() => {
       const scale = Math.min(1, distance / CONFIG.radar.range);
       const x = right / distance * radius * scale;
       const y = down / distance * radius * scale;
-      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#C96B45');
+      // Blips keep their ink ring on a cream face -- the ring is what makes
+      // a mustard boss blip separate from cream paper at 74px.
+      ctx.fillStyle = c.type === 'player' ? '#5C7E99' : (c.boss ? '#E8A33D' : '#A85A3C');
       ctx.strokeStyle = '#120F0D';
-      ctx.lineWidth = 2.4;
+      ctx.lineWidth = 2.6;
       ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 5.4 : (c.boss ? 7.4 : 6), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Player marker and forward tick.
-    ctx.fillStyle = '#F6E9D2';
+    // Player marker and forward tick -- solid ink on the cream face.
+    ctx.fillStyle = '#1F1B18';
     ctx.strokeStyle = '#120F0D';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.restore();
 
-    const label = layer === 'basement' ? 'Basement' : 'Surface';
-    el.radarLayer.textContent = label;
+    el.radarLayer.textContent = layer === 'basement' ? 'Basement' : 'Surface';
     if (sameEnemies > 0) el.radarSignal.textContent = sameEnemies + ' hostile';
     else if (sameLayer > 0) el.radarSignal.textContent = sameLayer + ' contact';
     else if (otherLayer > 0) el.radarSignal.textContent = otherLayer + (layer === 'basement' ? ' above' : ' below');
     else el.radarSignal.textContent = 'Clear';
-    // "Clear" is the default state and carries no information -- dim it so
-    // the only time the dial says anything loudly is when it has news.
-    el.radarSignal.classList.toggle('quiet', sameLayer === 0 && otherLayer === 0);
+    // Nothing on either layer is the default state and carries no news, so
+    // the whole dial -- captions included -- drops back to a quiet ghost of
+    // itself and springs up the moment something is actually out there.
+    // Which floor you are on is the one thing worth printing while quiet.
+    el.radar.classList.toggle('quiet', sameLayer === 0 && otherLayer === 0);
+    el.radar.classList.toggle('underground', layer === 'basement');
   }
 
   function toast(message, seconds) {
@@ -17046,6 +17548,7 @@ const UI = (() => {
     setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
     setStun(PLAYER.stunRemaining);
     setSlow(PLAYER.slowRemaining);
+    updateBills(dt);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
       el.hurt.style.opacity = Math.max(0, hurtTimer / 0.42) * 0.9;
@@ -20498,7 +21001,14 @@ const CAST = (() => {
       handL: arms[0].hand, handR: arms[1].hand,
       legL: legs[0].joint, legR: legs[1].joint,
       legLMid: legs[0].mid, legRMid: legs[1].mid,
-      footL: legs[0].foot, footR: legs[1].foot
+      footL: legs[0].foot, footR: legs[1].foot,
+      /* [RUBBERHOSE] Pose-requested extra bend at the elbows/knees, in
+         TRAIL_LIMBS order (armL, armR, legL, legR): [x, z] per limb. A pose
+         function writes into this instead of touching the mid joints, and
+         settle() folds it in under the trail springs and then clears it —
+         so a pose that asks for nothing falls back to the resting curve
+         rather than to a straight rod. */
+      bend: new Float32Array(8)
     };
   }
 
@@ -20527,6 +21037,45 @@ const CAST = (() => {
     ['armR', 'armRMid', 0.85, 0.55, 1.15, 0.7],
     ['legL', 'legLMid', 0.72, 0.30, 0.8, 0.4],
     ['legR', 'legRMid', 0.72, 0.30, 0.8, 0.4]
+  ];
+
+  /* [RUBBERHOSE] A hose has no straight state. The trail springs above only
+     bend a limb while its parent is *moving*, so a character standing still
+     — which is most of them, most of the time — went right back to being a
+     pair of rods. These are the angles the mid joints hold when nothing is
+     asking for anything: elbows carried out and forward with the forearms
+     turned in toward the body, knees softly broken back. The silhouette is
+     then two arcs meeting at an angle in every single frame.
+
+     Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
+     tip toward +X. Left limbs are index 0/2, right 1/3. */
+  const REST_BEND = [0.22, 0.22, -0.12, -0.12];
+  // The leg splay is also doing a practical job: at ±0.05 the two shoes sat
+  // in the same place and interpenetrated on every standing frame.
+  const REST_SPLAY = [0.15, -0.15, -0.10, 0.10];
+  // Slow, tiny wander on the resting curve so a parked character's noodles
+  // are alive rather than frozen. Seeded per rig; a crowd never breathes in
+  // unison.
+  const REST_DRIFT = 0.045;
+
+  /* Hands and feet are the last link and the loosest: a glove keeps swinging
+     after the wrist has stopped and a shoe flops on the ankle. Target is the
+     accumulated chain angle (shoulder + elbow), so the whip builds along the
+     limb instead of every joint lagging the torso by the same amount.
+
+     Gains are deliberately small. The first pass ran the feet at 0.38/0.26
+     and the shoes — which are large, pale and read as a hard silhouette —
+     swung 40 degrees off the ankle on every step, which looks like broken
+     feet rather than loose ones. The same applies to the right hand, which
+     on several characters is holding a scythe or a rifle: what reads as a
+     nice bit of overlap on a bare glove reads as flailing a pole around
+     when there is a metre of prop attached to it.
+     [tip, joint, mid, x-gain, z-gain, x-limit, z-limit] */
+  const TRAIL_TIPS = [
+    ['handL', 'armL', 'armLMid', 0.26, 0.20, 0.45, 0.30],
+    ['handR', 'armR', 'armRMid', 0.26, 0.20, 0.45, 0.30],
+    ['footL', 'legL', 'legLMid', 0.19, 0.10, 0.28, 0.16],
+    ['footR', 'legR', 'legRMid', 0.19, 0.10, 0.28, 0.16]
   ];
   const SPRING_K = 175, SPRING_D = 13.5;
   // How fast the "lead" filter chases the stepped pose. High enough that the
@@ -20557,9 +21106,15 @@ const CAST = (() => {
   function settleReset(rig) {
     if (!rig) return;
     rig.trailState = null;
+    rig.settleT = 0;
+    if (rig.bend) rig.bend.fill(0);
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const m = rig[TRAIL_LIMBS[i][1]];
-      if (m) m.rotation.set(0, 0, 0);
+      if (m) m.rotation.set(REST_BEND[i], 0, REST_SPLAY[i]);
+    }
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const tip = rig[TRAIL_TIPS[i][0]];
+      if (tip) tip.rotation.set(0, 0, 0);
     }
     if (rig.neck) { rig.neck.rotation.set(0, 0, 0); rig.neck.position.y = 0.50; }
     if (rig.headTrail) { rig.headTrail.rotation.set(0, 0, 0); rig.headTrail.scale.setScalar(1); }
@@ -20567,13 +21122,20 @@ const CAST = (() => {
     // body must not keep the last frame of its own corpse.
     if (rig.head) rig.head.scale.setScalar(1);
     if (rig.torso) rig.torso.scale.setScalar(1);
-    if (rig.bob) { rig.bob.position.set(0, 0, 0); rig.bob.rotation.set(0, 0, 0); }
+    if (rig.bob) {
+      rig.bob.position.set(0, 0, 0);
+      rig.bob.rotation.set(0, 0, 0);
+      rig.bob.scale.setScalar(1);
+    }
     if (rig.footL) rig.footL.rotation.set(0, 0, 0);
     if (rig.footR) rig.footR.rotation.set(0, 0, 0);
   }
 
   // channel base offsets into trailState (3 floats each)
   const CH_NECK_X = 24, CH_NECK_Z = 27, CH_TRAIL_X = 30, CH_TRAIL_Z = 33, CH_BOB = 36;
+  // hands and feet: 4 tips x 2 axes, starting after the 13 channels above,
+  // then 4 floats recording the pitch offset each tip was given last frame.
+  const CH_TIP = 39, CH_TIP_APPLIED = CH_TIP + 24;
 
   function settle(rig, dt, gain) {
     if (!rig || !rig.armLMid) return;
@@ -20584,9 +21146,9 @@ const CAST = (() => {
     const h = dt > 0.034 ? 0.034 : (dt > 0 ? dt : 0.0001);
     let s = rig.trailState;
     if (!s) {
-      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z and the
-      // vertical bob = 13 channels x 3 floats.
-      s = rig.trailState = new Float32Array(39);
+      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z, the
+      // vertical bob, and 4 tips x 2 axes = 21 channels x 3 floats.
+      s = rig.trailState = new Float32Array(CH_TIP_APPLIED + 4);
       let k = 0;
       for (let i = 0; i < TRAIL_LIMBS.length; i++) {
         const j = rig[TRAIL_LIMBS[i][0]];
@@ -20596,17 +21158,50 @@ const CAST = (() => {
         k += 6;
       }
     }
+    // Phase for the resting-curve wander. Seeded off the rig's own object id
+    // so two characters side by side never noodle in step.
+    rig.settleT = (rig.settleT || 0) + h;
+    const drift = rig.settleT * 0.9 + (rig.root ? rig.root.id * 0.618 : 0);
+    const bend = rig.bend;
 
     let k = 0;
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const cfg = TRAIL_LIMBS[i];
       const j = rig[cfg[0]], m = rig[cfg[1]];
       if (j && m) {
-        m.rotation.x = clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
-        m.rotation.z = clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
+        /* rest curve + whatever the pose asked for + the trail. The rest and
+           pose terms are outside the clamp because they are authored angles,
+           not spring output — only the lag is bounded. */
+        const restX = REST_BEND[i] + Math.sin(drift + i * 1.7) * REST_DRIFT;
+        const restZ = REST_SPLAY[i] + Math.cos(drift * 0.77 + i * 2.3) * REST_DRIFT * 0.6;
+        m.rotation.x = restX + (bend ? bend[i * 2] : 0) +
+          clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
+        m.rotation.z = restZ + (bend ? bend[i * 2 + 1] : 0) +
+          clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
       }
       k += 6;
     }
+
+    /* Extremities last, and loosest. The tip's target is the whole chain
+       above it, so the lag accumulates outward: shoulder leads, elbow
+       trails it, glove trails the elbow. Feet keep whatever pitch the pose
+       gave them (the toe flick) and get the flop added on top — which is
+       why the pitch is applied as a delta against last frame's offset
+       rather than assigned: hands are posed by nobody, so a plain `+=`
+       would integrate itself into a windmill within a few seconds. */
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const cfg = TRAIL_TIPS[i];
+      const tip = rig[cfg[0]], j = rig[cfg[1]], m = rig[cfg[2]];
+      if (!tip || !j || !m) continue;
+      const c = CH_TIP + i * 6;
+      const off = clampTo(
+        trailStep(s, c, j.rotation.x + m.rotation.x, h) * cfg[3] * g, cfg[5]);
+      tip.rotation.x += off - s[CH_TIP_APPLIED + i];
+      s[CH_TIP_APPLIED + i] = off;
+      tip.rotation.z = clampTo(
+        trailStep(s, c + 3, j.rotation.z + m.rotation.z, h) * cfg[4] * g, cfg[6]);
+    }
+    if (bend) bend.fill(0);
 
     // Head: lags the combined torso+head pose, and lags the body's vertical
     // bounce so the skull keeps rising for a frame after the hips stop.
@@ -22832,6 +23427,16 @@ const ENEMY = (() => {
       // entity's whole life so a crowd never breathes in unison.
       idleSeed: UTIL.rng(0, 12.56),
       squash: 0, squashVel: 0,
+      /* [RUBBERHOSE] A delayed copy of `squash`. The difference between the
+         two is the compression wave travelling up the body — the hips take
+         an impact on the frame it lands, the chest a beat later. Scaling the
+         whole group by one number made every part of the figure change size
+         on the same frame, which is the one thing a drawn squash never does. */
+      squashLag: 0,
+      /* Speed and heading carried from last frame so the body can react to
+         its own acceleration: dig in to start, skid to stop, bank into a
+         turn. Nothing in the sim reads these — they are purely for drawing. */
+      lastSpeed: 0, accel: 0, turn: 0,
       lean: 0,
       lastSeen: -99,
       losTimer: UTIL.rng(0, C.losInterval),
@@ -23770,7 +24375,8 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.scale.set(1, 1, 1);
     e.group.rotation.set(0, e.yaw, 0);
-    e.squash = e.squashVel = 0;
+    e.squash = e.squashVel = e.squashLag = 0;
+    e.lastSpeed = e.accel = e.turn = 0;
     // Clear the corpse's squash/blink/trail state or the revived body wears
     // the last frame of its own death.
     CAST.settleReset(e.rig);
@@ -24061,9 +24667,24 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Same acceleration and turn-rate reads the grunts get.
+       A boss is heavier, so the thresholds are lower and the impulses
+       bigger — a big body has to visibly commit to starting and to
+       stopping, and it banks harder when it swings a turn. */
+    const bAccel = (speed - (e.lastSpeed || 0)) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel || 0, UTIL.clamp(bAccel * 0.05, -1.2, 1.2), 8, dt);
+    if (bAccel > 8) e.squashVel += UTIL.clamp(bAccel * 0.08, 0, 3);
+    else if (bAccel < -10) e.squashVel -= UTIL.clamp(-bAccel * 0.09, 0, 4.5);
+    let bYaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (bYaw > Math.PI) bYaw -= Math.PI * 2; else if (bYaw < -Math.PI) bYaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn || 0, UTIL.clamp(bYaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 7, dt);
+
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    e.squashLag = UTIL.damp(e.squashLag || 0, e.squash, 14, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.045, 0, 0.18), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
     e.group.position.copy(e.pos);
@@ -24521,7 +25142,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       const scale = e.visualScale || 1;
       const sy = (1 - impact * 0.4 + wob) * gone;
       const sxz = (1 + impact * 0.3 - wob * 0.6) * gone;
@@ -24581,7 +25203,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
         scale * (1 - impact * 0.4 + wob) * gone,
         scale * (1 + impact * 0.3 - wob * 0.6) * gone);
@@ -24598,13 +25221,19 @@ const ENEMY = (() => {
        full extension, then ring back. `reach` still peaks and decays over
        the same windup/recover split the hit timing uses. */
     let reach = 0, pitch = 0, extra = 0;
+    /* On the same 12fps grid as everything else. This character is a static
+       mesh, so the whole-body transform *is* the animation — leaving it on
+       the 60fps timer made the one boss in the room the one thing in frame
+       that moved like a tween. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss2_melee') {
-      const c = attackCurve(e.timer, B2.windup, B2.recover, 0.26, 2.4);
+      const c = attackCurve(qt, B2.windup, B2.recover, 0.26, 2.4);
       reach = -c.anticip * 0.28 + c.strike;
       pitch = -c.anticip * 0.2 + c.strike * 0.24;
       extra = c.extra;
     } else if (e.state === 'boss2_smoke') {
-      reach = 0.15 + Math.sin(t * 14) * 0.08;
+      const qs = Math.floor(t * C.stepFPS) / C.stepFPS;
+      reach = 0.15 + Math.sin(qs * 14) * 0.08;
     }
     if (e.clawArms) {
       const extend = 0.34 * reach;
@@ -24620,10 +25249,16 @@ const ENEMY = (() => {
       e.clawArms.right.stretch.scale.z = st;
     }
 
-    const sq = 1 + e.squash + extra;
+    /* The lag twin sharpens the leading edge of an impact: while the squash
+       is still moving, the difference adds to it, so the compression bites
+       on the frame it lands and eases out after. On a rigged character this
+       is a wave up the body; on a single mesh it is all the overlap there
+       is to have. */
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction, 0);
+    e.group.rotation.set(pitch, e.yaw + correction, (e.turn || 0) * 0.12);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -24639,7 +25274,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
         scale * (1 - impact * 0.4 + wob) * gone,
         scale * (1 + impact * 0.3 - wob * 0.6) * gone);
@@ -24651,14 +25287,17 @@ const ENEMY = (() => {
     // additionally twists, so the whole silhouette rotates into the release
     // instead of only pitching.
     let pitch = 0, roll = 0, yawExtra = 0, extra = 0;
+    // stepped for the same reason as Bear Claw's: on a static mesh the
+    // whole-body transform is the whole animation
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss3_throw') {
-      const c = attackCurve(e.timer, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
+      const c = attackCurve(qt, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
       pitch = -c.anticip * 0.34 + c.strike * 0.3;
       yawExtra = c.anticip * 0.4 - c.strike * 0.55;
       roll = -c.anticip * 0.12 + c.strike * 0.16;
       extra = c.extra;
     } else if (e.state === 'boss3_melee') {
-      const c = attackCurve(e.timer, B3.windup, B3.recover, 0.26, 2.0);
+      const c = attackCurve(qt, B3.windup, B3.recover, 0.26, 2.0);
       pitch = -c.anticip * 0.22 + c.strike * 0.36;
       roll = c.anticip * 0.08 - c.strike * 0.12;
       extra = c.extra;
@@ -24667,10 +25306,11 @@ const ENEMY = (() => {
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
-    const sq = 1 + e.squash + extra;
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll);
+    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll + (e.turn || 0) * 0.12);
   }
 
   function pose(e, t) {
@@ -24705,9 +25345,21 @@ const ENEMY = (() => {
     // is stepped, exactly like a cel over a moving pan.
     const ts = Math.floor(t * C.stepFPS) / C.stepFPS;
     const seed = e.idleSeed || 0;
+    /* ...and so does every *state* clock. The walk and the idle boil were
+       stepped but attack, alert, stagger and death still ran off the raw
+       60fps timer, so a swing was a smooth lerp bolted onto a stepped body.
+       Quantising the state timer here is what turns those into held drawings
+       with snaps between them. Gameplay still reads the unquantised
+       `e.timer` for its hit windows, so nothing about the timing of a blow
+       changes — only how many drawings it is made of. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
+    // Bend requests for the elbows/knees; CAST.settle folds them in under
+    // the trail springs and clears the array. Index order matches
+    // TRAIL_LIMBS: armL, armR, legL, legR, each [x, z].
+    const bend = r.bend;
 
     if (e.state === 'dead') {
-      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const k = UTIL.clamp(qt / C.corpseTime, 0, 1);
       // Collapse fast, then hold, then pop out of existence — the old
       // version faded linearly across the whole corpse time, which is the
       // one timing a cartoon never uses.
@@ -24716,8 +25368,14 @@ const ENEMY = (() => {
       // squash flat on the first impact, spring back out, settle
       const impact = k < 0.30 ? Math.sin(UTIL.clamp(k / 0.30, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.4, 6) * 0.16 * (1 - gone);
-      const sy = (1 - impact * 0.55 + wob) * (1 - E.outCubic(gone));
-      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - E.outCubic(gone));
+      /* Vanish on an ease-IN: hold full size, then go in three or four
+         drawings. On the ease-out it used to have this backwards — most of
+         the shrink happened immediately and the last third of it crawled,
+         so a corpse spent a second and a half as a slowly dwindling speck.
+         A cartoon leaves the frame all at once. */
+      const off = E.inQuart(gone);
+      const sy = (1 - impact * 0.55 + wob) * (1 - off);
+      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - off);
       e.group.scale.set(sxz, sy, sxz);
       // Topple the WHOLE body about its feet, not just the torso — a wilt
       // that only bends at the waist reads as a bow, not a death. The hips
@@ -24736,7 +25394,17 @@ const ENEMY = (() => {
       r.armR.rotation.z = 0.12 + fall * 0.45;
       r.legL.rotation.x = fall * 0.5 + wob * 0.8;
       r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      // Knees give way rather than staying two straight rods sticking out of
+      // a folded body — the legs collapse under it and keep jittering.
+      if (bend) {
+        bend[4] = -0.85 * fall - wob * 0.5;
+        bend[6] = -0.55 * fall + wob * 0.55;
+        bend[0] = 0.5 * fall + wob * 0.6;
+        bend[2] = 0.7 * fall - wob * 0.7;
+      }
       r.bob.position.y = -fall * 0.10;
+      // The wave runs through a corpse too: the hips flatten hardest.
+      r.bob.scale.set(1 + impact * 0.22, 1 - impact * 0.3, 1 + impact * 0.22);
       if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
       return;
     }
@@ -24784,18 +25452,39 @@ const ENEMY = (() => {
       r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.3, 1 + breath * 0.8);
       r.head.rotation.z = -sw * 0.09 * walk;
       r.head.rotation.x = -e.lean * 0.5 + breath * 1.4;
+      r.torso.rotation.z += (e.turn || 0) * 0.10;
+      /* Knees and elbows. A heavy character folds *less* at the knee than a
+         grunt but sinks deeper into each contact, so the swing fold is the
+         small half and the absorb is the large one. That difference is most
+         of what separates the Warden's walk from a grunt's. */
+      if (bend) {
+        bend[4] = -(0.26 * UTIL.clamp(-sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[6] = -(0.26 * UTIL.clamp(sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[0] = 0.30 * UTIL.clamp(sw, 0, 1) * walk;
+        bend[2] = 0.22 * UTIL.clamp(-sw, 0, 1) * walk;
+        bend[1] = cw * 0.12 * walk;
+        bend[3] = -cw * 0.12 * walk;
+      }
       let extra = 0;
       if (e.state === 'boss_melee') {
         const total = B.windup + B.recover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.windup / total;
         if (k < wk) {
           // gather: haul the arm back on an ease-in and squat into it
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.8, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.8, 0, 1));
           r.armR.rotation.x = -2.6 * coil;
           r.torso.rotation.x -= 0.3 * coil;
           r.torso.rotation.y = 0.55 * coil;
           stepSquash += coil * 0.14;
+          // load the whole body onto the back leg, striking elbow folded up
+          r.legL.rotation.x = -0.26 * coil;
+          r.legR.rotation.x = 0.14 * coil;
+          if (bend) {
+            bend[4] = -0.40 * coil; bend[6] = -0.16 * coil;
+            bend[2] = 1.05 * coil; bend[0] = 0.26 * coil;
+          }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const strike = a < 0.3 ? E.outBack(a / 0.3, 1.8) : 1 + E.ring((a - 0.3) / 0.7, 1.4, 4.5) * 0.15;
@@ -24803,17 +25492,27 @@ const ENEMY = (() => {
           r.torso.rotation.x += -0.3 + strike * 0.85;
           r.torso.rotation.y = 0.55 - strike * 1.05;
           extra = Math.sin(UTIL.clamp(a / 0.3, 0, 1) * Math.PI) * 0.16;
+          r.legL.rotation.x = -0.26 + strike * 0.38;
+          r.legR.rotation.x = 0.14 - strike * 0.24;
+          if (bend) {
+            // the forearm lags the shoulder through the swing
+            const whip = a < 0.3 ? E.outBack(UTIL.clamp((a - 0.07) / 0.3, 0, 1), 1.5) : strike;
+            bend[4] = -0.40 + strike * 0.32; bend[6] = -0.16 - strike * 0.14;
+            bend[2] = 1.05 - whip * 1.15; bend[0] = 0.26 - strike * 0.36;
+          }
         }
       } else if (e.state === 'boss_seed') {
         const total = B.seedWindup + B.seedRecover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.seedWindup / total;
         if (k < wk) {
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.85, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.85, 0, 1));
           r.armR.rotation.x = -1.35 - coil * 0.85;
           r.torso.rotation.x -= 0.2 * coil;
           r.torso.rotation.y = -0.26 * coil;
           stepSquash += coil * 0.1;
+          if (bend) { bend[2] = 0.75 * coil; bend[4] = -0.24 * coil; bend[6] = -0.24 * coil; }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const kick = 1 - E.outQuint(a);
@@ -24821,10 +25520,17 @@ const ENEMY = (() => {
           r.torso.rotation.x += 0.22 * kick;
           r.torso.rotation.y = -0.26 + 0.4 * kick;
           extra = kick * 0.18;
+          if (bend) { bend[2] = 0.75 * kick; bend[4] = -0.24 * kick; bend[6] = -0.24 * kick; }
         }
       } else {
         r.torso.rotation.y = 0;
       }
+      // hips take the compression a beat before the chest, same as the grunts
+      const bwave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+      r.bob.scale.set(1 - bwave * 0.5, 1 + bwave * 0.9, 1 - bwave * 0.5);
+      r.torso.scale.x *= 1 + bwave * 0.26;
+      r.torso.scale.y *= 1 - bwave * 0.55;
+      r.torso.scale.z *= 1 + bwave * 0.26;
       const sq = 1 + e.squash - stepSquash + extra;
       const scale = e.visualScale || 1;
       e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
@@ -24835,21 +25541,27 @@ const ENEMY = (() => {
     /* ---------------- walk cycle ----------------
        `snapSin` holds the limb at each extreme and rips it through the
        middle, which is the difference between a mechanical pendulum and a
-       drawn one. The mid joints are NOT touched here — CAST.settle() bends
-       them from the shoulder's own angular velocity, so the noodle bows
-       backwards through the swing and whips through at the top. */
+       drawn one. The mid joints get their lag from CAST.settle() — the
+       noodle bows backwards through the swing and whips through at the top
+       — and their *authored* fold from `bend` below. */
     const sw = E.snapSin(e.stepPhase, 0.6);
     const cw = Math.cos(e.stepPhase);
     const gait = UTIL.clamp(walk * (0.9 + 0.25 * walk), 0, 1.05);
 
+    /* The right hand carries the prop on characters that have one, and a
+       metre of scythe on the end of a full-amplitude swing windmills right
+       across the silhouette every step. You carry a polearm, you do not
+       swing it while walking — damping the loaded arm is what an animator
+       would do, and it costs the empty-handed characters nothing. */
+    const propArm = e.def.hand ? 0.45 : 1;
     r.legL.rotation.x = -sw * 0.72 * gait;
     r.legR.rotation.x = sw * 0.72 * gait;
     r.armL.rotation.x = sw * 1.05 * gait;
-    r.armR.rotation.x = -sw * 1.05 * gait;
+    r.armR.rotation.x = -sw * 1.05 * gait * propArm;
     // Arms swing OUT as well as forward, so the noodle clears the torso and
     // its curve is actually visible in silhouette rather than buried in it.
     r.armL.rotation.z = -0.12 - walk * 0.3 - Math.abs(sw) * 0.16 * gait;
-    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait;
+    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait * propArm;
     // toes flick up on the forward reach and point on the push-off
     if (r.footL) r.footL.rotation.x = -sw * 0.34 * gait;
     if (r.footR) r.footR.rotation.x = sw * 0.34 * gait;
@@ -24861,7 +25573,16 @@ const ENEMY = (() => {
        pulses in unison. */
     const idleAmt = 1 - UTIL.clamp(walk * 2.2, 0, 1);
     const breathPh = ts * 1.55 + seed;
-    const breath = Math.sin(breathPh) * (0.008 + idleAmt * 0.016);
+    const breath = Math.sin(breathPh) * (0.010 + idleAmt * 0.026);
+    /* An idle beat. Breathing and a head scan alone are not an idle — a
+       parked character was twelve near-identical drawings in a row, which is
+       the one thing that reads as "the animation has stopped" rather than
+       "the character is waiting". Every few seconds the body sinks and pops
+       back out of it, on a per-character schedule so a crowd of them never
+       does it together. Sits under everything else, so it also gives the
+       trail springs something to chase while the character is doing nothing. */
+    const beatPh = (ts * 0.31 + seed * 0.41) % 1;
+    const beat = beatPh < 0.30 ? Math.sin(beatPh / 0.30 * Math.PI) * idleAmt : 0;
     // Contact is the low point of the cycle; the body compresses into it
     // and stretches through the passing position.
     const contact = 1 - Math.abs(cw);
@@ -24871,21 +25592,32 @@ const ENEMY = (() => {
     const bounce = Math.pow(Math.abs(cw), 1.45) * 0.15 * gait;
     const stepSquash = contact * 0.17 * gait;
 
-    // weight shift: a slow lateral lean that holds on each foot
+    /* Weight shift: a slow lateral lean that holds on each foot. It used to
+       move the hips 2cm, which at any real distance is nothing — the hips
+       now travel far enough to actually sit over one leg, and tilt as they
+       go, with the shoulders counter-tilting above them. */
     const shiftPh = ts * 0.62 + seed * 1.7;
     const shift = E.snapSin(shiftPh, 0.62) * idleAmt;
-    r.bob.position.y = bounce + breath - stepSquash * 0.10;
-    r.bob.position.x = shift * 0.022;
-    r.torso.rotation.z = sw * 0.075 * gait + shift * 0.05;
-    r.torso.rotation.x = e.lean - breath * 0.9;
-    r.torso.rotation.y = 0;
+    r.bob.position.y = bounce + breath - stepSquash * 0.10 - beat * 0.045;
+    r.bob.position.x = shift * 0.055;
+    r.bob.rotation.z = shift * 0.075;
+    r.torso.rotation.z = sw * 0.075 * gait - shift * 0.045;
+    r.torso.rotation.x = e.lean - breath * 0.9 + beat * 0.09;
+    /* Hips and shoulders counter-rotate. This is the oldest trick in a walk
+       cycle and the body was missing it entirely — the hip block stayed
+       square to the camera for the whole cycle, which is exactly what made
+       it read as a box being carried along rather than a mass being swung
+       between two legs. The head unwinds part of the shoulder twist so the
+       face keeps looking where the character is going. */
+    r.bob.rotation.y = sw * 0.15 * gait;
+    r.torso.rotation.y = -sw * 0.19 * gait;
     r.torso.scale.set(1 + breath * 0.9, 1 + breath * 1.5, 1 + breath * 0.9);
 
     // idle scan: swing the head to a new heading, then hold it there. The
     // low exponent is what gives the hold; a plain sine reads as a fan.
     const scanPh = ts * 0.4 + seed * 0.9;
     const scan = E.snapSin(scanPh, 0.42) * idleAmt;
-    r.head.rotation.y = scan * 0.28;
+    r.head.rotation.y = scan * 0.28 + sw * 0.11 * gait;
     r.head.rotation.z = -sw * 0.12 * gait - shift * 0.06;
     r.head.rotation.x = -e.lean * 0.6 + breath * 1.6 + Math.abs(scan) * 0.05;
     // a blink-ish head squash on a slow per-character schedule
@@ -24895,15 +25627,74 @@ const ENEMY = (() => {
     // arms breathe out from the body and drift with the weight shift
     r.armL.rotation.z += -breath * 1.1 - shift * 0.07;
     r.armR.rotation.z += breath * 1.1 - shift * 0.07;
+    /* Banking: a body that turns hard leans into the turn and the head
+       leads it. Nothing about the steering changes — this is the drawing
+       admitting that the character has mass. */
+    const bank = e.turn || 0;
+    r.torso.rotation.z += bank * 0.13;
+    r.head.rotation.z -= bank * 0.10;
+    r.head.rotation.y += bank * 0.22;
+    // Digging in / pulling up. Positive accel pitches the body forward into
+    // the run; braking throws it back past vertical before it settles.
+    r.torso.rotation.x += (e.accel || 0) * 0.18;
 
-    // squash and stretch on top of everything
+    /* ---------------- knees, elbows and the hand arc ----------------
+       The knee folds while the leg is behind and swinging through, and
+       absorbs on the contact frame; both are what stop the legs reading as
+       two rods pivoting at the hip. The elbow tucks on the forward reach so
+       the arm shortens through the swing and extends on the way back —
+       a hand travelling on a straight line is the tell the brief calls out,
+       and combining pitch with this fold puts it on a curve. */
+    if (bend) {
+      /* Held down deliberately: a fold much past this and the character
+         spends the walk crouching, because the bend eats leg length that
+         the hip pitch has already spent. The knee has to read as a knee,
+         not as a squat. */
+      const swing = gait > 0.02 ? gait : 0;
+      /* Standing, the loaded leg straightens and the free one breaks — that
+         alternation is the whole reason a weight shift reads as weight
+         rather than as sliding sideways. The beat folds both knees at once. */
+      bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(shift, 0, 1) * 0.22 - beat * 0.20;
+      bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20;
+      bend[0] = 0.34 * UTIL.clamp(sw, 0, 1) * swing;
+      bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing * propArm;
+      // sideways bow in quadrature with the pitch: the hand traces an
+      // ellipse rather than sweeping a flat plane
+      bend[1] = cw * 0.14 * swing;
+      bend[3] = -cw * 0.14 * swing * propArm;
+    }
+
+    /* ---------------- squash and stretch on top of everything ----------
+       The group scale is the whole-figure compression, and on its own it
+       just makes the drawing shorter. `wave` is the part of it the hips
+       have already taken but the chest has not yet felt: the hips overshoot
+       the compression, the torso counter-stretches against it, and the
+       squash arrives at the head a couple of frames after the feet. */
     const sq = 1 + e.squash - stepSquash;
     e.group.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
+
+    /* The neutral pose, snapshotted before any state branch overwrites it.
+       An attack used to end on the last frame of its own follow-through and
+       sit there for the rest of the recovery — eight dead drawings with the
+       arm still stuck out where the blow left it. A cartoon recovery drifts
+       back to guard; `_n*` is what it drifts back TO. */
+    const nArmLX = r.armL.rotation.x, nArmRX = r.armR.rotation.x;
+    const nArmLZ = r.armL.rotation.z, nArmRZ = r.armR.rotation.z;
+    const nTorX = r.torso.rotation.x, nTorY = r.torso.rotation.y;
+    const nHeadX = r.head.rotation.x, nHeadY = r.head.rotation.y;
+    const nLegLX = r.legL.rotation.x, nLegRX = r.legR.rotation.x;
 
     if (e.state === 'alert') {
       /* Double-take: a fast recoil up onto the toes (stretch), then a
          settle. The `!` mark pops with a back-ease overshoot. */
-      const k = UTIL.clamp(e.timer / C.alertTime, 0, 1);
+      const k = UTIL.clamp(qt / C.alertTime, 0, 1);
       const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
       // Kept deliberately modest: the neck/head-trail springs multiply this
       // by a lot, and the double-take has to read as a recoil, not a fall.
@@ -24915,6 +25706,17 @@ const ENEMY = (() => {
       r.head.rotation.x = -0.14 * pop;
       // the pop is mostly vertical: rise onto the toes and stretch
       r.bob.position.y = bounce + breath + pop * 0.07;
+      /* The legs used to sit this out entirely, which is what made the
+         double-take read as a bust on a pedestal. Knees snap straight into
+         the rise, elbows fly open, and the toes point as the heels leave
+         the ground. */
+      if (bend) {
+        bend[4] = 0.15 * pop; bend[6] = 0.15 * pop;
+        bend[0] = -0.5 * pop; bend[2] = -0.5 * pop;
+        bend[1] = 0.28 * pop; bend[3] = -0.28 * pop;
+      }
+      if (r.footL) r.footL.rotation.x = 0.34 * pop;
+      if (r.footR) r.footR.rotation.x = 0.34 * pop;
       const markK = UTIL.clamp(k / 0.3, 0, 1);
       e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
@@ -24930,12 +25732,16 @@ const ENEMY = (() => {
          drifting home. */
       const st = e.def.stats;
       const total = st.windup + st.recover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const k = UTIL.clamp(qt / total, 0, 1);
       const wk = st.windup / total;
       if (k < wk) {
         const a = k / wk;
-        // gather: ease-in, then hold the coiled pose for the last 25%
-        const coil = E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
+        /* gather: ease-in, then hold the coiled pose for the last 25%. The
+           small linear pedestal matters at 12fps — on a pure quartic the
+           first four drawings of the wind-up are indistinguishable from
+           standing still, so the anticipation reads as a hang rather than
+           as a gather. */
+        const coil = 0.22 * a + 0.78 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
         r.armR.rotation.x = -2.5 * coil;
         r.armR.rotation.z = 0.12 + 0.45 * coil;
         r.armL.rotation.x = 0.55 * coil;
@@ -24946,7 +25752,27 @@ const ENEMY = (() => {
         // squat into the wind-up: squash down and widen
         const cs = 1 - coil * 0.16;
         e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
-        r.bob.position.y = bounce + breath - coil * 0.06;
+        /* Shallower than it looks it should be: the knee fold below already
+           drops the hips, and the two together used to bury the shorts in
+           the shoes. The early dip is separate and is doing different work
+           — it is the weight settling before the gather, so the first two
+           or three drawings of the wind-up have something in them. */
+        const dip = Math.sin(UTIL.clamp(a / 0.32, 0, 1) * Math.PI) * 0.026;
+        r.bob.position.y = bounce + breath - coil * 0.035 - dip;
+        /* A swing is thrown from the ground up. The back leg loads, the
+           front knee opens to take the weight, and the striking elbow folds
+           right up so the arm is *short* at the top of the gather — which
+           is what makes it look like it is about to be thrown rather than
+           parked overhead. */
+        r.legL.rotation.x = -0.30 * coil;
+        r.legR.rotation.x = 0.16 * coil;
+        if (bend) {
+          bend[4] = -0.44 * coil; bend[6] = -0.18 * coil;
+          bend[2] = 0.95 * coil; bend[3] = -0.22 * coil;
+          bend[0] = 0.30 * coil;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 * coil;
+        if (r.footR) r.footR.rotation.x = 0.16 * coil;
       } else {
         const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
         // snap through in the first third with an overshoot, then settle
@@ -24961,6 +25787,38 @@ const ENEMY = (() => {
         // stretch out along the swing, then recover
         const ss = 1 + Math.sin(UTIL.clamp(a / 0.34, 0, 1) * Math.PI) * 0.18 + e.squash;
         e.group.scale.set(1 / Math.sqrt(ss), ss, 1 / Math.sqrt(ss));
+        /* Drive off the back foot: the loaded leg extends through the snap
+           and the elbow whips open a fraction behind the shoulder, so the
+           forearm is still catching up when the hand reaches the target. */
+        r.legL.rotation.x = -0.30 + strike * 0.42;
+        r.legR.rotation.x = 0.16 - strike * 0.28;
+        if (bend) {
+          const whip = a < 0.34 ? E.outBack(UTIL.clamp((a - 0.06) / 0.34, 0, 1), 1.5) : strike;
+          bend[4] = -0.44 + strike * 0.36; bend[6] = -0.18 - strike * 0.16;
+          bend[2] = 0.95 - whip * 1.05; bend[3] = -0.22 + whip * 0.30;
+          bend[0] = 0.30 - strike * 0.42;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 + strike * 0.5;
+        if (r.footR) r.footR.rotation.x = 0.16 - strike * 0.38;
+        /* Drift back to guard over the tail of the recovery. Held poses are
+           the style, but a hold is a *pose* — the follow-through frozen
+           mid-air is just the animation having stopped. Kept short of 1 so
+           the character is still visibly returning when the next state
+           takes over, rather than arriving early and waiting. */
+        const back = E.outCubic(UTIL.clamp((a - 0.42) / 0.58, 0, 1)) * 0.88;
+        if (back > 0) {
+          r.armR.rotation.x += (nArmRX - r.armR.rotation.x) * back;
+          r.armR.rotation.z += (nArmRZ - r.armR.rotation.z) * back;
+          r.armL.rotation.x += (nArmLX - r.armL.rotation.x) * back;
+          r.armL.rotation.z += (nArmLZ - r.armL.rotation.z) * back;
+          r.torso.rotation.x += (nTorX - r.torso.rotation.x) * back;
+          r.torso.rotation.y += (nTorY - r.torso.rotation.y) * back;
+          r.head.rotation.x += (nHeadX - r.head.rotation.x) * back;
+          r.head.rotation.y += (nHeadY - r.head.rotation.y) * back;
+          r.legL.rotation.x += (nLegLX - r.legL.rotation.x) * back;
+          r.legR.rotation.x += (nLegRX - r.legR.rotation.x) * back;
+          if (bend) for (let i = 0; i < 8; i++) bend[i] *= 1 - back;
+        }
       }
     } else if (e.state === 'shine') {
       // Hold the flashlight out front — but a hand-held light never sits
@@ -24973,12 +25831,17 @@ const ENEMY = (() => {
       r.torso.rotation.y = 0.08;
       r.head.rotation.x = -0.04 + j * 0.6;
       r.head.rotation.y = j * 1.2;
+      // braced stance: weight back on a bent knee, aiming elbow half folded
+      if (bend) {
+        bend[4] = -0.30; bend[6] = -0.12;
+        bend[2] = 0.55 + j * 0.5;
+      }
     }
 
     if (e.state === 'stagger') {
       /* Getting hit is a shudder, not a lean. Ring it out so the whole
          body rattles and comes to rest instead of sliding back linearly. */
-      const k = UTIL.clamp(e.timer / C.staggerTime, 0, 1);
+      const k = UTIL.clamp(qt / C.staggerTime, 0, 1);
       const decay = 1 - E.outCubic(k);
       const shake = E.ring(k, 2.6, 3.2) * decay;
       r.torso.rotation.x = -0.55 * decay + shake * 0.22;
@@ -24987,6 +25850,22 @@ const ENEMY = (() => {
       r.head.rotation.z = shake * 0.5;
       r.armL.rotation.x = -0.5 * decay - shake * 0.7;
       r.armR.rotation.x = -0.5 * decay + shake * 0.7;
+      /* Knees buckle under the hit and rattle back, and the body drops onto
+         them — without this the character absorbed a shotgun blast standing
+         on two straight pillars. One leg braces back so the stagger has a
+         direction instead of being a symmetric wobble. */
+      r.legL.rotation.x = -0.30 * decay + shake * 0.24;
+      r.legR.rotation.x = 0.16 * decay - shake * 0.20;
+      if (bend) {
+        bend[4] = -0.52 * decay - shake * 0.28;
+        bend[6] = -0.36 * decay + shake * 0.32;
+        bend[0] = 0.45 * decay + shake * 0.55;
+        bend[2] = 0.45 * decay - shake * 0.55;
+        bend[1] = shake * 0.30; bend[3] = shake * 0.30;
+      }
+      r.bob.position.y = bounce - 0.06 * decay + shake * 0.03;
+      if (r.footL) r.footL.rotation.x = -0.2 * decay;
+      if (r.footR) r.footR.rotation.x = 0.24 * decay;
     }
   }
 
@@ -25257,10 +26136,33 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Impulses on the two moments the old code ignored:
+       breaking into a run and pulling up out of one. A cartoon body is
+       heavy — it has to gather before it goes and it cannot stop dead, so
+       acceleration in either direction is paid for with a squash and a
+       lean that overshoots. The threshold keeps ordinary steering noise and
+       the shove-past-a-corner nudge out of it. */
+    const accelNow = (speed - e.lastSpeed) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel, UTIL.clamp(accelNow * 0.05, -1.2, 1.2), 9, dt);
+    if (accelNow > 11) e.squashVel += UTIL.clamp(accelNow * 0.06, 0, 2.2);
+    else if (accelNow < -13) e.squashVel -= UTIL.clamp(-accelNow * 0.07, 0, 3.4);
+    /* Banking into a turn. yawRate is set by faceTowards/steer through
+       e.yaw; differencing it here is cheaper than plumbing a rate out of
+       every caller, and a wrapped yaw only misfires on a frame where the
+       enemy spun a full half-turn, which the clamp swallows. */
+    let dyaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn, UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
+
     // springs
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    // The lag chases the squash but never catches it while it is moving;
+    // pose() draws the difference as a wave up the body.
+    e.squashLag = UTIL.damp(e.squashLag, e.squash, 17, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.05, 0, 0.22), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
 
@@ -26851,12 +27753,40 @@ const COOP = (() => {
       r.legL.rotation.set(dp * 0.4 + ring * 0.6, 0, 0);
       r.legR.rotation.set(dp * 0.22 - ring * 0.6, 0, 0);
       r.head.rotation.set(dp * 0.3, 0, dp * 0.8 + ring);
+      // Knees fold under the falling body instead of staying two straight
+      // rods sticking out of it, and the elbows keep rattling after the
+      // shoulders have stopped.
+      if (r.bend) {
+        r.bend[4] = -0.85 * dp - ring * 0.5; r.bend[6] = -0.55 * dp + ring * 0.55;
+        r.bend[0] = 0.55 * dp + ring * 0.6; r.bend[2] = 0.75 * dp - ring * 0.7;
+      }
+      if (r.bob) r.bob.scale.set(1 + dp * 0.14, 1 - dp * 0.18, 1 + dp * 0.14);
       r.root.scale.set(1.08, 1.08, 1.08);
-      remote.squash = 0; remote.squashVel = 0;
+      remote.squash = 0; remote.squashVel = 0; remote.squashLag = 0;
       CAST.settle(r, dt, 1.1);
       return;
     }
     const moving = !!target.moving;
+    /* [RUBBERHOSE] Break into a run and pull up out of one. The snapshot
+       already carries `moving` and `sprinting`; the frame they change is
+       the frame the body has to pay for the change, so kick the same squash
+       spring the footfalls use. Nothing new goes over the wire. */
+    const gear = moving ? (target.sprinting ? 2 : 1) : 0;
+    if (remote.lastGear === undefined) remote.lastGear = gear;
+    if (gear > remote.lastGear) remote.squashVel = (remote.squashVel || 0) + 2.4;
+    else if (gear < remote.lastGear) remote.squashVel = (remote.squashVel || 0) - 3.0;
+    remote.lastGear = gear;
+    /* Bank into a turn. The group's yaw is damped toward target.yaw a few
+       lines above this in update(); differencing it here reads the actual
+       rendered turn rate rather than the raw network value, so a remote
+       that snaps 180 degrees on a bad packet does not throw the body with
+       it. */
+    let dyaw = remote.group.rotation.y - (remote.lastYaw === undefined
+      ? remote.group.rotation.y : remote.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    remote.lastYaw = remote.group.rotation.y;
+    remote.turn = UTIL.damp(remote.turn || 0,
+      UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
     // Stepped clock: hold the phase on a 12fps grid so the drawing boils
     // like a cel even though the body itself interpolates smoothly.
     remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
@@ -26880,6 +27810,9 @@ const COOP = (() => {
     remote.squash = remote.squash || 0;
     remote.squashVel = (remote.squashVel || 0) + (-remote.squash * 220 - (remote.squashVel || 0) * 15) * dt;
     remote.squash = UTIL.clamp(remote.squash + remote.squashVel * dt, -0.24, 0.3);
+    // ...and its delayed twin, so the compression travels up the body
+    // instead of the whole figure changing size on one frame.
+    remote.squashLag = UTIL.damp(remote.squashLag || 0, remote.squash, 17, dt);
 
     if (target.climbing) {
       r.armL.rotation.set(-0.9 + sw * 0.78, 0, -0.2);
@@ -26888,7 +27821,13 @@ const COOP = (() => {
       r.legR.rotation.set(-sw * 0.42, 0, 0);
       r.torso.rotation.set(-0.10, 0, sw * 0.05);
       r.head.rotation.set(0.06, 0, -sw * 0.1);
+      // hauling on the rungs: the pulling elbow folds, the reaching one opens
+      if (r.bend) {
+        r.bend[0] = 0.55 + sw * 0.55; r.bend[2] = 0.55 - sw * 0.55;
+        r.bend[4] = -0.45 - sw * 0.30; r.bend[6] = -0.45 + sw * 0.30;
+      }
       r.bob.position.y = 0;
+      r.bob.scale.setScalar(1);
       r.root.scale.set(1.08, 1.08, 1.08);
       CAST.settle(r, dt, 0.9);
       return;
@@ -26904,12 +27843,33 @@ const COOP = (() => {
     if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
     if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
     r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0, sw * 0.07 * walk);
+    const bank = remote.turn || 0;
+    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0,
+      sw * 0.07 * walk + bank * 0.13);
     r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
-    r.head.rotation.set(breath * 1.4, 0, -sw * 0.11 * walk);
+    r.head.rotation.set(breath * 1.4, bank * 0.22, -sw * 0.11 * walk - bank * 0.10);
+    /* Knees and elbows, same grammar as the local grunts: the knee folds
+       while the leg is behind and absorbs on the contact frame, and the
+       elbow tucks in quadrature with the arm pitch so the glove travels an
+       ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
+       a parked teammate is never standing on two straight rods. */
+    if (r.bend) {
+      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
+      r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
+      r.bend[1] = cw * 0.15 * walk;
+      r.bend[3] = -cw * 0.15 * walk;
+    }
     // remote rigs are built at 1.08 scale; fold squash/stretch into it
     const sq = 1 + remote.squash - stepSquash;
     r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
+    // hips take the compression first, chest counter-stretches against it
+    const wave = UTIL.clamp(remote.squash - (remote.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
     CAST.settle(r, dt, 0.95);
   }
 
