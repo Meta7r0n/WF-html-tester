@@ -5153,15 +5153,22 @@ const PRIM = (() => {
 
   /* A turned profile: `rows` is [[t, radius], ...] from base (t=0) to top
      (t=1). Gives barrels a real belly, sacks a slump, pots a lip -- shapes
-     a straight cylinder cannot make. Vertically centred on the origin. */
-  function latheGeo(h, rows, sides) {
+     a straight cylinder cannot make. Vertically centred on the origin.
+
+     `wob` = [k3, k5, phase] optionally kneads the *plan* out of round as
+     well, so a shape can be lumpy seen from above and not just in profile.
+     A lathe is a machine tool and it shows: without this every barrel, sack
+     and earth bed on the farm is a perfect circle from the air. */
+  function latheGeo(h, rows, sides, wob) {
     sides = Math.max(4, sides || 10);
+    const k3 = wob ? wob[0] : 0, k5 = wob ? wob[1] : 0, ph = wob ? wob[2] : 0;
     const pos = [], idx = [];
     for (let i = 0; i < rows.length; i++) {
       const y = -h / 2 + h * rows[i][0], r = rows[i][1];
       for (let s = 0; s < sides; s++) {
         const a = (s / sides) * Math.PI * 2;
-        pos.push(Math.cos(a) * r, y, Math.sin(a) * r);
+        const rr = r * (1 + k3 * Math.sin(a * 3 + ph) + k5 * Math.sin(a * 5 - ph));
+        pos.push(Math.cos(a) * rr, y, Math.sin(a) * rr);
       }
     }
     for (let i = 0; i < rows.length - 1; i++) {
@@ -5301,8 +5308,8 @@ const PRIM = (() => {
     sag(len, rA, rB, drop, sides, segs, x, y, z, rx, ry, rz) {
       return this.auto(() => sagGeo(len, rA, rB, drop, sides, segs), x, y, z, rx, ry, rz);
     }
-    lathe(h, rows, sides, x, y, z, rx, ry, rz) {
-      return this.auto(() => latheGeo(h, rows, sides), x, y, z, rx, ry, rz);
+    lathe(h, rows, sides, x, y, z, rx, ry, rz, wob) {
+      return this.auto(() => latheGeo(h, rows, sides, wob), x, y, z, rx, ry, rz);
     }
     torus(r, tube, rs, ts, arc, x, y, z, rx, ry, rz) {
       const d = (r + tube) * 2;
@@ -9694,19 +9701,29 @@ const LEVEL = (() => {
        never one value: it is patched, bleached, trodden and stained, and that
        variation is what gives an empty field a middle distance.
 
-       Four tints of the same drawn blob, each its own merged sheet, laid
-       UNDER the footpaths (y 0.006-0.011 vs the paths' 0.015) so a road still
-       wins where it crosses one. No outlines -- these are paint, not props. */
-    function toneSheet(col, op, v) {
-      return new PRIM.Batch(MAT.flat(col, {
-        map: TEX.patch(v), transparent: true, depthWrite: false, opacity: op
-      }), 0);
+       These are BEDS, not decals -- shallow opaque discs of a different
+       earth, sunk so only the crown shows. A translucent wash was tried
+       first and came back as nothing: the print gamma lifts midtones hard
+       enough that a 40%-opacity dark over ground this bright survives as
+       about ten levels out of 255. Opaque, lit geometry is the only tone
+       change that reaches the frame, and it earns its keep twice -- the beds
+       take the key light, so they model as well as separate.
+
+       Crowns stay under 9 cm. Nothing here has a collider and nothing here
+       is tall enough to read as a step. */
+    function bedSheet(col, fin) {
+      return new PRIM.Batch(MAT.toon(col, { finish: fin || 'earth' }), 0);
     }
-    const soil = toneSheet(PAL.dirtDeep, 0.44, 0);    // turned, damp earth
-    const bleach = toneSheet(PAL.creamDim, 0.5, 1);   // sun-bleached hardpan
-    const sward = toneSheet(PAL.oliveDeep, 0.3, 2);   // where the grass held on
-    const scorch = toneSheet(PAL.rustDeep, 0.26, 3);  // burnt-out, rusted ground
-    const TONES = [soil, bleach, sward, scorch];
+    const soil = bedSheet(PAL.dirtDeep);     // turned, damp earth
+    const sward = bedSheet(PAL.oliveDeep);   // where the grass held on
+    const scorch = bedSheet(PAL.rustDeep);   // old burn, rusted-out ground
+    const bleach = bedSheet(PAL.creamDim);   // sun-bleached hardpan
+    const BEDS = [soil, sward, scorch, bleach];
+    // Contact pools stay painted: a shadow is the one ground mark that
+    // should have no edge of its own and no light of its own.
+    const pool = new PRIM.Batch(MAT.flat(PAL.charcoal, {
+      map: TEX.patch(4), transparent: true, depthWrite: false, opacity: 0.34
+    }), 0);
 
     // Only things that actually touch the ground. Decks, rails, pipes,
     // basement walls and anything hanging in the air are skipped -- weeds
@@ -9748,6 +9765,20 @@ const LEVEL = (() => {
       chips.box(UTIL.rng(0.3, 0.8), 0.045, UTIL.rng(0.07, 0.16), x, 0.03, z,
         0, UTIL.rng(0, 3.14), UTIL.rng(-.06, .06), 0.012);
     }
+    /* Straw lying flat -- the same blade the tufts are built from, pitched
+       almost horizontal so it reads as dropped rather than growing. A tuft
+       says "nobody weeded here"; a straw wisp says "something was carried
+       past here", which is the more useful sentence on a working farm. */
+    function straw(x, z, s) {
+      const a0 = UTIL.rng(0, 6.28), specs = [];
+      for (let i = 0, n = 2 + Math.floor(UTIL.rand() * 3); i < n; i++) {
+        const len = UTIL.rng(0.34, 0.72) * s;
+        specs.push([len, UTIL.rng(0.03, 0.06) * s, len * UTIL.rng(0.02, 0.1),
+          UTIL.rng(-0.2, 0.2), -(a0 + UTIL.rng(-0.7, 0.7)),
+          UTIL.rng(-0.12, 0.12), UTIL.rng(-0.1, 0.1) * s, UTIL.rng(-0.1, 0.1) * s]);
+      }
+      dry.tuft(specs, x, 0.028, z);
+    }
 
     /* ---- 0. tone: break the flat cream slab before anything is drawn on it.
        Two scales, because one is not enough: broad fields that read from
@@ -9766,24 +9797,50 @@ const LEVEL = (() => {
       }
       return false;
     }
-    function tone(bat, x, z, w, d, y) {
-      bat.plane(w, d, x, y, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+    /* A bed: flat-topped, bevelled at the rim so the ink shell and the key
+       both find an edge, kneaded out of round in plan so no two are the same
+       circle, and tilted a hair so its crown is not a spirit level. */
+    function bed(bat, x, z, r, h) {
+      const rows = [[0, 0.58], [0.4, 0.9], [0.76, 1], [1, 0.9]];
+      bat.lathe(h, rows.map(o => [o[0], o[1] * r]), 7 + Math.floor(UTIL.rand() * 3),
+        x, h * 0.18, z, UTIL.rng(-.012, .012), UTIL.rng(0, 3.14), UTIL.rng(-.012, .012),
+        [UTIL.rng(0.1, 0.24), UTIL.rng(0.05, 0.14), UTIL.rng(0, 6.28)]);
     }
-    for (let i = 0; i < 150; i++) {
+    // Broad fields first: these are what give a frame its middle distance.
+    for (let i = 0; i < 130; i++) {
       const x = UTIL.rng(M.west - 6, M.east + 4), z = UTIL.rng(M.north - 6, M.south + 6);
       if (underRoof(x, z)) continue;
-      const w = UTIL.rng(7, 20);
-      tone(UTIL.rand() < 0.42 ? soil : UTIL.rand() < 0.55 ? bleach : sward,
-        x, z, w, w * UTIL.rng(0.55, 1.4), 0.006);
+      const r = UTIL.rand();
+      bed(r < 0.44 ? soil : r < 0.78 ? sward : scorch, x, z, UTIL.rng(3.5, 9.5), UTIL.rng(0.05, 0.09));
     }
-    for (let i = 0; i < 210; i++) {
+    // Then smaller blooms, so the ground still has something to say underfoot.
+    for (let i = 0; i < 190; i++) {
       const x = UTIL.rng(M.west - 4, M.east + 2), z = UTIL.rng(M.north - 4, M.south + 4);
       if (underRoof(x, z)) continue;
-      const w = UTIL.rng(2.2, 6.5);
       const r = UTIL.rand();
-      tone(r < 0.36 ? soil : r < 0.62 ? sward : r < 0.88 ? bleach : scorch,
-        x, z, w, w * UTIL.rng(0.5, 1.5), 0.009);
+      bed(r < 0.34 ? soil : r < 0.58 ? sward : r < 0.8 ? scorch : bleach,
+        x, z, UTIL.rng(1.1, 3.2), UTIL.rng(0.04, 0.07));
     }
+    /* Contact pools. The key sits at CONFIG.render.lights.keyDir, so a shadow
+       leans along +x/-z; a pool nudged that way and scaled by the object's
+       own height sits a prop into the dirt from any distance, including well
+       beyond the shadow camera's 36-44 m box where the real map has nothing
+       to say. Kept short (a third of the drop a true shadow would throw) so
+       that inside the box it deepens the real shadow's root rather than
+       sliding out from under it. */
+    const SHX = 0.793, SHZ = -0.610;
+    // corn already stands in its own gloom, and trees and rocks carry a
+    // blobShadow of their own -- a second pool under either just goes muddy.
+    const NOPOOL = /corn_wall|^tree$|^rock$/;
+    WORLD.solids.forEach(s => {
+      if (s.minY > 0.6 || s.maxY < 0.5) return;
+      const w = s.maxX - s.minX, d = s.maxZ - s.minZ, big = Math.max(w, d);
+      if (big < 0.8 || SKIP.test(s.tag) || NOPOOL.test(s.tag)) return;
+      const drop = Math.min(4.5, (s.maxY - Math.max(0, s.minY)) * 0.34);
+      pool.plane((w + drop) * 1.25, (d + drop) * 1.25,
+        (s.minX + s.maxX) / 2 + SHX * drop, 0.014, (s.minZ + s.maxZ) / 2 + SHZ * drop,
+        -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+    });
 
     // ---- 1. contour: low earth swells so the ground has a horizon line
     // that isn't a ruler edge. Kept under 0.3 m and well clear of anything
@@ -9844,23 +9901,55 @@ const LEVEL = (() => {
     }
 
     // ---- 3. open ground: authored clumps in the zones players cross.
+    // Clump counts run at 1.8x their authored figure: at 1x the scatter read
+    // as an even dusting of noise, which is what an empty field looks like
+    // with a texture on it. Clumps want to be gregarious -- a few crowded
+    // patches with clean dirt between them is what draws the eye across
+    // open ground.
     SCRUB_ZONES.forEach(zn => {
-      for (let c = 0; c < zn[4]; c++) {
+      const clumps = Math.round(zn[4] * 1.8);
+      for (let c = 0; c < clumps; c++) {
         const cx = UTIL.rng(zn[0], zn[2]), cz = UTIL.rng(zn[1], zn[3]);
         if (!clear(cx, cz, 1.1)) continue;
         const spread = UTIL.rng(0.9, 2.4);
-        const n = 2 + Math.floor(UTIL.rand() * 4);
+        const n = 3 + Math.floor(UTIL.rand() * 5);
         for (let k = 0; k < n; k++) {
           const x = cx + UTIL.rng(-spread, spread), z = cz + UTIL.rng(-spread, spread);
           if (!clear(x, z, 0.5)) continue;
           const r = UTIL.rand();
-          if (r < 0.66) tuft(UTIL.rand() < 0.62 ? scrub : dry, x, z, UTIL.rng(0.8, 1.5), 3);
-          else if (r < 0.86) pebble(x, z, UTIL.rng(0.12, 0.3));
-          else splinter(x, z);
+          if (r < 0.58) tuft(UTIL.rand() < 0.62 ? scrub : dry, x, z, UTIL.rng(0.8, 1.6), 3);
+          else if (r < 0.74) pebble(x, z, UTIL.rng(0.12, 0.3));
+          else if (r < 0.86) splinter(x, z);
+          else straw(x, z, UTIL.rng(0.7, 1.3));
         }
         if (UTIL.rand() < 0.4) stain.plane(spread * 2.4, spread * 2.4, cx, 0.017, cz, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
       }
     });
+
+    // ---- 3b. drift: chaff and straw pile up against anything that stops the
+    // wind. Reading it off the collider list means every fence line, wall foot
+    // and trough on the farm gets a leeward drift without a single authored
+    // coordinate -- and the drifts all lean the same way, which is what sells
+    // them as weather rather than as scatter.
+    let drifted = 0;
+    for (let i = 0; i < surf.length && drifted < 300; i++) {
+      const s = surf[i];
+      const w = s.maxX - s.minX, d = s.maxZ - s.minZ;
+      if (Math.max(w, d) < 0.9 || Math.min(w, d) > 3) continue;   // long thin things
+      if (UTIL.rand() > 0.5) continue;
+      const along = w > d;
+      const n = 1 + Math.floor(UTIL.rand() * 3);
+      for (let k = 0; k < n; k++) {
+        const t = UTIL.rng(0.05, 0.95);
+        // leeward is +x / -z, the same axis everything else on the ground leans
+        const x = (along ? s.minX + w * t : (SHX > 0 ? s.maxX : s.minX)) + (along ? 0 : UTIL.rng(0.1, 0.5));
+        const z = (along ? (SHZ < 0 ? s.minZ - UTIL.rng(0.1, 0.5) : s.maxZ) : s.minZ + d * t);
+        if (!clear(x, z, 0.12)) continue;
+        straw(x, z, UTIL.rng(0.8, 1.5));
+        if (UTIL.rand() < 0.45) tuft(dry, x + UTIL.rng(-.3, .3), z + UTIL.rng(-.3, .3), UTIL.rng(0.7, 1.2), 3);
+        drifted++;
+      }
+    }
 
     // ---- 4. wear: cart ruts pressed along the routes the footpath sheet
     // already paints, plus dried-out cracks either side of them. Two thin
@@ -9917,9 +10006,10 @@ const LEVEL = (() => {
       }
     });
 
-    // Tone goes down first so the paths, ruts and stains all read as marks
+    // Beds go down first so the paths, ruts and stains all read as marks
     // made ON the ground rather than as more of the same soup.
-    TONES.forEach(t => t.build(parent, { ray: false }));
+    BEDS.forEach(t => t.build(parent, { ray: false }));
+    pool.build(parent, { ray: false });
     scrub.build(parent, { ray: false });
     dry.build(parent, { ray: false });
     chaff.build(parent, { ray: false });
