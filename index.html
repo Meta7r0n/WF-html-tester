@@ -1655,7 +1655,7 @@
       <span id="throwableName">G · Grenade</span><b id="throwableCount" class="hud-pip">0</b>
     </div>
   </div>
-  <div id="runClock" aria-label="Active run time"><small>Run</small><span>00:00.000</span></div>
+  <div id="runClock" aria-label="Active run time"><small>Run</small><span>00:00</span></div>
   <!-- Objectives live behind the detail key (Tab) and flash for a beat when
        a piece is found; they are not permanent furniture. -->
   <div id="questBoard" class="hud-ticket" aria-label="Field orders">
@@ -18501,10 +18501,19 @@ const RUNSTATS = (() => {
     const ms = Math.max(0, Math.floor(value * 1000)), minutes = Math.floor(ms / 60000), secs = Math.floor(ms / 1000) % 60;
     return String(minutes).padStart(2,'0') + ':' + String(secs).padStart(2,'0') + '.' + String(ms % 1000).padStart(3,'0');
   }
+  /* The corner clock shows minutes and seconds only. Milliseconds are a
+     speedrun readout: three digits churning every frame in the corner of the
+     frame pull the eye constantly and say nothing a player acts on. The
+     precise time is still recorded and still printed in the run report, which
+     is where someone reading times actually looks. */
+  function formatCoarse(value) {
+    const total = Math.max(0, Math.floor(value));
+    return String(Math.floor(total / 60)).padStart(2, '0') + ':' + String(total % 60).padStart(2, '0');
+  }
   function updateHud() {
     const el = document.getElementById('runClock'); if (!el) return;
     el.classList.toggle('on', !!record && !record.finalizedAt && typeof GAME !== 'undefined' && GAME.mode === 'single');
-    const span = el.querySelector('span'); if (span) span.textContent = format(seconds(activeTime()));
+    const span = el.querySelector('span'); if (span) span.textContent = formatCoarse(seconds(activeTime()));
   }
   function render() {
     const el = document.getElementById('runStats'); if (!el || !record) return;
