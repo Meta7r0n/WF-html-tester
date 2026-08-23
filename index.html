@@ -3396,6 +3396,15 @@ const TEX = (() => {
         x => { grit(x, s, 2800, 0.5, 2.4, 0.20); grit(x, s, 90, 3, 7, 0.16, 0.55); },
         x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
                openUp(x, s, 20, 50, 180, 0.6); });
+    } else if (kind === 'leaf') {
+      t = pack(s,
+        x => {                                  // veins running the blade, and dry blight
+          scratch(x, s, 130, 200, 512, 2.2, 0.16, 0, 0.06, 0.25);
+          blobs(x, s, 34, 20, 90, 0.20, 0.30);  // blight patches, mostly darker
+          grit(x, s, 320, 1.0, 4.0, 0.14, 0.3);
+        },
+        x => { scratch(x, s, 420, 30, 140, 0.9, 0.12, 0, 0.05, 0.45); grit(x, s, 1200, 0.4, 1.6, 0.15); },
+        x => { hatch(x, s, 0, 9, 1.7, 0.30, 1.0); openUp(x, s, 16, 40, 140, 0.55); });
     } else if (kind === 'cloth') {
       t = pack(s,
         x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5); },
@@ -4200,6 +4209,7 @@ const MAT = (() => {
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, tooth: 0.15, hatch: 0.52, grime: [0.70, 0.22] },
     stone: { tex: 'stone', scale: 0.58, mottle: 0.30, tooth: 0.19, hatch: 0.46, grime: [0.95, 0.30] },
     earth: { tex: 'earth', scale: 0.085, mottle: 0.34, tooth: 0.22, hatch: 0.34, grime: [0, 0] },
+    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, tooth: 0.16, hatch: 0.44, grime: [0, 0] },
     cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, tooth: 0.22, hatch: 0.50, grime: [0.40, 0.16] },
     none:  null
   };
@@ -6485,7 +6495,7 @@ const LEVEL = (() => {
       [[[22.5, -16], [28.5, -16]], 1.5, 0.35]
     ];
     runs.forEach(r => {
-      const b = new PRIM.Batch(MAT.toon(PAL.olive), 0.06);
+      const b = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.06);
       hedgeRun(b, r[0], r[1], r[2]);
       b.build(parent);
     });
@@ -6863,8 +6873,8 @@ const LEVEL = (() => {
      hero field can afford detail the 1000-plant maze cannot. */
   function cornBatches() {
     return {
-      stalk: new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.03),
-      leaf: new PRIM.Batch(MAT.toon(PAL.olive), 0.03),
+      stalk: new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.03),
+      leaf: new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.03),
       head: new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.028)
     };
   }
@@ -6910,7 +6920,7 @@ const LEVEL = (() => {
 
   function buildField(parent) {
     const corn = cornBatches();
-    const cabbage = new PRIM.Batch(MAT.toon(PAL.olive), 0.05);
+    const cabbage = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.05);
     const dirt = new PRIM.Batch(MAT.toon(PAL.dirtDeep), 0);
 
     for (let row = 0; row < 5; row++) {
@@ -7212,7 +7222,7 @@ const LEVEL = (() => {
     };
 
     const corn = cornBatches();
-    const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.02);
+    const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.02);
     const WALL_H = 2.4;
     function cornWall(cx, cz, horizontal) {
       for (let i = 0; i < 5; i++) {
@@ -9499,7 +9509,7 @@ const LEVEL = (() => {
     const clay = new PRIM.Batch(MAT.toon(PAL.rust), 0.032);
     const cord = new PRIM.Batch(MAT.toon(PAL.charcoal), 0.02);
     const bulb = new PRIM.Batch(MAT.flat(PAL.mustard), 0.024);
-    const green = new PRIM.Batch(MAT.toon(PAL.olive), 0.03);
+    const green = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.03);
     const spill = new PRIM.Batch(MAT.flat(0xffffff, {
       map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.6
     }), 0);
@@ -9713,7 +9723,7 @@ const LEVEL = (() => {
        so every outward-facing frame ends on a silhouette instead of on
        blank paper. Two batches, no colliders, nothing reachable. --- */
     const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.05);
-    const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.055);
+    const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.055);
     function farTree(x, z, s) {
       const h = UTIL.rng(4.6, 7.8) * s;
       const bx = UTIL.rng(-.7, .7), bz = UTIL.rng(-.7, .7);
@@ -9798,7 +9808,7 @@ const LEVEL = (() => {
 
   function buildGroundDetail(parent) {
     const M = CONFIG.map;
-    const scrub = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.022);
+    const scrub = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.022);
     const dry = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.022);
     const chaff = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.025);
     const chips = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.02);
@@ -20553,7 +20563,7 @@ const CAST = (() => {
         b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
       }
       b.build(group, { ray: false });
-      const leaf = new PRIM.Batch(MAT.toon(PAL.olive), 0.011);
+      const leaf = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.011);
       [-2, -1, 0, 1, 2].forEach(i => {
         const a = i * 0.34;
         leaf.custom(() => new THREE.ConeGeometry(0.017, 0.095 - Math.abs(i) * 0.014, 5),
