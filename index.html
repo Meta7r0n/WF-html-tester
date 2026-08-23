@@ -4308,18 +4308,14 @@ const MAT = (() => {
      much of each packed channel to use, and `grime` is [height, strength] for
      the dirt that climbs the bottom of a standing surface.
 
-     `paper` is deliberately weak and finely scaled: it is the DEFAULT for
-     every toon material that does not name one, which means it lands on
-     characters, props and the viewmodel as well as walls. At 1.1 tiles per
-     unit a white glove sees a fraction of one tile -- a whisper of grain --
-     while a barn wall sees a dozen. Same material family, right density at
-     both ends. */
+     `paper` is deliberately weak, finely scaled and almost free of structural
+     line, because it is the DEFAULT for every toon material that does not
+     name one -- it lands on gloves and gun parts as well as walls. At 1.1
+     tiles per unit a white glove sees a fraction of one tile, a whisper of
+     grain, while a barn wall sees a dozen; and boarding drawn across a
+     mouse's hand would be worse than no texture at all. Anything that should
+     read as BUILT is given a named finish instead. */
   const FINISH = {
-    /* `paper` deliberately carries almost no structural line: it is the
-       default for every unnamed material, so it lands on gloves and gun
-       parts as well as walls, and boarding drawn across a mouse's hand is
-       worse than no texture at all. Anything that should read as BUILT gets
-       a named finish. */
     paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10] },
     wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26] },
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22] },
