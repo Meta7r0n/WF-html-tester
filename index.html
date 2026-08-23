@@ -3336,10 +3336,8 @@ const TEX = (() => {
     }
     x.putImageData(img, 0, 0);
     // Repeat is 1: a finish is scaled in the shader by world size, not by a
-    // UV multiplier. Anisotropy is doubled over the shared default because a
-    // finish is most often seen on the ground at a grazing angle.
+    // UV multiplier.
     const t = finish(c, 1, 1);
-    t.anisotropy = 8;
     return t;
   }
 
@@ -3499,17 +3497,34 @@ const TEX = (() => {
     return cache.ground;
   }
 
+  /* Boarding. The plank *values* are what carries this, not the grain: a run
+     of boards that all sit at the same tone reads as a printed pattern, while
+     a couple of distinctly darker weathered ones read as a wall somebody
+     built. Nail heads, end splits and cupping shadow do the rest.
+
+     The cache key includes `dark` and `rep` because it used to key on `base`
+     alone -- two call sites asking for the same base colour at different plank
+     scales silently shared whichever texture happened to be built first. */
   function wood(base, dark, rep) {
-    const key = 'wood' + base;
+    const key = 'wood' + base + '_' + dark + '_' + (rep || 2);
     if (cache[key]) return cache[key];
     const w = 256, h = 256, c = cv(w, h), x = c.getContext('2d');
     x.fillStyle = hex(base); x.fillRect(0, 0, w, h);
     const planks = 5, ph = h / planks;
     for (let i = 0; i < planks; i++) {
       const y = i * ph;
-      x.globalAlpha = UTIL.rng(0.05, 0.2);
+      // Board tone: mostly close to base, but every third board or so is
+      // properly weathered down. That spread is the whole read.
+      x.globalAlpha = UTIL.rand() < 0.32 ? UTIL.rng(0.26, 0.44) : UTIL.rng(0.03, 0.14);
       x.fillStyle = hex(dark); x.fillRect(0, y, w, ph);
       x.globalAlpha = 1;
+      // cupping: each board is slightly darker along its lower edge
+      const cup = x.createLinearGradient(0, y, 0, y + ph);
+      cup.addColorStop(0, 'rgba(18,15,13,.13)');
+      cup.addColorStop(0.35, 'rgba(18,15,13,0)');
+      cup.addColorStop(0.86, 'rgba(18,15,13,0)');
+      cup.addColorStop(1, 'rgba(18,15,13,.20)');
+      x.fillStyle = cup; x.fillRect(0, y, w, ph);
       // plank seam, slightly wavy
       x.strokeStyle = 'rgba(18,15,13,.55)'; x.lineWidth = 3;
       x.beginPath(); x.moveTo(0, y);
@@ -3517,14 +3532,24 @@ const TEX = (() => {
       x.stroke();
       // grain
       x.strokeStyle = 'rgba(18,15,13,.20)'; x.lineWidth = 1.2;
-      for (let g = 0; g < 5; g++) {
+      for (let g = 0; g < 7; g++) {
         const gy = y + UTIL.rng(6, ph - 6);
         x.beginPath(); x.moveTo(0, gy);
         for (let sx = 0; sx <= w; sx += 24) x.lineTo(sx, gy + Math.sin(sx * .07 + g * 2) * 1.6);
         x.stroke();
       }
-      // knot
+      // a split running in from one end -- old boards check before they rot
       if (UTIL.rand() > .55) {
+        const fromLeft = UTIL.rand() > .5, len = UTIL.rng(18, 60);
+        const sy = y + UTIL.rng(ph * .3, ph * .7);
+        x.strokeStyle = 'rgba(18,15,13,.42)'; x.lineWidth = 1.6;
+        x.beginPath(); x.moveTo(fromLeft ? 0 : w, sy);
+        x.quadraticCurveTo(fromLeft ? len * .5 : w - len * .5, sy + UTIL.rng(-3, 3),
+                           fromLeft ? len : w - len, sy + UTIL.rng(-2, 2));
+        x.stroke();
+      }
+      // knot
+      if (UTIL.rand() > .5) {
         const kx = UTIL.rng(20, w - 20), ky = y + ph * .5;
         x.strokeStyle = 'rgba(18,15,13,.4)';
         for (let k = 1; k <= 3; k++) {
@@ -3532,18 +3557,67 @@ const TEX = (() => {
           x.ellipse(kx, ky, k * 3.2, k * 2.2, .4, 0, 6.3); x.stroke();
         }
       }
+      // nail heads at the stud lines, each with its own rust bloom
+      [0.13, 0.87].forEach(u => {
+        const nx = u * w + UTIL.rng(-4, 4), ny = y + ph * UTIL.rng(0.35, 0.65);
+        x.globalAlpha = 0.5;
+        x.fillStyle = hex(PAL.rustDeep);
+        x.beginPath(); x.ellipse(nx, ny + 2, 3.4, 4.6, 0, 0, 6.3); x.fill();
+        x.globalAlpha = 1;
+        x.fillStyle = 'rgba(18,15,13,.62)';
+        x.beginPath(); x.arc(nx, ny, 1.7, 0, 6.3); x.fill();
+      });
     }
     cache[key] = finish(c, rep || 2, rep || 2);
     return cache[key];
   }
 
+  /* Galvanised sheet. Was a flat fill with a few scan lines on it, which on a
+     silo the size of a house printed as one unbroken grey slab. Now it is
+     built the way the real thing is: rolled sheets bolted at their laps, with
+     the rust that always starts at a fastener and runs down from it. The
+     sheet-scale detail lives here; the metre-scale corrugation and pitting
+     comes from the `metal` finish on top. */
   function metal() {
     if (cache.metal) return cache.metal;
-    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    const w = 256, c = cv(w, w), x = c.getContext('2d');
     x.fillStyle = hex(PAL.blueGray); x.fillRect(0, 0, w, w);
-    speckle(x, w, w, [PAL.blueGrayDk, PAL.rustDeep, PAL.cream], 90, 2, 12, 0.18);
-    x.strokeStyle = 'rgba(18,15,13,.2)'; x.lineWidth = 1;
-    for (let i = 0; i < 22; i++) {
+    // uneven galvanising -- soft spangle patches, lighter and darker
+    for (let i = 0; i < 26; i++) {
+      const px = UTIL.rng(0, w), py = UTIL.rng(0, w), r = UTIL.rng(14, 52);
+      const g = x.createRadialGradient(px, py, 0, px, py, r);
+      const col = UTIL.rand() < .5 ? hex(PAL.blueGrayDk) : hex(PAL.cream);
+      x.globalAlpha = UTIL.rng(0.06, 0.16);
+      g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g;
+      x.beginPath(); x.arc(px, py, r, 0, 6.3); x.fill();
+      x.globalAlpha = 1;
+    }
+    speckle(x, w, w, [PAL.blueGrayDk, PAL.rustDeep, PAL.cream], 140, 2, 12, 0.16);
+    // the lap where two sheets overlap, and its line of bolts
+    [0.28, 0.74].forEach(v => {
+      const sy = v * w;
+      x.fillStyle = 'rgba(18,15,13,.10)';
+      x.fillRect(0, sy, w, 5);
+      x.strokeStyle = 'rgba(18,15,13,.45)'; x.lineWidth = 1.6;
+      x.beginPath(); x.moveTo(0, sy);
+      for (let sx = 0; sx <= w; sx += 32) x.lineTo(sx, sy + Math.sin(sx * .04 + v) * 1.4);
+      x.stroke();
+      for (let b = 0; b < 7; b++) {
+        const bx = (b + 0.5) / 7 * w + UTIL.rng(-3, 3), by = sy + 2.5;
+        // rust always starts at the bolt and runs down
+        const rg = x.createLinearGradient(0, by, 0, by + 26);
+        rg.addColorStop(0, 'rgba(126,63,42,.36)');
+        rg.addColorStop(1, 'rgba(126,63,42,0)');
+        x.fillStyle = rg;
+        x.fillRect(bx - 2.5, by, 5, 26);
+        x.fillStyle = 'rgba(18,15,13,.55)';
+        x.beginPath(); x.arc(bx, by, 2.1, 0, 6.3); x.fill();
+      }
+    });
+    // scan lines from the rolling mill, kept faint
+    x.strokeStyle = 'rgba(18,15,13,.16)'; x.lineWidth = 1;
+    for (let i = 0; i < 34; i++) {
       const sy = UTIL.rng(0, w);
       x.beginPath(); x.moveTo(0, sy); x.lineTo(w, sy + UTIL.rng(-3, 3)); x.stroke();
     }
