@@ -4333,6 +4333,14 @@ const MAT = (() => {
     paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10] },
     wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26] },
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22] },
+    /* Held objects need their own scale. A finish is sized in metres, which is
+       the whole point of it -- but 8cm corrugation is right on a silo and
+       absurd on a shotgun receiver, and at the coarse scale a 30cm gun part
+       sees a fifth of one tile and comes out as flat grey. `tool` and `stock`
+       are the same two tiles run four times finer, where the corrugation
+       reads as machined seams and the boarding as grain. */
+    tool:  { tex: 'metal', scale: 3.10, mottle: 0.26, line: 0.44, hatch: 0.56, grime: [0, 0] },
+    stock: { tex: 'wood',  scale: 2.30, mottle: 0.28, line: 0.36, hatch: 0.58, grime: [0, 0] },
     stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30] },
     /* The ground's colour MAP already carries the 15-metre patchwork; the
        finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
@@ -13894,10 +13902,10 @@ const WEAPON = (() => {
   function buildPipePopper() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
-    const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'wood' });
-    const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
+    const steel = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
+    const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
 
     PRIM.box(0.15, 0.17, 0.42, steel, { pos: [0, 0, -0.06], rot: [0, 0, 0.03], parent: g, warp: 0.008, outline: 0.012, ray: false });
     PRIM.box(0.17, 0.06, 0.2, steelDark, { pos: [0, 0.09, -0.02], parent: g, outline: 0.011, ray: false });
@@ -13936,10 +13944,10 @@ const WEAPON = (() => {
     // The recovery weapon is intentionally unmistakable: two separated
     // barrels, two muzzle rings and a break-action hinge. It is not the
     // normal Pipe Popper with a different ammo count.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
-    const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
-    const woodLight = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'wood' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
+    const woodLight = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
     PRIM.box(0.3, 0.2, 0.34, steel, { pos: [0, 0, -0.08], parent: g, outline: 0.014, ray: false });
     [-0.092, 0.092].forEach(x => {
       PRIM.cyl(0.057, 0.064, 1.08, 10, steelLight, {
@@ -13968,9 +13976,9 @@ const WEAPON = (() => {
   function buildTinSixer() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
-    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
 
     PRIM.box(0.14, 0.16, 0.34, steel, { pos: [0, 0, -0.12], parent: g, warp: 0.006, outline: 0.012, ray: false });
     // The cylinder is its own group so the reload can actually swing it out
@@ -14003,9 +14011,9 @@ const WEAPON = (() => {
   function buildFieldhand() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const olive = MAT.toon(PAL.oliveDeep);
-    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'wood' });
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
 
     PRIM.box(0.16, 0.19, 0.5, olive, { pos: [0, 0, -0.08], parent: g, warp: 0.008, outline: 0.013, ray: false });
     PRIM.box(0.14, 0.08, 0.55, steel, { pos: [0, 0.09, -0.24], parent: g, outline: 0.011, ray: false });
@@ -14045,8 +14053,8 @@ const WEAPON = (() => {
     // "barrel" is one long tapered cone with root-ridge rings, capped by a
     // leafy green tuft standing in for a buttstock. A small steel receiver
     // and grip keep the silhouette readable as a held gun.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const carrotSkin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1), finish: 'wood' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const carrotSkin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1), finish: 'stock' });
     const carrotDeep = MAT.toon(PAL.mustardDk);
     const leaf = MAT.toon(PAL.jays);
     const leafDeep = MAT.toon(PAL.jaysDeep);
@@ -14093,8 +14101,8 @@ const WEAPON = (() => {
     // duct-tape bands, loose tubing, and a magnifying glass doing double
     // duty as the focusing lens. Nothing here is a clean manufactured
     // part -- everything reads as scrap held together on purpose.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const scrapMetal = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const scrapMetal = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const tape = MAT.toon(PAL.creamDim);
     const wire = MAT.toon(PAL.charcoal);
     const glass = MAT.toon(PAL.blue);
@@ -14162,9 +14170,9 @@ const WEAPON = (() => {
     // broad guide bar with individual teeth. The guide bar sits in the view
     // plane rather than at the player's feet, so it cannot read as a floor
     // block when the emergency swap engages.
-    const body = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'wood' });
-    const bodyDeep = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const body = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
+    const bodyDeep = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const chain = MAT.toon(PAL.mustard);
     PRIM.box(0.3, 0.28, 0.38, body, { pos: [0, -0.02, -0.02], parent: g, warp: 0.01, outline: 0.014, ray: false });
     PRIM.box(0.2, 0.13, 0.3, bodyDeep, { pos: [0, -0.18, 0.18], rot: [0.2, 0, 0], parent: g, outline: 0.012, ray: false });
@@ -14200,9 +14208,9 @@ const WEAPON = (() => {
   function buildSprayTorch() {
     const g = new THREE.Group();
     rig.add(g);
-    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal(), finish: 'metal' });
-    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
+    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal(), finish: 'tool' });
+    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const flint = MAT.toon(PAL.mustardDk);
 
     // Right hand + spray can.
@@ -14251,10 +14259,10 @@ const WEAPON = (() => {
   function buildTheClaw() {
     const g = new THREE.Group();
     rig.add(g);
-    const shell = MAT.toon(PAL.rust, { map: TEX.metal(), finish: 'metal' });
+    const shell = MAT.toon(PAL.rust, { map: TEX.metal(), finish: 'tool' });
     const shellDeep = MAT.toon(PAL.rustDeep);
     const chainMat = MAT.toon(PAL.charcoal);
-    const grip = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const grip = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     PRIM.cyl(0.05, 0.055, 0.34, 8, grip, { pos: [0, -0.05, 0.08], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
     for (let i = 0; i < 5; i++) {
       const z = -0.12 - i * 0.14;
@@ -14281,9 +14289,9 @@ const WEAPON = (() => {
   function buildSeedSpitter() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
-    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1), finish: 'wood' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1), finish: 'stock' });
     const petal = MAT.toon(PAL.mustard);
     const petalDeep = MAT.toon(PAL.mustardDk);
     const seedFace = MAT.toon(PAL.charcoal);
@@ -14327,13 +14335,13 @@ const WEAPON = (() => {
   function buildPortalGun() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const tape = MAT.toon(PAL.creamDim);
     const wire = MAT.toon(PAL.charcoal);
     const boardMat = MAT.toon(PAL.charcoal);
     const traceMat = MAT.toon(PAL.jaysLight);
-    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal(), finish: 'metal' });
+    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal(), finish: 'tool' });
     const portalGreen = 0x67e8a5;
 
     // Chassis -- the scrap-metal fragment, plated straight onto a boxy
@@ -14406,13 +14414,13 @@ const WEAPON = (() => {
   function buildGlizzyGat() {
     const g = new THREE.Group();
     rig.add(g);
-    const bunMat = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1), finish: 'wood' });
+    const bunMat = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1), finish: 'stock' });
     const sausageMat = MAT.toon(PAL.rust);
     const mustardMat = MAT.toon(PAL.jays);
-    const scopeMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const scopeMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const capMat = MAT.toon(PAL.charcoal);
     const lensMat = MAT.toon(PAL.blue);
-    const boltMat = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
+    const boltMat = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
 
     // Bun: the split roll, doubling as the whole rifle body/stock.
     PRIM.cyl(0.09, 0.075, 1.0, 10, bunMat, {
