@@ -755,12 +755,15 @@
   #voiceChip.talking b{background:var(--jays);}
 
   /* ---------- Deathmatch announcer banner ----------
-     Kept high in the frame and well clear of the crosshair. Squash on the
-     way in, overshoot, settle -- the one element that earns a big entrance. */
+     Clear of the crosshair below and clear of the boss stack above. At 23%
+     it landed on top of a third posted bill and the two read as one illegible
+     smear; a full three-bill stack reaches ~191px, so the banner starts below
+     that. Squash on the way in, overshoot, settle -- the one element in the
+     overlay that earns a big entrance. */
   #announcerBanner{
-    position:fixed;left:50%;top:23%;z-index:34;transform:translate(-50%,0) rotate(-1.5deg);
+    position:fixed;left:50%;top:30%;z-index:34;transform:translate(-50%,0) rotate(-1.5deg);
     display:none;pointer-events:none;text-align:center;
-    font:900 26px/1 var(--hud-slab);letter-spacing:3px;text-transform:uppercase;
+    font:900 26px/1 var(--hud-slab);letter-spacing:2.4px;text-transform:uppercase;
     color:var(--mustard);
     text-shadow:
       3px 0 0 var(--ink),-3px 0 0 var(--ink),0 3px 0 var(--ink),0 -3px 0 var(--ink),
@@ -889,7 +892,7 @@
   @media (max-height:620px){
     #bossStack{top:10px;gap:5px;}
     #killFeed{top:100px;}
-    #announcerBanner{top:20%;font-size:22px;}
+    #announcerBanner{top:27%;font-size:22px;}
     #questBoard{width:min(40vw,178px);padding:7px 9px 8px;}
     .component-slot{font-size:8px;padding:3px 6px 3px 17px;}
   }
