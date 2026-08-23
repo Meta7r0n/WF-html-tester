@@ -3548,12 +3548,16 @@ const TEX = (() => {
     if (cache.ground) return cache.ground;
     const w = 512, c = cv(w, w), x = c.getContext('2d');
     x.fillStyle = hex(PAL.dirt); x.fillRect(0, 0, w, w);
-    /* Knocked down toward dirtDeep before anything else is drawn. Sunlit
-       ground was landing above the grade's highlight knee, where the shoulder
-       compresses everything into one tone -- so no amount of texture survived
-       on it. Taking the base down a step puts the whole surface back on the
-       straight part of the curve, where its own detail can be seen. */
-    x.globalAlpha = 0.34; x.fillStyle = hex(PAL.dirtDeep); x.fillRect(0, 0, w, w);
+    /* Knocked down to a real mid tone before anything else is drawn.
+       Measured, sunlit ground was printing at ~226 -- above the grade's
+       highlight knee, where the shoulder compresses everything into a single
+       value. Nothing drawn into the texture survived there, and since the
+       ground is 30-50% of most frames it was also most of the reason the set
+       sat 50 points brighter than the reference. Dropping the albedo about a
+       third puts the whole surface back on the straight part of the curve,
+       where its own detail can be seen. */
+    x.globalAlpha = 0.85; x.fillStyle = hex(PAL.dirtDeep); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 0.30; x.fillStyle = hex(PAL.oliveDeep); x.fillRect(0, 0, w, w);
     x.globalAlpha = 1;
 
     // broad patches -- the value structure the old texture had none of
@@ -6148,7 +6152,7 @@ const PROPS = (() => {
     s = s || 1;
     const geo = new THREE.IcosahedronGeometry(s, 0);
     PRIM.warp(geo, s * 0.22);
-    const m = PRIM.mesh(geo, MAT.toon(PAL.blueGray), {
+    const m = PRIM.mesh(geo, MAT.toon(PAL.blueGray, { finish: 'stone' }), {
       pos: [x, s * 0.45, z],
       rot: [UTIL.rng(0, 1), UTIL.rng(0, 6.28), UTIL.rng(0, 1)],
       scale: [1, 0.75, 1.05],
