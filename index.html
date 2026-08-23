@@ -3086,6 +3086,50 @@ const TEX = (() => {
     return cache.ground;
   }
 
+  /* An irregular soft-edged blob, drawn white so the caller can tint it to
+     whatever earth tone a patch of ground wants to be.
+
+     Deliberately NOT a radial gradient: an airbrushed oval is the one thing
+     that cannot appear in a 1930s cel, and the ground is half the frame. This
+     is three wobbly closed rings stacked at low alpha -- a shape with a drawn
+     silhouette that fades over its last few pixels -- with the interior
+     stippled so it reads as worked earth rather than a wash.
+
+     `v` picks one of a few cached variants; one shape repeated two hundred
+     times over open ground starts to read as wallpaper. */
+  function patch(v) {
+    const key = 'patch' + (v || 0);
+    if (cache[key]) return cache[key];
+    const w = 256, c = cv(w, w), x = c.getContext('2d'), h = w / 2;
+    const s0 = UTIL.rng(0, 6.28), s1 = UTIL.rng(0, 6.28), s2 = UTIL.rng(0, 6.28);
+    const k3 = UTIL.rng(0.10, 0.20), k5 = UTIL.rng(0.05, 0.12);
+    function ring(rad, alpha) {
+      x.fillStyle = 'rgba(255,255,255,' + alpha + ')';
+      x.beginPath();
+      for (let i = 0; i <= 56; i++) {
+        const t = i / 56 * Math.PI * 2;
+        const r = rad * (1 + k3 * Math.sin(t * 3 + s0) + k5 * Math.sin(t * 5 + s1)
+                           + 0.04 * Math.sin(t * 9 + s2));
+        const px = h + Math.cos(t) * r, py = h + Math.sin(t) * r;
+        if (i === 0) x.moveTo(px, py); else x.lineTo(px, py);
+      }
+      x.closePath(); x.fill();
+    }
+    ring(h * 0.94, 0.26); ring(h * 0.80, 0.30); ring(h * 0.60, 0.34);
+    // Stipple only inside the shape, so the rim keeps its drawn edge.
+    x.globalCompositeOperation = 'source-atop';
+    for (let i = 0; i < 150; i++) {
+      x.fillStyle = 'rgba(255,255,255,' + UTIL.rng(0.05, 0.22) + ')';
+      const r = UTIL.rng(2, 13);
+      x.beginPath();
+      x.ellipse(UTIL.rng(0, w), UTIL.rng(0, w), r, r * UTIL.rng(0.5, 1.5), UTIL.rng(0, 6.3), 0, 6.3);
+      x.fill();
+    }
+    x.globalCompositeOperation = 'source-over';
+    cache[key] = new THREE.CanvasTexture(c);
+    return cache[key];
+  }
+
   function wood(base, dark, rep) {
     const key = 'wood' + base;
     if (cache[key]) return cache[key];
@@ -3662,7 +3706,7 @@ const TEX = (() => {
   }
 
   return {
-    ground, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot,
+    ground, patch, wood, metal, sky, splat, star, puff, spray, shadow, sign, dot,
     bang, lines, ring, chunk, curl, cloud, blast, word,
     grainDataURL, scratchDataURL, finish
   };
@@ -9177,6 +9221,25 @@ const LEVEL = (() => {
     const stain = new PRIM.Batch(MAT.flat(0xffffff, {
       map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.5
     }), 0);
+    /* Ground TONE. The single loudest thing about our frames next to the
+       reference was that the bottom half of most of them is one flat cream,
+       hundreds of square metres of it, whatever the shot. Reference ground is
+       never one value: it is patched, bleached, trodden and stained, and that
+       variation is what gives an empty field a middle distance.
+
+       Four tints of the same drawn blob, each its own merged sheet, laid
+       UNDER the footpaths (y 0.006-0.011 vs the paths' 0.015) so a road still
+       wins where it crosses one. No outlines -- these are paint, not props. */
+    function toneSheet(col, op, v) {
+      return new PRIM.Batch(MAT.flat(col, {
+        map: TEX.patch(v), transparent: true, depthWrite: false, opacity: op
+      }), 0);
+    }
+    const soil = toneSheet(PAL.dirtDeep, 0.44, 0);    // turned, damp earth
+    const bleach = toneSheet(PAL.creamDim, 0.5, 1);   // sun-bleached hardpan
+    const sward = toneSheet(PAL.oliveDeep, 0.3, 2);   // where the grass held on
+    const scorch = toneSheet(PAL.rustDeep, 0.26, 3);  // burnt-out, rusted ground
+    const TONES = [soil, bleach, sward, scorch];
 
     // Only things that actually touch the ground. Decks, rails, pipes,
     // basement walls and anything hanging in the air are skipped -- weeds
@@ -9217,6 +9280,42 @@ const LEVEL = (() => {
     function splinter(x, z) {
       chips.box(UTIL.rng(0.3, 0.8), 0.045, UTIL.rng(0.07, 0.16), x, 0.03, z,
         0, UTIL.rng(0, 3.14), UTIL.rng(-.06, .06), 0.012);
+    }
+
+    /* ---- 0. tone: break the flat cream slab before anything is drawn on it.
+       Two scales, because one is not enough: broad fields that read from
+       thirty metres and give a frame its middle distance, then smaller
+       overlapping blooms that keep the ground interesting underfoot. Patches
+       are allowed to run under walls (they are invisible there and testing
+       every one against 1300 solids is not worth it) but are kept off the
+       floors that are not the dirt plane -- the barn, the basement rooms and
+       the stable all lay their own boards at ground level. */
+    const INDOOR = /barn|greenhouse_wall|stable|shed|silo|basement|room|tunnel|cellar/;
+    const indoors = WORLD.solids.filter(s => INDOOR.test(s.tag || '') && s.minY < 1 && s.maxY > 1);
+    function underRoof(x, z) {
+      for (let i = 0; i < indoors.length; i++) {
+        const s = indoors[i];
+        if (x > s.minX - 3 && x < s.maxX + 3 && z > s.minZ - 3 && z < s.maxZ + 3) return true;
+      }
+      return false;
+    }
+    function tone(bat, x, z, w, d, y) {
+      bat.plane(w, d, x, y, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+    }
+    for (let i = 0; i < 150; i++) {
+      const x = UTIL.rng(M.west - 6, M.east + 4), z = UTIL.rng(M.north - 6, M.south + 6);
+      if (underRoof(x, z)) continue;
+      const w = UTIL.rng(7, 20);
+      tone(UTIL.rand() < 0.42 ? soil : UTIL.rand() < 0.55 ? bleach : sward,
+        x, z, w, w * UTIL.rng(0.55, 1.4), 0.006);
+    }
+    for (let i = 0; i < 210; i++) {
+      const x = UTIL.rng(M.west - 4, M.east + 2), z = UTIL.rng(M.north - 4, M.south + 4);
+      if (underRoof(x, z)) continue;
+      const w = UTIL.rng(2.2, 6.5);
+      const r = UTIL.rand();
+      tone(r < 0.36 ? soil : r < 0.62 ? sward : r < 0.88 ? bleach : scorch,
+        x, z, w, w * UTIL.rng(0.5, 1.5), 0.009);
     }
 
     // ---- 1. contour: low earth swells so the ground has a horizon line
@@ -9351,6 +9450,9 @@ const LEVEL = (() => {
       }
     });
 
+    // Tone goes down first so the paths, ruts and stains all read as marks
+    // made ON the ground rather than as more of the same soup.
+    TONES.forEach(t => t.build(parent, { ray: false }));
     scrub.build(parent, { ray: false });
     dry.build(parent, { ray: false });
     chaff.build(parent, { ray: false });
