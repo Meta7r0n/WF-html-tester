@@ -37,35 +37,47 @@
        One place to tune the whole in-game overlay. The HUD is built from ONE
        surface material and one backing-less one:
 
-         .hud-card  -- a printed card. Cream stock, a heavy black keyline, a
-                       cream gap and an inner ink hairline, and a hard offset
-                       shadow. A 1930s title card, not a UI panel.
+         .hud-card  -- struck enamel. A mid-value body, an ink keyline, a
+                       bright bezel hairline just inside it and a dark inner
+                       ring, and a hard offset shadow. An enamel badge, not a
+                       UI panel.
          ink-edged  -- cream lettering with a full ink edge and no background,
-                       for anything transient enough that a card would be
-                       furniture.
+                       for anything transient enough that a surface of its own
+                       would be furniture.
 
-       Why the surface is cream and not charcoal. A HUD surface has to survive
-       a blown-out cream sky AND a barn wall in shadow. A cream card is the
-       brightest object in a dark frame and its ink keyline is the darkest
-       object in a bright one, so one of the two always separates it. The
-       charcoal plate this replaces had only the keyline, at 30% alpha, and it
-       ghosted out completely against every dark frame the render now produces
-       -- exactly the failure the --cream-dim bug had already taught us once. */
+       Why the body is mid and not cream. Measured off the reference's own
+       corner medallions (`hud/refcrop.js` against the camp-firefight still):
+       body p50 87-95, p01 0, p99 232-251. In other words the surface itself
+       sits at or just under the value the frame behind it will sit at, and the
+       only bright pixels in it are the numeral and a thin rim -- 4-13% of the
+       badge. That is what keeps a HUD from stealing the eye.
+
+       The cream card this replaces got the diagnosis right and the treatment
+       backwards. It is true that a HUD surface must survive both a blown-out
+       sky and a barn wall in shadow, and true that a surface needs an extreme
+       at BOTH ends to do it. But it does not follow that the body should be
+       the bright end: put the extremes in the keyline and the type, which are
+       thin, and leave the body mid. A cream body cleared a dark frame by being
+       a lantern in it, which is the same failure as the charcoal plate before
+       it, just measured from the other side. */
     --hud-slab:"Rockwell","Rockwell Nova","Roboto Slab","Bookman Old Style","Bitstream Charter","Courier New",Georgia,serif;
     /* Fully opaque on purpose. The film layers sit at z-index 22 and the frame
        itself is now dark and heavily shadowed -- a translucent HUD surface
        reads as a ghost rectangle against both. */
-    --hud-card:linear-gradient(176deg,#FBF2DF 0%,#F3E4C8 54%,#E4D3AF 100%);
-    --hud-card-flat:#F3E4C8;
+    --hud-card:linear-gradient(176deg,#7B6B53 0%,#6E6049 54%,#5A4E3D 100%);
+    --hud-card-flat:#6E6049;
+    /* The bright hairline inside the keyline. Thin on purpose: this is the
+       whole bright end of the surface and it is meant to stay a rim. */
+    --hud-bezel:#C3B292;
     --hud-paper:#F6E9D2;
     --hud-line:3px;
     --hud-drop:3px 4px 0 rgba(18,15,12,.62);
-    /* The printed double rule: keyline, cream gap, ink hairline. This is what
-       makes a card read as something that was drawn and printed rather than
-       something a compositor stamped out. */
-    --hud-keyline:inset 0 0 0 1.6px var(--hud-card-flat),inset 0 0 0 3px rgba(22,18,15,.34);
-    /* Printed rule between rows on a card. */
-    --hud-rule:rgba(22,18,15,.30);
+    /* The struck double rule: ink keyline, bright bezel hairline, dark inner
+       ring. Reading light-then-dark inward is what makes the edge look raised
+       and stamped rather than like a border a compositor drew. */
+    --hud-keyline:inset 0 0 0 1.6px var(--hud-bezel),inset 0 0 0 3.4px rgba(20,16,13,.55);
+    /* Scored rule between rows on a badge. */
+    --hud-rule:rgba(20,16,13,.5);
     /* Ink trough for every gauge -- one well, one flat fill, no gradients. */
     --hud-well:#191411;
     /* Overshoot-and-settle for anything arriving; a hard fast curve for
@@ -86,11 +98,19 @@
     --hud-ink-edge:
       1.8px 0 0 var(--ink),-1.8px 0 0 var(--ink),0 1.8px 0 var(--ink),0 -1.8px 0 var(--ink),
       1.3px 1.3px 0 var(--ink),-1.3px 1.3px 0 var(--ink),1.3px -1.3px 0 var(--ink),-1.3px -1.3px 0 var(--ink);
-    /* Type roles ON a card. Headings are stamped rust, body is ink, and
-       anything secondary is ink at a lower ink load -- never a lighter grey,
-       which would go thin and digital at 8px. */
-    --hud-stamp:#7E3F2A;
-    --hud-ink-2:rgba(22,18,15,.62);
+    /* Type roles ON a badge. The body is mid, so every one of these is a
+       light ink lifted off it rather than a dark one pressed into it:
+       primary is cream (5.3:1 on the body), a heading is stamped peach so it
+       reads as a second ink rather than a second size, and secondary is cream
+       at a lower load -- never a mid grey, which would sink into the body. */
+    --hud-type:#F6E9D2;
+    --hud-stamp:#F2CDBB;
+    --hud-type-2:rgba(246,233,210,.68);
+    /* A hard one-pixel ink drop under on-badge type. Not an outline -- an
+       outline at 8px closes up the counters -- but enough of a dark edge that
+       an 8px label keeps its shape where the body is only 97 values below it.
+       This is also just what type on a printed title card does. */
+    --hud-type-drop:0 1.2px 0 rgba(16,12,10,.85);
   }
 
   *{box-sizing:border-box;}
@@ -172,7 +192,7 @@
     border:var(--hud-line) solid var(--ink);
     border-radius:11px 14px 10px 13px;
     box-shadow:var(--hud-keyline),var(--hud-drop);
-    color:var(--ink);
+    color:var(--hud-type);text-shadow:var(--hud-type-drop);
   }
 
   /* ---------- Crosshair ---------- */
@@ -262,7 +282,8 @@
   .weapon-slot-btn{
     display:flex;align-items:center;gap:5px;min-height:25px;max-width:124px;padding:3px 6px;
     pointer-events:auto;cursor:pointer;border:2px solid var(--ink);
-    border-radius:5px 8px 5px 7px;background:var(--hud-card);color:var(--ink);
+    border-radius:5px 8px 5px 7px;background:var(--hud-card);color:var(--hud-type);
+    text-shadow:var(--hud-type-drop);
     box-shadow:2px 2px 0 rgba(18,15,12,.55);font:900 9px/1 var(--hud-slab);
     letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
     transition:transform .12s var(--hud-spring),background .1s ease,opacity .1s ease;
@@ -278,10 +299,10 @@
   .weapon-slot-btn:active{transform:translateY(2px) rotate(0deg);}
 
   /* ---------- Top-right: run clock ----------
-     A stamped tick, not a card. A clock that ticks every frame does not need
-     a printed surface of its own -- ink-edged lettering is enough, and it
-     takes a whole box out of the corner. Single-player only (RUNSTATS
-     .updateHud owns the .on toggle). */
+     A stamped tick, not a card, and not permanent furniture either. `.on` is
+     RUNSTATS.updateHud saying the run is live; whether that fact is ON SCREEN
+     is the detail key's business. Nobody reads a run timer mid-fight, and the
+     precise time is in the run report where someone reading times looks. */
   #runClock{
     position:fixed;right:18px;top:13px;z-index:30;padding:0;
     background:none;border:0;box-shadow:none;
@@ -290,7 +311,7 @@
     opacity:0;pointer-events:none;
     transform:rotate(.8deg);transition:opacity .22s ease;
   }
-  #runClock.on{opacity:.9}
+  body.hud-detail #runClock.on{opacity:.9}
   #runClock small{
     display:block;margin-bottom:3px;font:900 7.5px/1 var(--hud-slab);
     letter-spacing:1.6px;color:var(--mustard);text-shadow:var(--hud-ink-edge);
@@ -318,7 +339,7 @@
     margin:0 0 8px;padding-bottom:6px;border-bottom:2px solid var(--hud-rule);
     color:var(--hud-stamp);font:900 11px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
   }
-  .qb-head span{display:block;margin-top:4px;color:var(--hud-ink-2);font-size:7.5px;letter-spacing:1.1px;}
+  .qb-head span{display:block;margin-top:4px;color:var(--hud-type-2);font-size:7.5px;letter-spacing:1.1px;}
   /* "Hold Tab" is only worth printing on the auto-peek, where the board
      appeared on its own and the player may not know how to bring it back. If
      they are holding Tab right now, they know. */
@@ -327,18 +348,18 @@
   #componentHud.on,#shieldHud.on{display:block;}
   #shieldHud.on{margin-top:9px;}
   .qb-title{
-    margin:0 0 5px;color:var(--olive-deep);font:900 8.5px/1 var(--hud-slab);
+    margin:0 0 5px;color:var(--mustard);font:900 8.5px/1 var(--hud-slab);
     letter-spacing:1.3px;text-transform:uppercase;
   }
   .component-slot{
     position:relative;margin-bottom:3px;padding:4px 7px 4px 18px;
-    background:rgba(22,18,15,.07);border:1.5px solid rgba(22,18,15,.38);border-radius:5px 7px 5px 8px;
-    color:var(--ink-soft);font:800 8.5px/1.2 var(--hud-slab);letter-spacing:.6px;text-transform:uppercase;
+    background:rgba(20,16,13,.30);border:1.5px solid rgba(20,16,13,.5);border-radius:5px 7px 5px 8px;
+    color:var(--hud-type-2);font:800 8.5px/1.2 var(--hud-slab);letter-spacing:.6px;text-transform:uppercase;
   }
   /* Hand-ticked check box: an empty ring that fills with an ink tick. */
   .component-slot::before{
     content:'';position:absolute;left:5px;top:50%;width:8px;height:8px;margin-top:-4px;
-    border:1.5px solid rgba(22,18,15,.5);border-radius:2px 3px 2px 3px;
+    border:1.5px solid rgba(246,233,210,.42);border-radius:2px 3px 2px 3px;
   }
   .component-slot.collected{
     background:var(--olive);border-color:var(--ink);color:var(--hud-paper);
@@ -398,13 +419,15 @@
   #shells span:nth-child(even){transform:rotate(4deg);}
   /* A spent mark is a drawn empty case, not a faded one: opacity on cream
      stock just makes it disappear, so it keeps full ink and goes hollow. */
-  #shells span.spent{background:var(--hud-card-flat);box-shadow:inset 0 -5px 0 rgba(22,18,15,.16);transform:rotate(-1deg) translateY(2px);}
+  #shells span.spent{background:var(--hud-well);box-shadow:none;transform:rotate(-1deg) translateY(2px);}
   #ammoNum{
-    font:900 24px/.85 var(--hud-slab);letter-spacing:-.5px;color:var(--ink);
+    font:900 24px/.85 var(--hud-slab);letter-spacing:-.5px;color:var(--hud-type);
     transform:rotate(-1.5deg);white-space:nowrap;
   }
-  #ammoNum.low{color:var(--rust-deep);}
-  #ammoNum small{font-size:10px;letter-spacing:.5px;color:var(--hud-ink-2);}
+  /* Warning colour has to be the BRIGHT end here. rust-deep read as a warning
+     on cream stock; on an enamel body it is four values away from it. */
+  #ammoNum.low{color:var(--mustard);}
+  #ammoNum small{font-size:10px;letter-spacing:.5px;color:var(--hud-type-2);}
   #ammoNum.melee{font-size:12px;letter-spacing:1.4px;line-height:1.2;}
   /* The throwable row, ruled off under the ammo count. Collapses to nothing
      when the player has no throwable rather than leaving a hole in the card. */
@@ -412,7 +435,7 @@
     display:flex;align-items:center;justify-content:space-between;gap:8px;
     height:0;margin-top:0;padding-top:0;overflow:hidden;opacity:0;
     border-top:0 solid var(--hud-rule);
-    color:var(--ink);font:900 9px/1 var(--hud-slab);
+    color:var(--hud-type);font:900 9px/1 var(--hud-slab);
     letter-spacing:1.1px;text-transform:uppercase;pointer-events:none;
     transition:height .16s var(--hud-snap),margin-top .16s var(--hud-snap),
                padding-top .16s var(--hud-snap),opacity .1s ease;
@@ -455,7 +478,7 @@
     display:flex;align-items:center;gap:6px;
     height:0;margin-top:0;padding-top:0;overflow:hidden;opacity:0;
     border-top:0 solid var(--hud-rule);
-    color:var(--ink);font:900 9px/1 var(--hud-slab);
+    color:var(--hud-type);font:900 9px/1 var(--hud-slab);
     letter-spacing:1.1px;text-transform:uppercase;
     transition:height .16s var(--hud-snap),margin-top .16s var(--hud-snap),
                padding-top .16s var(--hud-snap),opacity .1s ease;
@@ -466,22 +489,46 @@
     transition:height .24s var(--hud-spring),margin-top .24s var(--hud-spring),
                padding-top .24s var(--hud-spring),opacity .16s ease;
   }
-  #jaysHud.active{color:var(--olive-deep);}
-  #jaysHud small{color:var(--hud-ink-2);font-size:7px;letter-spacing:.8px;}
-  #jaysHud.active small{color:var(--olive-deep);}
+  #jaysHud.active{color:var(--jays);}
+  #jaysHud small{color:var(--hud-type-2);font-size:7px;letter-spacing:.8px;}
+  #jaysHud.active small{color:var(--jays);}
   #jaysCount{background:var(--jays);color:var(--ink);}
-  #buffHud{display:flex;flex-direction:column;gap:3px;}
+  /* A ROW of pips, not a column of labelled rows. Five buffs at once was five
+     stacked lines of cream text, ~110px tall, permanently parked over the
+     left of the frame; as a row of discs the same five facts are 19px tall.
+     See setBuffChip for who owns `.named`. */
+  #buffHud{
+    display:flex;flex-direction:row;flex-wrap:wrap;align-items:center;
+    gap:4px;margin-bottom:0;max-width:min(46vw,250px);
+  }
+  /* No chips up -> the row is not there at all, rather than an empty 19px
+     line holding the vitals badge off the corner. */
+  #buffHud:has(.buffChip.on){margin-bottom:6px;}
   .buffChip{
-    display:flex;align-items:center;gap:6px;margin-bottom:0;
+    display:flex;align-items:center;margin-bottom:0;
     color:var(--cream);font:900 8.5px/1 var(--hud-slab);
     letter-spacing:1.4px;text-transform:uppercase;
     text-shadow:var(--hud-ink-edge);
-    opacity:0;height:0;overflow:hidden;transform:translateX(-8px) scale(.88);
-    transition:opacity .1s ease,height .16s var(--hud-snap),transform .14s var(--hud-snap);
+    opacity:0;max-width:0;max-height:0;overflow:hidden;
+    transform:translateX(-8px) scale(.88);
+    transition:opacity .1s ease,max-height .16s var(--hud-snap),transform .14s var(--hud-snap);
   }
   .buffChip.on{
-    opacity:1;height:19px;transform:translateX(0) scale(1);
-    transition:opacity .14s ease,height .2s var(--hud-spring),transform .3s var(--hud-spring);
+    opacity:1;max-width:260px;max-height:30px;overflow:visible;
+    transform:translateX(0) scale(1);
+    transition:opacity .14s ease,max-height .2s var(--hud-spring),transform .3s var(--hud-spring);
+  }
+  /* The word rides out of the pip while the chip is new and is drawn back in
+     when it stops being news. The chip has no width of its own -- the span's
+     max-width is what the row opens and closes around, so the gap left by a
+     retiring word closes up instead of staying as a hole. */
+  .buffChip span{
+    max-width:0;margin-left:0;overflow:hidden;white-space:nowrap;
+    transition:max-width .18s var(--hud-snap),margin-left .18s var(--hud-snap);
+  }
+  .buffChip.on.named span{
+    max-width:120px;margin-left:6px;
+    transition:max-width .28s var(--hud-spring),margin-left .28s var(--hud-spring);
   }
   /* Same badge as .hud-pip -- only the fill colour changes per buff. Keeping
      the two in step by hand is what let six systems drift apart in the first
@@ -585,13 +632,20 @@
     opacity:1;transform:translate(-50%,0) scale(1) rotate(-1.2deg);
     transition:opacity .12s ease,transform .36s var(--hud-spring);
   }
+  /* Same rule as the run clock: `.on` means the HUD is up, not that the
+     tally is printed. A standing total belongs behind the detail key; the
+     moment it changes gets a two-second peek (UI.peekTally). */
   #tally{
     position:fixed;left:18px;top:13px;z-index:30;
     font:900 10px/1 var(--hud-slab);letter-spacing:1.6px;text-transform:uppercase;
-    color:var(--cream);opacity:0;transition:opacity .2s ease;transform:rotate(-1deg);
+    color:var(--cream);opacity:0;transform:translateX(-8px) rotate(-1deg);
     text-shadow:var(--hud-ink-edge);
+    transition:opacity .14s ease,transform .16s var(--hud-snap);
   }
-  #tally.on{opacity:.94;}
+  body.hud-detail #tally.on,#tally.on.peek{
+    opacity:.94;transform:translateX(0) rotate(-1deg);
+    transition:opacity .16s ease,transform .34s var(--hud-spring);
+  }
   #tally b{color:var(--mustard);font-size:14px;margin-left:3px;}
 
   /* ---------- Free-for-all live scoreboard ---------- */
@@ -629,7 +683,7 @@
   }
   #killFeed .line{
     font:900 9px/1.3 var(--hud-slab);letter-spacing:.8px;text-transform:uppercase;
-    color:var(--ink);
+    color:var(--hud-type);text-shadow:var(--hud-type-drop);
     background:var(--hud-card);border:2px solid var(--ink);
     padding:3px 7px;border-radius:5px 8px 5px 7px;
     box-shadow:2px 2px 0 rgba(18,15,12,.55);
@@ -694,7 +748,7 @@
   }
   #chatLog .line{
     font:700 11px/1.35 var(--hud-slab);
-    color:var(--ink);
+    color:var(--hud-type);text-shadow:var(--hud-type-drop);
     background:var(--hud-card);border:2px solid var(--ink);
     box-shadow:2px 2px 0 rgba(18,15,12,.55);
     padding:3px 8px;border-radius:5px 8px 5px 7px;word-break:break-word;
@@ -710,7 +764,7 @@
   #chatInputBar{
     position:fixed;left:26px;bottom:132px;z-index:31;width:min(360px,44vw);
     display:none;align-items:center;gap:6px;
-    font:700 12px/1.35 var(--hud-slab);color:var(--ink);
+    font:700 12px/1.35 var(--hud-slab);color:var(--hud-type);text-shadow:var(--hud-type-drop);
     background:var(--hud-card);border:2px solid var(--ink);border-radius:6px 8px 6px 7px;padding:5px 9px;
     box-shadow:2px 3px 0 rgba(18,15,12,.55);
   }
@@ -718,7 +772,7 @@
   #chatInputBar b{color:var(--hud-stamp);white-space:nowrap;}
   #chatInputBar span{flex:1;word-break:break-word;}
   #chatInputBar span::after{
-    content:'';display:inline-block;width:2px;height:12px;background:var(--ink);
+    content:'';display:inline-block;width:2px;height:12px;background:var(--hud-type);
     margin-left:2px;vertical-align:middle;animation:chatCaret 1s steps(1) infinite;
   }
   @keyframes chatCaret{50%{opacity:0;}}
@@ -794,27 +848,37 @@
   }
 
   /* ---------- Mini-boss status ----------
-     A bill posted at the top of the frame, not a health bar. Three can be
-     live at once, which is what made this the heaviest thing in the overlay:
-     three cards, each with a name, a state, a gauge and a line of advice,
-     took up 160px down the middle of the screen for the whole fight.
+     A bill is news, and news has a shelf life. Three bosses can be live at
+     once, and three permanent badges -- name, state, gauge and a line of
+     advice each -- were 160px of card down the middle of the frame for the
+     whole fight. That is the single heaviest thing this overlay ever did, and
+     the reference posts nothing at all during its circus boss.
 
-     The advice is the part with a shelf life. `small` is only printed while
-     the bill is `.fresh` -- the first few seconds after it is posted or its
-     state changes (UI.setBoss* owns the class) -- and then the bill folds
-     down to a name and a gauge and stays there. A three-boss stack settles
-     from ~160px to ~108px without losing anything the player still needs. */
-  /* The three bills are a stack, not three fixed slots. When only the second
-     boss is up its bill used to hang at top:66px with an empty gap above it,
-     and a collapsed hint left a hole rather than closing it. */
+     So the badge itself is now the `.fresh` state: for the few seconds after
+     a boss is posted or changes state (UI.setBoss* owns the class) it is a
+     struck bill with its advice line. After that it is not a badge -- it
+     folds to the name in ink-edged cream over a short gauge, which is what
+     rule 2 says everything transient should be. A settled three-boss stack is
+     ~57px of gauge instead of ~160px of card, and nothing the player still
+     needs has gone anywhere. */
   #bossStack{
-    position:fixed;left:50%;top:14px;z-index:31;width:min(252px,38vw);
-    display:flex;flex-direction:column;gap:6px;
+    position:fixed;left:50%;top:14px;z-index:31;width:min(216px,34vw);
+    display:flex;flex-direction:column;align-items:center;gap:5px;
     transform:translateX(-50%);pointer-events:none;
   }
+  /* Settled: no surface at all. The name carries its own ink edge, the way
+     every other backing-less readout in the overlay does. */
   .boss-bill{
-    display:none;padding:5px 10px 6px;text-align:center;color:var(--ink);
+    display:none;width:100%;padding:0;text-align:center;
+    background:none;border:0;box-shadow:none;
+    color:var(--cream);text-shadow:var(--hud-ink-edge);
     pointer-events:none;
+  }
+  .boss-bill.fresh{
+    width:auto;padding:5px 10px 6px;
+    background:var(--hud-card);border:var(--hud-line) solid var(--ink);
+    box-shadow:var(--hud-keyline),var(--hud-drop);
+    color:var(--hud-type);text-shadow:var(--hud-type-drop);
   }
   /* An animation, not a transition: these enter from display:none, which a
      transition would skip straight past. Same reason #downedHud uses one. */
@@ -823,14 +887,19 @@
     0%  {opacity:0;transform:translateY(-11px) scale(.9) rotate(2.4deg)}
     100%{opacity:1;transform:translateY(0) scale(1) rotate(var(--bill-tilt))}
   }
+  /* Settled, the name is a caption over its gauge; fresh, it is the heading
+     of a bill. Same element, two weights. */
   .boss-bill > div:first-child{
-    font:900 10.5px/1.1 var(--hud-slab);letter-spacing:1.5px;text-transform:uppercase;
+    font:900 8px/1.1 var(--hud-slab);letter-spacing:1.2px;text-transform:uppercase;
   }
-  .boss-bill > div:first-child b{font-size:8px;letter-spacing:1px;margin-left:6px;}
+  .boss-bill.fresh > div:first-child{font-size:10.5px;letter-spacing:1.5px;}
+  .boss-bill > div:first-child b{font-size:7px;letter-spacing:1px;margin-left:5px;}
+  .boss-bill.fresh > div:first-child b{font-size:8px;margin-left:6px;}
   .boss-bar{
-    height:8px;margin-top:5px;border:2.5px solid var(--ink);border-radius:5px;
+    height:7px;margin-top:3px;border:2.5px solid var(--ink);border-radius:5px;
     background:var(--hud-well);overflow:hidden;
   }
+  .boss-bill.fresh .boss-bar{height:8px;margin-top:5px;}
   .boss-bar > i{
     display:block;width:100%;height:100%;
     box-shadow:inset 0 -3px 0 rgba(22,18,15,.3);
@@ -848,24 +917,26 @@
   .boss-bill small{
     display:none;margin-top:4px;
     font:800 7.5px/1.2 var(--hud-slab);
-    letter-spacing:.9px;text-transform:uppercase;color:var(--hud-ink-2);
+    letter-spacing:.9px;text-transform:uppercase;color:var(--hud-type-2);
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
   .boss-bill.fresh small{display:block;}
   /* Bills pasted up by hand sit at slightly different angles. */
   #boss2Hud{--bill-tilt:-.7deg;}
   #boss3Hud{--bill-tilt:.5deg;}
-  #bossHudName b{color:var(--rust-deep);}
-  #boss2HudName b{color:var(--blue-deep);}
-  #boss3HudName b{color:var(--olive-deep);}
+  /* State words are hue-coded, and on an enamel body every hue has to come
+     from the light half of the palette or it sinks into the badge. */
+  #bossHudName b{color:var(--peach-deep);}
+  #boss2HudName b{color:var(--blue);}
+  #boss3HudName b{color:var(--mustard);}
   #bossHudFill{background:var(--rust);}
   #boss2HudFill{background:var(--blue-deep);}
   #boss3HudFill{background:var(--mustard);}
 
   /* ---------- Proximity radar ----------
-     A printed dial on the same cream stock as every card, with an ink
-     graticule -- the old near-black disc was a hole punched in any dark
-     frame and a heavy blot on any bright one.
+     An ink dial in an enamel bezel -- the same badge edge every other piece
+     of the overlay wears, wrapped round a dark face so the contacts are the
+     only bright thing on it.
 
      It also stops shouting when it has nothing: with no contact on either
      layer the whole dial drops back to a quiet ghost of itself (.quiet, set
@@ -873,7 +944,7 @@
      captions are gone in the quiet state for the same reason -- "SURFACE"
      and "CLEAR" were two permanent labels carrying no information. */
   #radar{
-    position:fixed;left:18px;top:44px;width:74px;height:86px;z-index:30;
+    position:fixed;left:18px;top:36px;width:74px;height:86px;z-index:30;
     opacity:0;pointer-events:none;user-select:none;
     transition:opacity .24s ease,transform .34s var(--hud-spring);
     transform:rotate(-1.4deg) scale(.94);
@@ -884,9 +955,12 @@
   #radar.on.quiet.underground{opacity:.6;}
   #radarCanvas{
     display:block;width:74px;height:74px;border:3px solid var(--ink);
-    border-radius:50%;background:var(--hud-card-flat);
-    box-shadow:inset 0 0 0 1.6px var(--hud-card-flat),inset 0 0 0 3px rgba(22,18,15,.30),
-               2.5px 3px 0 rgba(18,15,12,.55);
+    border-radius:50%;background:var(--hud-well);
+    /* Rings go OUTSIDE the border, not inset: the canvas fills its own box
+       and paints straight over an inset shadow, which is why the first pass
+       at this came out as a plain black disc with no bezel at all. */
+    box-shadow:0 0 0 2px var(--hud-bezel),0 0 0 4px var(--hud-card-flat),
+               0 0 0 5.5px var(--ink),3px 4px 0 rgba(18,15,12,.55);
   }
   #radarTitle,#radarSignal{
     position:absolute;left:0;right:0;text-align:center;color:var(--cream);
@@ -16414,7 +16488,7 @@ const UI = (() => {
   // changes, and the field-orders board does the same whenever a quest piece
   // lands. Both are also reachable on demand via the detail key (see
   // setDetail / INPUT's Tab handler).
-  let arsenalPeek = 0, questPeek = 0, lastArsenalSignature = '';
+  let arsenalPeek = 0, questPeek = 0, tallyPeek = 0, lastArsenalSignature = '';
   let externalRadarContacts = [];
 
   function init() {
@@ -16593,6 +16667,11 @@ const UI = (() => {
     questPeek = seconds === undefined ? 3.4 : seconds;
     el.questBoard.classList.add('peek');
   }
+  function peekTally(seconds) {
+    if (!el.tally) return;
+    tallyPeek = seconds === undefined ? 2.2 : seconds;
+    el.tally.classList.add('peek');
+  }
   /* Re-arms a CSS entry animation/transition on an element that is already
      showing, so a second toast in quick succession still pops instead of
      silently swapping its text. */
@@ -16682,11 +16761,29 @@ const UI = (() => {
     el.jaysHud.classList.toggle('active', !!active);
   }
 
+  /* A countdown chip is a coloured pip carrying the seconds left. The WORD
+     beside it is only printed while the chip is new -- long enough to learn
+     which pip is which, then it is six letters of permanent furniture. Five
+     of these at once used to be a five-row column of cream text down the left
+     edge of the frame; settled, it is now one row of small discs. */
+  const BUFF_NAME_LIFE = 1.6;
   function setBuffChip(chip, remaining) {
     if (!chip) return;
     const on = remaining > 0.05;
+    const was = chip.classList.contains('on');
     chip.classList.toggle('on', on);
-    if (on) chip.querySelector('b').textContent = Math.ceil(remaining);
+    if (!on) { chip.classList.remove('named'); chip.nameFor = 0; return; }
+    chip.querySelector('b').textContent = Math.ceil(remaining);
+    if (!was) { chip.nameFor = BUFF_NAME_LIFE; chip.classList.add('named'); }
+  }
+  function decayBuffNames(dt) {
+    const chips = [el.buffIronHide, el.buffHotSauce, el.buffJackrabbit, el.stunChip, el.slowChip];
+    for (let i = 0; i < chips.length; i++) {
+      const chip = chips[i];
+      if (!chip || !(chip.nameFor > 0)) continue;
+      chip.nameFor -= dt;
+      if (chip.nameFor <= 0) chip.classList.remove('named');
+    }
   }
   function setBuffs(ironHideRemaining, hotSauceRemaining, jackrabbitRemaining) {
     setBuffChip(el.buffIronHide, ironHideRemaining);
@@ -16707,7 +16804,16 @@ const UI = (() => {
     // two -- and picking guard up gets a real bit of motion.
     if (el.vitals) el.vitals.classList.toggle('has-guard', pct > 0.001);
   }
-  function setKills(n) { el.killNum.textContent = n; }
+  /* The tally lives behind the detail key. A running total is something you
+     check between fights, not while aiming -- but the moment it changes is
+     worth a beat, so a new kill flashes it up the same way a new objective
+     flashes the orders board. */
+  function setKills(n) {
+    if (!el.killNum) return;
+    const changed = el.killNum.textContent !== String(n);
+    el.killNum.textContent = n;
+    if (changed) peekTally();
+  }
 
   function ffaRoster(scores) {
     if (typeof COOP === 'undefined') return [];
@@ -16949,25 +17055,18 @@ const UI = (() => {
   // countdown-chip convention as the power-up buffs, just a standalone
   // function rather than folded into setBuffs -- this one is driven by
   // PLAYER, not by a picked-up power-up.
-  function setStun(remaining) {
-    if (!el.stunChip) return;
-    const on = remaining > 0.05;
-    el.stunChip.classList.toggle('on', on);
-    if (on) el.stunChip.querySelector('b').textContent = Math.ceil(remaining);
-  }
+  function setStun(remaining) { setBuffChip(el.stunChip, remaining); }
 
   // Beat Slayer's boombox blast (see PLAYER.grantSlow). Same
   // countdown-chip convention as setStun above.
-  function setSlow(remaining) {
-    if (!el.slowChip) return;
-    const on = remaining > 0.05;
-    el.slowChip.classList.toggle('on', on);
-    if (on) el.slowChip.querySelector('b').textContent = Math.ceil(remaining);
-  }
+  function setSlow(remaining) { setBuffChip(el.slowChip, remaining); }
 
   function setPilotLives(active, downCount, limit, extraLives) {
     if (!el.pilotLifeChip) return;
     el.pilotLifeChip.classList.toggle('on', !!active);
+    // A standing count, not a countdown: "2/3" on its own says nothing, so
+    // this one is the exception that keeps its word for good.
+    el.pilotLifeChip.classList.toggle('named', !!active);
     if (!active) return;
     const used = Math.max(0, Number(downCount) || 0);
     const cap = Math.max(1, Number(limit) || 3);
@@ -16997,17 +17096,18 @@ const UI = (() => {
     let sameLayer = 0, otherLayer = 0, sameEnemies = 0;
 
     ctx.clearRect(0, 0, size, size);
-    // Printed on the same cream stock as every card in the overlay, with an
-    // ink graticule. The dial used to be a near-black disc, which punched a
-    // hole in any dark frame and sat as a blot on any bright one -- the
-    // charcoal-plate failure, in canvas form.
-    ctx.fillStyle = '#F3E4C8';
+    // An ink dial sunk into the enamel bezel the CSS draws around it, so the
+    // only bright pixels on the radar are the contacts. On a cream face the
+    // rust enemy blip (luma 106) and the face (212) fought each other and the
+    // whole dial was a bright blot besides; on ink, every blip clears its
+    // ground by 80+ and the dial itself never competes with the frame.
+    ctx.fillStyle = '#191411';
     ctx.fillRect(0, 0, size, size);
     ctx.save();
     ctx.translate(center, center);
     // The dial is drawn at 132px and displayed at 74px, so the graticule
     // needs more weight and contrast than it looks like it should on canvas.
-    ctx.strokeStyle = 'rgba(22,18,15,.34)';
+    ctx.strokeStyle = 'rgba(246,233,210,.22)';
     ctx.lineWidth = 2.4;
     [radius * 0.5, radius].forEach(r => {
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
@@ -17031,16 +17131,16 @@ const UI = (() => {
       const scale = Math.min(1, distance / CONFIG.radar.range);
       const x = right / distance * radius * scale;
       const y = down / distance * radius * scale;
-      // Blips keep their ink ring on a cream face -- the ring is what makes
-      // a mustard boss blip separate from cream paper at 74px.
-      ctx.fillStyle = c.type === 'player' ? '#5C7E99' : (c.boss ? '#E8A33D' : '#A85A3C');
+      // Full-strength palette on an ink face: the ring is now a dark seat
+      // under the blip rather than the only thing separating it from paper.
+      ctx.fillStyle = c.type === 'player' ? '#8FB3CC' : (c.boss ? '#E8A33D' : '#DCA692');
       ctx.strokeStyle = '#120F0D';
       ctx.lineWidth = 2.6;
       ctx.beginPath(); ctx.arc(x, y, c.type === 'player' ? 5.4 : (c.boss ? 7.4 : 6), 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
 
-    // Player marker and forward tick -- solid ink on the cream face.
-    ctx.fillStyle = '#1F1B18';
+    // Player marker and forward tick -- a cream arrowhead on the ink face.
+    ctx.fillStyle = '#F6E9D2';
     ctx.strokeStyle = '#120F0D';
     ctx.lineWidth = 3;
     ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(8, 8); ctx.lineTo(0, 4); ctx.lineTo(-8, 8); ctx.closePath(); ctx.fill(); ctx.stroke();
@@ -17199,7 +17299,7 @@ const UI = (() => {
     // Held-key/auto-peek overlays are per-moment state, never something a
     // cutscene or menu should inherit.
     setDetail(false);
-    arsenalPeek = questPeek = 0;
+    arsenalPeek = questPeek = tallyPeek = 0;
     if (el.weaponInventory) el.weaponInventory.classList.remove('peek');
     if (el.questBoard) el.questBoard.classList.remove('peek');
   }
@@ -17547,6 +17647,7 @@ const UI = (() => {
     setBuffs(PLAYER.ironHideRemaining, WEAPON.damageBoostRemaining, PLAYER.speedBoostRemaining);
     setStun(PLAYER.stunRemaining);
     setSlow(PLAYER.slowRemaining);
+    decayBuffNames(dt);
     updateBills(dt);
     if (hurtTimer > 0) {
       hurtTimer -= dt;
@@ -17560,6 +17661,10 @@ const UI = (() => {
     if (arsenalPeek > 0) {
       arsenalPeek -= dt;
       if (arsenalPeek <= 0 && el.weaponInventory) el.weaponInventory.classList.remove('peek');
+    }
+    if (tallyPeek > 0) {
+      tallyPeek -= dt;
+      if (tallyPeek <= 0 && el.tally) el.tally.classList.remove('peek');
     }
     if (questPeek > 0) {
       questPeek -= dt;
