@@ -3435,6 +3435,13 @@ const TEX = (() => {
     if (cache.ground) return cache.ground;
     const w = 512, c = cv(w, w), x = c.getContext('2d');
     x.fillStyle = hex(PAL.dirt); x.fillRect(0, 0, w, w);
+    /* Knocked down toward dirtDeep before anything else is drawn. Sunlit
+       ground was landing above the grade's highlight knee, where the shoulder
+       compresses everything into one tone -- so no amount of texture survived
+       on it. Taking the base down a step puts the whole surface back on the
+       straight part of the curve, where its own detail can be seen. */
+    x.globalAlpha = 0.34; x.fillStyle = hex(PAL.dirtDeep); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 1;
 
     // broad patches -- the value structure the old texture had none of
     const patch = (colors, n, rMin, rMax, alpha) => {
@@ -3459,9 +3466,9 @@ const TEX = (() => {
         });
       }
     };
-    patch([PAL.dirtDeep, PAL.peachDeep], 26, 55, 165, 0.34);
-    patch([PAL.olive, PAL.oliveDeep], 12, 40, 120, 0.20);
-    patch([PAL.cream, PAL.creamDim], 14, 45, 130, 0.22);
+    patch([PAL.dirtDeep, PAL.peachDeep], 30, 55, 165, 0.42);
+    patch([PAL.oliveDeep, PAL.rustDeep], 14, 40, 120, 0.24);
+    patch([PAL.cream, PAL.creamDim], 16, 45, 130, 0.26);
 
     speckle(x, w, w, [PAL.dirtDeep, PAL.olive, PAL.peachDeep], 260, 6, 34, 0.30);
     speckle(x, w, w, [PAL.oliveDeep, PAL.rustDeep], 120, 2, 9, 0.22);
@@ -4208,7 +4215,12 @@ const MAT = (() => {
     wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, tooth: 0.17, hatch: 0.60, grime: [0.75, 0.26] },
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, tooth: 0.15, hatch: 0.52, grime: [0.70, 0.22] },
     stone: { tex: 'stone', scale: 0.58, mottle: 0.30, tooth: 0.19, hatch: 0.46, grime: [0.95, 0.30] },
-    earth: { tex: 'earth', scale: 0.085, mottle: 0.34, tooth: 0.22, hatch: 0.34, grime: [0, 0] },
+    /* The ground's colour MAP already carries the 15-metre patchwork; the
+       finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
+       hatching you can actually see at the bottom of the frame. Running it at
+       the map's own scale, as it was, just doubled up on the same low
+       frequency and left the ground reading as one pale sheet. */
+    earth: { tex: 'earth', scale: 0.28, mottle: 0.34, tooth: 0.24, hatch: 0.38, grime: [0, 0] },
     leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, tooth: 0.16, hatch: 0.44, grime: [0, 0] },
     cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, tooth: 0.22, hatch: 0.50, grime: [0.40, 0.16] },
     none:  null
