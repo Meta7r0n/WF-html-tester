@@ -3475,6 +3475,15 @@ const TEX = (() => {
         },
         x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
                openUp(x, s, 20, 50, 180, 0.6); });
+    } else if (kind === 'glass') {
+      t = pack(s,
+        x => { blobs(x, s, 22, 30, 130, 0.14, 0.5); scratch(x, s, 50, 60, 200, 3, 0.08, Math.PI / 2, 0.2, 0.6); },
+        x => {                                  // glazing bars, ~40cm panes
+          hatch(x, s, 0, s / 3, 4.2, 0.62, 1.2);
+          hatch(x, s, 90, s / 3, 4.2, 0.62, 1.2);
+          cracks(x, s, 5, 4, 20, 1.4, 0.34);    // a couple of starred panes
+        },
+        x => { hatch(x, s, 45, 22, 1.6, 0.20, 1.2); openUp(x, s, 12, 50, 170, 0.6); });
     } else if (kind === 'bark') {
       t = pack(s,
         x => {                                  // fibrous, running the trunk
@@ -4329,6 +4338,12 @@ const MAT = (() => {
     leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0] },
     bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20] },
     cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16] },
+    /* Glazing bars are the whole read of a greenhouse, and they belong on
+       an unlit material -- see buildGreenhouseShell for why the glass is
+       MAT.flat. The hatch strength here is nearly free: with no lighting
+       term the light ratio the hatch keys on sits at 1.0, which is outside
+       the band, so it self-disables. */
+    glass: { tex: 'glass', scale: 0.80, mottle: 0.16, line: 0.55, hatch: 0.20, grime: [0.30, 0.10] },
     none:  null
   };
 
@@ -4342,13 +4357,19 @@ const MAT = (() => {
     'varying float vSurfY;'
   ].join('\n');
 
-  /* Position and normal are captured in OBJECT space, before skinning and
-     before the model matrix. Object space is the right frame for two
-     separate reasons: a batched mesh was baked at world coordinates so its
-     object space already is world space, and a prop or a character carries
-     its texture with it instead of swimming through a world-space grid as it
-     moves. Only the grime term needs true height, so that -- and only that --
-     pays for the model-matrix multiply. */
+  /* Position and normal are captured in OBJECT space, in the rest pose,
+     before skinning and before the model matrix. Object space is the right
+     frame for two separate reasons: a batched mesh was baked at world
+     coordinates so its object space already is world space, and a prop or a
+     character carries its texture with it instead of swimming through a
+     world-space grid as it moves. Only the grime term needs true height, so
+     that -- and only that -- pays for the model-matrix multiply.
+
+     The normal comes from the raw `normal` attribute rather than from
+     objectNormal, which is what makes this work on MeshBasicMaterial too:
+     r128 wraps meshbasic's whole normal block in `#ifdef USE_ENVMAP`, so an
+     injection that referenced objectNormal would land inside a dead branch
+     and leave the varying undefined. */
   const SURF_FRAG_DECL = [
     'uniform sampler2D uSurf;',
     'uniform float uSurfScale;',
@@ -4419,10 +4440,9 @@ const MAT = (() => {
       sh.uniforms.uGrimeCol = { value: new THREE.Color(PAL.dirtDeep) };
       sh.uniforms.uSurfBand = { value: a.band };
       sh.vertexShader = SURF_VERT_DECL + '\n' + sh.vertexShader
-        .replace('#include <begin_vertex>',
-                 '#include <begin_vertex>\nvSurfP = transformed;\nvSurfY = (modelMatrix * vec4(transformed, 1.0)).y;')
-        .replace('#include <beginnormal_vertex>',
-                 '#include <beginnormal_vertex>\nvSurfN = objectNormal;');
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' +
+                 'vSurfP = transformed;\nvSurfN = normal;\n' +
+                 'vSurfY = (modelMatrix * vec4(transformed, 1.0)).y;');
       sh.fragmentShader = SURF_FRAG_DECL + '\n' + sh.fragmentShader
         .replace('#include <map_fragment>', '#include <map_fragment>\n' + SURF_ALBEDO)
         .replace('#include <dithering_fragment>', SURF_HATCH + '\n#include <dithering_fragment>');
@@ -4473,11 +4493,17 @@ const MAT = (() => {
     return m;
   }
 
+  /* Unlit. A finish still works here -- the mottle and the structural lines
+     are albedo, not shading -- and it is the only way to draw glazing bars on
+     glass that has deliberately opted out of the lighting rig. */
   function flat(color, opts) {
     opts = opts || {};
+    const fname = opts.finish === undefined ? null : opts.finish;
+    const fin = fname && FINISH[fname] ? FINISH[fname] : null;
     const key = 'flat|' + color + '|' + (opts.map ? opts.map.uuid : '-') + '|' + (opts.side || 0) +
                 '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity === undefined ? 1 : opts.opacity) +
-                '|' + (opts.depthWrite === false ? 0 : 1) + '|' + (opts.fog === false ? 0 : 1);
+                '|' + (opts.depthWrite === false ? 0 : 1) + '|' + (opts.fog === false ? 0 : 1) +
+                '|' + (fin ? fname : '-');
     if (cache.has(key)) return cache.get(key);
     const m = new THREE.MeshBasicMaterial({
       color: color,
@@ -4488,6 +4514,7 @@ const MAT = (() => {
       depthWrite: opts.depthWrite === false ? false : true,
       fog: opts.fog === false ? false : true
     });
+    if (fin) applySurface(m, fin);
     cache.set(key, m);
     return m;
   }
@@ -7964,7 +7991,7 @@ const LEVEL = (() => {
     // through, anything lower blends toward the backdrop's own color long
     // before it reads as tinted glass. depthWrite off is the standard fix
     // for a transparent surface wrongly occluding what's behind it.
-    const glassMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.62, depthWrite: false });
+    const glassMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.62, depthWrite: false, finish: 'glass' });
     const b = new PRIM.Batch(glassMat, 0.02);
     const DOOR_HALF = 1.7;
 
@@ -8004,7 +8031,7 @@ const LEVEL = (() => {
     const slopeLen = Math.sqrt(halfW * halfW + RISE * RISE);
     const slopeAngle = Math.atan2(RISE, halfW);
     const roofLen = halfL * 2 + 0.3;
-    const roofMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+    const roofMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, finish: 'glass' });
     [-1, 1].forEach(side => {
       // West (side=-1) slopes up from the wall to the ridge as x increases,
       // so its local +X axis (rotation +slopeAngle) must point that way;
