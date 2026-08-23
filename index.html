@@ -2199,9 +2199,9 @@ const CONFIG = {
        single material. */
     texture: {
       on: true,
-      mottle: 1.0,      // broad value break-up (wear, damp, uneven paint)
-      tooth: 1.0,       // fine paper grain
-      hatch: 1.0,       // ink line work on the shaded side of a form
+      mottle: 1.0,      // broad value break-up, wear, and fine paper grain
+      line: 1.0,        // structural ink lines: plank seams, courses, ribs
+      hatch: 1.0,       // hatching on the shaded side of a form
       grime: 1.0,       // dirt climbing the bottom of every standing surface
       /* Which part of the light range the hatching lives in, as a pair of
          ramps on the surface's own light term (albedo divided out, so a dark
@@ -3195,16 +3195,24 @@ const TEX = (() => {
      whatever mesh it was merged into. Three independent masks ride in the
      three channels, which is why one fetch buys three effects:
 
-       R  broad value mottle  -- damp patches, wear, uneven paint
-       G  fine tooth          -- the paper the thing was drawn on
-       B  ink hatch           -- line work, shown only where the surface has
-                                 already turned away from the key light
+       R  value mottle    -- damp patches, wear, uneven paint, paper tooth
+       G  structural line -- plank seams, mortar courses, corrugation ribs
+       B  ink hatch       -- shading strokes, shown only where the surface has
+                             already turned away from the key light
 
-     R and G are authored around mid-grey and B around white, because that is
-     the value each has to average to for the finish to *disappear* as the
-     texture mips down at distance rather than shifting the whole midground.
-     Hatching therefore fades out with range the way real cross-hatching does
-     when a drawing is reduced. */
+     G is the channel that matters most and it is the one this file used to
+     get wrong. Measured against the reference stills, the metric that
+     separates their surfaces from ours is EDGE -- Sobel density -- and their
+     high scorers (a brick laboratory, a tiled alley) earn it with *structure*:
+     every plank, course and rib is a drawn line at a spacing you can still
+     resolve across the room. Noise does not score there; it mips away. So the
+     line channel is authored at a real physical spacing (20-40cm) and, unlike
+     the hatch, is not gated on light -- a seam is a seam on the sunny side too.
+
+     R is authored around mid-grey and G/B around white, because that is the
+     value each has to average to for the finish to *disappear* as the texture
+     mips down at distance rather than shifting the whole midground. The
+     drawing therefore retires with range the way it does in a reduced print. */
   const SURF = {};
 
   /* Anything drawn near a tile edge has to come back on the opposite side or
@@ -3318,6 +3326,49 @@ const TEX = (() => {
     }
   }
 
+  /* A running-bond course pattern: `rows` horizontal joints across the tile
+     with each row's vertical joints offset half a unit from its neighbours.
+     This is the highest-yield mark in the whole kit. The reference's densest
+     frames -- the brick laboratory, the tiled alley -- earn their edge score
+     on courses and floorboards, not on noise, because structure at 20-40cm
+     still resolves from across a room while noise has long since mipped away. */
+  function courses(x, s, rows, perRow, width, alpha, wob) {
+    hatch(x, s, 0, s / rows, width, alpha, wob);
+    const rh = s / rows, cw = s / perRow;
+    x.lineCap = 'round';
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rh, off = (r % 2) * cw * 0.5;
+      for (let k = 0; k < perRow; k++) {
+        const jx = off + k * cw + UTIL.rng(-cw * 0.07, cw * 0.07);
+        const lean = UTIL.rng(-wob, wob);
+        x.strokeStyle = 'rgba(0,0,0,' + (alpha * UTIL.rng(0.65, 1)) + ')';
+        x.lineWidth = width * UTIL.rng(0.7, 1.1);
+        x.beginPath();
+        // drawn twice so a joint near the right edge comes back on the left
+        [jx, jx - s].forEach(px => { x.moveTo(px + lean, y0); x.lineTo(px - lean, y0 + rh); });
+        x.stroke();
+      }
+    }
+  }
+
+  /* A wandering crack network. Same job as courses() for surfaces that were
+     never built in units -- dried mud, weathered concrete, old paint. */
+  function cracks(x, s, n, steps, len, width, alpha) {
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      let px = UTIL.rng(0, s), py = UTIL.rng(0, s), a = UTIL.rng(0, 6.28);
+      x.strokeStyle = 'rgba(0,0,0,' + (alpha * UTIL.rng(0.5, 1)) + ')';
+      x.lineWidth = width * UTIL.rng(0.6, 1.3);
+      x.beginPath(); x.moveTo(px, py);
+      for (let k = 0; k < steps; k++) {
+        a += UTIL.rng(-0.85, 0.85);
+        px += Math.cos(a) * len; py += Math.sin(a) * len;
+        x.lineTo(px, py);
+      }
+      x.stroke();
+    }
+  }
+
   function chan(s, base, fn) {
     const c = cv(s, s), x = c.getContext('2d');
     x.fillStyle = base; x.fillRect(0, 0, s, s);
@@ -3326,7 +3377,7 @@ const TEX = (() => {
   }
 
   function pack(s, r, g, b) {
-    const R = chan(s, '#808080', r), G = chan(s, '#808080', g), B = chan(s, '#ffffff', b);
+    const R = chan(s, '#808080', r), G = chan(s, '#ffffff', g), B = chan(s, '#ffffff', b);
     const c = cv(s, s), x = c.getContext('2d'), img = x.createImageData(s, s);
     for (let i = 0; i < s * s; i++) {
       img.data[i * 4]     = R[i * 4];
@@ -3349,22 +3400,30 @@ const TEX = (() => {
     let t;
     if (kind === 'wood') {
       t = pack(s,
-        x => {                                  // sap streaks, plank seams, knots
+        x => {                                  // sap streaks, weathering, knots
           blobs(x, s, 22, 40, 170, 0.11, 0.45);
           scratch(x, s, 220, 90, 380, 2.4, 0.15, 0, 0.05, 0.32);
-          hatch(x, s, 0, s / 4, 5, 0.30, 2.4);  // the seams between boards
-          for (let i = 0; i < 5; i++) {         // knots, drawn as ringed ovals
+          scratch(x, s, 700, 40, 190, 1.1, 0.12, 0, 0.03, 0.4);
+          grit(x, s, 900, 0.4, 1.4, 0.14);
+        },
+        x => {                                  // boarding: 40cm planks, butt joints, nails
+          courses(x, s, 4, 1, 3.4, 0.72, 2.6);
+          for (let i = 0; i < 6; i++) {         // knots, drawn as ringed ovals
             const kx = UTIL.rng(0, s), ky = UTIL.rng(0, s);
             for (let r = 1; r <= 4; r++) {
-              x.strokeStyle = 'rgba(0,0,0,' + (0.30 - r * 0.05) + ')';
+              x.strokeStyle = 'rgba(0,0,0,' + (0.34 - r * 0.05) + ')';
               x.lineWidth = 2.4;
               wrapPts(s, kx, ky, r * 9).forEach(p => {
                 x.beginPath(); x.ellipse(p[0], p[1], r * 9, r * 6, 0.3, 0, 6.3); x.stroke();
               });
             }
           }
+          for (let i = 0; i < 26; i++) {        // nail heads on the stud lines
+            const nx = UTIL.rng(0, s), ny = Math.round(UTIL.rng(0, 4)) * (s / 4) + UTIL.rng(6, s / 4 - 6);
+            x.fillStyle = 'rgba(0,0,0,.55)';
+            wrapPts(s, nx, ny, 3).forEach(pp => { x.beginPath(); x.arc(pp[0], pp[1], 2.2, 0, 6.3); x.fill(); });
+          }
         },
-        x => { scratch(x, s, 700, 40, 190, 1.1, 0.14, 0, 0.03, 0.4); grit(x, s, 900, 0.4, 1.4, 0.16); },
         x => { hatch(x, s, 0, 11, 2.0, 0.38, 1.3); openUp(x, s, 16, 40, 150, 0.55); });
     } else if (kind === 'metal') {
       t = pack(s,
@@ -3372,18 +3431,30 @@ const TEX = (() => {
           scratch(x, s, 90, 200, 512, 5, 0.10, Math.PI / 2, 0.02, 0.5);
           blobs(x, s, 30, 18, 90, 0.16, 0.25);
           grit(x, s, 260, 1.5, 5, 0.20, 0.2);
+          scratch(x, s, 420, 12, 70, 1.0, 0.13, 0, 3.14, 0.45);
         },
-        x => { scratch(x, s, 420, 12, 70, 1.0, 0.16, 0, 3.14, 0.45); grit(x, s, 700, 0.4, 1.2, 0.13); },
+        x => {                                  // corrugation at ~8cm pitch, sheet laps, bolts
+          hatch(x, s, 90, s / 18, 3.0, 0.66, 0.7);
+          hatch(x, s, 0, s / 2, 3.4, 0.55, 1.8);
+          for (let i = 0; i < 24; i++) {
+            const bx = UTIL.rng(0, s), by = Math.round(UTIL.rng(0, 2)) * (s / 2) + UTIL.rng(-3, 3);
+            x.fillStyle = 'rgba(0,0,0,.6)';
+            wrapPts(s, bx, by, 4).forEach(pp => { x.beginPath(); x.arc(pp[0], pp[1], 2.6, 0, 6.3); x.fill(); });
+          }
+        },
         x => { hatch(x, s, 90, 12, 2.1, 0.40, 1.0); hatch(x, s, 90, 61, 4.0, 0.24, 1.6);
                openUp(x, s, 14, 45, 160, 0.5); });
     } else if (kind === 'stone') {
       t = pack(s,
-        x => {                                  // aggregate + chips + a crack
+        x => {                                  // aggregate + chips
           blobs(x, s, 60, 14, 80, 0.17, 0.44);
           grit(x, s, 900, 1.2, 5.5, 0.20);
-          scratch(x, s, 14, 90, 300, 2.2, 0.22, 0.6, 1.2, 0.1);
+          grit(x, s, 2600, 0.5, 2.0, 0.16);
         },
-        x => grit(x, s, 2600, 0.5, 2.0, 0.20),
+        x => {                                  // masonry: 29cm courses, 57cm blocks
+          courses(x, s, 6, 3, 3.2, 0.74, 2.2);
+          cracks(x, s, 10, 5, 22, 1.6, 0.34);
+        },
         x => { hatch(x, s, 45, 15, 2.0, 0.34, 1.6); hatch(x, s, 135, 34, 1.6, 0.22, 1.6);
                openUp(x, s, 18, 35, 130, 0.55); });
     } else if (kind === 'earth') {
@@ -3392,28 +3463,44 @@ const TEX = (() => {
           blobs(x, s, 46, 30, 190, 0.17, 0.44);
           scratch(x, s, 120, 120, 460, 6, 0.10, 0.35, 1.4, 0.35);
           grit(x, s, 1400, 1.0, 6.0, 0.16);
+          grit(x, s, 2800, 0.5, 2.4, 0.16);
         },
-        x => { grit(x, s, 2800, 0.5, 2.4, 0.20); grit(x, s, 90, 3, 7, 0.16, 0.55); },
+        x => {                                  // dried-mud crack network + hoof scuffs
+          cracks(x, s, 26, 7, 26, 2.0, 0.50);
+          scratch(x, s, 90, 20, 70, 2.2, 0.26, 0.4, 3.14, 0.0);
+        },
         x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
                openUp(x, s, 20, 50, 180, 0.6); });
     } else if (kind === 'leaf') {
       t = pack(s,
-        x => {                                  // veins running the blade, and dry blight
+        x => {                                  // dry blight, mostly darker
           scratch(x, s, 130, 200, 512, 2.2, 0.16, 0, 0.06, 0.25);
-          blobs(x, s, 34, 20, 90, 0.20, 0.30);  // blight patches, mostly darker
-          grit(x, s, 320, 1.0, 4.0, 0.14, 0.3);
+          blobs(x, s, 34, 20, 90, 0.20, 0.30);
+          grit(x, s, 1200, 0.4, 1.6, 0.13);
         },
-        x => { scratch(x, s, 420, 30, 140, 0.9, 0.12, 0, 0.05, 0.45); grit(x, s, 1200, 0.4, 1.6, 0.15); },
+        x => {                                  // midrib every 70cm, veins off it
+          hatch(x, s, 0, s / 2, 3.2, 0.62, 2.0);
+          hatch(x, s, 0, s / 12, 1.5, 0.34, 1.2);
+          scratch(x, s, 150, 20, 60, 1.2, 0.26, 0.5, 0.45, 0.0);
+        },
         x => { hatch(x, s, 0, 9, 1.7, 0.30, 1.0); openUp(x, s, 16, 40, 140, 0.55); });
     } else if (kind === 'cloth') {
       t = pack(s,
-        x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5); },
-        x => { hatch(x, s, 0, 6, 1.2, 0.10, 0.4); hatch(x, s, 90, 6, 1.2, 0.10, 0.4); grit(x, s, 500, 0.4, 1.2, 0.12); },
+        x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5);
+               grit(x, s, 900, 0.4, 1.4, 0.14); },
+        x => {                                  // weave, and a seam with stitches
+          hatch(x, s, 0, 7, 1.1, 0.26, 0.4); hatch(x, s, 90, 7, 1.1, 0.26, 0.4);
+          hatch(x, s, 90, s / 2, 2.6, 0.5, 2.4);
+        },
         x => { hatch(x, s, 135, 14, 2.0, 0.34, 1.4); openUp(x, s, 14, 45, 150, 0.5); });
     } else {                                    // 'paper': plaster, paint, skin
       t = pack(s,
-        x => { blobs(x, s, 40, 30, 160, 0.12, 0.46); scratch(x, s, 40, 60, 220, 4, 0.07, Math.PI / 2, 0.25, 0.4); },
-        x => grit(x, s, 2400, 0.4, 1.8, 0.20),
+        x => { blobs(x, s, 40, 30, 160, 0.12, 0.46); scratch(x, s, 40, 60, 220, 4, 0.07, Math.PI / 2, 0.25, 0.4);
+               grit(x, s, 2400, 0.4, 1.8, 0.18); },
+        // Almost nothing: this is the default finish, so it lands on gloves
+        // and gun parts as well as walls. A hairline crack network is safe
+        // on both; boarding is not.
+        x => cracks(x, s, 7, 5, 26, 1.3, 0.30),
         x => { hatch(x, s, 45, 13, 1.9, 0.36, 1.5); hatch(x, s, 135, 29, 1.5, 0.22, 1.5);
                openUp(x, s, 18, 40, 145, 0.55); });
     }
@@ -4211,18 +4298,23 @@ const MAT = (() => {
      while a barn wall sees a dozen. Same material family, right density at
      both ends. */
   const FINISH = {
-    paper: { tex: 'paper', scale: 1.10, mottle: 0.16, tooth: 0.13, hatch: 0.42, grime: [0.45, 0.10] },
-    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, tooth: 0.17, hatch: 0.60, grime: [0.75, 0.26] },
-    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, tooth: 0.15, hatch: 0.52, grime: [0.70, 0.22] },
-    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, tooth: 0.19, hatch: 0.46, grime: [0.95, 0.30] },
+    /* `paper` deliberately carries almost no structural line: it is the
+       default for every unnamed material, so it lands on gloves and gun
+       parts as well as walls, and boarding drawn across a mouse's hand is
+       worse than no texture at all. Anything that should read as BUILT gets
+       a named finish. */
+    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10] },
+    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26] },
+    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22] },
+    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30] },
     /* The ground's colour MAP already carries the 15-metre patchwork; the
        finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
        hatching you can actually see at the bottom of the frame. Running it at
        the map's own scale, as it was, just doubled up on the same low
        frequency and left the ground reading as one pale sheet. */
-    earth: { tex: 'earth', scale: 0.28, mottle: 0.34, tooth: 0.24, hatch: 0.38, grime: [0, 0] },
-    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, tooth: 0.16, hatch: 0.44, grime: [0, 0] },
-    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, tooth: 0.22, hatch: 0.50, grime: [0.40, 0.16] },
+    earth: { tex: 'earth', scale: 0.28, mottle: 0.34, line: 0.30, hatch: 0.38, grime: [0, 0] },
+    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0] },
+    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16] },
     none:  null
   };
 
@@ -4246,7 +4338,7 @@ const MAT = (() => {
   const SURF_FRAG_DECL = [
     'uniform sampler2D uSurf;',
     'uniform float uSurfScale;',
-    'uniform vec3 uSurfAmt;',      // mottle, tooth, hatch
+    'uniform vec3 uSurfAmt;',      // mottle, line, hatch
     'uniform vec2 uGrime;',        // height, strength
     'uniform vec3 uGrimeCol;',
     'uniform vec4 uSurfBand;',
@@ -4267,7 +4359,9 @@ const MAT = (() => {
   const SURF_ALBEDO = [
     'vec3 wfS = wfSurfSample();',
     'diffuseColor.rgb *= 1.0 + (wfS.r - 0.5) * 2.0 * uSurfAmt.x;',
-    'diffuseColor.rgb *= 1.0 + (wfS.g - 0.5) * 2.0 * uSurfAmt.y;',
+    // Structural lines are a straight multiply, not a signed offset: a seam
+    // only ever darkens, and it darkens whether or not the plane is lit.
+    'diffuseColor.rgb *= 1.0 - (1.0 - wfS.g) * uSurfAmt.y;',
     // Dirt climbs the foot of every standing surface, broken up by the same
     // mottle so the line where it stops is never a straight one.
     'float wfG = uGrime.y * smoothstep(uGrime.x, 0.0, vSurfY) * (0.35 + 0.65 * (1.0 - wfS.r));',
@@ -4290,7 +4384,7 @@ const MAT = (() => {
     const T = CONFIG.render.texture;
     const on = T.on ? 1 : 0;
     return {
-      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.tooth * T.tooth * on, f.hatch * T.hatch * on),
+      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.line * T.line * on, f.hatch * T.hatch * on),
       grime: new THREE.Vector2(f.grime[0], f.grime[1] * T.grime * on),
       band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3])
     };
