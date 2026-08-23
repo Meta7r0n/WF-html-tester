@@ -13384,15 +13384,15 @@ const WEAPON = (() => {
   const FEEL = {
     unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.1, reload: 'none' },
     pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.15, reload: 'pump' },
-    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.14, reload: 'break' },
+    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.15, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.14, reload: 'break' },
     tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.13, reload: 'wheel' },
     fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.14, reload: 'mag' },
-    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.17, reload: 'pump' },
-    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.17, reload: 'cell' },
+    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.15, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.17, reload: 'pump' },
+    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 0.95, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.17, reload: 'cell' },
     sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.14, reload: 'can' },
     portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.15, reload: 'cell' },
     seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.15, reload: 'drum' },
-    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.19, reload: 'bolt' },
+    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.10, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.19, reload: 'bolt' },
     chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.15, reload: 'none' },
     theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.15, reload: 'none' },
     knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.2, reload: 'none' }
@@ -13406,10 +13406,16 @@ const WEAPON = (() => {
   // Peak displacement of an impulse response is roughly v0/w, so scaling
   // the impulse BY w makes these numbers mean "peak travel", independent
   // of how fast that particular weapon's spring happens to be.
-  const KICK_BACK = 0.185;   // metres of travel at kick 1.0
-  const KICK_RISE = 0.085;   // radians of muzzle climb at kick 1.0
-  const KICK_SIDE = 0.055;
-  const KICK_ROLL = 0.075;
+  /* Measured against the muzzle's own travel across the screen: at the
+     values these replaced, a 12-gauge blast moved the muzzle about 20
+     pixels of a 720p frame -- less than the idle breathing does, and a
+     shot has to be the largest thing that happens to a viewmodel. Climb
+     carries most of it, since it acts on the whole length of the barrel
+     where the straight-back travel only changes the perspective. */
+  const KICK_BACK = 0.30;    // metres of travel at kick 1.0
+  const KICK_RISE = 0.175;   // radians of muzzle climb at kick 1.0
+  const KICK_SIDE = 0.085;
+  const KICK_ROLL = 0.12;
 
   /* One damped-spring step, substepped so a frame hitch cannot make the
      spring explode (these run stiff enough to go unstable past ~20ms). */
@@ -15170,11 +15176,22 @@ const WEAPON = (() => {
     const shift = Math.sin(time * 0.41 + 1.3);
     const tremor = Math.sin(time * 5.3 + 0.6) * 0.26 + Math.sin(time * 8.9) * 0.13;
     const ix = (shift * 0.026 + Math.sin(time * 1.93 + 2.2) * 0.006 + tremor * 0.0045) * idle;
-    const iy = (breath * 0.032 + Math.sin(time * 1.62 + 1.1) * 0.007 + tremor * 0.0035) * idle;
-    const iroll = (shift * 0.065 + Math.sin(time * 0.62 + 2.1) * 0.022 + tremor * 0.010) * idle;
+    const iy = (breath * 0.040 + Math.sin(time * 1.62 + 1.1) * 0.007 + tremor * 0.0035) * idle;
+    const iroll = (shift * 0.085 + Math.sin(time * 0.62 + 2.1) * 0.022 + tremor * 0.010) * idle;
+    // Yaw is the cheapest readable idle channel on a long thin object: a
+    // couple of degrees swings the muzzle across a good part of its own
+    // width, where the same angle of roll barely shows at all.
+    const iyaw = (shift * 0.038 + Math.sin(time * 0.93 + 0.7) * 0.012) * idle;
     // Between breaths the muzzle sinks and then gets picked back up. A
     // held weapon is heavy, and the arm giving way a little says so.
-    const idroop = (breath - 1) * 0.019 * idle;
+    const idroop = (breath - 1) * 0.026 * idle;
+    /* The same idle beat every body in the game now has (see ENEMY's
+       `beat`): every few seconds it sinks into both knees and pops back
+       out. The player is standing in that same world, so the weapon in
+       their hands takes the beat too -- and it gives the hand-follow
+       springs something to chase while nothing else is happening. */
+    const beatPh = (time * 0.31) % 1;
+    const beat = beatPh < 0.3 ? Math.sin(beatPh / 0.3 * Math.PI) * idle : 0;
 
     /* ---- weapon swap. The outgoing gun drops out of frame while the
        incoming one is already on its way up: two things crossing in
@@ -15200,7 +15217,7 @@ const WEAPON = (() => {
       }
       // Hand-off: the incoming gun starts its rise while the outgoing one
       // is still visibly falling, and the hands go with it.
-      if (swapE >= 0.3 && pendingDraw) {
+      if (swapE >= 0.15 && pendingDraw) {
         pendingDraw = false;
         drawLen = Math.max(0.02, f.draw);
         drawTimer = drawLen;
@@ -15254,15 +15271,15 @@ const WEAPON = (() => {
       model.root.position.set(
         px + (swayX + inX) * steady + bx + ix - leadX * 0.055
           + sprintK * 0.05 - swing * 0.23,
-        py + (swayY + inY) * steady + by + iy - RL.drop + recoil * 0.20 + rise * 0.09
+        py + (swayY + inY) * steady + by + iy - beat * 0.034 - RL.drop + recoil * 0.20 + rise * 0.09
           - sprintK * 0.06 + swing * 0.10 - drawOff * 0.58,
         pz + recoil - antic * lunge + leadZ * 0.05 + RL.push
           + sprintK * 0.09 - swing * 0.20 - drawOff * 0.07
       );
       model.root.rotation.set(
-        rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + idroop + swing * 0.48
+        rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + idroop + beat * 0.05 + swing * 0.48
           - sprintK * 0.22 + runPitch + drawOff * -1.18 + jolt * 0.55,
-        ry + RL.yaw - (swayX + inX) * 1.5 * steady + ix * 0.5 + side + leadX * 0.10
+        ry + RL.yaw - (swayX + inX) * 1.5 * steady + ix * 0.5 + iyaw + side + leadX * 0.10
           - swing * 0.72 * meleeSide + sprintK * 0.20 + runYaw + drawOff * 0.62,
         rz + RL.roll + (swayY + inY) * 0.85 * steady + iroll + broll + roll
           + swing * 0.38 * meleeSide + sprintK * 0.30 + runRoll + drawOff * -0.64
@@ -15360,7 +15377,7 @@ const WEAPON = (() => {
       model.root.position.set(
         base[0] + (swayX + inX) * 0.55 + bx + ix * 0.8 - leadX * 0.05
           + sprintK * 0.05 - swing * 0.16,
-        base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.07
+        base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - beat * 0.028 - sprintK * 0.07
           + swing * 0.08 - drawOff * 0.62,
         base[2] + leadZ * 0.045 + sprintK * 0.10 - swing * 0.18 + drawOff * 0.2
       );
@@ -15368,7 +15385,7 @@ const WEAPON = (() => {
       // pump across the body rather than being hoisted into the lens.
       model.root.rotation.set(
         rot[0] - swing * 0.15 + iy * 0.5 + idroop - sprintK * 0.18 + runPitch * 0.8 + drawOff * -1.1 + jolt * 0.5,
-        rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 + sprintK * 0.18 + runYaw + drawOff * 0.55,
+        rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 + iyaw * 0.8 + sprintK * 0.18 + runYaw + drawOff * 0.55,
         rot[2] + swing * 0.08 * meleeSide + iroll + broll + sprintK * 0.30 + runRoll + drawOff * -0.6
       );
       const msq = squash + RL.scale;
