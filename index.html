@@ -20465,7 +20465,14 @@ const CAST = (() => {
       handL: arms[0].hand, handR: arms[1].hand,
       legL: legs[0].joint, legR: legs[1].joint,
       legLMid: legs[0].mid, legRMid: legs[1].mid,
-      footL: legs[0].foot, footR: legs[1].foot
+      footL: legs[0].foot, footR: legs[1].foot,
+      /* [RUBBERHOSE] Pose-requested extra bend at the elbows/knees, in
+         TRAIL_LIMBS order (armL, armR, legL, legR): [x, z] per limb. A pose
+         function writes into this instead of touching the mid joints, and
+         settle() folds it in under the trail springs and then clears it —
+         so a pose that asks for nothing falls back to the resting curve
+         rather than to a straight rod. */
+      bend: new Float32Array(8)
     };
   }
 
@@ -20494,6 +20501,45 @@ const CAST = (() => {
     ['armR', 'armRMid', 0.85, 0.55, 1.15, 0.7],
     ['legL', 'legLMid', 0.72, 0.30, 0.8, 0.4],
     ['legR', 'legRMid', 0.72, 0.30, 0.8, 0.4]
+  ];
+
+  /* [RUBBERHOSE] A hose has no straight state. The trail springs above only
+     bend a limb while its parent is *moving*, so a character standing still
+     — which is most of them, most of the time — went right back to being a
+     pair of rods. These are the angles the mid joints hold when nothing is
+     asking for anything: elbows carried out and forward with the forearms
+     turned in toward the body, knees softly broken back. The silhouette is
+     then two arcs meeting at an angle in every single frame.
+
+     Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
+     tip toward +X. Left limbs are index 0/2, right 1/3. */
+  const REST_BEND = [0.22, 0.22, -0.12, -0.12];
+  // The leg splay is also doing a practical job: at ±0.05 the two shoes sat
+  // in the same place and interpenetrated on every standing frame.
+  const REST_SPLAY = [0.15, -0.15, -0.10, 0.10];
+  // Slow, tiny wander on the resting curve so a parked character's noodles
+  // are alive rather than frozen. Seeded per rig; a crowd never breathes in
+  // unison.
+  const REST_DRIFT = 0.045;
+
+  /* Hands and feet are the last link and the loosest: a glove keeps swinging
+     after the wrist has stopped and a shoe flops on the ankle. Target is the
+     accumulated chain angle (shoulder + elbow), so the whip builds along the
+     limb instead of every joint lagging the torso by the same amount.
+
+     Gains are deliberately small. The first pass ran the feet at 0.38/0.26
+     and the shoes — which are large, pale and read as a hard silhouette —
+     swung 40 degrees off the ankle on every step, which looks like broken
+     feet rather than loose ones. The same applies to the right hand, which
+     on several characters is holding a scythe or a rifle: what reads as a
+     nice bit of overlap on a bare glove reads as flailing a pole around
+     when there is a metre of prop attached to it.
+     [tip, joint, mid, x-gain, z-gain, x-limit, z-limit] */
+  const TRAIL_TIPS = [
+    ['handL', 'armL', 'armLMid', 0.26, 0.20, 0.45, 0.30],
+    ['handR', 'armR', 'armRMid', 0.26, 0.20, 0.45, 0.30],
+    ['footL', 'legL', 'legLMid', 0.19, 0.10, 0.28, 0.16],
+    ['footR', 'legR', 'legRMid', 0.19, 0.10, 0.28, 0.16]
   ];
   const SPRING_K = 175, SPRING_D = 13.5;
   // How fast the "lead" filter chases the stepped pose. High enough that the
@@ -20524,9 +20570,15 @@ const CAST = (() => {
   function settleReset(rig) {
     if (!rig) return;
     rig.trailState = null;
+    rig.settleT = 0;
+    if (rig.bend) rig.bend.fill(0);
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const m = rig[TRAIL_LIMBS[i][1]];
-      if (m) m.rotation.set(0, 0, 0);
+      if (m) m.rotation.set(REST_BEND[i], 0, REST_SPLAY[i]);
+    }
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const tip = rig[TRAIL_TIPS[i][0]];
+      if (tip) tip.rotation.set(0, 0, 0);
     }
     if (rig.neck) { rig.neck.rotation.set(0, 0, 0); rig.neck.position.y = 0.50; }
     if (rig.headTrail) { rig.headTrail.rotation.set(0, 0, 0); rig.headTrail.scale.setScalar(1); }
@@ -20534,13 +20586,20 @@ const CAST = (() => {
     // body must not keep the last frame of its own corpse.
     if (rig.head) rig.head.scale.setScalar(1);
     if (rig.torso) rig.torso.scale.setScalar(1);
-    if (rig.bob) { rig.bob.position.set(0, 0, 0); rig.bob.rotation.set(0, 0, 0); }
+    if (rig.bob) {
+      rig.bob.position.set(0, 0, 0);
+      rig.bob.rotation.set(0, 0, 0);
+      rig.bob.scale.setScalar(1);
+    }
     if (rig.footL) rig.footL.rotation.set(0, 0, 0);
     if (rig.footR) rig.footR.rotation.set(0, 0, 0);
   }
 
   // channel base offsets into trailState (3 floats each)
   const CH_NECK_X = 24, CH_NECK_Z = 27, CH_TRAIL_X = 30, CH_TRAIL_Z = 33, CH_BOB = 36;
+  // hands and feet: 4 tips x 2 axes, starting after the 13 channels above,
+  // then 4 floats recording the pitch offset each tip was given last frame.
+  const CH_TIP = 39, CH_TIP_APPLIED = CH_TIP + 24;
 
   function settle(rig, dt, gain) {
     if (!rig || !rig.armLMid) return;
@@ -20551,9 +20610,9 @@ const CAST = (() => {
     const h = dt > 0.034 ? 0.034 : (dt > 0 ? dt : 0.0001);
     let s = rig.trailState;
     if (!s) {
-      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z and the
-      // vertical bob = 13 channels x 3 floats.
-      s = rig.trailState = new Float32Array(39);
+      // 4 limbs x 2 axes = 8 channels, plus neck x/z, head-trail x/z, the
+      // vertical bob, and 4 tips x 2 axes = 21 channels x 3 floats.
+      s = rig.trailState = new Float32Array(CH_TIP_APPLIED + 4);
       let k = 0;
       for (let i = 0; i < TRAIL_LIMBS.length; i++) {
         const j = rig[TRAIL_LIMBS[i][0]];
@@ -20563,17 +20622,50 @@ const CAST = (() => {
         k += 6;
       }
     }
+    // Phase for the resting-curve wander. Seeded off the rig's own object id
+    // so two characters side by side never noodle in step.
+    rig.settleT = (rig.settleT || 0) + h;
+    const drift = rig.settleT * 0.9 + (rig.root ? rig.root.id * 0.618 : 0);
+    const bend = rig.bend;
 
     let k = 0;
     for (let i = 0; i < TRAIL_LIMBS.length; i++) {
       const cfg = TRAIL_LIMBS[i];
       const j = rig[cfg[0]], m = rig[cfg[1]];
       if (j && m) {
-        m.rotation.x = clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
-        m.rotation.z = clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
+        /* rest curve + whatever the pose asked for + the trail. The rest and
+           pose terms are outside the clamp because they are authored angles,
+           not spring output — only the lag is bounded. */
+        const restX = REST_BEND[i] + Math.sin(drift + i * 1.7) * REST_DRIFT;
+        const restZ = REST_SPLAY[i] + Math.cos(drift * 0.77 + i * 2.3) * REST_DRIFT * 0.6;
+        m.rotation.x = restX + (bend ? bend[i * 2] : 0) +
+          clampTo(trailStep(s, k, j.rotation.x, h) * cfg[2] * g, cfg[4]);
+        m.rotation.z = restZ + (bend ? bend[i * 2 + 1] : 0) +
+          clampTo(trailStep(s, k + 3, j.rotation.z, h) * cfg[3] * g, cfg[5]);
       }
       k += 6;
     }
+
+    /* Extremities last, and loosest. The tip's target is the whole chain
+       above it, so the lag accumulates outward: shoulder leads, elbow
+       trails it, glove trails the elbow. Feet keep whatever pitch the pose
+       gave them (the toe flick) and get the flop added on top — which is
+       why the pitch is applied as a delta against last frame's offset
+       rather than assigned: hands are posed by nobody, so a plain `+=`
+       would integrate itself into a windmill within a few seconds. */
+    for (let i = 0; i < TRAIL_TIPS.length; i++) {
+      const cfg = TRAIL_TIPS[i];
+      const tip = rig[cfg[0]], j = rig[cfg[1]], m = rig[cfg[2]];
+      if (!tip || !j || !m) continue;
+      const c = CH_TIP + i * 6;
+      const off = clampTo(
+        trailStep(s, c, j.rotation.x + m.rotation.x, h) * cfg[3] * g, cfg[5]);
+      tip.rotation.x += off - s[CH_TIP_APPLIED + i];
+      s[CH_TIP_APPLIED + i] = off;
+      tip.rotation.z = clampTo(
+        trailStep(s, c + 3, j.rotation.z + m.rotation.z, h) * cfg[4] * g, cfg[6]);
+    }
+    if (bend) bend.fill(0);
 
     // Head: lags the combined torso+head pose, and lags the body's vertical
     // bounce so the skull keeps rising for a frame after the hips stop.
@@ -22799,6 +22891,16 @@ const ENEMY = (() => {
       // entity's whole life so a crowd never breathes in unison.
       idleSeed: UTIL.rng(0, 12.56),
       squash: 0, squashVel: 0,
+      /* [RUBBERHOSE] A delayed copy of `squash`. The difference between the
+         two is the compression wave travelling up the body — the hips take
+         an impact on the frame it lands, the chest a beat later. Scaling the
+         whole group by one number made every part of the figure change size
+         on the same frame, which is the one thing a drawn squash never does. */
+      squashLag: 0,
+      /* Speed and heading carried from last frame so the body can react to
+         its own acceleration: dig in to start, skid to stop, bank into a
+         turn. Nothing in the sim reads these — they are purely for drawing. */
+      lastSpeed: 0, accel: 0, turn: 0,
       lean: 0,
       lastSeen: -99,
       losTimer: UTIL.rng(0, C.losInterval),
@@ -23737,7 +23839,8 @@ const ENEMY = (() => {
     e.group.position.copy(e.pos);
     e.group.scale.set(1, 1, 1);
     e.group.rotation.set(0, e.yaw, 0);
-    e.squash = e.squashVel = 0;
+    e.squash = e.squashVel = e.squashLag = 0;
+    e.lastSpeed = e.accel = e.turn = 0;
     // Clear the corpse's squash/blink/trail state or the revived body wears
     // the last frame of its own death.
     CAST.settleReset(e.rig);
@@ -24028,9 +24131,24 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Same acceleration and turn-rate reads the grunts get.
+       A boss is heavier, so the thresholds are lower and the impulses
+       bigger — a big body has to visibly commit to starting and to
+       stopping, and it banks harder when it swings a turn. */
+    const bAccel = (speed - (e.lastSpeed || 0)) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel || 0, UTIL.clamp(bAccel * 0.05, -1.2, 1.2), 8, dt);
+    if (bAccel > 8) e.squashVel += UTIL.clamp(bAccel * 0.08, 0, 3);
+    else if (bAccel < -10) e.squashVel -= UTIL.clamp(-bAccel * 0.09, 0, 4.5);
+    let bYaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (bYaw > Math.PI) bYaw -= Math.PI * 2; else if (bYaw < -Math.PI) bYaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn || 0, UTIL.clamp(bYaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 7, dt);
+
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    e.squashLag = UTIL.damp(e.squashLag || 0, e.squash, 14, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.045, 0, 0.18), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
     e.group.position.copy(e.pos);
@@ -24488,7 +24606,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       const scale = e.visualScale || 1;
       const sy = (1 - impact * 0.4 + wob) * gone;
       const sxz = (1 + impact * 0.3 - wob * 0.6) * gone;
@@ -24548,7 +24667,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
         scale * (1 - impact * 0.4 + wob) * gone,
         scale * (1 + impact * 0.3 - wob * 0.6) * gone);
@@ -24565,13 +24685,19 @@ const ENEMY = (() => {
        full extension, then ring back. `reach` still peaks and decays over
        the same windup/recover split the hit timing uses. */
     let reach = 0, pitch = 0, extra = 0;
+    /* On the same 12fps grid as everything else. This character is a static
+       mesh, so the whole-body transform *is* the animation — leaving it on
+       the 60fps timer made the one boss in the room the one thing in frame
+       that moved like a tween. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss2_melee') {
-      const c = attackCurve(e.timer, B2.windup, B2.recover, 0.26, 2.4);
+      const c = attackCurve(qt, B2.windup, B2.recover, 0.26, 2.4);
       reach = -c.anticip * 0.28 + c.strike;
       pitch = -c.anticip * 0.2 + c.strike * 0.24;
       extra = c.extra;
     } else if (e.state === 'boss2_smoke') {
-      reach = 0.15 + Math.sin(t * 14) * 0.08;
+      const qs = Math.floor(t * C.stepFPS) / C.stepFPS;
+      reach = 0.15 + Math.sin(qs * 14) * 0.08;
     }
     if (e.clawArms) {
       const extend = 0.34 * reach;
@@ -24587,10 +24713,16 @@ const ENEMY = (() => {
       e.clawArms.right.stretch.scale.z = st;
     }
 
-    const sq = 1 + e.squash + extra;
+    /* The lag twin sharpens the leading edge of an impact: while the squash
+       is still moving, the difference adds to it, so the compression bites
+       on the frame it lands and eases out after. On a rigged character this
+       is a wave up the body; on a single mesh it is all the overlap there
+       is to have. */
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction, 0);
+    e.group.rotation.set(pitch, e.yaw + correction, (e.turn || 0) * 0.12);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -24606,7 +24738,8 @@ const ENEMY = (() => {
       const fall = E.outQuint(UTIL.clamp(k / 0.32, 0, 1));
       const impact = k < 0.32 ? Math.sin(UTIL.clamp(k / 0.32, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.2, 6) * 0.12;
-      const gone = 1 - E.outCubic(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
+      // leave the frame all at once rather than crawling out as a speck
+      const gone = 1 - E.inQuart(UTIL.clamp((k - 0.7) / 0.3, 0, 1));
       e.group.scale.set(scale * (1 + impact * 0.3 - wob * 0.6) * gone,
         scale * (1 - impact * 0.4 + wob) * gone,
         scale * (1 + impact * 0.3 - wob * 0.6) * gone);
@@ -24618,14 +24751,17 @@ const ENEMY = (() => {
     // additionally twists, so the whole silhouette rotates into the release
     // instead of only pitching.
     let pitch = 0, roll = 0, yawExtra = 0, extra = 0;
+    // stepped for the same reason as Bear Claw's: on a static mesh the
+    // whole-body transform is the whole animation
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
     if (e.state === 'boss3_throw') {
-      const c = attackCurve(e.timer, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
+      const c = attackCurve(qt, B3.throwWindup, B3.throwRecover, 0.24, 2.2);
       pitch = -c.anticip * 0.34 + c.strike * 0.3;
       yawExtra = c.anticip * 0.4 - c.strike * 0.55;
       roll = -c.anticip * 0.12 + c.strike * 0.16;
       extra = c.extra;
     } else if (e.state === 'boss3_melee') {
-      const c = attackCurve(e.timer, B3.windup, B3.recover, 0.26, 2.0);
+      const c = attackCurve(qt, B3.windup, B3.recover, 0.26, 2.0);
       pitch = -c.anticip * 0.22 + c.strike * 0.36;
       roll = c.anticip * 0.08 - c.strike * 0.12;
       extra = c.extra;
@@ -24634,10 +24770,11 @@ const ENEMY = (() => {
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
-    const sq = 1 + e.squash + extra;
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
+    const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll);
+    e.group.rotation.set(pitch, e.yaw + correction + yawExtra, roll + (e.turn || 0) * 0.12);
   }
 
   function pose(e, t) {
@@ -24672,9 +24809,21 @@ const ENEMY = (() => {
     // is stepped, exactly like a cel over a moving pan.
     const ts = Math.floor(t * C.stepFPS) / C.stepFPS;
     const seed = e.idleSeed || 0;
+    /* ...and so does every *state* clock. The walk and the idle boil were
+       stepped but attack, alert, stagger and death still ran off the raw
+       60fps timer, so a swing was a smooth lerp bolted onto a stepped body.
+       Quantising the state timer here is what turns those into held drawings
+       with snaps between them. Gameplay still reads the unquantised
+       `e.timer` for its hit windows, so nothing about the timing of a blow
+       changes — only how many drawings it is made of. */
+    const qt = Math.floor(e.timer * C.stepFPS) / C.stepFPS;
+    // Bend requests for the elbows/knees; CAST.settle folds them in under
+    // the trail springs and clears the array. Index order matches
+    // TRAIL_LIMBS: armL, armR, legL, legR, each [x, z].
+    const bend = r.bend;
 
     if (e.state === 'dead') {
-      const k = UTIL.clamp(e.timer / C.corpseTime, 0, 1);
+      const k = UTIL.clamp(qt / C.corpseTime, 0, 1);
       // Collapse fast, then hold, then pop out of existence — the old
       // version faded linearly across the whole corpse time, which is the
       // one timing a cartoon never uses.
@@ -24683,8 +24832,14 @@ const ENEMY = (() => {
       // squash flat on the first impact, spring back out, settle
       const impact = k < 0.30 ? Math.sin(UTIL.clamp(k / 0.30, 0, 1) * Math.PI) : 0;
       const wob = E.ring(k, 2.4, 6) * 0.16 * (1 - gone);
-      const sy = (1 - impact * 0.55 + wob) * (1 - E.outCubic(gone));
-      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - E.outCubic(gone));
+      /* Vanish on an ease-IN: hold full size, then go in three or four
+         drawings. On the ease-out it used to have this backwards — most of
+         the shrink happened immediately and the last third of it crawled,
+         so a corpse spent a second and a half as a slowly dwindling speck.
+         A cartoon leaves the frame all at once. */
+      const off = E.inQuart(gone);
+      const sy = (1 - impact * 0.55 + wob) * (1 - off);
+      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - off);
       e.group.scale.set(sxz, sy, sxz);
       // Topple the WHOLE body about its feet, not just the torso — a wilt
       // that only bends at the waist reads as a bow, not a death. The hips
@@ -24703,7 +24858,17 @@ const ENEMY = (() => {
       r.armR.rotation.z = 0.12 + fall * 0.45;
       r.legL.rotation.x = fall * 0.5 + wob * 0.8;
       r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      // Knees give way rather than staying two straight rods sticking out of
+      // a folded body — the legs collapse under it and keep jittering.
+      if (bend) {
+        bend[4] = -0.85 * fall - wob * 0.5;
+        bend[6] = -0.55 * fall + wob * 0.55;
+        bend[0] = 0.5 * fall + wob * 0.6;
+        bend[2] = 0.7 * fall - wob * 0.7;
+      }
       r.bob.position.y = -fall * 0.10;
+      // The wave runs through a corpse too: the hips flatten hardest.
+      r.bob.scale.set(1 + impact * 0.22, 1 - impact * 0.3, 1 + impact * 0.22);
       if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
       return;
     }
@@ -24751,18 +24916,39 @@ const ENEMY = (() => {
       r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.3, 1 + breath * 0.8);
       r.head.rotation.z = -sw * 0.09 * walk;
       r.head.rotation.x = -e.lean * 0.5 + breath * 1.4;
+      r.torso.rotation.z += (e.turn || 0) * 0.10;
+      /* Knees and elbows. A heavy character folds *less* at the knee than a
+         grunt but sinks deeper into each contact, so the swing fold is the
+         small half and the absorb is the large one. That difference is most
+         of what separates the Warden's walk from a grunt's. */
+      if (bend) {
+        bend[4] = -(0.26 * UTIL.clamp(-sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[6] = -(0.26 * UTIL.clamp(sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[0] = 0.30 * UTIL.clamp(sw, 0, 1) * walk;
+        bend[2] = 0.22 * UTIL.clamp(-sw, 0, 1) * walk;
+        bend[1] = cw * 0.12 * walk;
+        bend[3] = -cw * 0.12 * walk;
+      }
       let extra = 0;
       if (e.state === 'boss_melee') {
         const total = B.windup + B.recover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.windup / total;
         if (k < wk) {
           // gather: haul the arm back on an ease-in and squat into it
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.8, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.8, 0, 1));
           r.armR.rotation.x = -2.6 * coil;
           r.torso.rotation.x -= 0.3 * coil;
           r.torso.rotation.y = 0.55 * coil;
           stepSquash += coil * 0.14;
+          // load the whole body onto the back leg, striking elbow folded up
+          r.legL.rotation.x = -0.26 * coil;
+          r.legR.rotation.x = 0.14 * coil;
+          if (bend) {
+            bend[4] = -0.40 * coil; bend[6] = -0.16 * coil;
+            bend[2] = 1.05 * coil; bend[0] = 0.26 * coil;
+          }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const strike = a < 0.3 ? E.outBack(a / 0.3, 1.8) : 1 + E.ring((a - 0.3) / 0.7, 1.4, 4.5) * 0.15;
@@ -24770,17 +24956,27 @@ const ENEMY = (() => {
           r.torso.rotation.x += -0.3 + strike * 0.85;
           r.torso.rotation.y = 0.55 - strike * 1.05;
           extra = Math.sin(UTIL.clamp(a / 0.3, 0, 1) * Math.PI) * 0.16;
+          r.legL.rotation.x = -0.26 + strike * 0.38;
+          r.legR.rotation.x = 0.14 - strike * 0.24;
+          if (bend) {
+            // the forearm lags the shoulder through the swing
+            const whip = a < 0.3 ? E.outBack(UTIL.clamp((a - 0.07) / 0.3, 0, 1), 1.5) : strike;
+            bend[4] = -0.40 + strike * 0.32; bend[6] = -0.16 - strike * 0.14;
+            bend[2] = 1.05 - whip * 1.15; bend[0] = 0.26 - strike * 0.36;
+          }
         }
       } else if (e.state === 'boss_seed') {
         const total = B.seedWindup + B.seedRecover;
-        const k = UTIL.clamp(e.timer / total, 0, 1);
+        const k = UTIL.clamp(qt / total, 0, 1);
         const wk = B.seedWindup / total;
         if (k < wk) {
-          const coil = E.inQuart(UTIL.clamp((k / wk) / 0.85, 0, 1));
+          const a = k / wk;
+          const coil = 0.14 * a + 0.86 * E.inQuart(UTIL.clamp(a / 0.85, 0, 1));
           r.armR.rotation.x = -1.35 - coil * 0.85;
           r.torso.rotation.x -= 0.2 * coil;
           r.torso.rotation.y = -0.26 * coil;
           stepSquash += coil * 0.1;
+          if (bend) { bend[2] = 0.75 * coil; bend[4] = -0.24 * coil; bend[6] = -0.24 * coil; }
         } else {
           const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
           const kick = 1 - E.outQuint(a);
@@ -24788,10 +24984,17 @@ const ENEMY = (() => {
           r.torso.rotation.x += 0.22 * kick;
           r.torso.rotation.y = -0.26 + 0.4 * kick;
           extra = kick * 0.18;
+          if (bend) { bend[2] = 0.75 * kick; bend[4] = -0.24 * kick; bend[6] = -0.24 * kick; }
         }
       } else {
         r.torso.rotation.y = 0;
       }
+      // hips take the compression a beat before the chest, same as the grunts
+      const bwave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+      r.bob.scale.set(1 - bwave * 0.5, 1 + bwave * 0.9, 1 - bwave * 0.5);
+      r.torso.scale.x *= 1 + bwave * 0.26;
+      r.torso.scale.y *= 1 - bwave * 0.55;
+      r.torso.scale.z *= 1 + bwave * 0.26;
       const sq = 1 + e.squash - stepSquash + extra;
       const scale = e.visualScale || 1;
       e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
@@ -24802,21 +25005,27 @@ const ENEMY = (() => {
     /* ---------------- walk cycle ----------------
        `snapSin` holds the limb at each extreme and rips it through the
        middle, which is the difference between a mechanical pendulum and a
-       drawn one. The mid joints are NOT touched here — CAST.settle() bends
-       them from the shoulder's own angular velocity, so the noodle bows
-       backwards through the swing and whips through at the top. */
+       drawn one. The mid joints get their lag from CAST.settle() — the
+       noodle bows backwards through the swing and whips through at the top
+       — and their *authored* fold from `bend` below. */
     const sw = E.snapSin(e.stepPhase, 0.6);
     const cw = Math.cos(e.stepPhase);
     const gait = UTIL.clamp(walk * (0.9 + 0.25 * walk), 0, 1.05);
 
+    /* The right hand carries the prop on characters that have one, and a
+       metre of scythe on the end of a full-amplitude swing windmills right
+       across the silhouette every step. You carry a polearm, you do not
+       swing it while walking — damping the loaded arm is what an animator
+       would do, and it costs the empty-handed characters nothing. */
+    const propArm = e.def.hand ? 0.45 : 1;
     r.legL.rotation.x = -sw * 0.72 * gait;
     r.legR.rotation.x = sw * 0.72 * gait;
     r.armL.rotation.x = sw * 1.05 * gait;
-    r.armR.rotation.x = -sw * 1.05 * gait;
+    r.armR.rotation.x = -sw * 1.05 * gait * propArm;
     // Arms swing OUT as well as forward, so the noodle clears the torso and
     // its curve is actually visible in silhouette rather than buried in it.
     r.armL.rotation.z = -0.12 - walk * 0.3 - Math.abs(sw) * 0.16 * gait;
-    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait;
+    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait * propArm;
     // toes flick up on the forward reach and point on the push-off
     if (r.footL) r.footL.rotation.x = -sw * 0.34 * gait;
     if (r.footR) r.footR.rotation.x = sw * 0.34 * gait;
@@ -24828,7 +25037,16 @@ const ENEMY = (() => {
        pulses in unison. */
     const idleAmt = 1 - UTIL.clamp(walk * 2.2, 0, 1);
     const breathPh = ts * 1.55 + seed;
-    const breath = Math.sin(breathPh) * (0.008 + idleAmt * 0.016);
+    const breath = Math.sin(breathPh) * (0.010 + idleAmt * 0.026);
+    /* An idle beat. Breathing and a head scan alone are not an idle — a
+       parked character was twelve near-identical drawings in a row, which is
+       the one thing that reads as "the animation has stopped" rather than
+       "the character is waiting". Every few seconds the body sinks and pops
+       back out of it, on a per-character schedule so a crowd of them never
+       does it together. Sits under everything else, so it also gives the
+       trail springs something to chase while the character is doing nothing. */
+    const beatPh = (ts * 0.31 + seed * 0.41) % 1;
+    const beat = beatPh < 0.30 ? Math.sin(beatPh / 0.30 * Math.PI) * idleAmt : 0;
     // Contact is the low point of the cycle; the body compresses into it
     // and stretches through the passing position.
     const contact = 1 - Math.abs(cw);
@@ -24838,21 +25056,32 @@ const ENEMY = (() => {
     const bounce = Math.pow(Math.abs(cw), 1.45) * 0.15 * gait;
     const stepSquash = contact * 0.17 * gait;
 
-    // weight shift: a slow lateral lean that holds on each foot
+    /* Weight shift: a slow lateral lean that holds on each foot. It used to
+       move the hips 2cm, which at any real distance is nothing — the hips
+       now travel far enough to actually sit over one leg, and tilt as they
+       go, with the shoulders counter-tilting above them. */
     const shiftPh = ts * 0.62 + seed * 1.7;
     const shift = E.snapSin(shiftPh, 0.62) * idleAmt;
-    r.bob.position.y = bounce + breath - stepSquash * 0.10;
-    r.bob.position.x = shift * 0.022;
-    r.torso.rotation.z = sw * 0.075 * gait + shift * 0.05;
-    r.torso.rotation.x = e.lean - breath * 0.9;
-    r.torso.rotation.y = 0;
+    r.bob.position.y = bounce + breath - stepSquash * 0.10 - beat * 0.045;
+    r.bob.position.x = shift * 0.055;
+    r.bob.rotation.z = shift * 0.075;
+    r.torso.rotation.z = sw * 0.075 * gait - shift * 0.045;
+    r.torso.rotation.x = e.lean - breath * 0.9 + beat * 0.09;
+    /* Hips and shoulders counter-rotate. This is the oldest trick in a walk
+       cycle and the body was missing it entirely — the hip block stayed
+       square to the camera for the whole cycle, which is exactly what made
+       it read as a box being carried along rather than a mass being swung
+       between two legs. The head unwinds part of the shoulder twist so the
+       face keeps looking where the character is going. */
+    r.bob.rotation.y = sw * 0.15 * gait;
+    r.torso.rotation.y = -sw * 0.19 * gait;
     r.torso.scale.set(1 + breath * 0.9, 1 + breath * 1.5, 1 + breath * 0.9);
 
     // idle scan: swing the head to a new heading, then hold it there. The
     // low exponent is what gives the hold; a plain sine reads as a fan.
     const scanPh = ts * 0.4 + seed * 0.9;
     const scan = E.snapSin(scanPh, 0.42) * idleAmt;
-    r.head.rotation.y = scan * 0.28;
+    r.head.rotation.y = scan * 0.28 + sw * 0.11 * gait;
     r.head.rotation.z = -sw * 0.12 * gait - shift * 0.06;
     r.head.rotation.x = -e.lean * 0.6 + breath * 1.6 + Math.abs(scan) * 0.05;
     // a blink-ish head squash on a slow per-character schedule
@@ -24862,15 +25091,74 @@ const ENEMY = (() => {
     // arms breathe out from the body and drift with the weight shift
     r.armL.rotation.z += -breath * 1.1 - shift * 0.07;
     r.armR.rotation.z += breath * 1.1 - shift * 0.07;
+    /* Banking: a body that turns hard leans into the turn and the head
+       leads it. Nothing about the steering changes — this is the drawing
+       admitting that the character has mass. */
+    const bank = e.turn || 0;
+    r.torso.rotation.z += bank * 0.13;
+    r.head.rotation.z -= bank * 0.10;
+    r.head.rotation.y += bank * 0.22;
+    // Digging in / pulling up. Positive accel pitches the body forward into
+    // the run; braking throws it back past vertical before it settles.
+    r.torso.rotation.x += (e.accel || 0) * 0.18;
 
-    // squash and stretch on top of everything
+    /* ---------------- knees, elbows and the hand arc ----------------
+       The knee folds while the leg is behind and swinging through, and
+       absorbs on the contact frame; both are what stop the legs reading as
+       two rods pivoting at the hip. The elbow tucks on the forward reach so
+       the arm shortens through the swing and extends on the way back —
+       a hand travelling on a straight line is the tell the brief calls out,
+       and combining pitch with this fold puts it on a curve. */
+    if (bend) {
+      /* Held down deliberately: a fold much past this and the character
+         spends the walk crouching, because the bend eats leg length that
+         the hip pitch has already spent. The knee has to read as a knee,
+         not as a squat. */
+      const swing = gait > 0.02 ? gait : 0;
+      /* Standing, the loaded leg straightens and the free one breaks — that
+         alternation is the whole reason a weight shift reads as weight
+         rather than as sliding sideways. The beat folds both knees at once. */
+      bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(shift, 0, 1) * 0.22 - beat * 0.20;
+      bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * swing
+        - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20;
+      bend[0] = 0.34 * UTIL.clamp(sw, 0, 1) * swing;
+      bend[2] = 0.34 * UTIL.clamp(-sw, 0, 1) * swing * propArm;
+      // sideways bow in quadrature with the pitch: the hand traces an
+      // ellipse rather than sweeping a flat plane
+      bend[1] = cw * 0.14 * swing;
+      bend[3] = -cw * 0.14 * swing * propArm;
+    }
+
+    /* ---------------- squash and stretch on top of everything ----------
+       The group scale is the whole-figure compression, and on its own it
+       just makes the drawing shorter. `wave` is the part of it the hips
+       have already taken but the chest has not yet felt: the hips overshoot
+       the compression, the torso counter-stretches against it, and the
+       squash arrives at the head a couple of frames after the feet. */
     const sq = 1 + e.squash - stepSquash;
     e.group.scale.set(1 / Math.sqrt(sq), sq, 1 / Math.sqrt(sq));
+    const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
+
+    /* The neutral pose, snapshotted before any state branch overwrites it.
+       An attack used to end on the last frame of its own follow-through and
+       sit there for the rest of the recovery — eight dead drawings with the
+       arm still stuck out where the blow left it. A cartoon recovery drifts
+       back to guard; `_n*` is what it drifts back TO. */
+    const nArmLX = r.armL.rotation.x, nArmRX = r.armR.rotation.x;
+    const nArmLZ = r.armL.rotation.z, nArmRZ = r.armR.rotation.z;
+    const nTorX = r.torso.rotation.x, nTorY = r.torso.rotation.y;
+    const nHeadX = r.head.rotation.x, nHeadY = r.head.rotation.y;
+    const nLegLX = r.legL.rotation.x, nLegRX = r.legR.rotation.x;
 
     if (e.state === 'alert') {
       /* Double-take: a fast recoil up onto the toes (stretch), then a
          settle. The `!` mark pops with a back-ease overshoot. */
-      const k = UTIL.clamp(e.timer / C.alertTime, 0, 1);
+      const k = UTIL.clamp(qt / C.alertTime, 0, 1);
       const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
       // Kept deliberately modest: the neck/head-trail springs multiply this
       // by a lot, and the double-take has to read as a recoil, not a fall.
@@ -24882,6 +25170,17 @@ const ENEMY = (() => {
       r.head.rotation.x = -0.14 * pop;
       // the pop is mostly vertical: rise onto the toes and stretch
       r.bob.position.y = bounce + breath + pop * 0.07;
+      /* The legs used to sit this out entirely, which is what made the
+         double-take read as a bust on a pedestal. Knees snap straight into
+         the rise, elbows fly open, and the toes point as the heels leave
+         the ground. */
+      if (bend) {
+        bend[4] = 0.15 * pop; bend[6] = 0.15 * pop;
+        bend[0] = -0.5 * pop; bend[2] = -0.5 * pop;
+        bend[1] = 0.28 * pop; bend[3] = -0.28 * pop;
+      }
+      if (r.footL) r.footL.rotation.x = 0.34 * pop;
+      if (r.footR) r.footR.rotation.x = 0.34 * pop;
       const markK = UTIL.clamp(k / 0.3, 0, 1);
       e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
@@ -24897,12 +25196,16 @@ const ENEMY = (() => {
          drifting home. */
       const st = e.def.stats;
       const total = st.windup + st.recover;
-      const k = UTIL.clamp(e.timer / total, 0, 1);
+      const k = UTIL.clamp(qt / total, 0, 1);
       const wk = st.windup / total;
       if (k < wk) {
         const a = k / wk;
-        // gather: ease-in, then hold the coiled pose for the last 25%
-        const coil = E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
+        /* gather: ease-in, then hold the coiled pose for the last 25%. The
+           small linear pedestal matters at 12fps — on a pure quartic the
+           first four drawings of the wind-up are indistinguishable from
+           standing still, so the anticipation reads as a hang rather than
+           as a gather. */
+        const coil = 0.22 * a + 0.78 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
         r.armR.rotation.x = -2.5 * coil;
         r.armR.rotation.z = 0.12 + 0.45 * coil;
         r.armL.rotation.x = 0.55 * coil;
@@ -24913,7 +25216,27 @@ const ENEMY = (() => {
         // squat into the wind-up: squash down and widen
         const cs = 1 - coil * 0.16;
         e.group.scale.set(1 / Math.sqrt(cs), cs, 1 / Math.sqrt(cs));
-        r.bob.position.y = bounce + breath - coil * 0.06;
+        /* Shallower than it looks it should be: the knee fold below already
+           drops the hips, and the two together used to bury the shorts in
+           the shoes. The early dip is separate and is doing different work
+           — it is the weight settling before the gather, so the first two
+           or three drawings of the wind-up have something in them. */
+        const dip = Math.sin(UTIL.clamp(a / 0.32, 0, 1) * Math.PI) * 0.026;
+        r.bob.position.y = bounce + breath - coil * 0.035 - dip;
+        /* A swing is thrown from the ground up. The back leg loads, the
+           front knee opens to take the weight, and the striking elbow folds
+           right up so the arm is *short* at the top of the gather — which
+           is what makes it look like it is about to be thrown rather than
+           parked overhead. */
+        r.legL.rotation.x = -0.30 * coil;
+        r.legR.rotation.x = 0.16 * coil;
+        if (bend) {
+          bend[4] = -0.44 * coil; bend[6] = -0.18 * coil;
+          bend[2] = 0.95 * coil; bend[3] = -0.22 * coil;
+          bend[0] = 0.30 * coil;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 * coil;
+        if (r.footR) r.footR.rotation.x = 0.16 * coil;
       } else {
         const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
         // snap through in the first third with an overshoot, then settle
@@ -24928,6 +25251,38 @@ const ENEMY = (() => {
         // stretch out along the swing, then recover
         const ss = 1 + Math.sin(UTIL.clamp(a / 0.34, 0, 1) * Math.PI) * 0.18 + e.squash;
         e.group.scale.set(1 / Math.sqrt(ss), ss, 1 / Math.sqrt(ss));
+        /* Drive off the back foot: the loaded leg extends through the snap
+           and the elbow whips open a fraction behind the shoulder, so the
+           forearm is still catching up when the hand reaches the target. */
+        r.legL.rotation.x = -0.30 + strike * 0.42;
+        r.legR.rotation.x = 0.16 - strike * 0.28;
+        if (bend) {
+          const whip = a < 0.34 ? E.outBack(UTIL.clamp((a - 0.06) / 0.34, 0, 1), 1.5) : strike;
+          bend[4] = -0.44 + strike * 0.36; bend[6] = -0.18 - strike * 0.16;
+          bend[2] = 0.95 - whip * 1.05; bend[3] = -0.22 + whip * 0.30;
+          bend[0] = 0.30 - strike * 0.42;
+        }
+        if (r.footL) r.footL.rotation.x = -0.28 + strike * 0.5;
+        if (r.footR) r.footR.rotation.x = 0.16 - strike * 0.38;
+        /* Drift back to guard over the tail of the recovery. Held poses are
+           the style, but a hold is a *pose* — the follow-through frozen
+           mid-air is just the animation having stopped. Kept short of 1 so
+           the character is still visibly returning when the next state
+           takes over, rather than arriving early and waiting. */
+        const back = E.outCubic(UTIL.clamp((a - 0.42) / 0.58, 0, 1)) * 0.88;
+        if (back > 0) {
+          r.armR.rotation.x += (nArmRX - r.armR.rotation.x) * back;
+          r.armR.rotation.z += (nArmRZ - r.armR.rotation.z) * back;
+          r.armL.rotation.x += (nArmLX - r.armL.rotation.x) * back;
+          r.armL.rotation.z += (nArmLZ - r.armL.rotation.z) * back;
+          r.torso.rotation.x += (nTorX - r.torso.rotation.x) * back;
+          r.torso.rotation.y += (nTorY - r.torso.rotation.y) * back;
+          r.head.rotation.x += (nHeadX - r.head.rotation.x) * back;
+          r.head.rotation.y += (nHeadY - r.head.rotation.y) * back;
+          r.legL.rotation.x += (nLegLX - r.legL.rotation.x) * back;
+          r.legR.rotation.x += (nLegRX - r.legR.rotation.x) * back;
+          if (bend) for (let i = 0; i < 8; i++) bend[i] *= 1 - back;
+        }
       }
     } else if (e.state === 'shine') {
       // Hold the flashlight out front — but a hand-held light never sits
@@ -24940,12 +25295,17 @@ const ENEMY = (() => {
       r.torso.rotation.y = 0.08;
       r.head.rotation.x = -0.04 + j * 0.6;
       r.head.rotation.y = j * 1.2;
+      // braced stance: weight back on a bent knee, aiming elbow half folded
+      if (bend) {
+        bend[4] = -0.30; bend[6] = -0.12;
+        bend[2] = 0.55 + j * 0.5;
+      }
     }
 
     if (e.state === 'stagger') {
       /* Getting hit is a shudder, not a lean. Ring it out so the whole
          body rattles and comes to rest instead of sliding back linearly. */
-      const k = UTIL.clamp(e.timer / C.staggerTime, 0, 1);
+      const k = UTIL.clamp(qt / C.staggerTime, 0, 1);
       const decay = 1 - E.outCubic(k);
       const shake = E.ring(k, 2.6, 3.2) * decay;
       r.torso.rotation.x = -0.55 * decay + shake * 0.22;
@@ -24954,6 +25314,22 @@ const ENEMY = (() => {
       r.head.rotation.z = shake * 0.5;
       r.armL.rotation.x = -0.5 * decay - shake * 0.7;
       r.armR.rotation.x = -0.5 * decay + shake * 0.7;
+      /* Knees buckle under the hit and rattle back, and the body drops onto
+         them — without this the character absorbed a shotgun blast standing
+         on two straight pillars. One leg braces back so the stagger has a
+         direction instead of being a symmetric wobble. */
+      r.legL.rotation.x = -0.30 * decay + shake * 0.24;
+      r.legR.rotation.x = 0.16 * decay - shake * 0.20;
+      if (bend) {
+        bend[4] = -0.52 * decay - shake * 0.28;
+        bend[6] = -0.36 * decay + shake * 0.32;
+        bend[0] = 0.45 * decay + shake * 0.55;
+        bend[2] = 0.45 * decay - shake * 0.55;
+        bend[1] = shake * 0.30; bend[3] = shake * 0.30;
+      }
+      r.bob.position.y = bounce - 0.06 * decay + shake * 0.03;
+      if (r.footL) r.footL.rotation.x = -0.2 * decay;
+      if (r.footR) r.footR.rotation.x = 0.24 * decay;
     }
   }
 
@@ -25224,10 +25600,33 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] Impulses on the two moments the old code ignored:
+       breaking into a run and pulling up out of one. A cartoon body is
+       heavy — it has to gather before it goes and it cannot stop dead, so
+       acceleration in either direction is paid for with a squash and a
+       lean that overshoots. The threshold keeps ordinary steering noise and
+       the shove-past-a-corner nudge out of it. */
+    const accelNow = (speed - e.lastSpeed) / Math.max(dt, 0.0005);
+    e.lastSpeed = speed;
+    e.accel = UTIL.damp(e.accel, UTIL.clamp(accelNow * 0.05, -1.2, 1.2), 9, dt);
+    if (accelNow > 11) e.squashVel += UTIL.clamp(accelNow * 0.06, 0, 2.2);
+    else if (accelNow < -13) e.squashVel -= UTIL.clamp(-accelNow * 0.07, 0, 3.4);
+    /* Banking into a turn. yawRate is set by faceTowards/steer through
+       e.yaw; differencing it here is cheaper than plumbing a rate out of
+       every caller, and a wrapped yaw only misfires on a frame where the
+       enemy spun a full half-turn, which the clamp swallows. */
+    let dyaw = e.yaw - (e.lastYaw === undefined ? e.yaw : e.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    e.lastYaw = e.yaw;
+    e.turn = UTIL.damp(e.turn, UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
+
     // springs
     e.squashVel += (-e.squash * 220 - e.squashVel * 15) * dt;
     e.squash += e.squashVel * dt;
     e.squash = UTIL.clamp(e.squash, -0.3, 0.4);
+    // The lag chases the squash but never catches it while it is moving;
+    // pose() draws the difference as a wave up the body.
+    e.squashLag = UTIL.damp(e.squashLag, e.squash, 17, dt);
     e.lean = UTIL.damp(e.lean, UTIL.clamp(speed * 0.05, 0, 0.22), 6, dt);
     if (e.hitFlash > 0) e.hitFlash -= dt;
 
@@ -26818,12 +27217,40 @@ const COOP = (() => {
       r.legL.rotation.set(dp * 0.4 + ring * 0.6, 0, 0);
       r.legR.rotation.set(dp * 0.22 - ring * 0.6, 0, 0);
       r.head.rotation.set(dp * 0.3, 0, dp * 0.8 + ring);
+      // Knees fold under the falling body instead of staying two straight
+      // rods sticking out of it, and the elbows keep rattling after the
+      // shoulders have stopped.
+      if (r.bend) {
+        r.bend[4] = -0.85 * dp - ring * 0.5; r.bend[6] = -0.55 * dp + ring * 0.55;
+        r.bend[0] = 0.55 * dp + ring * 0.6; r.bend[2] = 0.75 * dp - ring * 0.7;
+      }
+      if (r.bob) r.bob.scale.set(1 + dp * 0.14, 1 - dp * 0.18, 1 + dp * 0.14);
       r.root.scale.set(1.08, 1.08, 1.08);
-      remote.squash = 0; remote.squashVel = 0;
+      remote.squash = 0; remote.squashVel = 0; remote.squashLag = 0;
       CAST.settle(r, dt, 1.1);
       return;
     }
     const moving = !!target.moving;
+    /* [RUBBERHOSE] Break into a run and pull up out of one. The snapshot
+       already carries `moving` and `sprinting`; the frame they change is
+       the frame the body has to pay for the change, so kick the same squash
+       spring the footfalls use. Nothing new goes over the wire. */
+    const gear = moving ? (target.sprinting ? 2 : 1) : 0;
+    if (remote.lastGear === undefined) remote.lastGear = gear;
+    if (gear > remote.lastGear) remote.squashVel = (remote.squashVel || 0) + 2.4;
+    else if (gear < remote.lastGear) remote.squashVel = (remote.squashVel || 0) - 3.0;
+    remote.lastGear = gear;
+    /* Bank into a turn. The group's yaw is damped toward target.yaw a few
+       lines above this in update(); differencing it here reads the actual
+       rendered turn rate rather than the raw network value, so a remote
+       that snaps 180 degrees on a bad packet does not throw the body with
+       it. */
+    let dyaw = remote.group.rotation.y - (remote.lastYaw === undefined
+      ? remote.group.rotation.y : remote.lastYaw);
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2; else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    remote.lastYaw = remote.group.rotation.y;
+    remote.turn = UTIL.damp(remote.turn || 0,
+      UTIL.clamp(dyaw / Math.max(dt, 0.0005) * 0.09, -1, 1), 8, dt);
     // Stepped clock: hold the phase on a 12fps grid so the drawing boils
     // like a cel even though the body itself interpolates smoothly.
     remote.animPhase += dt * (moving ? (target.sprinting ? 10.2 : 8.2) : 1.8);
@@ -26847,6 +27274,9 @@ const COOP = (() => {
     remote.squash = remote.squash || 0;
     remote.squashVel = (remote.squashVel || 0) + (-remote.squash * 220 - (remote.squashVel || 0) * 15) * dt;
     remote.squash = UTIL.clamp(remote.squash + remote.squashVel * dt, -0.24, 0.3);
+    // ...and its delayed twin, so the compression travels up the body
+    // instead of the whole figure changing size on one frame.
+    remote.squashLag = UTIL.damp(remote.squashLag || 0, remote.squash, 17, dt);
 
     if (target.climbing) {
       r.armL.rotation.set(-0.9 + sw * 0.78, 0, -0.2);
@@ -26855,7 +27285,13 @@ const COOP = (() => {
       r.legR.rotation.set(-sw * 0.42, 0, 0);
       r.torso.rotation.set(-0.10, 0, sw * 0.05);
       r.head.rotation.set(0.06, 0, -sw * 0.1);
+      // hauling on the rungs: the pulling elbow folds, the reaching one opens
+      if (r.bend) {
+        r.bend[0] = 0.55 + sw * 0.55; r.bend[2] = 0.55 - sw * 0.55;
+        r.bend[4] = -0.45 - sw * 0.30; r.bend[6] = -0.45 + sw * 0.30;
+      }
       r.bob.position.y = 0;
+      r.bob.scale.setScalar(1);
       r.root.scale.set(1.08, 1.08, 1.08);
       CAST.settle(r, dt, 0.9);
       return;
@@ -26871,12 +27307,33 @@ const COOP = (() => {
     if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
     if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
     r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0, sw * 0.07 * walk);
+    const bank = remote.turn || 0;
+    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0,
+      sw * 0.07 * walk + bank * 0.13);
     r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
-    r.head.rotation.set(breath * 1.4, 0, -sw * 0.11 * walk);
+    r.head.rotation.set(breath * 1.4, bank * 0.22, -sw * 0.11 * walk - bank * 0.10);
+    /* Knees and elbows, same grammar as the local grunts: the knee folds
+       while the leg is behind and absorbs on the contact frame, and the
+       elbow tucks in quadrature with the arm pitch so the glove travels an
+       ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
+       a parked teammate is never standing on two straight rods. */
+    if (r.bend) {
+      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
+      r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
+      r.bend[1] = cw * 0.15 * walk;
+      r.bend[3] = -cw * 0.15 * walk;
+    }
     // remote rigs are built at 1.08 scale; fold squash/stretch into it
     const sq = 1 + remote.squash - stepSquash;
     r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
+    // hips take the compression first, chest counter-stretches against it
+    const wave = UTIL.clamp(remote.squash - (remote.squashLag || 0), -0.22, 0.22);
+    r.bob.scale.set(1 - wave * 0.55, 1 + wave * 1.0, 1 - wave * 0.55);
+    r.torso.scale.x *= 1 + wave * 0.30;
+    r.torso.scale.y *= 1 - wave * 0.62;
+    r.torso.scale.z *= 1 + wave * 0.30;
     CAST.settle(r, dt, 0.95);
   }
 
