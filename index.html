@@ -23985,6 +23985,24 @@ const ENEMY = (() => {
   }
 
   /* ---------------- damage ---------------- */
+
+  /* [RUBBERHOSE] Resolve a world-space hit direction into the body's own
+     frame and stash it for the drawing code. Local forward is -Z and the
+     group carries the yaw, so forward = (-sin y, -cos y) and the character's
+     own right = (cos y, -sin y). Nothing in the sim reads these; they exist
+     so a hit reaction has a direction and a corpse falls away from the shot
+     rather than always folding the same way. Defaults elsewhere assume a
+     frontal hit, which is what the player mostly delivers. */
+  function recordHit(e, dir, zone) {
+    if (!dir) { e.hitPush = -1; e.hitSide = 0; e.hitHigh = zone === 'head' ? 1 : 0; return; }
+    const sy = Math.sin(e.yaw), cy = Math.cos(e.yaw);
+    const len = Math.hypot(dir.x, dir.z) || 1;
+    const dx = dir.x / len, dz = dir.z / len;
+    e.hitPush = UTIL.clamp(dx * -sy + dz * -cy, -1, 1);
+    e.hitSide = UTIL.clamp(dx * cy + dz * -sy, -1, 1);
+    e.hitHigh = zone === 'head' ? 1 : 0;
+  }
+
   function applyDamage(e, amount, point, dir, zone, force) {
     if (!e.alive) return;
     // A join's melee/blast/gun hits still run this same query-and-target
@@ -24003,6 +24021,12 @@ const ENEMY = (() => {
     e.hp -= amount;
     e.hitFlash = 0.12;
     e.squashVel -= 7;
+    /* [RUBBERHOSE] Record where the blow came from, in the body's own frame,
+       so the flinch and the topple can go somewhere instead of being a
+       symmetric wobble. `dir` runs along the shot, forward is local -Z, so
+       +push means the blow is driving the character forward (shot in the
+       back) and +side means it is driving them to their own right. */
+    recordHit(e, dir, zone);
     const shove = force === undefined ? 1.6 : force;
     e.vel.x += dir.x * shove * (1 / e.def.stats.weight);
     e.vel.z += dir.z * shove * (1 / e.def.stats.weight);
@@ -24443,13 +24467,29 @@ const ENEMY = (() => {
 
   /* ---------------- state machine ---------------- */
   function setState(e, s) {
+    const prev = e.state;
     e.state = s;
     e.timer = 0;
+    /* [RUBBERHOSE] Anticipation on the one move the pose code cannot see
+       coming. A grunt that decides to charge accelerates over the next
+       several frames, so by the time `accel` notices, the launch has already
+       happened — the body was arriving at a run it never visibly started.
+       Kicking the squash spring DOWN here compresses the figure for two
+       drawings and the spring's own overshoot then throws it up into the
+       first stride: crouch, then go. Same idea in reverse when a charge
+       gives up — the body pops as the weight comes off. */
+    if (s === 'chase' && (prev === 'idle' || prev === 'alert' || prev === 'shine')) e.squashVel -= 5.5;
+    else if (prev === 'chase' && (s === 'idle' || s === 'attack')) e.squashVel += 3.2;
     if (s === 'shine') e.specialTickTimer = 0;
     if (s === 'alert') {
       e.mark.visible = true;
       AUDIO.enemyAlert(e.def.voice.pitch);
-      e.squashVel += 8;
+      /* Downward, not upward. The double-take in pose() now ducks before it
+         pops, and the squash spring has to duck with it — kicked positive,
+         the figure stretched tall on the same drawing the pose was trying to
+         compress it, and the two cancelled into nothing. Negative here, and
+         the spring's own overshoot arrives right under the rise. */
+      e.squashVel -= 6;
     } else {
       e.mark.visible = false;
     }
@@ -25327,52 +25367,89 @@ const ENEMY = (() => {
 
     if (e.state === 'dead') {
       const k = UTIL.clamp(qt / C.corpseTime, 0, 1);
-      // Collapse fast, then hold, then pop out of existence — the old
-      // version faded linearly across the whole corpse time, which is the
-      // one timing a cartoon never uses.
-      const fall = E.outQuint(UTIL.clamp(k / 0.30, 0, 1));
-      const gone = UTIL.clamp((k - 0.72) / 0.28, 0, 1);
-      // squash flat on the first impact, spring back out, settle
-      const impact = k < 0.30 ? Math.sin(UTIL.clamp(k / 0.30, 0, 1) * Math.PI) : 0;
-      const wob = E.ring(k, 2.4, 6) * 0.16 * (1 - gone);
+      /* [RUBBERHOSE] A cartoon death is four beats, and the old version had
+         one. It started toppling on the frame of the hit — no anticipation —
+         got as far as a 35-degree lean, and then sat in that lean for eight
+         identical drawings before shrinking away. Beats now: the TAKE (the
+         body goes rigid and rises, two drawings, before gravity gets a
+         vote), the TOPPLE (accelerating over, not easing over), the LANDING
+         (one flat drawing, then everything loose rattles out of it), and the
+         EXIT. */
+      const TAKE = 0.13, FALLD = 0.30, LAND = TAKE + FALLD, GONE0 = 0.74;
+      const take = k < TAKE ? Math.sin(UTIL.clamp(k / TAKE, 0, 1) * Math.PI) : 0;
+      // A body going over gathers speed; outQuint would have it easing into
+      // the floor, which is the one thing a falling object never does.
+      const fa = UTIL.clamp((k - TAKE) / FALLD, 0, 1);
+      const fall = 0.32 * fa + 0.68 * fa * fa;
+      // The chest, head and arms are a drawing behind the hips the whole way
+      // over — the fold arrives at the extremities last, as always.
+      const fb = UTIL.clamp((k - TAKE - 0.075) / FALLD, 0, 1);
+      const lag = 0.32 * fb + 0.68 * fb * fb;
+      const hit = k >= LAND ? Math.max(0, 1 - (k - LAND) / 0.11) : 0;
+      const wob = k > LAND ? E.ring((k - LAND) / 0.30, 1.9, 4.2) * 0.19 : 0;
+      /* One last beat. Between the rattle dying out and the poof there were
+         six drawings of a corpse that had finished moving, which is the same
+         dead air the collapse itself used to have. So: the arm still propped
+         in the air gives up and drops, the head rolls the rest of the way
+         over, and underneath all of it the chest deflates slowly across the
+         whole hold — so no two drawings in the hold are the same one. */
+      const thud = Math.sin(UTIL.clamp((k - 0.58) / 0.145, 0, 1) * Math.PI);
+      const deflate = E.outCubic(UTIL.clamp((k - LAND) / 0.34, 0, 1));
       /* Vanish on an ease-IN: hold full size, then go in three or four
          drawings. On the ease-out it used to have this backwards — most of
          the shrink happened immediately and the last third of it crawled,
          so a corpse spent a second and a half as a slowly dwindling speck.
          A cartoon leaves the frame all at once. */
+      const gone = UTIL.clamp((k - GONE0) / 0.26, 0, 1);
       const off = E.inQuart(gone);
-      const sy = (1 - impact * 0.55 + wob) * (1 - off);
-      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - off);
+      /* Which way it goes over. `hitPush` is the blow resolved into the
+         body's own frame, so a shot taken in the chest lays the character
+         out on its back with the front of the drawing facing camera, and one
+         taken in the back pitches it away. A side-on hit would leave the
+         pitch near zero, so floor the magnitude — nothing dies standing up.
+         Sign: +rotation.x tips the top toward +Z, and forward is -Z. */
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const tip = (push <= 0 ? 1 : -1) * (0.5 + 0.5 * Math.abs(push));
+      const roll = e.hitSide || 0;
+      // Rigid and TALL on the take, flat on the landing.
+      const sy = (1 + take * 0.17 - hit * 0.46 + wob * 0.9 - deflate * 0.05) * (1 - off);
+      const sxz = (1 - take * 0.07 + hit * 0.36 - wob * 0.5 + deflate * 0.03) * (1 - off);
       e.group.scale.set(sxz, sy, sxz);
-      // Topple the WHOLE body about its feet, not just the torso — a wilt
-      // that only bends at the waist reads as a bow, not a death. The hips
-      // carry the fold; the torso adds the rest on top of it.
-      e.group.rotation.x = -fall * 0.62 - wob * 0.25;
-      e.group.rotation.z = fall * 0.18 + wob * 0.2;
-      r.bob.rotation.x = -fall * 0.35;
-      r.torso.rotation.x = -fall * 0.75 - wob * 0.5;
-      r.torso.rotation.z = fall * 0.22;
-      r.head.rotation.z = fall * 1.5 + wob * 1.1;
-      r.head.rotation.x = fall * 0.35;
-      // arms fling up and keep swinging after the body has stopped
-      r.armL.rotation.x = -fall * 2.5 - wob * 1.6;
-      r.armR.rotation.x = -fall * 2.2 - wob * 1.9;
-      r.armL.rotation.z = -0.12 - fall * 0.5;
-      r.armR.rotation.z = 0.12 + fall * 0.45;
-      r.legL.rotation.x = fall * 0.5 + wob * 0.8;
-      r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      /* Topple the WHOLE body about its feet, not just the torso — a wilt
+         that only bends at the waist reads as a bow, not a death. The take
+         leans a few degrees the OTHER way first, which is what sells the
+         drop when it comes. Far enough over that the corpse is down rather
+         than leaning: the old 0.62 was a stumble. */
+      e.group.rotation.x = tip * (fall * 1.32 - take * 0.20);
+      e.group.rotation.z = -roll * fall * 0.5 + fall * 0.14 + wob * 0.2;
+      r.bob.rotation.x = tip * fall * 0.30;
+      r.torso.rotation.x = tip * (lag * 0.55 + take * 0.26) - wob * 0.5;
+      r.torso.rotation.z = fall * 0.20;
+      // the head lolls last and keeps going after the shoulders have stopped
+      r.head.rotation.z = (roll >= 0 ? 1 : -1) * (lag * 1.25 + thud * 0.22) + wob * 1.1;
+      r.head.rotation.x = tip * (lag * 0.42 + take * 0.5) + wob * 0.4 + deflate * 0.10;
+      /* Arms fling out on the take, trail through the fall, and are still
+         swinging two drawings after the body has landed. */
+      r.armL.rotation.x = -take * 1.3 - lag * 2.3 - wob * 1.6;
+      r.armR.rotation.x = -take * 1.5 - lag * 2.0 - wob * 1.9 + thud * 0.55;
+      r.armL.rotation.z = -0.12 - take * 0.75 - lag * 0.5;
+      r.armR.rotation.z = 0.12 + take * 0.75 + lag * 0.45;
+      // Legs snap straight under the take, then give way entirely.
+      r.legL.rotation.x = -take * 0.16 + fall * 0.5 + wob * 0.8;
+      r.legR.rotation.x = -take * 0.10 + fall * 0.28 - wob * 0.7;
       // Knees give way rather than staying two straight rods sticking out of
       // a folded body — the legs collapse under it and keep jittering.
       if (bend) {
-        bend[4] = -0.85 * fall - wob * 0.5;
-        bend[6] = -0.55 * fall + wob * 0.55;
-        bend[0] = 0.5 * fall + wob * 0.6;
-        bend[2] = 0.7 * fall - wob * 0.7;
+        bend[4] = 0.12 * take - 0.85 * fall - wob * 0.5;
+        bend[6] = 0.12 * take - 0.55 * fall + wob * 0.55;
+        bend[0] = 0.5 * lag + wob * 0.6;
+        bend[2] = 0.7 * lag - wob * 0.7 - thud * 0.45;
+        bend[6] -= thud * 0.30;
       }
-      r.bob.position.y = -fall * 0.10;
+      r.bob.position.y = take * 0.10 - fall * 0.10 - deflate * 0.02;
       // The wave runs through a corpse too: the hips flatten hardest.
-      r.bob.scale.set(1 + impact * 0.22, 1 - impact * 0.3, 1 + impact * 0.22);
-      if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
+      r.bob.scale.set(1 + hit * 0.22, 1 - hit * 0.3, 1 + hit * 0.22);
+      if (r.headTrail) r.headTrail.scale.setScalar(1 + hit * 0.18 + take * 0.10);
       return;
     }
 
@@ -25659,33 +25736,54 @@ const ENEMY = (() => {
     const nLegLX = r.legL.rotation.x, nLegRX = r.legR.rotation.x;
 
     if (e.state === 'alert') {
-      /* Double-take: a fast recoil up onto the toes (stretch), then a
-         settle. The `!` mark pops with a back-ease overshoot. */
+      /* Double-take: duck, then a fast recoil up onto the toes (stretch),
+         then a settle. The `!` mark pops with a back-ease overshoot.
+
+         `duck` is the anticipation the take was missing. A character that
+         explodes upward on the frame it spots you has nowhere to explode
+         FROM — one drawing of the body compressing down into itself is what
+         makes the pop that follows read as a launch instead of a jump cut.
+
+         The windows are laid out ON the 12fps grid, not across it. `qt` only
+         ever takes the values 0, 1/12, 2/12 ... so alertTime's half second is
+         six drawings and a pulse has to peak ON one of them or it is never
+         drawn at all. The first attempt at this overlapped the duck and the
+         pop the way you would in a smooth curve, and at 12fps the one
+         drawing that should have been the gather came out 50% ducked and
+         60% popped — the two cancelled and the take had no anticipation in
+         it. Now: drawing 0 neutral, 1 all gather, 2-3 the held pop, 4-5 the
+         settle. One pose per drawing, which is how it would be shot. */
       const k = UTIL.clamp(qt / C.alertTime, 0, 1);
-      const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
+      const duck = Math.sin(UTIL.clamp((k - 0.02) / 0.30, 0, 1) * Math.PI);
+      const pop = E.outQuint(UTIL.clamp((k - 0.26) / 0.10, 0, 1)) *
+        (1 - E.outCubic(UTIL.clamp((k - 0.5) / 0.5, 0, 1)));
       // Kept deliberately modest: the neck/head-trail springs multiply this
       // by a lot, and the double-take has to read as a recoil, not a fall.
-      r.torso.rotation.x = -0.2 * pop;
-      r.armL.rotation.x = -1.25 * pop;
-      r.armR.rotation.x = -1.25 * pop;
-      r.armL.rotation.z = -0.12 - 0.42 * pop;
-      r.armR.rotation.z = 0.12 + 0.42 * pop;
-      r.head.rotation.x = -0.14 * pop;
+      r.torso.rotation.x = -0.2 * pop + 0.30 * duck;
+      r.armL.rotation.x = -1.25 * pop + 0.35 * duck;
+      r.armR.rotation.x = -1.25 * pop + 0.35 * duck;
+      r.armL.rotation.z = -0.12 - 0.42 * pop + 0.10 * duck;
+      r.armR.rotation.z = 0.12 + 0.42 * pop - 0.10 * duck;
+      r.head.rotation.x = -0.14 * pop + 0.34 * duck;
       // the pop is mostly vertical: rise onto the toes and stretch
-      r.bob.position.y = bounce + breath + pop * 0.07;
+      r.bob.position.y = bounce + breath + pop * 0.07 - duck * 0.09;
       /* The legs used to sit this out entirely, which is what made the
          double-take read as a bust on a pedestal. Knees snap straight into
          the rise, elbows fly open, and the toes point as the heels leave
-         the ground. */
+         the ground — and fold under the duck on the way in. */
       if (bend) {
-        bend[4] = 0.15 * pop; bend[6] = 0.15 * pop;
-        bend[0] = -0.5 * pop; bend[2] = -0.5 * pop;
+        bend[4] = 0.15 * pop - 0.60 * duck; bend[6] = 0.15 * pop - 0.60 * duck;
+        bend[0] = -0.5 * pop + 0.5 * duck; bend[2] = -0.5 * pop + 0.5 * duck;
         bend[1] = 0.28 * pop; bend[3] = -0.28 * pop;
       }
       if (r.footL) r.footL.rotation.x = 0.34 * pop;
       if (r.footR) r.footR.rotation.x = 0.34 * pop;
-      const markK = UTIL.clamp(k / 0.3, 0, 1);
-      e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
+      // squat wide on the gather, stretch thin on the pop
+      const as = 1 + e.squash - duck * 0.19 + pop * 0.10;
+      e.group.scale.set(1 / Math.sqrt(as), as, 1 / Math.sqrt(as));
+      // the mark is only allowed out once the body has committed to the pop
+      const markK = UTIL.clamp((k - 0.26) / 0.24, 0, 1);
+      e.mark.scale.setScalar(markK <= 0 ? 0.001 : 0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
 
     if (e.state === 'attack') {
@@ -25807,32 +25905,55 @@ const ENEMY = (() => {
 
     if (e.state === 'stagger') {
       /* Getting hit is a shudder, not a lean. Ring it out so the whole
-         body rattles and comes to rest instead of sliding back linearly. */
+         body rattles and comes to rest instead of sliding back linearly.
+
+         The flinch now goes somewhere: `hitPush`/`hitSide` are the blow in
+         the body's own frame, so a shot in the chest bows the character
+         backwards and one in the flank spins it. Everything used to be
+         symmetric, which meant a character hit from any angle did the same
+         drawing — and a symmetric reaction is what makes a hit read as a
+         glitch rather than as an impact.
+
+         `decay` holds at full for the first drawing before it recovers. A
+         hit that starts recovering on the frame it lands never has a pose,
+         and a hit with no held pose does not register at this frame rate. */
       const k = UTIL.clamp(qt / C.staggerTime, 0, 1);
-      const decay = 1 - E.outCubic(k);
+      const decay = 1 - E.outCubic(UTIL.clamp((k - 0.22) / 0.78, 0, 1));
       const shake = E.ring(k, 2.6, 3.2) * decay;
-      r.torso.rotation.x = -0.55 * decay + shake * 0.22;
-      r.torso.rotation.z = shake * 0.16;
-      r.head.rotation.x = 0.7 * decay - shake * 0.4;
-      r.head.rotation.z = shake * 0.5;
-      r.armL.rotation.x = -0.5 * decay - shake * 0.7;
-      r.armR.rotation.x = -0.5 * decay + shake * 0.7;
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      // a head hit whips the neck harder than it moves the body
+      const high = 1 + (e.hitHigh || 0) * 0.5;
+      r.torso.rotation.x = -0.55 * push * decay + shake * 0.22;
+      r.torso.rotation.z = -side * 0.34 * decay + shake * 0.16;
+      r.torso.rotation.y = side * 0.30 * decay;
+      // The head lags the chest, so relative to it the head goes the other
+      // way — that opposition is the whole of a whiplash.
+      r.head.rotation.x = 0.75 * push * decay * high - shake * 0.4;
+      r.head.rotation.z = side * 0.5 * decay * high + shake * 0.5;
+      r.head.rotation.y = -side * 0.4 * decay;
+      r.armL.rotation.x = 0.5 * push * decay - shake * 0.7;
+      r.armR.rotation.x = 0.5 * push * decay + shake * 0.7;
+      r.armL.rotation.z = -0.12 - side * 0.3 * decay;
+      r.armR.rotation.z = 0.12 - side * 0.3 * decay;
       /* Knees buckle under the hit and rattle back, and the body drops onto
          them — without this the character absorbed a shotgun blast standing
-         on two straight pillars. One leg braces back so the stagger has a
-         direction instead of being a symmetric wobble. */
-      r.legL.rotation.x = -0.30 * decay + shake * 0.24;
-      r.legR.rotation.x = 0.16 * decay - shake * 0.20;
+         on two straight pillars. The downstream leg braces: which one that
+         is now depends on where the blow came from. */
+      r.legL.rotation.x = 0.30 * push * decay + shake * 0.24;
+      r.legR.rotation.x = -0.16 * push * decay - shake * 0.20;
       if (bend) {
         bend[4] = -0.52 * decay - shake * 0.28;
         bend[6] = -0.36 * decay + shake * 0.32;
         bend[0] = 0.45 * decay + shake * 0.55;
         bend[2] = 0.45 * decay - shake * 0.55;
-        bend[1] = shake * 0.30; bend[3] = shake * 0.30;
+        bend[1] = shake * 0.30 - side * 0.2 * decay;
+        bend[3] = shake * 0.30 - side * 0.2 * decay;
       }
       r.bob.position.y = bounce - 0.06 * decay + shake * 0.03;
-      if (r.footL) r.footL.rotation.x = -0.2 * decay;
-      if (r.footR) r.footR.rotation.x = 0.24 * decay;
+      r.bob.rotation.y = -side * 0.22 * decay;
+      if (r.footL) r.footL.rotation.x = 0.2 * push * decay;
+      if (r.footR) r.footR.rotation.x = -0.24 * push * decay;
     }
   }
 
