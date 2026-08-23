@@ -2222,17 +2222,21 @@ const CONFIG = {
       high: {
         post: true, samples: 4,
         shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowBlur: 3.4,
-        viewShadows: true, chroma: true, softEdge: true
+        viewShadows: true, chroma: true, softEdge: true, surfaceHatch: 1.0
       },
       medium: {
         post: true, samples: 0,
         shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowBlur: 2.2,
-        viewShadows: false, chroma: true, softEdge: false
+        viewShadows: false, chroma: true, softEdge: false, surfaceHatch: 1.0
       },
       low: {
         post: true, samples: 0,
         shadows: false, shadowMapSize: 512, shadowRadius: 30, shadowBlur: 1.0,
-        viewShadows: false, chroma: false, softEdge: false
+        /* The finish hatch is the only part of the drawn surface layer that
+           costs anything beyond its one shared texture fetch, and it is the
+           part that reads least on a small or low-end screen. Structural
+           lines and mottle stay on at every tier. */
+        viewShadows: false, chroma: false, softEdge: false, surfaceHatch: 0.0
       }
     },
     /* Print curve + grade. The world is rendered into a linear-encoded
@@ -4397,8 +4401,12 @@ const MAT = (() => {
   function surfAmounts(f) {
     const T = CONFIG.render.texture;
     const on = T.on ? 1 : 0;
+    // The quality tier can retire the hatch on its own; mottle and structural
+    // lines are free enough to stay on everywhere.
+    const tier = CONFIG.render.tiers[CONFIG.render.quality] || {};
+    const h = tier.surfaceHatch === undefined ? 1 : tier.surfaceHatch;
     return {
-      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.line * T.line * on, f.hatch * T.hatch * on),
+      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.line * T.line * on, f.hatch * T.hatch * h * on),
       grime: new THREE.Vector2(f.grime[0], f.grime[1] * T.grime * on),
       band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3])
     };
@@ -5037,6 +5045,7 @@ const RENDERCORE = (() => {
     tier = currentTier();
     if (!renderer) return;
     applyShadowTier();
+    if (typeof MAT !== 'undefined' && MAT.syncSurface) MAT.syncSurface();
     if (quadMat) applyDefines();
     const wantsMSAA = tier.samples > 1 && renderer.capabilities.isWebGL2 ? tier.samples : 0;
     if (wantsMSAA !== lastSamples) makeTarget();
