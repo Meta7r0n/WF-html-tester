@@ -98,7 +98,7 @@ async function boot(page, url) {
           let shadow = 0, high = 0;
           for (let v = 0; v < 64; v++) shadow += hist[v];
           for (let v = 192; v < 256; v++) high += hist[v];
-          resolve({ p50: pct(0.50), p99: pct(0.99),
+          resolve({ p01: pct(0.01), p50: pct(0.50), p99: pct(0.99),
                     sh: +(100*shadow/n).toFixed(1), hi: +(100*high/n).toFixed(1),
                     sat: +(100*satSum/n).toFixed(1) });
         });
@@ -181,7 +181,7 @@ async function measure(page, samples) {
     if (i < n - 1) await page.evaluate(() => window.__waitFrames(1));
   }
   const med = k => s.map(x => x[k]).sort((a, b) => a - b)[Math.floor(n / 2)];
-  return { p50: med('p50'), p99: med('p99'), sh: med('sh'), hi: med('hi'), sat: med('sat') };
+  return { p01: med('p01'), p50: med('p50'), p99: med('p99'), sh: med('sh'), hi: med('hi'), sat: med('sat') };
 }
 
 module.exports = { boot, goTo, measure };
