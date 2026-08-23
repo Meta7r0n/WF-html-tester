@@ -157,7 +157,16 @@
 
   /* The printed card -- the overlay's only surface. `.hud-tag` (player
      readouts) and `.hud-ticket` (things the world is telling you) are the
-     same stock; they differ only in what is printed on them. */
+     same stock; they differ only in what is printed on them.
+
+     There are exactly TWO scales of it, and a new system must pick one rather
+     than invent a third:
+       full  -- 3px keyline, printed inner rule, 3px/4px drop, radius
+                11/14/10/13. Corner cards, boss bills, the orders board.
+       chip  -- 2px keyline, no inner rule, 2px/2px drop, radius 5/8/5/7.
+                Kill-feed lines, chat lines, weapon slots.
+     Heavier line on the bigger form is deliberate: that is how an inked
+     drawing weights a large shape against a small one. */
   .hud-tag,.hud-ticket{
     background:var(--hud-card);
     border:var(--hud-line) solid var(--ink);
@@ -252,9 +261,9 @@
      keycap. Nothing here is its own design any more. */
   .weapon-slot-btn{
     display:flex;align-items:center;gap:5px;min-height:25px;max-width:124px;padding:3px 6px;
-    pointer-events:auto;cursor:pointer;border:2.5px solid var(--ink);
-    border-radius:6px 9px 7px 8px;background:var(--hud-card);color:var(--ink);
-    box-shadow:2px 3px 0 rgba(18,15,12,.55);font:900 9px/1 var(--hud-slab);
+    pointer-events:auto;cursor:pointer;border:2px solid var(--ink);
+    border-radius:5px 8px 5px 7px;background:var(--hud-card);color:var(--ink);
+    box-shadow:2px 2px 0 rgba(18,15,12,.55);font:900 9px/1 var(--hud-slab);
     letter-spacing:.5px;text-transform:uppercase;text-align:left;transform:rotate(-1deg);
     transition:transform .12s var(--hud-spring),background .1s ease,opacity .1s ease;
   }
