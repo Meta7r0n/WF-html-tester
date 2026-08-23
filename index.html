@@ -172,21 +172,25 @@
     transition:opacity .18s ease, transform .16s var(--hud-spring);
   }
   #crosshair.on{opacity:1;}
-  /* Cream core inside a solid ink ring, not the other way round. A reticle is
-     the one thing that may never wash out, and the cream centre is what
-     carries it over a barn wall in shadow -- the ink ring does the same job
-     over a blown-out sky. */
+  /* Cream mark inside an ink outline, not the other way round. A reticle is
+     the one thing that may never wash out, and the cream body is what carries
+     it over a barn wall in shadow while the outline does the same job over a
+     blown-out sky.
+
+     The mark has to be wide enough that the cream body reads as a stroke
+     rather than as the hole in an outline -- at 2.8px against a 1.9px ring it
+     came out as four little hollow rectangles. 4px body, 1.6px ring. */
   #crosshair i{
-    position:absolute;background:var(--cream);border-radius:2px;
-    box-shadow:0 0 0 1.9px var(--ink);
+    position:absolute;background:var(--cream);border-radius:1px;
+    box-shadow:0 0 0 1.6px var(--ink);
   }
-  /* Tapered strokes: each tick is a touch heavier at the outer end, the way
-     an inked line thickens where the nib lands. */
-  #crosshair .t{left:50%;top:1px;width:2.8px;height:9px;margin-left:-1.4px;transform:rotate(-2deg);}
-  #crosshair .b{left:50%;bottom:1px;width:2.8px;height:9px;margin-left:-1.4px;transform:rotate(3deg);}
-  #crosshair .l{top:50%;left:1px;height:2.8px;width:9px;margin-top:-1.4px;transform:rotate(2deg);}
-  #crosshair .r{top:50%;right:1px;height:2.8px;width:9px;margin-top:-1.4px;transform:rotate(-3deg);}
-  #crosshair .d{left:50%;top:50%;width:3.6px;height:3.6px;margin:-1.8px 0 0 -1.8px;border-radius:50%;}
+  /* Each tick is drawn at a slightly different angle, the way four strokes of
+     the same nib never land parallel. */
+  #crosshair .t{left:50%;top:0;width:4px;height:10px;margin-left:-2px;transform:rotate(-2deg);}
+  #crosshair .b{left:50%;bottom:0;width:4px;height:10px;margin-left:-2px;transform:rotate(3deg);}
+  #crosshair .l{top:50%;left:0;height:4px;width:10px;margin-top:-2px;transform:rotate(2deg);}
+  #crosshair .r{top:50%;right:0;height:4px;width:10px;margin-top:-2px;transform:rotate(-3deg);}
+  #crosshair .d{left:50%;top:50%;width:4px;height:4px;margin:-2px 0 0 -2px;border-radius:50%;}
   #crosshair.kick{transform:scale(1.42) rotate(-3deg);}
   #interactHint{
     position:fixed;left:50%;top:calc(50% + 54px);z-index:33;
