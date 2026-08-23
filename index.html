@@ -863,12 +863,13 @@
     text-shadow:var(--hud-ink-edge);
     transition:opacity .2s ease;
   }
-  #radarTitle{top:-11px;}
-  #radarSignal{bottom:0;color:var(--mustard);}
-  /* Nothing to report -> neither caption is printed at all. */
-  #radar.quiet #radarTitle,#radar.quiet #radarSignal{opacity:0;}
-  /* Underground is the exception: which floor you are on is real news. */
+  /* "SURFACE" is where the player is for most of a run: a label, not news.
+     The layer caption is printed only underground, where it is a real fact. */
+  #radarTitle{top:-11px;opacity:0;}
   #radar.underground #radarTitle{opacity:1;}
+  #radarSignal{bottom:0;color:var(--mustard);}
+  /* Nothing on either layer -> no caption at all. */
+  #radar.quiet #radarSignal{opacity:0;}
 
   /* Short viewports (720p and every laptop below it) -- pull the top-of-frame
      furniture in so three boss bills plus the kill feed still fit. */
