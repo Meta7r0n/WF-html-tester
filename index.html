@@ -3467,10 +3467,23 @@ const TEX = (() => {
         },
         x => {                                  // dried-mud crack network + hoof scuffs
           cracks(x, s, 26, 7, 26, 2.0, 0.50);
-          scratch(x, s, 90, 20, 70, 2.2, 0.26, 0.4, 3.14, 0.0);
+          scratch(x, s, 90, 20, 70, 2.2, 0.26, 0.4, 3.14, 0);
         },
         x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
                openUp(x, s, 20, 50, 180, 0.6); });
+    } else if (kind === 'bark') {
+      t = pack(s,
+        x => {                                  // fibrous, running the trunk
+          scratch(x, s, 320, 120, 460, 3.0, 0.15, Math.PI / 2, 0.07, 0.35);
+          blobs(x, s, 26, 24, 110, 0.15, 0.36);
+          grit(x, s, 900, 0.5, 2.2, 0.15);
+        },
+        x => {                                  // furrows every ~10cm, and their forks
+          hatch(x, s, 90, s / 12, 3.6, 0.66, 3.2);
+          scratch(x, s, 110, 30, 110, 2.4, 0.40, Math.PI / 2, 0.32, 0);
+          scratch(x, s, 40, 14, 34, 2.0, 0.30, 0, 0.5, 0);
+        },
+        x => { hatch(x, s, 90, 10, 1.9, 0.34, 1.8); openUp(x, s, 14, 40, 140, 0.5); });
     } else if (kind === 'leaf') {
       t = pack(s,
         x => {                                  // dry blight, mostly darker
@@ -3481,7 +3494,7 @@ const TEX = (() => {
         x => {                                  // midrib every 70cm, veins off it
           hatch(x, s, 0, s / 2, 3.2, 0.62, 2.0);
           hatch(x, s, 0, s / 12, 1.5, 0.34, 1.2);
-          scratch(x, s, 150, 20, 60, 1.2, 0.26, 0.5, 0.45, 0.0);
+          scratch(x, s, 150, 20, 60, 1.2, 0.26, 0.5, 0.45, 0);
         },
         x => { hatch(x, s, 0, 9, 1.7, 0.30, 1.0); openUp(x, s, 16, 40, 140, 0.55); });
     } else if (kind === 'cloth') {
@@ -4314,6 +4327,7 @@ const MAT = (() => {
        frequency and left the ground reading as one pale sheet. */
     earth: { tex: 'earth', scale: 0.28, mottle: 0.34, line: 0.30, hatch: 0.38, grime: [0, 0] },
     leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0] },
+    bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20] },
     cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16] },
     none:  null
   };
@@ -6122,7 +6136,7 @@ const PROPS = (() => {
     // trunk: a bent rubber-hose tube
     const a = new THREE.Vector3(0, 0, 0);
     const b = new THREE.Vector3(UTIL.rng(-0.7, 0.7), h, UTIL.rng(-0.5, 0.5));
-    PRIM.hose(a, b, UTIL.rng(-0.9, -0.3), 0.24 * scale, MAT.toon(PAL.rustDeep), { parent: g, outline: 0.05 });
+    PRIM.hose(a, b, UTIL.rng(-0.9, -0.3), 0.24 * scale, MAT.toon(PAL.rustDeep, { finish: 'bark' }), { parent: g, outline: 0.05 });
     const canopy = new THREE.Group();
     canopy.position.set(b.x, b.y + 0.5 * scale, b.z);
     const col = UTIL.pick([PAL.olive, PAL.oliveDeep]);
@@ -9828,7 +9842,7 @@ const LEVEL = (() => {
     /* --- I. the far treeline: a horizon just beyond the boundary fence,
        so every outward-facing frame ends on a silhouette instead of on
        blank paper. Two batches, no colliders, nothing reachable. --- */
-    const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.05);
+    const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep, { finish: 'bark' }), 0.05);
     const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.055);
     function farTree(x, z, s) {
       const h = UTIL.rng(4.6, 7.8) * s;
