@@ -838,18 +838,20 @@
   }
   /* One line only, and only while the bill is fresh: three bills can be
      posted at once, so neither a wrapping hint nor a permanent one can be
-     allowed to push the stack down towards the crosshair. */
+     allowed to push the stack down towards the crosshair. The line leaves by
+     display, not an animated height. An animated collapse can be caught
+     part-way and, worse, can end up transparent while still occupying its
+     row -- which is exactly what a capture of the settled stack showed: the
+     advice line had faded out and the bill had not shrunk by a pixel. A
+     discrete swap cannot half-apply, and a hint that is simply gone is the
+     right cartoon timing for a departure anyway. */
   .boss-bill small{
-    display:block;height:0;margin-top:0;overflow:hidden;opacity:0;
+    display:none;margin-top:4px;
     font:800 7.5px/1.2 var(--hud-slab);
     letter-spacing:.9px;text-transform:uppercase;color:var(--hud-ink-2);
-    white-space:nowrap;text-overflow:ellipsis;
-    transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .14s ease;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   }
-  .boss-bill.fresh small{
-    height:10px;margin-top:4px;opacity:1;
-    transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .2s ease;
-  }
+  .boss-bill.fresh small{display:block;}
   /* Bills pasted up by hand sit at slightly different angles. */
   #boss2Hud{--bill-tilt:-.7deg;}
   #boss3Hud{--bill-tilt:.5deg;}
@@ -914,7 +916,7 @@
   @media (prefers-reduced-motion: reduce){
     #crosshair,#interactHint,#pickupToast,#ammo,#weaponInventory,#throwableHud,
     #jaysHud,.buffChip,#voiceChip,#killFeed .line,#killcamCaption,#questBoard,
-    .boss-bill,.boss-bill small,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
+    .boss-bill,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
       transition-duration:.12s !important;transition-timing-function:ease !important;
     }
     #announcerBanner.on,#downedHud.on,.boss-bill.on{animation:none;}
