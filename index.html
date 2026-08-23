@@ -3558,6 +3558,7 @@ const TEX = (() => {
        where its own detail can be seen. */
     x.globalAlpha = 0.85; x.fillStyle = hex(PAL.dirtDeep); x.fillRect(0, 0, w, w);
     x.globalAlpha = 0.30; x.fillStyle = hex(PAL.oliveDeep); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 0.12; x.fillStyle = hex(PAL.charcoal); x.fillRect(0, 0, w, w);
     x.globalAlpha = 1;
 
     // broad patches -- the value structure the old texture had none of
@@ -4338,7 +4339,7 @@ const MAT = (() => {
        hatching you can actually see at the bottom of the frame. Running it at
        the map's own scale, as it was, just doubled up on the same low
        frequency and left the ground reading as one pale sheet. */
-    earth: { tex: 'earth', scale: 0.28, mottle: 0.34, line: 0.30, hatch: 0.38, grime: [0, 0] },
+    earth: { tex: 'earth', scale: 0.28, mottle: 0.36, line: 0.42, hatch: 0.38, grime: [0, 0] },
     leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0] },
     bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20] },
     cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16] },
