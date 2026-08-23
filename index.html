@@ -319,6 +319,10 @@
     color:var(--hud-stamp);font:900 11px/1 var(--hud-slab);letter-spacing:1.4px;text-transform:uppercase;
   }
   .qb-head span{display:block;margin-top:4px;color:var(--hud-ink-2);font-size:7.5px;letter-spacing:1.1px;}
+  /* "Hold Tab" is only worth printing on the auto-peek, where the board
+     appeared on its own and the player may not know how to bring it back. If
+     they are holding Tab right now, they know. */
+  body.hud-detail #questBoardHint{visibility:hidden;}
   #componentHud,#shieldHud{display:none;}
   #componentHud.on,#shieldHud.on{display:block;}
   #shieldHud.on{margin-top:9px;}
