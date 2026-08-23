@@ -24,6 +24,7 @@
     --blue-deep:#5C7E99;
     --blue-gray:#7D8B94;
     --mustard:#E8A33D;
+    --mustard-dk:#C07E22;
     --rust:#A85A3C;
     --rust-deep:#7E3F2A;
     --olive:#6E7A42;
@@ -429,6 +430,11 @@
     color:var(--hud-paper);font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;
     box-shadow:1.5px 2px 0 rgba(18,15,12,.5);
   }
+  /* Each counter takes the colour of the thing it counts, so the pip is doing
+     work rather than decorating: grenades are olive, Jays are Jays green.
+     Neither may share a fill with a buff pip, or two different facts would be
+     reading as the same colour at 19px. */
+  #throwableCount{background:var(--olive-deep);}
 
   /* The Jays row on the vitals card -- same collapse behaviour as the
      throwable row on the arms card, for the same reason. */
@@ -473,11 +479,14 @@
     font:900 10px/1 var(--hud-slab);letter-spacing:0;text-shadow:none;
     box-shadow:1.5px 2px 0 rgba(18,15,12,.5);
   }
-  #buffIronHide b{background:#6C7E88;}
-  #buffHotSauce b{background:#9C2F12;}
-  #buffJackrabbit b{background:#B08A2E;}
-  #stunChip b{background:#8A2F2F;}
-  #slowChip b{background:#3A5F73;}
+  /* Five bespoke hexes lived here, none of them on the palette. Each buff now
+     takes the nearest palette colour that still separates from its
+     neighbours: cool grey, red, amber, dark red, blue. */
+  #buffIronHide b{background:var(--blue-gray);}
+  #buffHotSauce b{background:var(--rust);}
+  #buffJackrabbit b{background:var(--mustard-dk);color:var(--ink);}
+  #stunChip b{background:var(--rust-deep);}
+  #slowChip b{background:var(--blue-deep);}
   #pilotLifeChip b{background:var(--blue-deep);min-width:34px;border-radius:10px;}
   /* The word stays cream on every chip. Tinting the label to match the pip
      was the old behaviour and it put mid-value text (#D46A6A, #7FB8D4) over a
@@ -740,10 +749,10 @@
   #voiceChip.talking{opacity:1;transform:rotate(1deg) scale(1.06);}
   #voiceChip b{
     display:grid;place-items:center;min-width:17px;height:17px;padding:0 4px;
-    border:2px solid var(--ink);border-radius:50%;background:#6C7E88;
-    color:var(--hud-paper);font-size:9px;letter-spacing:0;text-shadow:none;box-shadow:2px 2px 0 rgba(22,18,15,.42);
+    border:2px solid var(--ink);border-radius:50%;background:var(--blue-gray);
+    color:var(--hud-paper);font-size:9px;letter-spacing:0;text-shadow:none;box-shadow:1.5px 2px 0 rgba(18,15,12,.5);
   }
-  #voiceChip.talking b{background:var(--jays,#8EAD4B);}
+  #voiceChip.talking b{background:var(--jays);}
 
   /* ---------- Deathmatch announcer banner ----------
      Kept high in the frame and well clear of the crosshair. Squash on the
