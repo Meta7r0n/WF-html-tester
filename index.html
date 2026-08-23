@@ -12911,24 +12911,24 @@ const WEAPON = (() => {
      `reload` picks which choreography plays. Anything not listed falls
      back to FEEL_ANY. */
   const FEEL = {
-    unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.06, reload: 'none' },
-    pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.09, reload: 'pump' },
-    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.085, reload: 'break' },
-    tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.075, reload: 'wheel' },
-    fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.085, reload: 'mag' },
-    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.10, reload: 'pump' },
-    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.10, reload: 'cell' },
-    sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.085, reload: 'can' },
-    portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.09, reload: 'cell' },
-    seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.09, reload: 'drum' },
-    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.11, reload: 'bolt' },
-    chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
-    theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.09, reload: 'none' },
-    knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.07, reload: 'none' }
+    unarmed:      { kick: 0.45, stiff: 300, damp: 19,   rise: 0.9,  side: 1.2,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.1, reload: 'none' },
+    pipePopper:   { kick: 1.00, stiff: 172, damp: 13.0, rise: 1.15, side: 0.9,  roll: 1.1, flash: 1.30, shell: 0.55, draw: 0.30, holster: 0.15, reload: 'pump' },
+    doubleBarrel: { kick: 1.30, stiff: 156, damp: 12.0, rise: 1.30, side: 1.1,  roll: 1.3, flash: 1.45, shell: 0.55, draw: 0.28, holster: 0.14, reload: 'break' },
+    tinSixer:     { kick: 0.60, stiff: 268, damp: 15.5, rise: 1.00, side: 1.0,  roll: 0.8, flash: 0.85, shell: 0.38, draw: 0.24, holster: 0.13, reload: 'wheel' },
+    fieldhand:    { kick: 0.33, stiff: 340, damp: 14.5, rise: 0.75, side: 1.35, roll: 0.6, flash: 0.70, shell: 0.32, draw: 0.28, holster: 0.14, reload: 'mag' },
+    carrotCannon: { kick: 1.35, stiff: 148, damp: 11.5, rise: 1.35, side: 0.85, roll: 1.2, flash: 1.55, shell: 0.60, draw: 0.34, holster: 0.17, reload: 'pump' },
+    scrapRailgun: { kick: 1.50, stiff: 128, damp: 10.5, rise: 1.10, side: 0.70, roll: 1.5, flash: 1.60, shell: 0.46, draw: 0.34, holster: 0.17, reload: 'cell' },
+    sprayTorch:   { kick: 0.12, stiff: 380, damp: 20,   rise: 0.40, side: 1.0,  roll: 0.5, flash: 0.60, shell: 0,    draw: 0.26, holster: 0.14, reload: 'can' },
+    portalGun:    { kick: 0.95, stiff: 188, damp: 12.5, rise: 0.90, side: 0.80, roll: 1.6, flash: 1.10, shell: 0,    draw: 0.32, holster: 0.15, reload: 'cell' },
+    seedSpitter:  { kick: 0.29, stiff: 356, damp: 13.5, rise: 0.70, side: 1.50, roll: 0.7, flash: 0.65, shell: 0.28, draw: 0.32, holster: 0.15, reload: 'drum' },
+    glizzyGat:    { kick: 2.00, stiff: 92,  damp: 8.8,  rise: 1.60, side: 0.55, roll: 1.0, flash: 1.40, shell: 0.62, draw: 0.34, holster: 0.19, reload: 'bolt' },
+    chainsaw:     { kick: 0.20, stiff: 300, damp: 18,   rise: 0.50, side: 1.0,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.30, holster: 0.15, reload: 'none' },
+    theClaw:      { kick: 0.40, stiff: 240, damp: 15,   rise: 0.80, side: 1.2,  roll: 1.2, flash: 0,    shell: 0,    draw: 0.30, holster: 0.15, reload: 'none' },
+    knives:       { kick: 0.30, stiff: 320, damp: 18,   rise: 0.80, side: 1.4,  roll: 1.0, flash: 0,    shell: 0,    draw: 0.20, holster: 0.2, reload: 'none' }
   };
   const FEEL_ANY = {
     kick: 0.8, stiff: 210, damp: 15, rise: 1, side: 1, roll: 1,
-    flash: 1, shell: 0.45, draw: 0.28, holster: 0.12, reload: 'mag'
+    flash: 1, shell: 0.45, draw: 0.28, holster: 0.2, reload: 'mag'
   };
   function feelFor(id) { return FEEL[id || currentId] || FEEL_ANY; }
 
@@ -12972,6 +12972,12 @@ const WEAPON = (() => {
   }
   function easeOutCubic(k) { const t = 1 - k; return 1 - t * t * t; }
   function easeInCubic(k) { return k * k * k; }
+  // The mirror of easeOutBack: winds up the *other* way first, so a move
+  // that reads as deliberate starts by going a little backwards.
+  function easeInBack(k, over) {
+    const s = over === undefined ? 1.7 : over;
+    return k * k * ((s + 1) * k - s);
+  }
   // A hit that rings out: one hard strike, then a decaying wobble.
   function ring(k, cycles, decay) {
     return Math.sin(k * Math.PI * 2 * cycles) * Math.exp(-k * decay);
@@ -14674,24 +14680,46 @@ const WEAPON = (() => {
     const runPitch = (Math.abs(Math.sin(bobPhase)) - 0.55) * 0.09 * stride;
     const runRoll = Math.sin(bobPhase * 0.5 + 1.5) * 0.135 * stride;
 
-    /* ---- idle: breathing on one slow period, a wrist tremor on two much
-       faster ones, none of which divide into each other, so a standing
-       weapon drifts forever without visibly looping ---- */
+    /* ---- idle. A rubberhose viewmodel is never still, and the old
+       amplitudes here (13mm of drift over a six-second period) were small
+       enough that three seconds of held frames were indistinguishable
+       from a paused game. Three layers on periods that do not divide into
+       each other, so it drifts forever without visibly looping:
+         breath  one slow cycle, phase-warped so the inhale is quicker
+                 than the fall -- a plain sine reads as a machine
+         shift   a much slower weight change from one foot to the other,
+                 which is what stops the breath reading as a lift
+         tremor  two fast tiny channels: the hands are holding something
+                 heavy and are not managing to hold it perfectly still
+       The hands inherit all of it through the follow springs a beat late,
+       so wrist and barrel are never on the same frame of it. ---- */
     const idle = (1 - UTIL.clamp(sr * 1.35, 0, 1)) * steady;
+    const bth = time * 1.55;
+    const breath = Math.sin(bth + 0.45 * Math.sin(bth));
+    const shift = Math.sin(time * 0.41 + 1.3);
     const tremor = Math.sin(time * 5.3 + 0.6) * 0.26 + Math.sin(time * 8.9) * 0.13;
-    const ix = (Math.sin(time * 0.77) * 0.0135 + Math.sin(time * 1.93 + 2.2) * 0.005 + tremor * 0.0038) * idle;
-    const iy = (Math.sin(time * 1.05) * 0.0165 + Math.sin(time * 1.62 + 1.1) * 0.006 + tremor * 0.003) * idle;
-    const iroll = (Math.sin(time * 0.62 + 2.1) * 0.030 + tremor * 0.009) * idle;
+    const ix = (shift * 0.026 + Math.sin(time * 1.93 + 2.2) * 0.006 + tremor * 0.0045) * idle;
+    const iy = (breath * 0.032 + Math.sin(time * 1.62 + 1.1) * 0.007 + tremor * 0.0035) * idle;
+    const iroll = (shift * 0.065 + Math.sin(time * 0.62 + 2.1) * 0.022 + tremor * 0.010) * idle;
+    // Between breaths the muzzle sinks and then gets picked back up. A
+    // held weapon is heavy, and the arm giving way a little says so.
+    const idroop = (breath - 1) * 0.019 * idle;
 
-    /* ---- weapon swap. The outgoing gun is still on screen and still
-       falling; the incoming one is hidden until it lands. Only the
+    /* ---- weapon swap. The outgoing gun drops out of frame while the
+       incoming one is already on its way up: two things crossing in
+       opposite directions read as a hand-off, where waiting for the first
+       to leave before starting the second left a fifth of a second of
+       completely empty screen in the middle of every switch. Only the
        *rendering* is deferred -- ammo, HUD and the fire path all switched
        over in setCurrent(). ---- */
     let swapE = 0;
     if (swapOutId) {
       swapTimer += dt;
       const sk = UTIL.clamp(swapTimer / swapOutLen, 0, 1);
-      swapE = easeInCubic(sk);
+      // The gun lifts a couple of centimetres before it drops. That
+      // anticipation frame is most of what separates a holster from the
+      // model simply being switched off.
+      swapE = easeInBack(sk, 1.5);
       const om = models[swapOutId];
       if (om && om.root) {
         const ob = om.base || [0, 0, 0], orr = om.rot || [0, 0, 0];
@@ -14699,13 +14727,18 @@ const WEAPON = (() => {
         om.root.rotation.set(orr[0] - swapE * 1.35, orr[1] + swapE * 0.55, orr[2] + swapE * 0.72);
         om.root.scale.setScalar(1 - swapE * 0.14);
       }
+      // Hand-off: the incoming gun starts its rise while the outgoing one
+      // is still visibly falling, and the hands go with it.
+      if (swapE >= 0.3 && pendingDraw) {
+        pendingDraw = false;
+        drawLen = Math.max(0.02, f.draw);
+        drawTimer = drawLen;
+        if (model && model.root) model.root.visible = true;
+        armedHands.visible = d.kind === 'gun';
+      }
       if (sk >= 1) {
         if (om && om.root) om.root.visible = false;
         swapOutId = null;
-        swapE = 1;
-        if (pendingDraw) { pendingDraw = false; drawLen = Math.max(0.02, f.draw); drawTimer = drawLen; }
-        if (model && model.root) model.root.visible = true;
-        armedHands.visible = d.kind === 'gun';
         joltVel -= 1.9;
       }
     }
@@ -14713,14 +14746,14 @@ const WEAPON = (() => {
     /* ---- draw: up from below the frame, overshooting the held pose ---- */
     let drawOff = 0;
     if (drawTimer > 0) {
+      const drawWas = drawTimer;
       drawTimer = Math.max(0, drawTimer - dt);
       const dk = UTIL.clamp(1 - drawTimer / drawLen, 0, 1);
       drawOff = 1 - easeOutBack(dk, 1.9);
+      // It lands in the hands rather than arriving at them: one squash
+      // frame and a shove through the whole rig as the draw ends.
+      if (drawTimer <= 0 && drawWas > 0) { squashVel -= 3.4; joltVel -= 1.3; }
     }
-    // While the old gun is still falling the new one is parked offscreen,
-    // so it never flickers in behind it.
-    const hidden = swapOutId ? 1 : 0;
-    drawOff = drawOff + hidden;
 
     const meleeTotal = d.kind === 'melee' ? d.fireInterval : 0.5;
     const meleeK = meleeTimer > 0 ? 1 - meleeTimer / meleeTotal : 0;
@@ -14749,14 +14782,14 @@ const WEAPON = (() => {
          a run has to lower the weapon, never raise it. */
       model.root.position.set(
         px + (swayX + inX) * steady + bx + ix - leadX * 0.055
-          + sprintK * 0.05 - swing * 0.23 + swapE * 0.17,
+          + sprintK * 0.05 - swing * 0.23,
         py + (swayY + inY) * steady + by + iy - RL.drop + recoil * 0.20 + rise * 0.09
           - sprintK * 0.06 + swing * 0.10 - drawOff * 0.58,
         pz + recoil - antic * lunge + leadZ * 0.05 + RL.push
           + sprintK * 0.09 - swing * 0.20 - drawOff * 0.07
       );
       model.root.rotation.set(
-        rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + swing * 0.48
+        rx + RL.pitch + rise - antic * 0.13 * f.kick + iy * 0.55 + idroop + swing * 0.48
           - sprintK * 0.22 + runPitch + drawOff * -1.18 + jolt * 0.55,
         ry + RL.yaw - (swayX + inX) * 1.5 * steady + ix * 0.5 + side + leadX * 0.10
           - swing * 0.72 * meleeSide + sprintK * 0.20 + runYaw + drawOff * 0.62,
@@ -14855,7 +14888,7 @@ const WEAPON = (() => {
       const rot = model.rot || [0, 0, 0];
       model.root.position.set(
         base[0] + (swayX + inX) * 0.55 + bx + ix * 0.8 - leadX * 0.05
-          + sprintK * 0.05 - swing * 0.16 + swapE * 0.15,
+          + sprintK * 0.05 - swing * 0.16,
         base[1] + (swayY + inY) * 0.55 + by + iy * 0.8 - sprintK * 0.07
           + swing * 0.08 - drawOff * 0.62,
         base[2] + leadZ * 0.045 + sprintK * 0.10 - swing * 0.18 + drawOff * 0.2
@@ -14863,7 +14896,7 @@ const WEAPON = (() => {
       // Same lowered, canted sprint carry the guns use -- fists drop and
       // pump across the body rather than being hoisted into the lens.
       model.root.rotation.set(
-        rot[0] - swing * 0.15 + iy * 0.5 - sprintK * 0.18 + runPitch * 0.8 + drawOff * -1.1 + jolt * 0.5,
+        rot[0] - swing * 0.15 + iy * 0.5 + idroop - sprintK * 0.18 + runPitch * 0.8 + drawOff * -1.1 + jolt * 0.5,
         rot[1] + swing * 0.12 * meleeSide - (swayX + inX) * 0.9 + sprintK * 0.18 + runYaw + drawOff * 0.55,
         rot[2] + swing * 0.08 * meleeSide + iroll + broll + sprintK * 0.30 + runRoll + drawOff * -0.6
       );
@@ -14904,7 +14937,7 @@ const WEAPON = (() => {
        behind the near plane and sweep out of sight. While a weapon is
        being holstered the hands follow the OUTGOING gun down out of
        frame, since that is the one still being rendered. */
-    const hm = (swapOutId && models[swapOutId]) || model;
+    const hm = (swapOutId && drawTimer <= 0 && models[swapOutId]) || model;
     if (hm && hm.root && armedHands.visible) {
       const hb = hm.base || _ZERO3, hr = hm.rot || _ZERO3;
       followStep(HAND.px, HAND.pvx, hm.root.position.x - hb[0], 470, 27, dt);
@@ -14938,8 +14971,8 @@ const WEAPON = (() => {
 
     // The whole rig takes the landing shove and the 12fps boil, so the
     // weapon, the hands and the boots all move as one drawn object.
-    rig.position.set(boilX * 0.0032, jolt * 0.10 + boilY * 0.0032, 0);
-    rig.rotation.set(jolt * 0.30, 0, boilR * 0.0048);
+    rig.position.set(boilX * 0.0046, jolt * 0.10 + boilY * 0.0046, 0);
+    rig.rotation.set(jolt * 0.30, 0, boilR * 0.0072);
     const bootRevealRaw = UTIL.clamp((-PLAYER.pitch - 1.12) / Math.max(0.01, CONFIG.player.pitchLimit - 1.12), 0, 1);
     const bootReveal = bootRevealRaw * bootRevealRaw * (3 - 2 * bootRevealRaw);
     boots.visible = bootReveal > 0.015;
