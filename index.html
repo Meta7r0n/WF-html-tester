@@ -567,13 +567,21 @@
     100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1) rotate(-1deg)}
   }
 
-  /* ---------- Bottom-left: the vitals card ----------
-     Pep, guard and Jays on ONE printed card, each row led by an inked icon
-     or pip instead of a shouted word. Both the guard gauge and the Jays row
-     collapse out of the card entirely when the player has neither (UI
-     .setShield toggles .has-guard, UI.setJays toggles #jaysHud.on), so the
-     common case is a single small gauge and the card grows only when the
-     player has actually earned another row. */
+  /* ---------- Bottom-left: the pep medallion ----------
+     The reference's whole HUD, in the one frame that shows a firefight, is
+     two enamel medallions in the bottom corners. This is the left one.
+
+     Pep and guard were two stacked bars on a 158x76 card. They are now two
+     concentric arcs on a 62px dial: guard is the outer armour ring -- which
+     is what a guard IS -- and pep is the inner one, with the heart struck in
+     the middle. Same two facts, a third of the area, and a circle instead of
+     the fifth rounded rectangle in the corner.
+
+     `--pep` / `--guard` are 0..1 and are the only thing the JS sets; the
+     conic stops read them. Guard at 0 leaves an unlit ring rather than a hole
+     in the layout, so the dial does not change size when guard comes and
+     goes -- the collapsing #guardRow existed only because a bar had to earn
+     its row. */
   #vitals{
     position:fixed;left:18px;bottom:16px;z-index:30;
     display:flex;flex-direction:column;align-items:flex-start;
@@ -581,39 +589,54 @@
   }
   #vitals.on{opacity:1;}
   #vitalsTag{
-    padding:6px 10px 7px;
-    transform:rotate(-.8deg) scale(1);
+    display:flex;align-items:center;gap:8px;
+    transform:rotate(-.8deg);
     transition:transform .34s var(--hud-spring);
   }
-  .vital-row{display:flex;align-items:center;gap:7px;}
-  .vital-ico{display:block;flex:0 0 auto;filter:drop-shadow(1.2px 1.6px 0 rgba(18,15,12,.42));}
-  #guardRow{
-    height:0;margin-top:0;overflow:hidden;opacity:0;
-    transition:height .18s var(--hud-snap),margin-top .18s var(--hud-snap),opacity .1s ease;
+  /* Registering the two ring values as real numbers is what lets them be
+     transitioned at all -- an unregistered custom property is a token, so the
+     conic stop would jump. Where @property is unsupported the declarations on
+     #pepDial still apply and the dial simply snaps. */
+  @property --pep{syntax:"<number>";inherits:false;initial-value:1;}
+  @property --guard{syntax:"<number>";inherits:false;initial-value:0;}
+  #pepDial{
+    position:relative;flex:0 0 auto;width:64px;height:64px;border-radius:50%;
+    background:var(--hud-card);
+    border:var(--hud-line) solid var(--ink);
+    box-shadow:0 0 0 1.8px var(--hud-bezel),0 0 0 3.6px var(--ink),var(--hud-drop);
+    --pep:1;--guard:0;
+    transition:--pep .24s var(--hud-spring),--guard .24s var(--hud-spring);
   }
-  #vitals.has-guard #guardRow{
-    height:15px;margin-top:6px;opacity:1;
-    transition:height .26s var(--hud-spring),margin-top .26s var(--hud-spring),opacity .16s ease;
-  }
-  /* Every gauge is the same object: an ink well cut into the card with one
-     flat colour poured into it. No gradients, no glass, no glow. */
-  #pepBar{
-    width:110px;height:14px;border:2.5px solid var(--ink);border-radius:9px;
-    background:var(--hud-well);overflow:hidden;
+  /* Both rings are the same object at different radii: a conic sweep masked
+     down to an annulus, struck into the enamel face rather than floating over
+     the scene. The unlit remainder is the gauge well, so a nearly-empty ring
+     still reads as a ring instead of thinning away to nothing. */
+  #pepFill,#shieldFill{
+    position:absolute;border-radius:50%;pointer-events:none;
+    transition:background .2s ease;
   }
   #pepFill{
-    height:100%;width:100%;background:var(--mustard);
-    box-shadow:inset 0 -4px 0 rgba(22,18,15,.26);
-    transition:width .22s var(--hud-spring), background .2s ease;
+    inset:11px;
+    background:conic-gradient(var(--mustard) 0 calc(var(--pep) * 360deg),var(--hud-well) 0);
+    -webkit-mask:radial-gradient(closest-side,transparent 0 60%,#000 60.5%);
+            mask:radial-gradient(closest-side,transparent 0 60%,#000 60.5%);
   }
-  #pepFill.hurt{background:var(--rust);}
-  #shieldBar{
-    width:94px;height:9px;border:2.5px solid var(--ink);border-radius:6px;
-    background:var(--hud-well);overflow:hidden;
+  #pepDial.hurt #pepFill{
+    background:conic-gradient(var(--rust) 0 calc(var(--pep) * 360deg),var(--hud-well) 0);
   }
   #shieldFill{
-    height:100%;width:0;background:var(--blue);
-    box-shadow:inset 0 -3px 0 rgba(22,18,15,.22);transition:width .22s var(--hud-spring);
+    inset:0;
+    background:conic-gradient(var(--blue) 0 calc(var(--guard) * 360deg),var(--hud-well) 0);
+    -webkit-mask:radial-gradient(closest-side,transparent 0 75%,#000 75.5%);
+            mask:radial-gradient(closest-side,transparent 0 75%,#000 75.5%);
+    opacity:0;transform:scale(.86);
+    transition:opacity .14s ease,transform .3s var(--hud-spring);
+  }
+  #vitals.has-guard #shieldFill{opacity:1;transform:scale(1);}
+  /* The struck emblem in the middle of the dial. */
+  .vital-ico{
+    position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-4deg);
+    filter:drop-shadow(1.2px 1.6px 0 rgba(18,15,12,.5));
   }
 
   /* ---------- Pickup / objective slip ----------
@@ -990,7 +1013,7 @@
   @media (prefers-reduced-motion: reduce){
     #crosshair,#interactHint,#pickupToast,#ammo,#weaponInventory,#throwableHud,
     #jaysHud,.buffChip,#voiceChip,#killFeed .line,#killcamCaption,#questBoard,
-    .boss-bill,#radar,#guardRow,#pepFill,#shieldFill,.boss-bar > i{
+    .boss-bill,#radar,#pepDial,#shieldFill,.boss-bar > i{
       transition-duration:.12s !important;transition-timing-function:ease !important;
     }
     #announcerBanner.on,#downedHud.on,.boss-bill.on{animation:none;}
@@ -1788,14 +1811,11 @@
       <div class="buffChip" id="pilotLifeChip"><b>0/3</b><span>Hangar Downs</span></div>
     </div>
     <div id="voiceChip" aria-live="polite"><b>●</b><span>Voice</span></div>
-    <div id="vitalsTag" class="hud-tag">
-      <div class="vital-row">
-        <svg class="vital-ico" width="15" height="14" viewBox="0 0 30 28" aria-hidden="true" focusable="false"><path d="M15 26C6 19.5 2 14.6 2 9.6 2 5.4 5.2 2 9.2 2c2.4 0 4.6 1.2 5.8 3.2C16.2 3.2 18.4 2 20.8 2 24.8 2 28 5.4 28 9.6c0 5-4 9.9-13 16.4z" fill="#A85A3C" stroke="#16120F" stroke-width="3.6" stroke-linejoin="round"/></svg>
-        <div id="pepBar"><div id="pepFill"></div></div>
-      </div>
-      <div class="vital-row" id="guardRow">
-        <svg class="vital-ico" width="12" height="13" viewBox="0 0 26 28" aria-hidden="true" focusable="false"><path d="M13 2.4 23.6 5.9v8.7c0 5.9-4.4 9.5-10.6 11-6.2-1.5-10.6-5.1-10.6-11V5.9z" fill="#8FB3CC" stroke="#16120F" stroke-width="3.8" stroke-linejoin="round"/></svg>
-        <div id="shieldBar"><div id="shieldFill"></div></div>
+    <div id="vitalsTag">
+      <div id="pepDial" role="img" aria-label="Pep and guard">
+        <i id="shieldFill" aria-hidden="true"></i>
+        <i id="pepFill" aria-hidden="true"></i>
+        <svg class="vital-ico" width="17" height="16" viewBox="0 0 30 28" aria-hidden="true" focusable="false"><path d="M15 26C6 19.5 2 14.6 2 9.6 2 5.4 5.2 2 9.2 2c2.4 0 4.6 1.2 5.8 3.2C16.2 3.2 18.4 2 20.8 2 24.8 2 28 5.4 28 9.6c0 5-4 9.9-13 16.4z" fill="#A85A3C" stroke="#16120F" stroke-width="3.6" stroke-linejoin="round"/></svg>
       </div>
       <div id="jaysHud" aria-live="polite"><b id="jaysCount" class="hud-pip">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
     </div>
@@ -16566,8 +16586,7 @@ const UI = (() => {
     el.downedHint = document.getElementById('downedHint');
     el.scratches = document.getElementById('scratches');
     el.vitals = document.getElementById('vitals');
-    el.pepFill = document.getElementById('pepFill');
-    el.shieldFill = document.getElementById('shieldFill');
+    el.pepDial = document.getElementById('pepDial');
     el.questBoard = document.getElementById('questBoard');
     el.questBoardHint = document.getElementById('questBoardHint');
     el.pickupToast = document.getElementById('pickupToast');
@@ -16791,17 +16810,19 @@ const UI = (() => {
     setBuffChip(el.buffJackrabbit, jackrabbitRemaining);
   }
 
+  /* Both rings are driven by a custom property instead of a width, so the
+     conic stops do the arithmetic and the setters stay two lines each. */
   function setHealth(n, max) {
     const pct = UTIL.clamp(n / max, 0, 1);
-    el.pepFill.style.width = (pct * 100).toFixed(1) + '%';
-    el.pepFill.className = pct <= 0.34 ? 'hurt' : '';
+    if (!el.pepDial) return;
+    el.pepDial.style.setProperty('--pep', pct.toFixed(3));
+    el.pepDial.classList.toggle('hurt', pct <= 0.34);
   }
   function setShield(n, max) {
     const pct = UTIL.clamp(n / max, 0, 1);
-    el.shieldFill.style.width = (pct * 100).toFixed(1) + '%';
-    // The guard gauge collapses out of the vitals tag entirely while the
-    // player has no guard, so the common case is one small pill instead of
-    // two -- and picking guard up gets a real bit of motion.
+    if (el.pepDial) el.pepDial.style.setProperty('--guard', pct.toFixed(3));
+    // The armour ring fades out entirely while the player has no guard, so
+    // the resting dial is a single ring -- and picking guard up gets a beat.
     if (el.vitals) el.vitals.classList.toggle('has-guard', pct > 0.001);
   }
   /* The tally lives behind the detail key. A running total is something you
