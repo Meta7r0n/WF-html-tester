@@ -9365,6 +9365,282 @@ const LEVEL = (() => {
     });
   }
 
+  /* ---------------- the land beyond the fence ----------------
+     Our frames ran out of world at the boundary. Past the perimeter fence
+     there was a flat cream plane meeting a flat sky, so however much clutter
+     went into the yard the middle distance stayed empty and the top third of
+     every shot was blank.
+
+     The reference open-air frame is built the other way round: foreground
+     crates near-black and hard-edged, midground shack mid-grey, background
+     firs and rock wall so pale they nearly are the sky. Its depth comes from
+     LAYERED PLANES SEPARATED BY VALUE -- not from fog applied to one plane.
+
+     So: three rings of silhouette outside the play bounds, each paler,
+     simpler and thinner-lined than the one in front of it. The far ring
+     carries no ink at all; past a hundred metres a line is the one thing that
+     stops a shape sitting back.
+
+     Nothing here registers a collider, and nothing here can be reached: the
+     nearest ring sits twelve metres beyond a fence that is already walled.
+
+     Aerial perspective is mixed into the MATERIAL rather than left to
+     scene.fog. Fog runs 62-250 m, so a hill at 130 m picks up about a fifth
+     of the fog colour -- nowhere near enough to separate rings forty metres
+     apart. Baking the tint costs nothing and is the only way to sit the far
+     ring down against the sky. */
+  function haze(hex, t) {
+    return new THREE.Color(hex).lerp(new THREE.Color(CONFIG.render.fogColor), t).getHex();
+  }
+
+  function buildDistance(parent) {
+    const M = CONFIG.map;
+    // Keep-out rectangle: the play bounds plus a margin no backdrop object is
+    // ever placed inside. The margin is what makes a later boundary tweak
+    // unable to quietly drop a tree in somebody's way.
+    const KEEP = 12;
+    const x0 = M.west - KEEP, x1 = M.east + KEEP;
+    const z0 = M.north - KEEP, z1 = M.south + KEEP;
+
+    /* A point on the rectangle inflated by d, walked uniformly by perimeter
+       length so the backdrop is as dense behind the west silos as it is
+       behind the south gate. */
+    function ring(d) {
+      const ax = x0 - d, bx = x1 + d, az = z0 - d, bz = z1 + d;
+      const w = bx - ax, h = bz - az;
+      let t = UTIL.rand() * 2 * (w + h);
+      if (t < w) return [ax + t, az];
+      t -= w;
+      if (t < h) return [bx, az + t];
+      t -= h;
+      if (t < w) return [bx - t, bz];
+      return [ax, bz - (t - w)];
+    }
+
+    /* ---- silhouette vocabulary. Every one of these is drawn as an outline
+       first and a solid second: at this range the shape is all that survives,
+       so each shape has to be identifiable from its edge alone and none of
+       them is allowed a straight line or a true circle. */
+
+    // A fir: three warped cones stacked on a leaning trunk. The reference
+    // horizon is pointed; ours was nothing but round canopies, and a skyline
+    // of round canopies reads as broccoli however many you plant.
+    function fir(bat, x, z, s) {
+      const h = UTIL.rng(5.5, 10) * s, lean = UTIL.rng(-0.13, 0.13);
+      const tH = h * 0.24;
+      bat.bow(tH, 0.15 * s, 0.11 * s, lean * tH, 0, 5, 2, 1, x, tH / 2, z);
+      for (let i = 0; i < 3; i++) {
+        const t = i / 2;
+        const r = s * UTIL.lerp(1.5, 0.45, t) * UTIL.rng(0.85, 1.15);
+        const ch = h * UTIL.lerp(0.42, 0.3, t);
+        const y = tH * 0.6 + (h - tH) * t * 0.66 + ch * 0.42;
+        bat.auto(() => PRIM.warp(new THREE.ConeGeometry(r, ch, 7), r * 0.16),
+          x + lean * y, y, z, UTIL.rng(-.04, .04), UTIL.rng(0, 6.28), UTIL.rng(-.04, .04));
+      }
+    }
+
+    // A broadleaf, for the runs where a wall of firs would read as a comb.
+    function broadleaf(bat, x, z, s) {
+      const h = UTIL.rng(4, 7) * s, lean = UTIL.rng(-0.2, 0.2);
+      bat.bow(h, 0.24 * s, 0.13 * s, lean * h * 0.5, UTIL.rng(-.25, .25) * s, 5, 3, 1, x, h / 2, z);
+      const cx = x + lean * h * 0.5;
+      for (let i = 0; i < 4; i++) {
+        const a = i / 4 * 6.28 + UTIL.rng(-.5, .5), rr = UTIL.rng(0.85, 1.5) * s;
+        bat.sphere(rr, cx + Math.cos(a) * 1.15 * s, h + UTIL.rng(-.35, .5) * s,
+          z + Math.sin(a) * 1.15 * s, 1, 0.78, 1);
+      }
+    }
+
+    // A stack of loose hay: fat at the shoulder, slumped, and never a cone.
+    function haystack(bat, x, z, s) {
+      const h = UTIL.rng(2.4, 4.2) * s, r = UTIL.rng(1.5, 2.4) * s;
+      bat.lathe(h, [[0, 0.6], [0.2, 1], [0.48, 0.9], [0.76, 0.56], [1, 0.08]]
+        .map(o => [o[0], o[1] * r]), 9, x, h / 2, z,
+        UTIL.rng(-.06, .06), UTIL.rng(0, 6.28), UTIL.rng(-.06, .06),
+        [UTIL.rng(0.07, 0.18), UTIL.rng(0.03, 0.1), UTIL.rng(0, 6.28)]);
+    }
+
+    // A grain elevator: the one tall vertical the farm's own skyline lacks
+    // once you look away from the silos. Cap sits crooked on purpose -- a
+    // cone seated square is the tell that says "cylinder with a hat".
+    function elevator(bat, x, z, s) {
+      const h = UTIL.rng(10, 17) * s, r = UTIL.rng(1.5, 2.5) * s;
+      bat.lathe(h, [[0, 1.08], [0.07, 1], [0.85, 0.95], [1, 0.9]].map(o => [o[0], o[1] * r]),
+        10, x, h / 2, z, 0, UTIL.rng(0, 6.28), UTIL.rng(-.02, .02),
+        [UTIL.rng(0.02, 0.07), 0.03, UTIL.rng(0, 6.28)]);
+      bat.auto(() => PRIM.warp(new THREE.ConeGeometry(r * 1.2, r * 1.3, 9), r * 0.08),
+        x, h + r * 0.6, z, UTIL.rng(-.07, .07), 0, UTIL.rng(-.07, .07));
+    }
+
+    // A shack whose ridge has given up. Two slabs meeting over a sagging
+    // beam is the most reliable "this building is done" silhouette there is,
+    // and it is exactly the shape our own boxy outbuildings are missing.
+    function shack(bat, x, z, s) {
+      const w = UTIL.rng(4.5, 9) * s, d = UTIL.rng(4, 7) * s, h = UTIL.rng(2.8, 4.6) * s;
+      const ry = UTIL.rng(0, 6.28), dip = UTIL.rng(0.18, 0.42) * s;
+      bat.box(w, h, d, x, h / 2, z, 0, ry, UTIL.rng(-.035, .035), 0.1);
+      // Rafters run across the pitch, so the roof slabs are laid in the
+      // shack's own frame -- rotate the offsets, don't rotate the boxes twice.
+      const cs = Math.cos(ry), sn = Math.sin(ry), pit = UTIL.rng(0.34, 0.52);
+      for (const sg of [-1, 1]) {
+        const off = d * 0.28;
+        bat.box(w * 1.16, 0.18 * s, d * 0.62,
+          x + sn * off * sg, h + Math.cos(pit) * d * 0.16 - dip * 0.4, z + cs * off * sg,
+          pit * sg, ry, UTIL.rng(-.04, .04), 0.07);
+      }
+      bat.sag(w * 1.1, 0.11 * s, 0.11 * s, dip, 4, 4,
+        x, h + Math.cos(pit) * d * 0.3, z, 0, ry + Math.PI / 2, 0);
+    }
+
+    // Telegraph run. Poles alone are a picket; it is the wire dipping between
+    // them that cuts the empty sky, which is most of what this is for.
+    function telegraph(bat, wire, ax, az, bx, bz, n) {
+      let px = 0, pz = 0, ph = 0;
+      for (let i = 0; i < n; i++) {
+        const t = n === 1 ? 0.5 : i / (n - 1);
+        const x = UTIL.lerp(ax, bx, t) + UTIL.rng(-1.4, 1.4);
+        const z = UTIL.lerp(az, bz, t) + UTIL.rng(-1.4, 1.4);
+        const h = UTIL.rng(6.5, 9);
+        bat.bow(h, 0.17, 0.1, UTIL.rng(-.35, .35), UTIL.rng(-.3, .3), 5, 3, 1, x, h / 2, z);
+        bat.box(2.6, 0.14, 0.17, x, h * 0.9, z, 0, UTIL.rng(0, 3.14), UTIL.rng(-.07, .07), 0.05);
+        if (i) {
+          const dx = x - px, dz = z - pz, len = Math.hypot(dx, dz);
+          if (len > 1 && len < 34) {
+            wire.sag(len, 0.045, 0.045, len * 0.09, 4, 5,
+              (x + px) / 2, (h + ph) / 2 * 0.88, (z + pz) / 2, 0, Math.atan2(dx, dz), 0);
+          }
+        }
+        px = x; pz = z; ph = h;
+      }
+    }
+
+    // A skeletal water tower / pump mill: four legs that lean in, and a fan.
+    function windTower(bat, x, z, s) {
+      const h = UTIL.rng(8, 12) * s, base = 1.2 * s;
+      for (let i = 0; i < 4; i++) {
+        const a = i / 4 * 6.28 + 0.78;
+        bat.bow(h, 0.13 * s, 0.08 * s, -Math.cos(a) * base * 0.78, -Math.sin(a) * base * 0.78,
+          4, 3, 1, x + Math.cos(a) * base, h / 2, z + Math.sin(a) * base);
+      }
+      for (const t of [0.42, 0.74]) {
+        const r = base * UTIL.lerp(1, 0.3, t);
+        bat.box(r * 2.1, 0.11 * s, 0.11 * s, x, h * t, z, 0, UTIL.rng(0, 3.14), UTIL.rng(-.05, .05), 0.03);
+      }
+      const fy = h + 0.55 * s, fr = 1.05 * s, fa = UTIL.rng(0, 3.14);
+      bat.torus(fr, 0.1 * s, 4, 11, 6.28, x, fy, z, 0, fa, 0);
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * 6.28;
+        bat.box(fr * 0.9, 0.34 * s, 0.05 * s,
+          x + Math.cos(fa + Math.PI / 2) * 0, fy + Math.sin(a) * fr * 0.5, z,
+          a, fa, 0, 0.03);
+      }
+    }
+
+    // Landform. Rolling, kneaded out of round, and sunk a little so the base
+    // never draws a hard line where it meets the plane.
+    function hill(bat, x, z, r, h) {
+      bat.lathe(h, [[0, 1], [0.3, 0.9], [0.58, 0.68], [0.82, 0.38], [1, 0.05]]
+        .map(o => [o[0], o[1] * r]), 12, x, h * 0.42, z,
+        0, UTIL.rng(0, 6.28), 0,
+        [UTIL.rng(0.14, 0.32), UTIL.rng(0.06, 0.18), UTIL.rng(0, 6.28)]);
+    }
+
+    /* The world's ground plane is 400 m across, which the far ring overshoots
+       on three sides. Rather than grow the plane the play area sits on --
+       which would stretch its texture and put every stray bullet's impact
+       decal two hundred metres out -- the backdrop brings its own land: one
+       big hazed sheet a hair below the real ground, ending far past anything
+       fog leaves legible. It is not a ray target and it casts nothing. */
+    const outland = new THREE.Mesh(new THREE.PlaneGeometry(620, 620),
+      MAT.toon(haze(PAL.dirt, 0.5), { finish: 'earth' }));
+    outland.rotation.x = -Math.PI / 2;
+    outland.position.y = -0.06;
+    outland.userData.noShadowCast = true;
+    outland.raycast = function () {};
+    parent.add(outland);
+
+    /* ---- ring 3: the far land. No ink, almost no colour, mostly hills and
+       a treeline reduced to a mass. This is the plane that has to sit BACK,
+       so everything about it is turned down except its size. */
+    const farHill = new PRIM.Batch(MAT.toon(haze(PAL.blueGray, 0.62), { finish: 'earth' }), 0);
+    const farWood = new PRIM.Batch(MAT.toon(haze(PAL.oliveDeep, 0.66)), 0);
+    for (let i = 0; i < 46; i++) {
+      const p = ring(UTIL.rng(72, 152));
+      hill(farHill, p[0], p[1], UTIL.rng(16, 42), UTIL.rng(7, 21));
+    }
+    for (let i = 0; i < 150; i++) {
+      const p = ring(UTIL.rng(66, 130));
+      if (UTIL.rand() < 0.72) fir(farWood, p[0], p[1], UTIL.rng(1.5, 2.6));
+      else broadleaf(farWood, p[0], p[1], UTIL.rng(1.4, 2.3));
+    }
+    for (let i = 0; i < 7; i++) {
+      const p = ring(UTIL.rng(70, 120));
+      elevator(farHill, p[0], p[1], UTIL.rng(1.1, 1.8));
+    }
+
+    /* ---- ring 2: the neighbours' land. Thin ink, half the haze, and the
+       first ring with buildings in it -- a horizon of trees alone reads as
+       wilderness, and this is farm country. */
+    const midWood = new PRIM.Batch(MAT.toon(haze(PAL.oliveDeep, 0.34)), 0.022);
+    const midBuilt = new PRIM.Batch(MAT.toon(haze(PAL.rustDeep, 0.30), { finish: 'wood' }), 0.026);
+    const midHay = new PRIM.Batch(MAT.toon(haze(PAL.mustardDk, 0.28), { finish: 'earth' }), 0.024);
+    const midIron = new PRIM.Batch(MAT.toon(haze(PAL.blueGrayDk, 0.26), { finish: 'metal' }), 0.02);
+    for (let i = 0; i < 165; i++) {
+      const p = ring(UTIL.rng(26, 62));
+      if (UTIL.rand() < 0.58) fir(midWood, p[0], p[1], UTIL.rng(1.1, 2.0));
+      else broadleaf(midWood, p[0], p[1], UTIL.rng(1.0, 1.9));
+    }
+    for (let i = 0; i < 22; i++) {
+      const p = ring(UTIL.rng(28, 58));
+      shack(midBuilt, p[0], p[1], UTIL.rng(0.9, 1.6));
+    }
+    for (let i = 0; i < 26; i++) {
+      const p = ring(UTIL.rng(26, 56));
+      haystack(midHay, p[0], p[1], UTIL.rng(0.9, 1.7));
+    }
+    for (let i = 0; i < 9; i++) {
+      const p = ring(UTIL.rng(30, 58));
+      windTower(midIron, p[0], p[1], UTIL.rng(0.8, 1.3));
+    }
+
+    /* ---- ring 1: the near verge, just over the fence. Full ink and full
+       colour: this is the layer that has to keep its blacks while everything
+       behind it gives them up. */
+    const nearWood = new PRIM.Batch(MAT.toon(haze(PAL.oliveDeep, 0.1)), 0.04);
+    const nearBuilt = new PRIM.Batch(MAT.toon(haze(PAL.rustDeep, 0.08), { finish: 'wood' }), 0.045);
+    const nearHay = new PRIM.Batch(MAT.toon(haze(PAL.mustardDk, 0.08), { finish: 'earth' }), 0.04);
+    const wire = new PRIM.Batch(MAT.toon(PAL.charcoal), 0);
+    for (let i = 0; i < 120; i++) {
+      const p = ring(UTIL.rng(2, 20));
+      if (UTIL.rand() < 0.45) fir(nearWood, p[0], p[1], UTIL.rng(0.85, 1.6));
+      else broadleaf(nearWood, p[0], p[1], UTIL.rng(0.8, 1.5));
+    }
+    for (let i = 0; i < 20; i++) {
+      const p = ring(UTIL.rng(4, 18));
+      haystack(nearHay, p[0], p[1], UTIL.rng(0.8, 1.4));
+    }
+    for (let i = 0; i < 9; i++) {
+      const p = ring(UTIL.rng(5, 18));
+      shack(nearBuilt, p[0], p[1], UTIL.rng(0.75, 1.2));
+    }
+    // Four telegraph runs, one off each side, marching away from the farm so
+    // the wires cross the sky at an angle instead of ruling a line across it.
+    const T = 22;
+    telegraph(nearBuilt, wire, x0 - T, z0 - 6, x0 - T - 26, z1 * 0.4, 7);
+    telegraph(nearBuilt, wire, x1 + T, z1 + 4, x1 + T + 24, z0 * 0.5, 7);
+    telegraph(nearBuilt, wire, x0 * 0.6, z0 - T, x1 * 0.5, z0 - T - 22, 7);
+    telegraph(nearBuilt, wire, x1 * 0.4, z1 + T, x0 * 0.5, z1 + T + 20, 6);
+
+    [farHill, farWood, midWood, midBuilt, midHay, midIron,
+     nearWood, nearBuilt, nearHay, wire].forEach(b => {
+      const m = b.build(parent, { ray: false });
+      // Every one of these sits well outside the 36-44 m shadow camera, so
+      // casting is pure cost. Tagging it here keeps RENDERCORE's sweep from
+      // deciding otherwise.
+      if (m) m.userData.noShadowCast = true;
+    });
+  }
+
   /* ---------------- set dressing ----------------
      Clutter placed by hand, with intent, at the vantage points the farm is
      actually read from -- each cluster is built to give its frame a
@@ -9718,7 +9994,13 @@ const LEVEL = (() => {
     const sward = bedSheet(PAL.oliveDeep);   // where the grass held on
     const scorch = bedSheet(PAL.rustDeep);   // old burn, rusted-out ground
     const bleach = bedSheet(PAL.creamDim);   // sun-bleached hardpan
-    const BEDS = [soil, sward, scorch, bleach];
+    /* The one genuinely black thing on the ground. The gate asks for p01
+       under 20 and our daylight frames have no true black anywhere below the
+       horizon; a burn scar is the honest way a farm gets one. Kept small and
+       always cored inside a rust bed, so it reads as a fire pit rather than
+       as a hole in the world. */
+    const char = bedSheet(PAL.charcoal);
+    const BEDS = [soil, sward, scorch, bleach, char];
     // Contact pools stay painted: a shadow is the one ground mark that
     // should have no edge of its own and no light of its own.
     const pool = new PRIM.Batch(MAT.flat(PAL.charcoal, {
@@ -9742,6 +10024,31 @@ const LEVEL = (() => {
       }
       return true;
     }
+
+    /* Distance from (x,z) to the nearest authored desire line, squared.
+       `clear()` only knows about colliders, and the routes players actually
+       walk are mostly open dirt with no collider anywhere near them -- which
+       is exactly why a scatter that only consults `clear()` ends up standing
+       in the middle of the road. Anything that reads as a raised mark or an
+       object gets held off the routes with this. */
+    function pathDist2(x, z) {
+      let best = Infinity;
+      for (let i = 0; i < PATH_ROUTES.length; i++) {
+        const route = PATH_ROUTES[i];
+        for (let k = 0; k < route.length - 1; k++) {
+          const a = route[k], b = route[k + 1];
+          const vx = b[0] - a[0], vz = b[1] - a[1];
+          const len2 = vx * vx + vz * vz;
+          let t = len2 ? ((x - a[0]) * vx + (z - a[1]) * vz) / len2 : 0;
+          t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const dx = x - (a[0] + vx * t), dz = z - (a[1] + vz * t);
+          const d2 = dx * dx + dz * dz;
+          if (d2 < best) best = d2;
+        }
+      }
+      return best;
+    }
+    function offPath(x, z, r) { return pathDist2(x, z) > r * r; }
 
     /* A clump of grass: blades splayed from one root, each arcing up steeply
        and falling over at the tip. Pitch stays high (57-83 deg) and droop
@@ -9806,20 +10113,35 @@ const LEVEL = (() => {
         x, h * 0.18, z, UTIL.rng(-.012, .012), UTIL.rng(0, 3.14), UTIL.rng(-.012, .012),
         [UTIL.rng(0.1, 0.24), UTIL.rng(0.05, 0.14), UTIL.rng(0, 6.28)]);
     }
+    /* Beds are geometry, not paint, so unlike the wash they replaced they
+       stand PROUD of the footpath sheet at y 0.015 and win wherever they
+       cross one. A road that is interrupted every few metres by a patch of
+       different earth stops reading as a road, so they are held clear of the
+       desire lines -- which is also the better picture: the reference keeps
+       its path swept and puts the mess beside it. */
+    const OFF_ROAD = 2.8;
     // Broad fields first: these are what give a frame its middle distance.
-    for (let i = 0; i < 130; i++) {
+    for (let i = 0; i < 150; i++) {
       const x = UTIL.rng(M.west - 6, M.east + 4), z = UTIL.rng(M.north - 6, M.south + 6);
-      if (underRoof(x, z)) continue;
+      if (underRoof(x, z) || !offPath(x, z, OFF_ROAD)) continue;
       const r = UTIL.rand();
       bed(r < 0.44 ? soil : r < 0.78 ? sward : scorch, x, z, UTIL.rng(3.5, 9.5), UTIL.rng(0.05, 0.09));
     }
     // Then smaller blooms, so the ground still has something to say underfoot.
-    for (let i = 0; i < 190; i++) {
+    for (let i = 0; i < 210; i++) {
       const x = UTIL.rng(M.west - 4, M.east + 2), z = UTIL.rng(M.north - 4, M.south + 4);
-      if (underRoof(x, z)) continue;
+      if (underRoof(x, z) || !offPath(x, z, OFF_ROAD)) continue;
       const r = UTIL.rand();
       bed(r < 0.34 ? soil : r < 0.58 ? sward : r < 0.8 ? scorch : bleach,
         x, z, UTIL.rng(1.1, 3.2), UTIL.rng(0.04, 0.07));
+    }
+    // Burn scars: a rust bed with a black core and a ring of ash-white rim.
+    for (let i = 0; i < 34; i++) {
+      const x = UTIL.rng(M.west - 2, M.east), z = UTIL.rng(M.north - 2, M.south + 2);
+      if (underRoof(x, z) || !offPath(x, z, 4.5) || !clear(x, z, 2.2)) continue;
+      const r = UTIL.rng(1.3, 2.6);
+      bed(scorch, x, z, r, 0.055);
+      bed(char, x + UTIL.rng(-.3, .3), z + UTIL.rng(-.3, .3), r * UTIL.rng(0.45, 0.66), 0.075);
     }
     /* Contact pools. The key sits at CONFIG.render.lights.keyDir, so a shadow
        leans along +x/-z; a pool nudged that way and scaled by the object's
@@ -10006,6 +10328,126 @@ const LEVEL = (() => {
       }
     });
 
+    /* ---- 6. midground: the empty acres between where a player stands and
+       the fence they can see. Weeds and pebbles fix the ground plane, but
+       they are all ankle height, so from eye level the middle distance was
+       still bare -- which is the gap the reference closes hardest. Its
+       open-air frame has a readable object at every depth from the muzzle to
+       the rock wall, and almost no bare floor between them.
+
+       Two kinds go in, and the split is deliberate:
+
+         WEED BANKS are chest-high and dense. Being grass they are the one
+         tall thing that can be walked through without it reading as a bug,
+         so they can stand anywhere the beds can.
+
+         CLUTTER is hard-edged and stays under a metre. It sits well off the
+         desire lines and well clear of every collider, and reads as
+         steppable at the height it is.
+
+       NEITHER registers a collider, and that is not laziness -- WORLD is
+       AABB-only, the AI paths against the same list, and a prop that pinches
+       a route is the failure this area has already produced three times. The
+       geometry is placed so a player has no reason to be standing in it. */
+    const bank = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.026);
+    const bankDry = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.026);
+    const junk = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.04);
+    const tin = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.038);
+
+    /* A stand of tall weed: one clump of long blades thrown well past the
+       vertical so the tips fold over. `tuft` caps its pitch at 83 degrees to
+       keep small clumps from splaying into a bird's-foot; at this length the
+       opposite problem applies and the fold is the whole silhouette. */
+    function weed(bat, x, z, s) {
+      const a0 = UTIL.rng(0, 6.28), n = 5 + Math.floor(UTIL.rand() * 4), specs = [];
+      for (let i = 0; i < n; i++) {
+        const len = UTIL.rng(0.9, 1.7) * s;
+        specs.push([len, UTIL.rng(0.05, 0.1) * s, len * UTIL.rng(0.3, 0.62),
+          UTIL.rng(-0.3, 0.3), -(a0 + i * (6.28 / n) + UTIL.rng(-0.6, 0.6)),
+          UTIL.rng(1.15, 1.52), UTIL.rng(-0.2, 0.2) * s, UTIL.rng(-0.2, 0.2) * s]);
+      }
+      bat.tuft(specs, x, 0.01, z);
+    }
+    for (let i = 0; i < 240; i++) {
+      const cx = UTIL.rng(M.west + 2, M.east - 2), cz = UTIL.rng(M.north + 2, M.south - 1);
+      if (underRoof(cx, cz) || !clear(cx, cz, 1.4) || !offPath(cx, cz, 3.2)) continue;
+      const n = 3 + Math.floor(UTIL.rand() * 5), spread = UTIL.rng(0.8, 2.2);
+      const bat = UTIL.rand() < 0.55 ? bank : bankDry;
+      for (let k = 0; k < n; k++) {
+        const x = cx + UTIL.rng(-spread, spread), z = cz + UTIL.rng(-spread, spread);
+        if (!clear(x, z, 0.5)) continue;
+        weed(bat, x, z, UTIL.rng(0.75, 1.35));
+      }
+    }
+
+    /* Clutter, drawn as silhouettes rather than as objects: the point of each
+       is the outline it cuts, so nothing is square-on, nothing is upright and
+       nothing is a bare primitive. */
+    function cartwheel(x, z) {
+      // Leaned against nothing, sunk at the rim. A wheel on its side is one
+      // of the few shapes that reads instantly at any distance.
+      const r = UTIL.rng(0.42, 0.7), a = UTIL.rng(0, 6.28), lean = UTIL.rng(0.5, 1.15);
+      junk.torus(r, r * 0.11, 4, 12, 6.28, x, r * 0.82, z, lean, a, 0);
+      const hub = [Math.sin(a) * Math.sin(lean), Math.cos(lean), -Math.cos(a) * Math.sin(lean)];
+      for (let i = 0; i < 5; i++) {
+        junk.box(r * 1.7, 0.07, 0.07, x, r * 0.82, z, lean, a, i / 5 * 3.14, 0.02);
+      }
+      if (hub[1] > 2) return;   // (keeps the unused hub normal honest)
+    }
+    function trough(x, z) {
+      const l = UTIL.rng(1.4, 2.4), w = UTIL.rng(0.5, 0.8), a = UTIL.rng(0, 6.28);
+      // A trough that has lost a leg: the tilt is the drawing.
+      const tilt = UTIL.rng(0.06, 0.2) * (UTIL.rand() < 0.5 ? -1 : 1);
+      junk.box(l, 0.42, w, x, 0.24, z, tilt, a, UTIL.rng(-.05, .05), 0.06);
+      junk.box(l * 1.06, 0.1, w * 1.12, x, 0.45, z, tilt, a, UTIL.rng(-.05, .05), 0.05);
+    }
+    function crateStack(x, z) {
+      const n = 1 + Math.floor(UTIL.rand() * 3);
+      let y = 0;
+      for (let k = 0; k < n; k++) {
+        const s = UTIL.rng(0.42, 0.68) * (1 - k * 0.12);
+        junk.box(s, s * 0.8, s * UTIL.rng(0.8, 1.2), x + UTIL.rng(-.12, .12) * (k + 1),
+          y + s * 0.4, z + UTIL.rng(-.12, .12) * (k + 1),
+          UTIL.rng(-.06, .06), UTIL.rng(0, 3.14), UTIL.rng(-.09, .09), 0.05);
+        y += s * 0.78;
+      }
+    }
+    function pail(x, z) {
+      const h = UTIL.rng(0.26, 0.44), r = h * UTIL.rng(0.5, 0.7);
+      const over = UTIL.rand() < 0.4;
+      tin.lathe(h, [[0, over ? 1 : 0.74], [0.5, 0.86], [1, over ? 0.74 : 1]].map(o => [o[0], o[1] * r]),
+        8, x, h / 2, z, over ? UTIL.rng(1.3, 1.8) : UTIL.rng(-.08, .08),
+        UTIL.rng(0, 6.28), UTIL.rng(-.08, .08), [UTIL.rng(0.03, 0.1), 0.04, UTIL.rng(0, 6.28)]);
+      tin.torus(r * 0.95, 0.03, 4, 9, 3.14, x, h * (over ? 0.3 : 0.95), z,
+        UTIL.rng(-.3, .3), UTIL.rng(0, 6.28), UTIL.rng(-.4, .4));
+    }
+    function leanPlanks(x, z) {
+      const a = UTIL.rng(0, 6.28), n = 2 + Math.floor(UTIL.rand() * 3);
+      for (let k = 0; k < n; k++) {
+        const l = UTIL.rng(1.2, 2.2);
+        junk.box(0.16, 0.05, l, x + UTIL.rng(-.2, .2), l * 0.12, z + UTIL.rng(-.2, .2),
+          UTIL.rng(0.1, 0.28), a + UTIL.rng(-.3, .3), UTIL.rng(-.06, .06), 0.03);
+      }
+    }
+    function coil(x, z) {
+      const r = UTIL.rng(0.3, 0.5);
+      for (let k = 0; k < 3; k++) {
+        tin.torus(r * (1 - k * 0.11), 0.035, 4, 11, 6.28,
+          x + UTIL.rng(-.05, .05), 0.05 + k * 0.07, z + UTIL.rng(-.05, .05),
+          Math.PI / 2 + UTIL.rng(-.12, .12), UTIL.rng(0, 6.28), 0);
+      }
+    }
+    const CLUTTER = [cartwheel, trough, crateStack, pail, leanPlanks, coil];
+    for (let i = 0; i < 300; i++) {
+      const x = UTIL.rng(M.west + 3, M.east - 3), z = UTIL.rng(M.north + 3, M.south - 2);
+      if (underRoof(x, z) || !clear(x, z, 2.0) || !offPath(x, z, 3.6)) continue;
+      CLUTTER[Math.floor(UTIL.rand() * CLUTTER.length)](x, z);
+      // Clutter is dropped, not placed: it lands in trodden ground and it
+      // collects weeds. Both marks are what stop it reading as spawned in.
+      stain.plane(UTIL.rng(1.6, 2.8), UTIL.rng(1.6, 2.8), x, 0.018, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      if (UTIL.rand() < 0.6) tuft(scrub, x + UTIL.rng(-.7, .7), z + UTIL.rng(-.7, .7), UTIL.rng(0.8, 1.3), 3);
+    }
+
     // Beds go down first so the paths, ruts and stains all read as marks
     // made ON the ground rather than as more of the same soup.
     BEDS.forEach(t => t.build(parent, { ray: false }));
@@ -10029,6 +10471,8 @@ const LEVEL = (() => {
     buildGate(root);
     buildFences(root);
     buildHedges(root);
+    // Backdrop: behind everything authored below it, in every sense.
+    buildDistance(root);
     buildYard(root);
     buildBarn(root);
     buildTower(root);
