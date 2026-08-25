@@ -46,26 +46,46 @@ const rig = (k, ambLift) => ({
   'l.ambIntensity':       +(BASE.amb  * k * (ambLift || 1)).toFixed(4)
 });
 
-// Second pass. The first pass measured nothing, because the apply path never
-// reached the live rig (window.RENDERCORE was undefined). With that fixed, a
-// verified control run gives lights x0.05 -> barn-ext 8 and silo-west 7, so the
-// knob is real and repeatable.
+// Third pass, and the first one aimed at a measured target rather than a
+// guessed one. tonal.js on the five Mouse P.I. reference stills gives:
 //
-// Scales chosen from that response curve. The grade's print gamma is 0.62, so
-// output moves roughly as k^0.62 in the midrange; pulling silo-west from 191 to
-// about 150 wants k around 0.68. The +amb variants prop the omnidirectional
-// floor back up, because silo-north (90) and barn-ext (112) fall with the same
-// k that fixes the bright end and silo-north has the least headroom above the
-// 70 floor.
+//   frame              p01  p50  p99   rms  shadow%  edge
+//   saloon interior     23   74  255  51.5    38.3   89.4
+//   camp firefight      15   86  230  68.0    36.2   44.3
+//   circus boss          8   51  236  64.1    60.3   57.1
+//   laboratory           0   42  249  62.5    62.1  107.9
+//   skeleton alley       0   49  240  65.0    61.1  118.1
+//   MEAN               9.2 60.4  242  62.2    51.6   83.4
+//
+// The reference is a DARK image with small brilliant accents: median 60, over
+// half of every frame below 64, and still a p99 of 242. Our daylight frames sit
+// at 145-192 with 11-38% shadow. The old 70-160 band was my guess and would
+// have failed three of those five reference frames for being too dark.
+//
+// Scaling the light rig is the wrong lever for this: it drags the highlights
+// down with the mids, and it cannot touch the sky at all (unlit MeshBasic), so
+// past a point the frame just floors out. GAMMA pivots around white -- it moves
+// the midtone while leaving black at black and white at white, which is exactly
+// the axis that separates us from the reference. And the grade is currently at
+// gamma 0.62, which since x^0.62 > x for x<1 is actively LIFTING every midtone.
+//
+// So: sweep gamma up, with a modest light trim, and watch that p99 holds.
+const g = (gamma, k, contrast) => {
+  const o = { gamma };
+  if (contrast !== undefined) o.contrast = contrast;
+  if (k !== undefined) Object.assign(o, rig(k));
+  return o;
+};
+
 const CANDIDATES = [
-  ['baseline',        null],
-  ['scale 0.78',      rig(0.78)],
-  ['scale 0.68',      rig(0.68)],
-  ['scale 0.68 +amb', rig(0.68, 2.2)],
-  ['scale 0.58 +amb', rig(0.58, 2.6)]
+  ['baseline (g0.62)',        null],
+  ['g0.85',                   g(0.85)],
+  ['g1.05',                   g(1.05)],
+  ['g1.05 + rig0.80',         g(1.05, 0.80)],
+  ['g1.25 + rig0.80 + con',   g(1.25, 0.80, 0.22)]
 ];
 
-const BAND_LO = 70, BAND_HI = 160;
+const BAND_LO = 75, BAND_HI = 130;   // from the reference; see the note above
 
 async function main() {
   const browser = await chromium.launch({
@@ -93,6 +113,7 @@ async function main() {
     console.log(`\n### ${name}`);
     console.log('   ' + row.map(r => `${r.n}=${r.p50}`).join('  '));
     console.log(`   daylight spread ${(Math.max(...p50s) / Math.min(...p50s)).toFixed(2)}x` +
+                `   minP01 ${Math.min(...day.map(r => r.p01 === undefined ? -1 : r.p01))}` +
                 `   out of ${BAND_LO}-${BAND_HI}: ${out.length ? out.join(', ') : 'none'}` +
                 `   maxShadow% ${Math.max(...day.map(r => r.sh))}` +
                 `   minP99 ${Math.min(...day.map(r => r.p99))}`);

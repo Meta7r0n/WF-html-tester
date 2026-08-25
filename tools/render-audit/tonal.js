@@ -18,11 +18,19 @@ const { chromium } = require('/opt/node22/lib/node_modules/playwright');
 const fs = require('fs');
 const path = require('path');
 
+// MIME follows the extension so the same analysis works on reference stills
+// (jpg/webp) as on our own captures (png) -- comparing our frames against the
+// reference's actual numbers is the whole point, and it is not much of a
+// comparison if only one side can be decoded.
+const MIME = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+               '.webp': 'image/webp', '.gif': 'image/gif', '.bmp': 'image/bmp' };
+
 async function analyze(page, file) {
   const b64 = fs.readFileSync(file).toString('base64');
-  return await page.evaluate(async (b64) => {
+  const mime = MIME[path.extname(file).toLowerCase()] || 'image/png';
+  return await page.evaluate(async ({ b64, mime }) => {
     const img = new Image();
-    img.src = 'data:image/png;base64,' + b64;
+    img.src = 'data:' + mime + ';base64,' + b64;
     await img.decode();
     const c = document.createElement('canvas');
     c.width = img.width; c.height = img.height;
@@ -78,7 +86,7 @@ async function analyze(page, file) {
       edge: +(edgeSum / edgeN).toFixed(1),
       sat: +(100 * satSum / n).toFixed(1)
     };
-  }, b64);
+  }, { b64, mime });
 }
 
 async function main() {
@@ -93,12 +101,12 @@ async function main() {
   for (const dRaw of dirs) {
     const d = path.isAbsolute(dRaw) ? dRaw : root + dRaw;
     if (!fs.existsSync(d)) { out[dRaw] = { error: 'missing' }; continue; }
-    const files = fs.readdirSync(d).filter(f => f.endsWith('.png')).sort();
+    const files = fs.readdirSync(d).filter(f => MIME[path.extname(f).toLowerCase()]).sort();
     const rows = {};
     const agg = { p01: 0, p50: 0, p99: 0, mean: 0, rms: 0, shadowPct: 0, highPct: 0, edge: 0, sat: 0 };
     for (const f of files) {
       const r = await analyze(page, path.join(d, f));
-      rows[f.replace('.png', '')] = r;
+      rows[f.replace(path.extname(f), '')] = r;
       for (const k of Object.keys(agg)) agg[k] += r[k];
     }
     const c = files.length || 1;
