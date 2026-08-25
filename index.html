@@ -9528,11 +9528,18 @@ const LEVEL = (() => {
       }
       const fy = h + 0.55 * s, fr = 1.05 * s, fa = UTIL.rng(0, 3.14);
       bat.torus(fr, 0.1 * s, 4, 11, 6.28, x, fy, z, 0, fa, 0);
+      /* A torus lies in its own XY plane, so after rotY(fa) the fan's plane is
+         spanned by world (cos fa, 0, -sin fa) and straight up. Blades have to
+         be offset along THAT basis; offsetting in y alone stacked all six in a
+         vertical line through the hub, which is what this did. Euler order is
+         XYZ, so (0, fa, a) spins each blade about its own Z first -- inside
+         the fan plane -- and only then swings the plane into place. */
+      const ux = Math.cos(fa), uz = -Math.sin(fa);
       for (let i = 0; i < 6; i++) {
-        const a = i / 6 * 6.28;
-        bat.box(fr * 0.9, 0.34 * s, 0.05 * s,
-          x + Math.cos(fa + Math.PI / 2) * 0, fy + Math.sin(a) * fr * 0.5, z,
-          a, fa, 0, 0.03);
+        const a = i / 6 * 6.28, rad = fr * 0.55;
+        bat.box(fr * 0.8, 0.34 * s, 0.05 * s,
+          x + ux * Math.cos(a) * rad, fy + Math.sin(a) * rad, z + uz * Math.cos(a) * rad,
+          0, fa, a, 0.03);
       }
     }
 
@@ -10164,6 +10171,79 @@ const LEVEL = (() => {
         -Math.PI / 2, 0, UTIL.rng(0, 6.28));
     });
 
+    /* ---- cast shadow from things that are not in the shot. The reference
+       almost never shows a lit floor with nothing lying across it: a window
+       frame, a roof edge, a fence just out of frame. We only ever had shadow
+       where an object stood IN frame, so every open acre came back as blank
+       paper -- and open acres are most of what a farm is.
+
+       Painted into the contact-pool batch on purpose: a shadow is the one
+       ground mark with no edge and no light of its own. They run along the
+       key direction so they agree with every real cast shadow in the scene
+       instead of crossing it.
+
+       A plane is laid flat by rx = -PI/2, which maps its local +Y to world
+       -Z; Euler order is XYZ so rz spins it in its own plane FIRST. That
+       makes SHANG below the rz that points a band's long axis down the key,
+       and (PX, PZ) the direction across the run. Derived rather than typed in
+       because the key direction is a tunable and a hand-copied angle would
+       quietly stop matching it.
+
+       These are flat, have no height and register nothing. A shadow cannot
+       block a path, which is why this is the one kind of density that can be
+       laid straight across the desire lines -- and it should be: a road with
+       a fence's shadow over it still reads as a road. */
+    const SHANG = Math.atan2(-SHX, -SHZ);
+    const PX = Math.cos(SHANG), PZ = -Math.sin(SHANG);
+    function band(x, z, w, len, jit) {
+      pool.plane(w, len, x + UTIL.rng(-jit, jit), 0.0145, z + UTIL.rng(-jit, jit),
+        -Math.PI / 2, 0, SHANG + UTIL.rng(-.05, .05));
+    }
+    // A picket run: the long shadow of a fence standing off past the edge of
+    // the shot. Bars are the readable one -- a repeated mark says "made by a
+    // thing" where a single smudge just says "dirty ground".
+    function shadowPicket(x, z) {
+      const n = 6 + Math.floor(UTIL.rand() * 7), gap = UTIL.rng(0.85, 1.5);
+      const len = UTIL.rng(4, 9), w = gap * UTIL.rng(0.22, 0.38);
+      for (let i = 0; i < n; i++) {
+        if (UTIL.rand() < 0.12) continue;               // a missing paling
+        const o = (i - n / 2) * gap;
+        band(x + PX * o, z + PZ * o, w, len * UTIL.rng(0.85, 1.15), 0.12);
+      }
+      // The rail the palings hang off, thrown across them near the far end.
+      band(x + SHX * len * 0.34, z + SHZ * len * 0.34, n * gap * 0.9, w * 1.4, 0.1);
+    }
+    // A roof or wall edge: one broad soft slab with a broken lip.
+    function shadowSlab(x, z) {
+      const w = UTIL.rng(4, 11), len = UTIL.rng(6, 16);
+      band(x, z, w, len, 0.3);
+      for (let i = 0; i < 3; i++) {
+        band(x + PX * UTIL.rng(-w, w) * 0.5, z + PZ * UTIL.rng(-w, w) * 0.5,
+          w * UTIL.rng(0.25, 0.5), len * UTIL.rng(0.5, 0.95), 0.5);
+      }
+    }
+    // Bare branches. Crooked, thin, and never parallel for long -- this is
+    // the one that stops the whole set reading as ruled lines.
+    function shadowLimbs(x, z) {
+      const n = 3 + Math.floor(UTIL.rand() * 4);
+      let ox = 0, oz = 0;
+      for (let i = 0; i < n; i++) {
+        const len = UTIL.rng(2.5, 6.5), skew = UTIL.rng(-.5, .5);
+        pool.plane(UTIL.rng(0.16, 0.4), len, x + ox, 0.0145, z + oz,
+          -Math.PI / 2, 0, SHANG + skew);
+        ox += PX * UTIL.rng(-1.6, 1.6) + SHX * len * 0.3;
+        oz += PZ * UTIL.rng(-1.6, 1.6) + SHZ * len * 0.3;
+      }
+    }
+    const CASTERS = [shadowPicket, shadowPicket, shadowSlab, shadowLimbs, shadowLimbs];
+    for (let i = 0; i < 54; i++) {
+      const x = UTIL.rng(M.west - 2, M.east - 2), z = UTIL.rng(M.north - 2, M.south + 2);
+      // Only where there is floor to darken: under a roof the real shadow map
+      // already owns the ground, and a painted band there doubles up muddy.
+      if (underRoof(x, z)) continue;
+      CASTERS[Math.floor(UTIL.rand() * CASTERS.length)](x, z);
+    }
+
     // ---- 1. contour: low earth swells so the ground has a horizon line
     // that isn't a ruler edge. Kept under 0.3 m and well clear of anything
     // solid, so they never fight the flat collision floor players walk on.
@@ -10388,11 +10468,13 @@ const LEVEL = (() => {
       // of the few shapes that reads instantly at any distance.
       const r = UTIL.rng(0.42, 0.7), a = UTIL.rng(0, 6.28), lean = UTIL.rng(0.5, 1.15);
       junk.torus(r, r * 0.11, 4, 12, 6.28, x, r * 0.82, z, lean, a, 0);
-      const hub = [Math.sin(a) * Math.sin(lean), Math.cos(lean), -Math.cos(a) * Math.sin(lean)];
+      // Spokes share the rim's (lean, a) and add their own spin about local Z,
+      // which under XYZ order is applied first -- so they sweep inside the
+      // wheel's plane instead of tumbling out of it. Five bars, one short of
+      // symmetric, because a wheel missing a spoke reads as a wreck.
       for (let i = 0; i < 5; i++) {
         junk.box(r * 1.7, 0.07, 0.07, x, r * 0.82, z, lean, a, i / 5 * 3.14, 0.02);
       }
-      if (hub[1] > 2) return;   // (keeps the unused hub normal honest)
     }
     function trough(x, z) {
       const l = UTIL.rng(1.4, 2.4), w = UTIL.rng(0.5, 0.8), a = UTIL.rng(0, 6.28);
