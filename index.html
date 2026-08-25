@@ -9594,7 +9594,7 @@ const LEVEL = (() => {
     const midIron = new PRIM.Batch(MAT.toon(haze(PAL.blueGrayDk, 0.26), { finish: 'metal' }), 0.02);
     for (let i = 0; i < 165; i++) {
       const p = ring(UTIL.rng(26, 62));
-      if (UTIL.rand() < 0.58) fir(midWood, p[0], p[1], UTIL.rng(1.1, 2.0));
+      if (UTIL.rand() < 0.72) fir(midWood, p[0], p[1], UTIL.rng(1.3, 2.6));
       else broadleaf(midWood, p[0], p[1], UTIL.rng(1.0, 1.9));
     }
     for (let i = 0; i < 22; i++) {
@@ -9619,8 +9619,28 @@ const LEVEL = (() => {
     const wire = new PRIM.Batch(MAT.toon(PAL.charcoal), 0);
     for (let i = 0; i < 120; i++) {
       const p = ring(UTIL.rng(2, 20));
-      if (UTIL.rand() < 0.45) fir(nearWood, p[0], p[1], UTIL.rng(0.85, 1.6));
+      if (UTIL.rand() < 0.62) fir(nearWood, p[0], p[1], UTIL.rng(0.85, 1.6));
       else broadleaf(nearWood, p[0], p[1], UTIL.rng(0.8, 1.5));
+    }
+    /* Spires. The frames came back with a skyline that was one flat hedge of
+       round canopies, and the reason was not the fir/broadleaf mix -- it was
+       height. The farm's own boundary trees stand AT the fence, the backdrop
+       starts twelve metres behind it, and at that offset a backdrop tree of
+       ordinary height is simply hidden by a nearer one.
+
+       So a handful of deliberately oversized verticals, placed to clear the
+       existing canopy rather than to join it. This is the layer that makes
+       the horizon pointed and broken instead of a ruled line of broccoli --
+       which is the single loudest silhouette difference against the
+       reference, and no amount of extra normal-sized trees fixes it. */
+    for (let i = 0; i < 26; i++) {
+      const p = ring(UTIL.rng(3, 26));
+      fir(nearWood, p[0], p[1], UTIL.rng(2.1, 3.4));
+    }
+    for (let i = 0; i < 6; i++) {
+      const p = ring(UTIL.rng(6, 24));
+      if (UTIL.rand() < 0.5) elevator(nearBuilt, p[0], p[1], UTIL.rng(0.9, 1.4));
+      else windTower(nearBuilt, p[0], p[1], UTIL.rng(1.0, 1.5));
     }
     for (let i = 0; i < 20; i++) {
       const p = ring(UTIL.rng(4, 18));
@@ -10114,11 +10134,23 @@ const LEVEL = (() => {
     /* A bed: flat-topped, bevelled at the rim so the ink shell and the key
        both find an edge, kneaded out of round in plan so no two are the same
        circle, and tilted a hair so its crown is not a spirit level. */
+    /* Side count has to follow the radius. A fixed 7-9 is fine on a 1 m
+       bloom and indefensible on a 9 m field: the frame came back with big
+       rust heptagons in it, edges metres long and dead straight, which reads
+       as a broken mesh rather than as ground. Worse, latheGeo's wobble is a
+       3-lobe plus 5-lobe radial wave -- on 7 samples the 5-lobe aliases, so
+       the one thing meant to break the outline was quietly doing nothing.
+       An edge roughly every 1.2 m of arc, capped so a big bed cannot run
+       away with the triangle budget. */
     function bed(bat, x, z, r, h) {
       const rows = [[0, 0.58], [0.4, 0.9], [0.76, 1], [1, 0.9]];
-      bat.lathe(h, rows.map(o => [o[0], o[1] * r]), 7 + Math.floor(UTIL.rand() * 3),
+      const sides = Math.max(7, Math.min(22, 7 + Math.round(r * 1.6)));
+      // Bigger beds get a deeper wobble too: at 9 m a 15% lobe is barely a
+      // bulge, while at 1 m it would be a starfish.
+      const amp = UTIL.lerp(0.13, 0.3, Math.min(1, r / 8));
+      bat.lathe(h, rows.map(o => [o[0], o[1] * r]), sides,
         x, h * 0.18, z, UTIL.rng(-.012, .012), UTIL.rng(0, 3.14), UTIL.rng(-.012, .012),
-        [UTIL.rng(0.1, 0.24), UTIL.rng(0.05, 0.14), UTIL.rng(0, 6.28)]);
+        [amp * UTIL.rng(0.75, 1.25), amp * UTIL.rng(0.3, 0.6), UTIL.rng(0, 6.28)]);
     }
     /* Beds are geometry, not paint, so unlike the wash they replaced they
        stand PROUD of the footpath sheet at y 0.015 and win wherever they
