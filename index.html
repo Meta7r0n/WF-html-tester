@@ -13487,6 +13487,8 @@ const WEAPON = (() => {
   const _handM = new THREE.Matrix4();
   const _handE = new THREE.Euler();
   const _ZERO3 = [0, 0, 0];
+  // Authored size of the bare fists, read back by update()'s punch squash.
+  const FIST_SCALE = 1.5;
 
   const _o = new THREE.Vector3();
   const _d = new THREE.Vector3();
@@ -13506,22 +13508,44 @@ const WEAPON = (() => {
     return new THREE.ShapeGeometry(s);
   }
 
+  /* The gloves.
+
+     Drawn to the reference's rule rather than modelled: a flat white fill
+     with no shading term at all, bounded by a contour heavier than
+     anything else in the viewmodel, with the only interior lines being
+     the ones the finger and thumb shells make where they meet the palm.
+     Three things follow from that:
+
+       - MAT.flat, not MAT.toon. A lit glove takes the grade with it and
+         goes grey as the frame gets darker; the reference frames are a
+         dark world with near-white hands as the accent, and the hands
+         have to stay the brightest object in shot on their own account.
+       - the contour is roughly double the gun's, because in the reference
+         the hand's silhouette is the heaviest line on screen.
+       - it is big. Ours read as a doll's hand next to a real one; the
+         reference gloves are enormous, and a rubberhose hand being out of
+         proportion to what it is holding is the style, not an error. */
   function glove(parent, x, y, z, rotY, scale) {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     g.rotation.y = rotY || 0;
     g.scale.setScalar(scale || 1);
-    const white = MAT.toon(PAL.white);
-    PRIM.sph(0.062, white, { parent: g, scale: [1, 0.92, 1.15], outline: 0.011, ray: false });
+    const white = MAT.flat(PAL.white);
+    PRIM.sph(0.082, white, { parent: g, scale: [1, 0.94, 1.18], outline: 0.024, ray: false });
+    /* The knuckles have to break the palm's own silhouette. At the sizes
+       these started from they sat *inside* it, which is why the glove read
+       as one white blob: every interior line in a drawn glove is a place
+       where one rounded shape overlaps another, and there were no
+       overlaps to draw. */
     for (let i = 0; i < 4; i++) {
-      PRIM.sph(0.03, white, {
-        pos: [-0.028 + i * 0.019, 0.028, -0.062 - (i === 3 ? 0.01 : 0)],
-        parent: g, outline: 0.009, ray: false
+      PRIM.sph(0.046, white, {
+        pos: [-0.045 + i * 0.030, 0.030, -0.106 - (i === 3 ? 0.014 : 0)],
+        parent: g, outline: 0.014, ray: false
       });
     }
-    PRIM.sph(0.028, white, { pos: [0.05, -0.005, -0.02], parent: g, outline: 0.009, ray: false });
-    PRIM.cyl(0.058, 0.05, 0.045, 10, white, {
-      pos: [0, -0.02, 0.062], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.011, ray: false
+    PRIM.sph(0.044, white, { pos: [0.090, -0.004, -0.022], parent: g, outline: 0.014, ray: false });
+    PRIM.cyl(0.077, 0.066, 0.058, 10, white, {
+      pos: [0, -0.026, 0.082], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.022, ray: false
     });
     parent.add(g);
     return g;
@@ -14160,21 +14184,29 @@ const WEAPON = (() => {
     const black = MAT.toon(PAL.charcoal);
     armedHands = new THREE.Group();
     rig.add(armedHands);
-    PRIM.hose(new THREE.Vector3(0.42, -0.72, 0.42), new THREE.Vector3(0.28, -0.40, -0.4),
-      0.1, 0.048, black, { parent: armedHands, outline: 0.013, ray: false });
-    PRIM.hose(new THREE.Vector3(-0.46, -0.72, 0.2), new THREE.Vector3(0.24, -0.30, -0.88),
-      0.16, 0.048, black, { parent: armedHands, outline: 0.013, ray: false });
-    glove(armedHands, 0.278, -0.40, -0.4, -0.1);
-    glove(armedHands, 0.252, -0.295, -0.89, 0.12);
+    /* The sleeves are thicker and more heavily inked than they were, for
+       the same reason the gloves are: the reference's forearm is a bold
+       black tube, not a wire. Both hose roots sit behind the near plane,
+       which is what lets the hand-follow block rotate this whole group
+       about the gun's own origin without swinging an arm into the lens --
+       do not bring them forward of z = 0. */
+    PRIM.hose(new THREE.Vector3(0.42, -0.72, 0.46), new THREE.Vector3(0.28, -0.40, -0.4),
+      0.1, 0.058, black, { parent: armedHands, outline: 0.019, ray: false });
+    PRIM.hose(new THREE.Vector3(-0.46, -0.72, 0.24), new THREE.Vector3(0.24, -0.30, -0.88),
+      0.16, 0.058, black, { parent: armedHands, outline: 0.019, ray: false });
+    // Raised a little from where they sat when they were half this size:
+    // a bigger hand has to be recentred on the grip it is holding.
+    glove(armedHands, 0.278, -0.375, -0.4, -0.1, 1.35);
+    glove(armedHands, 0.252, -0.268, -0.89, 0.12, 1.35);
 
     const fists = new THREE.Group();
     rig.add(fists);
-    PRIM.hose(new THREE.Vector3(-0.46, -0.74, 0.24), new THREE.Vector3(-0.19, -0.27, -0.47),
-      0.13, 0.055, black, { parent: fists, outline: 0.014, ray: false });
-    PRIM.hose(new THREE.Vector3(0.46, -0.74, 0.28), new THREE.Vector3(0.21, -0.3, -0.52),
-      0.13, 0.055, black, { parent: fists, outline: 0.014, ray: false });
-    fistLeft = glove(fists, -0.19, -0.27, -0.47, -0.25, 1.18);
-    fistRight = glove(fists, 0.21, -0.3, -0.52, 0.25, 1.18);
+    PRIM.hose(new THREE.Vector3(-0.46, -0.74, 0.28), new THREE.Vector3(-0.19, -0.27, -0.47),
+      0.13, 0.064, black, { parent: fists, outline: 0.020, ray: false });
+    PRIM.hose(new THREE.Vector3(0.46, -0.74, 0.32), new THREE.Vector3(0.21, -0.3, -0.52),
+      0.13, 0.064, black, { parent: fists, outline: 0.020, ray: false });
+    fistLeft = glove(fists, -0.19, -0.27, -0.47, -0.25, FIST_SCALE);
+    fistRight = glove(fists, 0.21, -0.3, -0.52, 0.25, FIST_SCALE);
     models.unarmed = {
       root: fists, forend: null, flash: null, flash2: null,
       base: [0, 0, 0], rot: [0, 0, 0]
@@ -15403,8 +15435,10 @@ const WEAPON = (() => {
         // Squash the fist that is actually travelling.
         const ls = meleeSide < 0 ? 1 + swing * 0.30 : 1;
         const rs = meleeSide > 0 ? 1 + swing * 0.30 : 1;
-        fistLeft.scale.set(1.18 / (ls * 0.75 + 0.25), 1.18 / (ls * 0.75 + 0.25), 1.18 * ls);
-        fistRight.scale.set(1.18 / (rs * 0.75 + 0.25), 1.18 / (rs * 0.75 + 0.25), 1.18 * rs);
+        // FIST_SCALE is the fists' authored size (see buildHandsAndBoots);
+        // the squash rides on top of it rather than replacing it.
+        fistLeft.scale.set(FIST_SCALE / (ls * 0.75 + 0.25), FIST_SCALE / (ls * 0.75 + 0.25), FIST_SCALE * ls);
+        fistRight.scale.set(FIST_SCALE / (rs * 0.75 + 0.25), FIST_SCALE / (rs * 0.75 + 0.25), FIST_SCALE * rs);
       }
     }
 
