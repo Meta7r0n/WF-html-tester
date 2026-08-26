@@ -9425,6 +9425,10 @@ const LEVEL = (() => {
     return new THREE.Color(hex).lerp(new THREE.Color(CONFIG.render.fogColor), t).getHex();
   }
 
+  // Where the horizon is deliberately open, published by buildDistance and
+  // read by everything downstream that plants near the boundary.
+  let SKYLINE = null;
+
   function buildDistance(parent) {
     const M = CONFIG.map;
     // Keep-out rectangle: the play bounds plus a margin no backdrop object is
@@ -9434,20 +9438,110 @@ const LEVEL = (() => {
     const x0 = M.west - KEEP, x1 = M.east + KEEP;
     const z0 = M.north - KEEP, z1 = M.south + KEEP;
 
-    /* A point on the rectangle inflated by d, walked uniformly by perimeter
-       length so the backdrop is as dense behind the west silos as it is
-       behind the south gate. */
-    function ring(d) {
-      const ax = x0 - d, bx = x1 + d, az = z0 - d, bz = z1 + d;
-      const w = bx - ax, h = bz - az;
-      let t = UTIL.rand() * 2 * (w + h);
-      if (t < w) return [ax + t, az];
-      t -= w;
-      if (t < h) return [bx, az + t];
-      t -= h;
-      if (t < w) return [bx - t, bz];
-      return [ax, bz - (t - w)];
+    /* A point d metres beyond the keep-out rectangle, at perimeter fraction
+       u. Walked by perimeter LENGTH rather than by angle so the backdrop is
+       as dense behind the west silos as it is behind the south gate.
+
+       Depth is added along the ray from the map's centre rather than by
+       inflating the rectangle. That matters for one reason: it makes u a
+       BEARING, identical at every depth. The windows below have to line up
+       radially across three rings of trees or they are not windows, and on
+       an inflated rectangle the same u drifts by tens of metres between the
+       near ring and the far one -- most of it at the corners, where the
+       drift is worst and the maths is least obvious. */
+    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    function ringAt(d, u) {
+      const w = x1 - x0, h = z1 - z0;
+      let t = (((u % 1) + 1) % 1) * 2 * (w + h), x, z;
+      if (t < w) { x = x0 + t; z = z0; }
+      else if ((t -= w) < h) { x = x1; z = z0 + t; }
+      else if ((t -= h) < w) { x = x1 - t; z = z1; }
+      else { x = x0; z = z1 - (t - w); }
+      const dx = x - cx, dz = z - cz, L = Math.hypot(dx, dz) || 1;
+      return [x + dx / L * d, z + dz / L * d];
     }
+    function ring(d) { return ringAt(d, UTIL.rand()); }
+    // The inverse, for anything authored in world coordinates that still has
+    // to agree with the skyline about where the holes are.
+    function uOf(x, z) {
+      const w = x1 - x0, h = z1 - z0;
+      const dx = x - cx, dz = z - cz;
+      // Where the centre ray crosses the rectangle.
+      const k = Math.max(Math.abs(dx) / (w / 2), Math.abs(dz) / (h / 2)) || 1;
+      const px = cx + dx / k, pz = cz + dz / k;
+      if (Math.abs(pz - z0) < 0.5 && px < x1) return (px - x0) / (2 * (w + h));
+      if (Math.abs(px - x1) < 0.5) return (w + (pz - z0)) / (2 * (w + h));
+      if (Math.abs(pz - z1) < 0.5) return (w + h + (x1 - px)) / (2 * (w + h));
+      return (2 * w + h + (z1 - pz)) / (2 * (w + h));
+    }
+
+    /* ---- the shape of the treeline itself.
+
+       Everything out here used to be scattered by uniform random, and at
+       these counts uniform random is the one distribution guaranteed to
+       produce a hedge: even density, even height, a ruled line of canopy
+       with a flat strip of sky above it. The reference horizon is the
+       opposite -- it rises and falls, and it has holes you can see the
+       distance through.
+
+       Two fields fix that, both keyed on the perimeter fraction u so near
+       and mid rings agree about where the woods are.
+
+       WINDOWS are arcs declared open. They matter most because they have to
+       line up RADIALLY: a gap in the near trees with a solid mid ring twenty
+       metres behind it is not a gap, it is a slightly thinner hedge. Inside
+       a window only low things are allowed, so the eye runs out to the far
+       hills and the sky comes all the way down to the ground. */
+    const WINDOWS = [];
+    for (let i = 0; i < 6; i++) {
+      WINDOWS.push([(i + UTIL.rng(0.15, 0.85)) / 6, UTIL.rng(0.022, 0.055)]);
+    }
+    // 1 dead centre of a window, 0 outside one, feathered in between.
+    function openness(u) {
+      let best = 0;
+      for (const w of WINDOWS) {
+        let d = Math.abs(u - w[0]);
+        if (d > 0.5) d = 1 - d;
+        if (d < w[1]) best = Math.max(best, 1 - d / w[1]);
+      }
+      return best;
+    }
+
+    /* CROWN is a low-frequency height field: a sum of a few random harmonics
+       round the perimeter, so a run of trees swells into a ridge and then
+       drops away instead of every tree reaching for the same line. Random
+       per-tree height does not do this -- it gives noise on a flat mean,
+       which from two hundred metres averages straight back out to a hedge.
+       The variation has to be correlated along the line to be visible. */
+    const HARM = [];
+    for (let i = 0; i < 4; i++) HARM.push([2 + i * 2 + Math.floor(UTIL.rand() * 3),
+                                           UTIL.rng(0, 6.28), 1 / (1 + i * 0.8)]);
+    function crown(u) {
+      let v = 0, n = 0;
+      for (const h of HARM) { v += h[2] * Math.sin(u * 6.2832 * h[0] + h[1]); n += h[2]; }
+      return (v / n + 1) / 2;   // 0..1
+    }
+
+    /* Pick a spot for something that belongs to the woods: rejection-sampled
+       against the windows, and handing back the crown value so the caller can
+       size it. Feathered rather than hard-edged -- accepting with probability
+       (1 - openness) thins a window's edge out instead of shearing it. */
+    function stand(dMin, dMax) {
+      let u = UTIL.rand();
+      for (let i = 0; i < 6 && UTIL.rand() < openness(u); i++) u = UTIL.rand();
+      return { p: ringAt(UTIL.rng(dMin, dMax), u), u, c: crown(u) };
+    }
+    // ...and the reverse, for the low clutter that fills a window's floor.
+    function gap(dMin, dMax) {
+      let u = UTIL.rand();
+      for (let i = 0; i < 8 && UTIL.rand() > openness(u); i++) u = UTIL.rand();
+      return ringAt(UTIL.rng(dMin, dMax), u);
+    }
+    /* Published, because the farm's OWN boundary belts sit fifteen metres
+       outside the fence -- nearer the camera than any of this -- and a
+       window the backdrop leaves open is worth nothing if the belt in front
+       of it is solid. buildDressing plants against this. */
+    SKYLINE = { openAt: (x, z) => openness(uOf(x, z)), crownAt: (x, z) => crown(uOf(x, z)) };
 
     /* ---- silhouette vocabulary. Every one of these is drawn as an outline
        first and a solid second: at this range the shape is all that survives,
@@ -9481,6 +9575,54 @@ const LEVEL = (() => {
         bat.sphere(rr, cx + Math.cos(a) * 1.15 * s, h + UTIL.rng(-.35, .5) * s,
           z + Math.sin(a) * 1.15 * s, 1, 0.78, 1);
       }
+    }
+
+    /* A dead tree. Bare forked limbs against open sky is the most legible
+       tree silhouette there is -- there is no canopy to collapse into
+       another blob at range -- and it is the one shape a horizon of firs
+       and broadleaves cannot make no matter how many of them you plant.
+       These go at the edges of the windows, where they are seen against
+       sky rather than against more trees. */
+    function snag(bat, x, z, s) {
+      const h = UTIL.rng(7.5, 13) * s, lean = UTIL.rng(-0.15, 0.15);
+      bat.bow(h, 0.3 * s, 0.1 * s, lean * h, UTIL.rng(-.22, .22) * s, 5, 4, 1, x, h / 2, z);
+      const n = 3 + Math.floor(UTIL.rand() * 3);
+      for (let i = 0; i < n; i++) {
+        const t = UTIL.rng(0.42, 0.94), y = h * t, a = UTIL.rand() * 6.28;
+        // Euler XYZ applies Z first, so rz tips the limb's own +Y axis over
+        // and ry then swings that tilted axis round to its bearing. Same
+        // basis trick the wind tower's fan blades use.
+        const tilt = UTIL.rng(0.5, 1.15);
+        const dx = Math.sin(tilt) * Math.cos(a), dy = Math.cos(tilt), dz = -Math.sin(tilt) * Math.sin(a);
+        const L = UTIL.rng(0.3, 0.6) * h * (1 - t * 0.45);
+        const px = x + lean * h * t, pz = z;
+        const rB = UTIL.lerp(0.16, 0.06, t) * s;
+        bat.bow(L, rB, rB * 0.4, UTIL.rng(-.3, .3) * L, 0, 4, 3, 0,
+          px + dx * L / 2, y + dy * L / 2, pz + dz * L / 2, 0, a, -tilt);
+        if (UTIL.rand() < 0.55) {
+          // One fork, at the tip. Two is a tree; three is a hand.
+          const fx = px + dx * L, fy = y + dy * L, fz = pz + dz * L;
+          for (const sg of [-1, 1]) {
+            const a2 = a + sg * UTIL.rng(0.35, 0.8), t2 = tilt * UTIL.rng(0.55, 0.95);
+            const L2 = L * UTIL.rng(0.4, 0.7);
+            const e2 = [Math.sin(t2) * Math.cos(a2), Math.cos(t2), -Math.sin(t2) * Math.sin(a2)];
+            bat.bow(L2, rB * 0.45, rB * 0.16, UTIL.rng(-.25, .25) * L2, 0, 4, 2, 0,
+              fx + e2[0] * L2 / 2, fy + e2[1] * L2 / 2, fz + e2[2] * L2 / 2, 0, a2, -t2);
+          }
+        }
+      }
+    }
+
+    /* A poplar: a column. Nothing else out here is narrow AND tall, and it
+       takes one standing next to a round canopy to tell the eye that the
+       round one is round. Cheap, too -- one lathe. */
+    function poplar(bat, x, z, s) {
+      const h = UTIL.rng(11, 19) * s, r = UTIL.rng(0.9, 1.6) * s;
+      bat.bow(h * 0.34, 0.17 * s, 0.12 * s, UTIL.rng(-.3, .3) * s, 0, 5, 2, 1, x, h * 0.16, z);
+      bat.lathe(h, [[0, 0.05], [0.1, 0.66], [0.3, 1], [0.58, 0.94], [0.84, 0.58], [1, 0.04]]
+        .map(o => [o[0], o[1] * r]), 8, x, h * 0.56, z,
+        UTIL.rng(-.05, .05), UTIL.rng(0, 6.28), UTIL.rng(-.05, .05),
+        [UTIL.rng(0.14, 0.3), UTIL.rng(0.08, 0.2), UTIL.rng(0, 6.28)]);
     }
 
     // A stack of loose hay: fat at the shoulder, slumped, and never a cone.
@@ -9607,14 +9749,22 @@ const LEVEL = (() => {
       const p = ring(UTIL.rng(72, 152));
       hill(farHill, p[0], p[1], UTIL.rng(16, 42), UTIL.rng(7, 21));
     }
-    for (let i = 0; i < 150; i++) {
-      const p = ring(UTIL.rng(66, 130));
-      if (UTIL.rand() < 0.72) fir(farWood, p[0], p[1], UTIL.rng(1.5, 2.6));
-      else broadleaf(farWood, p[0], p[1], UTIL.rng(1.4, 2.3));
+    for (let i = 0; i < 170; i++) {
+      const s = stand(66, 130), c = 0.75 + s.c * 0.9;
+      if (UTIL.rand() < 0.72) fir(farWood, s.p[0], s.p[1], UTIL.rng(1.5, 2.6) * c);
+      else broadleaf(farWood, s.p[0], s.p[1], UTIL.rng(1.4, 2.3) * c);
     }
     for (let i = 0; i < 7; i++) {
       const p = ring(UTIL.rng(70, 120));
       elevator(farHill, p[0], p[1], UTIL.rng(1.1, 1.8));
+    }
+    // Far ridges deliberately parked BEHIND the windows: what a gap in the
+    // near woods is for is to show something, and a hole onto empty sky is
+    // only half the trick. A hill read through a gap is what says the world
+    // keeps going.
+    for (const w of WINDOWS) {
+      const p = ringAt(UTIL.rng(96, 150), w[0] + UTIL.rng(-.02, .02));
+      hill(farHill, p[0], p[1], UTIL.rng(26, 52), UTIL.rng(13, 27));
     }
 
     /* ---- ring 2: the neighbours' land. Thin ink, half the haze, and the
@@ -9624,14 +9774,41 @@ const LEVEL = (() => {
     const midBuilt = new PRIM.Batch(MAT.toon(haze(PAL.rustDeep, 0.30), { finish: 'wood' }), 0.026);
     const midHay = new PRIM.Batch(MAT.toon(haze(PAL.mustardDk, 0.28), { finish: 'earth' }), 0.024);
     const midIron = new PRIM.Batch(MAT.toon(haze(PAL.blueGrayDk, 0.26), { finish: 'metal' }), 0.02);
-    for (let i = 0; i < 165; i++) {
-      const p = ring(UTIL.rng(26, 62));
-      if (UTIL.rand() < 0.72) fir(midWood, p[0], p[1], UTIL.rng(1.3, 2.6));
-      else broadleaf(midWood, p[0], p[1], UTIL.rng(1.0, 1.9));
+    for (let i = 0; i < 190; i++) {
+      const s = stand(26, 62), c = 0.7 + s.c * 1.05;
+      if (UTIL.rand() < 0.72) fir(midWood, s.p[0], s.p[1], UTIL.rng(1.3, 2.6) * c);
+      else broadleaf(midWood, s.p[0], s.p[1], UTIL.rng(1.0, 1.9) * c);
+    }
+    for (let i = 0; i < 14; i++) {
+      const s = stand(28, 60);
+      poplar(midWood, s.p[0], s.p[1], UTIL.rng(0.9, 1.5) * (0.8 + s.c * 0.6));
     }
     for (let i = 0; i < 22; i++) {
       const p = ring(UTIL.rng(28, 58));
       shack(midBuilt, p[0], p[1], UTIL.rng(0.9, 1.6));
+    }
+    /* Farmsteads. Twenty-two shacks scattered by uniform random is
+       twenty-two sheds; the same shacks with an elevator, a stack and a
+       windbreak beside them are four neighbouring farms, which is what
+       actually reads as inhabited country. Clustering also stacks
+       silhouettes at one bearing, and a tall thing overlapping a low thing
+       is the cheapest depth cue there is. */
+    for (let i = 0; i < 4; i++) {
+      const u = UTIL.rand(), d = UTIL.rng(30, 54);
+      const at = (du, dd) => ringAt(d + dd, u + du);
+      let p = at(0, 0);
+      shack(midBuilt, p[0], p[1], UTIL.rng(1.5, 2.4));
+      p = at(UTIL.rng(.004, .011), UTIL.rng(-8, 8));
+      elevator(midBuilt, p[0], p[1], UTIL.rng(0.8, 1.3));
+      for (let j = 0; j < 3; j++) {
+        p = at(UTIL.rng(-.014, .014), UTIL.rng(-11, 11));
+        if (j) haystack(midHay, p[0], p[1], UTIL.rng(0.9, 1.6));
+        else windTower(midIron, p[0], p[1], UTIL.rng(0.8, 1.2));
+      }
+      for (let j = 0; j < 7; j++) {
+        p = at(UTIL.rng(-.02, .02), UTIL.rng(-14, 14));
+        fir(midWood, p[0], p[1], UTIL.rng(1.4, 2.4));
+      }
     }
     for (let i = 0; i < 26; i++) {
       const p = ring(UTIL.rng(26, 56));
@@ -9649,10 +9826,10 @@ const LEVEL = (() => {
     const nearBuilt = new PRIM.Batch(MAT.toon(haze(PAL.rustDeep, 0.08), { finish: 'wood' }), 0.045);
     const nearHay = new PRIM.Batch(MAT.toon(haze(PAL.mustardDk, 0.08), { finish: 'earth' }), 0.04);
     const wire = new PRIM.Batch(MAT.toon(PAL.charcoal), 0);
-    for (let i = 0; i < 120; i++) {
-      const p = ring(UTIL.rng(2, 20));
-      if (UTIL.rand() < 0.62) fir(nearWood, p[0], p[1], UTIL.rng(0.85, 1.6));
-      else broadleaf(nearWood, p[0], p[1], UTIL.rng(0.8, 1.5));
+    for (let i = 0; i < 135; i++) {
+      const s = stand(2, 20), c = 0.6 + s.c * 1.15;
+      if (UTIL.rand() < 0.62) fir(nearWood, s.p[0], s.p[1], UTIL.rng(0.85, 1.6) * c);
+      else broadleaf(nearWood, s.p[0], s.p[1], UTIL.rng(0.8, 1.5) * c);
     }
     /* Spires. The frames came back with a skyline that was one flat hedge of
        round canopies, and the reason was not the fir/broadleaf mix -- it was
@@ -9665,9 +9842,27 @@ const LEVEL = (() => {
        the horizon pointed and broken instead of a ruled line of broccoli --
        which is the single loudest silhouette difference against the
        reference, and no amount of extra normal-sized trees fixes it. */
-    for (let i = 0; i < 26; i++) {
-      const p = ring(UTIL.rng(3, 26));
-      fir(nearWood, p[0], p[1], UTIL.rng(2.1, 3.4));
+    for (let i = 0; i < 30; i++) {
+      const s = stand(3, 26);
+      // Height keyed to the crown field, not to rand(): the point is a
+      // ridgeline, and a ridgeline needs its tall trees standing NEXT to
+      // each other. Sprinkled at random they read as a fence of flagpoles.
+      fir(nearWood, s.p[0], s.p[1], UTIL.rng(2.0, 2.9) * (0.72 + s.c * 0.85));
+    }
+    for (let i = 0; i < 10; i++) {
+      const s = stand(4, 24);
+      poplar(nearWood, s.p[0], s.p[1], UTIL.rng(0.85, 1.35) * (0.8 + s.c * 0.5));
+    }
+    /* Snags go where a window's edge is: half the value of a dead tree is
+       the sky visible between its limbs, and that only happens if there is
+       sky behind it. Offset from the window centre by roughly its own
+       half-width, either side. */
+    for (const w of WINDOWS) {
+      for (const sg of [-1, 1]) {
+        if (UTIL.rand() < 0.25) continue;
+        const p = ringAt(UTIL.rng(3, 16), w[0] + sg * w[1] * UTIL.rng(0.8, 1.35));
+        snag(nearWood, p[0], p[1], UTIL.rng(0.85, 1.45));
+      }
     }
     for (let i = 0; i < 6; i++) {
       const p = ring(UTIL.rng(6, 24));
@@ -9677,6 +9872,16 @@ const LEVEL = (() => {
     for (let i = 0; i < 20; i++) {
       const p = ring(UTIL.rng(4, 18));
       haystack(nearHay, p[0], p[1], UTIL.rng(0.8, 1.4));
+    }
+    // Window floors. Low enough to leave the hole in the skyline intact,
+    // present enough that the gap is a clearing rather than a missing
+    // chunk of scenery.
+    for (let i = 0; i < 22; i++) {
+      const p = gap(3, 22);
+      const r = UTIL.rand();
+      if (r < 0.42) haystack(nearHay, p[0], p[1], UTIL.rng(0.5, 0.85));
+      else if (r < 0.66) shack(nearBuilt, p[0], p[1], UTIL.rng(0.5, 0.8));
+      else broadleaf(nearWood, p[0], p[1], UTIL.rng(0.4, 0.7));
     }
     for (let i = 0; i < 9; i++) {
       const p = ring(UTIL.rng(5, 18));
@@ -9965,8 +10170,25 @@ const LEVEL = (() => {
     belts.forEach(b => {
       for (let i = 0; i < b[4]; i++) {
         const t = (i + UTIL.rng(0.05, 0.95)) / b[4];
-        farTree(UTIL.lerp(b[0], b[2], t) + UTIL.rng(-4.5, 4.5),
-          UTIL.lerp(b[1], b[3], t) + UTIL.rng(-4.5, 4.5), UTIL.rng(0.85, 1.35));
+        const x = UTIL.lerp(b[0], b[2], t) + UTIL.rng(-4.5, 4.5);
+        const z = UTIL.lerp(b[1], b[3], t) + UTIL.rng(-4.5, 4.5);
+        /* These belts are the NEAREST thing on the horizon, so they decide
+           the skyline whatever the backdrop does behind them. Two things
+           follow. They stand down inside the backdrop's windows -- a hole
+           in three rings of distant trees is worth nothing with a 10 m
+           canopy parked in front of it. And they take their height from the
+           same crown field, so the near belt swells and drops in step with
+           the woods behind rather than cutting a second, flatter line
+           across them. */
+        const open = SKYLINE ? SKYLINE.openAt(x, z) : 0;
+        if (open > 0.35 && UTIL.rand() < open) continue;
+        // One belt segment is a leftover line that runs INSIDE the boundary.
+        // It gets the window but not the growth spurt: these have no
+        // collider, so a taller one cannot block anybody, but a doubled
+        // canopy over a corner of the play area is still a nasty surprise.
+        const out = x < M0.west || x > M0.east || z < M0.north || z > M0.south;
+        const c = (SKYLINE && out) ? 0.72 + SKYLINE.crownAt(x, z) * 0.75 : 1;
+        farTree(x, z, UTIL.rng(0.85, 1.35) * c * (1 - open * 0.45));
       }
     });
     trunkB.build(parent, { ray: false });
