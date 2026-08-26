@@ -28078,36 +28078,111 @@ const COOP = (() => {
       return;
     }
 
+    /* [RUBBERHOSE] Landing. A remote that drops off the silo catwalk used
+       to arrive at exactly the size it left at — the single moment in the
+       whole traversal that most wants an impulse, and the body did not
+       acknowledge it. Read off the *rendered* height rather than the raw
+       snapshot, for the same reason the bank above is: one late packet must
+       not fire an impact that never happened. Stretch on the way down,
+       compress on the drawing the fall stops, and let the squash spring
+       that the footfalls already kick do the recovery. */
+    const yNow = remote.group.position.y;
+    const vy = (yNow - (remote.lastY === undefined ? yNow : remote.lastY)) /
+      Math.max(dt, 0.0005);
+    remote.lastY = yNow;
+    remote.fallVel = UTIL.damp(remote.fallVel || 0, UTIL.clamp(vy, -16, 16), 20, dt);
+    if ((remote.prevFall || 0) < -3.2 && remote.fallVel > -1.2) {
+      remote.squashVel = (remote.squashVel || 0) - 4.5 -
+        UTIL.clamp(-(remote.prevFall || 0) * 0.22, 0, 3);
+    }
+    remote.prevFall = remote.fallVel;
+    // The stretch is what makes the compression read as an arrival rather
+    // than as a pulse the body decided to have on its own.
+    const air = UTIL.clamp(-remote.fallVel / 9, 0, 1);
+
     const contact = 1 - Math.abs(cw);
-    const stepSquash = contact * 0.10 * walk;
+    const stepSquash = contact * 0.16 * walk;
     const breath = Math.sin(remote.animPhase * 0.34) * 0.014;
-    r.legL.rotation.set(-sw * 0.95 * walk, 0, 0);
-    r.legR.rotation.set(sw * 0.95 * walk, 0, 0);
-    r.armL.rotation.set(sw * 1.0 * walk, 0, -0.12 - walk * 0.14 - breath);
-    r.armR.rotation.set(-sw * 1.0 * walk, 0, 0.12 + walk * 0.14 + breath);
-    if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
-    if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
-    r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
+    /* Idle life, on the same 12fps grid as the walk: a slow weight shift
+       from foot to foot, and a sink-and-pop beat every few seconds. A
+       parked teammate was one drawing with a breath on it, and a co-op
+       partner standing beside a grunt should not be the stiller of the two.
+       Seeded off the rig so two remotes never pulse in unison. */
+    remote.animT = (remote.animT || 0) + dt;
+    const ts = Math.floor(remote.animT * 12) / 12;
+    const seed = remote.group.id * 0.618;
+    const idleAmt = UTIL.clamp(1 - walk * 2.2, 0, 1);
+    const shift = E.snapSin(ts * 0.62 + seed * 1.7, 0.62) * idleAmt;
+    const beatPh = (ts * 0.31 + seed * 0.41) % 1;
+    const beat = beatPh < 0.30 ? Math.sin(beatPh / 0.30 * Math.PI) * idleAmt : 0;
+    /* Splay, and a bow. Remote legs had rotation.z pinned at zero, so the
+       pair hung as two parallel rods under a torso wider than the gap
+       between them and nothing below the hem ever entered the outline.
+       Same construction as the grunts: roll the thigh out, counter the shin
+       back in under the body, and let the swinging leg roll further than
+       the planted one so the two shapes stay separate through the passing
+       position instead of merging into one. */
+    const splay = 0.13 + 0.10 * walk;
+    r.legL.rotation.set(-sw * 0.95 * walk, 0,
+      -splay - UTIL.clamp(-sw, 0, 1) * 0.10 * walk);
+    r.legR.rotation.set(sw * 0.95 * walk, 0,
+      splay + UTIL.clamp(sw, 0, 1) * 0.10 * walk);
+    /* Arms carried OUT, not tucked — at 0.12 the gloves rested on the hips
+       and each arm added a bulge to the torso outline instead of a visible
+       C with daylight inside it — and the lateral term is SIGNED, so the
+       forward arm swings slightly across the body while the trailing one
+       opens away from it. Unsigned, the pair spread and closed together,
+       which is the one thing a walk never does. */
+    const armOut = 0.22 + walk * 0.14;
+    r.armL.rotation.set(sw * 1.05 * walk, 0,
+      -armOut + sw * 0.18 * walk - breath - shift * 0.07);
+    r.armR.rotation.set(-sw * 1.05 * walk, 0,
+      armOut + sw * 0.18 * walk + breath - shift * 0.07);
+    if (r.footL) r.footL.rotation.x = -sw * 0.42 * walk;
+    if (r.footR) r.footR.rotation.x = sw * 0.42 * walk;
+    // A rubberhose walk is mostly VERTICAL: up over the passing position
+    // and down hard into contact. At 0.08 the body just slid along.
+    r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.20 * walk + breath
+      - stepSquash * 0.10 - beat * 0.045;
+    r.bob.position.x = shift * 0.055;
+    r.bob.rotation.z = shift * 0.075;
     const bank = remote.turn || 0;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0,
-      sw * 0.07 * walk + bank * 0.13);
+    // Hips and shoulders counter-rotate — the oldest trick in a walk cycle,
+    // and the one that stops a torso reading as a box being carried along.
+    // The head unwinds part of the shoulder twist so the face keeps
+    // pointing where the body is going.
+    r.bob.rotation.y = sw * 0.15 * walk;
+    r.torso.rotation.set(
+      Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath + beat * 0.09,
+      -sw * 0.19 * walk,
+      sw * 0.075 * walk + bank * 0.13 - shift * 0.045);
     r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
-    r.head.rotation.set(breath * 1.4, bank * 0.22, -sw * 0.11 * walk - bank * 0.10);
+    r.head.rotation.set(breath * 1.4, bank * 0.22 + sw * 0.11 * walk,
+      -sw * 0.12 * walk - bank * 0.10 - shift * 0.06);
     /* Knees and elbows, same grammar as the local grunts: the knee folds
        while the leg is behind and absorbs on the contact frame, and the
        elbow tucks in quadrature with the arm pitch so the glove travels an
        ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
        a parked teammate is never standing on two straight rods. */
     if (r.bend) {
-      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk - 0.05;
-      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      // Standing, the loaded leg straightens and the free one breaks; that
+      // alternation is what makes the weight shift read as weight rather
+      // than as the body sliding sideways.
+      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk
+        - UTIL.clamp(shift, 0, 1) * 0.22 - beat * 0.20 - 0.05;
+      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk
+        - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20 - 0.05;
       r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
       r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
       r.bend[1] = cw * 0.15 * walk;
       r.bend[3] = -cw * 0.15 * walk;
+      // Bandy: the shin comes back in under the body so the knee is the
+      // widest point and the gap between the legs is a lens, not a slot.
+      r.bend[5] = splay * 0.75;
+      r.bend[7] = -splay * 0.75;
     }
     // remote rigs are built at 1.08 scale; fold squash/stretch into it
-    const sq = 1 + remote.squash - stepSquash;
+    const sq = 1 + remote.squash - stepSquash + air * 0.15;
     r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
     // hips take the compression first, chest counter-stretches against it
     const wave = UTIL.clamp(remote.squash - (remote.squashLag || 0), -0.22, 0.22);
