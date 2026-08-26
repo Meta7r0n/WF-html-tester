@@ -2203,13 +2203,27 @@ const CONFIG = {
       line: 1.0,        // structural ink lines: plank seams, courses, ribs
       hatch: 1.0,       // hatching on the shaded side of a form
       grime: 1.0,       // dirt climbing the bottom of every standing surface
+      /* Structure drawn back in the OTHER polarity where the plane is dark.
+         An ink line laid on a shadowed surface is ink on ink and reads as
+         nothing; an inker working a black passage switches to scratchboard
+         and picks the same structure out in white. Same channel, opposite
+         sign, so a plank seam survives on the shaded side of the barn. */
+      lift: 1.0,
       /* Which part of the light range the hatching lives in, as a pair of
          ramps on the surface's own light term (albedo divided out, so a dark
          red barn wall in full sun is "lit", not "shaded"). Hatch fades IN
          above x..y and OUT above z..w. The lower ramp matters: without it
          the hatch keeps darkening pixels that are already at true black and
          quietly eats the shadow detail the grade works so hard to hold. */
-      band: [0.02, 0.13, 0.36, 0.86]
+      band: [0.02, 0.13, 0.36, 0.86],
+      /* Metres over which the light-keyed marks (hatch and lift) retire.
+         They used to retire for free, because bright fog lifted the light
+         term out of the top of the band -- which quietly made the whole
+         hand-drawn layer a hostage of the fog COLOUR. Against a dark sky
+         the same fog pushes the term down into the band instead and the
+         horizon fills with hatching. Distance is measured directly now, and
+         the light term is read before fog is applied. */
+      fade: [30, 130]
     },
 
     /* ---- render core (see [RENDERCORE]) ---------------------------------
@@ -3199,10 +3213,16 @@ const TEX = (() => {
      whatever mesh it was merged into. Three independent masks ride in the
      three channels, which is why one fetch buys three effects:
 
-       R  value mottle    -- damp patches, wear, uneven paint, paper tooth
+       R  value mottle    -- per-cell tone, damp patches, wear, paper tooth
        G  structural line -- plank seams, mortar courses, corrugation ribs
        B  ink hatch       -- shading strokes, shown only where the surface has
                              already turned away from the key light
+
+     R and G are drawn to the SAME grid wherever a material is built in units:
+     each brick, plank or pane gets its own flat tone in R and the joints that
+     bound it go into G. Uncorrelated noise plus a line grid reads as a grid
+     drawn over fog; a tone that changes exactly at the joint reads as
+     masonry. See cellTone().
 
      G is the channel that matters most and it is the one this file used to
      get wrong. Measured against the reference stills, the metric that
@@ -3355,6 +3375,77 @@ const TEX = (() => {
     }
   }
 
+  /* A stable 0..1 hash for one cell of a bond. The tone pass and the joint
+     pass are drawn into different channels, by different calls, each with its
+     own RNG state -- so a shared random sequence cannot make the two agree,
+     and they have to agree exactly, because the whole point is that the tone
+     break falls ON the joint rather than near it. */
+  function cellHash(i, j, salt) {
+    const n = Math.sin(i * 127.1 + j * 311.7 + salt * 74.7) * 43758.5453;
+    return n - Math.floor(n);
+  }
+
+  /* Walk the same grid courses() inks, handing each cell its rect and hash.
+     `stagger` is the half-unit row offset (0.5 for running bond, 0 for a
+     square grid like glazing). Cells in an offset row overhang the right
+     edge, so those are handed out at both positions and the tone wraps the
+     way the joints do. */
+  function bond(s, rows, perRow, stagger, cb) {
+    const rh = s / rows, cw = s / perRow;
+    for (let r = 0; r < rows; r++) {
+      const off = (r % 2) * cw * stagger;
+      for (let k = 0; k < perRow; k++) {
+        const x0 = off + k * cw, h = cellHash(r, k, 1);
+        cb(x0, r * rh, cw, rh, h);
+        if (x0 + cw > s) cb(x0 - s, r * rh, cw, rh, h);
+      }
+    }
+  }
+
+  /* Per-cell value, for the R channel.
+
+     This is the loudest single difference between the reference's masonry and
+     ours. Their bricks and floorboards are DISCRETE: each one carries its own
+     flat tone and the tone changes at the joint. Ours were a noise field with
+     a joint grid drawn over the top, which reads as exactly that -- a grid on
+     fog -- because nothing in the value break-up knew where the bricks were.
+     Every cell also darkens toward its own rim, which is what gives a drawn
+     stone its roundness and a plank its cupping. */
+  function cellTone(x, s, rows, perRow, stagger, spread, rim) {
+    bond(s, rows, perRow, stagger, (x0, y0, w, h, hsh) => {
+      const v = (hsh - 0.5) * 2 * spread;
+      x.fillStyle = 'rgba(' + (v > 0 ? '255,255,255' : '0,0,0') + ',' + Math.abs(v) + ')';
+      x.fillRect(x0, y0, w, h);
+      for (let q = 0; q < 3 && rim; q++) {
+        x.strokeStyle = 'rgba(0,0,0,' + (rim * (1 - q / 3)) + ')';
+        x.lineWidth = 2;
+        x.strokeRect(x0 + 1 + q * 2, y0 + 1 + q * 2,
+                     Math.max(w - 2 - q * 4, 1), Math.max(h - 2 - q * 4, 1));
+      }
+    });
+  }
+
+  /* A value ramp across each corrugation rib: down one flank, up the other.
+     Corrugated iron is the one material here whose read is a light gradient
+     rather than a line, and drawing it as a line grid alone is most of why
+     the silos have looked like painted cylinders. Two single-colour ramps
+     rather than one black-to-white gradient, which canvas takes through mud.
+     Pitch must match the rib hatch in the line channel or the two fight. */
+  function ribs(x, s, pitch, amp, vertical) {
+    const K = Math.max(1, Math.round(s / pitch)), d = s / K;
+    for (let k = 0; k < K; k++) {
+      const a = k * d;
+      [['0,0,0', a, 1, 0], ['255,255,255', a + d * 0.5, 0, 1]].forEach(p => {
+        const g = vertical ? x.createLinearGradient(p[1], 0, p[1] + d * 0.5, 0)
+                           : x.createLinearGradient(0, p[1], 0, p[1] + d * 0.5);
+        g.addColorStop(0, 'rgba(' + p[0] + ',' + (amp * p[2]) + ')');
+        g.addColorStop(1, 'rgba(' + p[0] + ',' + (amp * p[3]) + ')');
+        x.fillStyle = g;
+        if (vertical) x.fillRect(p[1], 0, d * 0.5, s); else x.fillRect(0, p[1], s, d * 0.5);
+      });
+    }
+  }
+
   /* A wandering crack network. Same job as courses() for surfaces that were
      never built in units -- dried mud, weathered concrete, old paint. */
   function cracks(x, s, n, steps, len, width, alpha) {
@@ -3404,7 +3495,8 @@ const TEX = (() => {
     let t;
     if (kind === 'wood') {
       t = pack(s,
-        x => {                                  // sap streaks, weathering, knots
+        x => {                                  // plank tone, sap streaks, weathering
+          cellTone(x, s, 4, 1, 0.5, 0.20, 0.10);
           blobs(x, s, 22, 40, 170, 0.11, 0.45);
           scratch(x, s, 220, 90, 380, 2.4, 0.15, 0, 0.05, 0.32);
           scratch(x, s, 700, 40, 190, 1.1, 0.12, 0, 0.03, 0.4);
@@ -3431,7 +3523,8 @@ const TEX = (() => {
         x => { hatch(x, s, 0, 11, 2.0, 0.38, 1.3); openUp(x, s, 16, 40, 150, 0.55); });
     } else if (kind === 'metal') {
       t = pack(s,
-        x => {                                  // rolled sheet + rust blooms
+        x => {                                  // corrugation relief, rolled sheet, rust blooms
+          ribs(x, s, s / 18, 0.34, true);
           scratch(x, s, 90, 200, 512, 5, 0.10, Math.PI / 2, 0.02, 0.5);
           blobs(x, s, 30, 18, 90, 0.16, 0.25);
           grit(x, s, 260, 1.5, 5, 0.20, 0.2);
@@ -3450,7 +3543,8 @@ const TEX = (() => {
                openUp(x, s, 14, 45, 160, 0.5); });
     } else if (kind === 'stone') {
       t = pack(s,
-        x => {                                  // aggregate + chips
+        x => {                                  // block tone, then aggregate + chips
+          cellTone(x, s, 6, 3, 0.5, 0.24, 0.17);
           blobs(x, s, 60, 14, 80, 0.17, 0.44);
           grit(x, s, 900, 1.2, 5.5, 0.20);
           grit(x, s, 2600, 0.5, 2.0, 0.16);
@@ -3477,7 +3571,11 @@ const TEX = (() => {
                openUp(x, s, 20, 50, 180, 0.6); });
     } else if (kind === 'glass') {
       t = pack(s,
-        x => { blobs(x, s, 22, 30, 130, 0.14, 0.5); scratch(x, s, 50, 60, 200, 3, 0.08, Math.PI / 2, 0.2, 0.6); },
+        // Per-pane tone is what stops a greenhouse reading as one sheet of
+        // tinted plastic: real glazing has some panes catching sky and some
+        // going dark, and the change happens exactly at the bar.
+        x => { cellTone(x, s, 3, 3, 0, 0.22, 0.08);
+               blobs(x, s, 22, 30, 130, 0.14, 0.5); scratch(x, s, 50, 60, 200, 3, 0.08, Math.PI / 2, 0.2, 0.6); },
         x => {                                  // glazing bars, ~40cm panes
           hatch(x, s, 0, s / 3, 4.2, 0.62, 1.2);
           hatch(x, s, 90, s / 3, 4.2, 0.62, 1.2);
@@ -4319,8 +4417,12 @@ const MAT = (() => {
 
      Per-finish numbers below: `scale` is texture tiles per world unit (so it
      is a real physical size, not a UV count), the three strengths are how
-     much of each packed channel to use, and `grime` is [height, strength] for
-     the dirt that climbs the bottom of a standing surface.
+     much of each packed channel to use, `grime` is [height, strength] for the
+     dirt that climbs the bottom of a standing surface, and `lift` is how
+     brightly the structural channel is drawn back in on the shadow side. Lift
+     tracks how sharp the material's arrises are -- a corrugation rib or a bark
+     furrow throws a real catch-light along its crest, a cloth seam does not --
+     so it is high on metal and stone and near zero on cloth.
 
      `paper` is deliberately weak, finely scaled and almost free of structural
      line, because it is the DEFAULT for every toon material that does not
@@ -4330,33 +4432,33 @@ const MAT = (() => {
      mouse's hand would be worse than no texture at all. Anything that should
      read as BUILT is given a named finish instead. */
   const FINISH = {
-    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10] },
-    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26] },
-    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22] },
+    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10], lift: 0.06 },
+    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26], lift: 0.17 },
+    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22], lift: 0.2 },
     /* Held objects need their own scale. A finish is sized in metres, which is
        the whole point of it -- but 8cm corrugation is right on a silo and
        absurd on a shotgun receiver, and at the coarse scale a 30cm gun part
        sees a fifth of one tile and comes out as flat grey. `tool` and `stock`
        are the same two tiles run four times finer, where the corrugation
        reads as machined seams and the boarding as grain. */
-    tool:  { tex: 'metal', scale: 3.10, mottle: 0.26, line: 0.44, hatch: 0.56, grime: [0, 0] },
-    stock: { tex: 'wood',  scale: 2.30, mottle: 0.28, line: 0.36, hatch: 0.58, grime: [0, 0] },
-    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30] },
+    tool:  { tex: 'metal', scale: 3.10, mottle: 0.26, line: 0.44, hatch: 0.56, grime: [0, 0], lift: 0.14 },
+    stock: { tex: 'wood',  scale: 2.30, mottle: 0.28, line: 0.36, hatch: 0.58, grime: [0, 0], lift: 0.12 },
+    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30], lift: 0.19 },
     /* The ground's colour MAP already carries the 15-metre patchwork; the
        finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
        hatching you can actually see at the bottom of the frame. Running it at
        the map's own scale, as it was, just doubled up on the same low
        frequency and left the ground reading as one pale sheet. */
-    earth: { tex: 'earth', scale: 0.28, mottle: 0.36, line: 0.42, hatch: 0.38, grime: [0, 0] },
-    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0] },
-    bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20] },
-    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16] },
+    earth: { tex: 'earth', scale: 0.28, mottle: 0.36, line: 0.42, hatch: 0.38, grime: [0, 0], lift: 0.1 },
+    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0], lift: 0.08 },
+    bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20], lift: 0.17 },
+    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16], lift: 0.07 },
     /* Glazing bars are the whole read of a greenhouse, and they belong on
        an unlit material -- see buildGreenhouseShell for why the glass is
-       MAT.flat. The hatch strength here is nearly free: with no lighting
-       term the light ratio the hatch keys on sits at 1.0, which is outside
-       the band, so it self-disables. */
-    glass: { tex: 'glass', scale: 0.80, mottle: 0.16, line: 0.55, hatch: 0.20, grime: [0.30, 0.10] },
+       MAT.flat. The hatch and lift strengths here are nearly free: with no
+       lighting term the light ratio they key on sits at 1.0, which is off
+       the top of the band, so both self-disable. */
+    glass: { tex: 'glass', scale: 0.80, mottle: 0.16, line: 0.55, hatch: 0.20, grime: [0.30, 0.10], lift: 0.1 },
     none:  null
   };
 
@@ -4367,7 +4469,8 @@ const MAT = (() => {
   const SURF_VERT_DECL = [
     'varying vec3 vSurfP;',
     'varying vec3 vSurfN;',
-    'varying float vSurfY;'
+    'varying float vSurfY;',
+    'varying float vSurfD;'
   ].join('\n');
 
   /* Position and normal are captured in OBJECT space, in the rest pose,
@@ -4386,13 +4489,15 @@ const MAT = (() => {
   const SURF_FRAG_DECL = [
     'uniform sampler2D uSurf;',
     'uniform float uSurfScale;',
-    'uniform vec3 uSurfAmt;',      // mottle, line, hatch
+    'uniform vec4 uSurfAmt;',      // mottle, line, hatch, shadow-side lift
     'uniform vec2 uGrime;',        // height, strength
     'uniform vec3 uGrimeCol;',
     'uniform vec4 uSurfBand;',
+    'uniform vec2 uSurfFade;',     // metres: light-keyed marks retire between
     'varying vec3 vSurfP;',
     'varying vec3 vSurfN;',
     'varying float vSurfY;',
+    'varying float vSurfD;',
     /* Triplanar, but picking the dominant axis instead of blending three
        samples. Blending would cost three fetches to hide seams that only
        appear on faces within a few degrees of 45 -- and these tiles are
@@ -4416,16 +4521,31 @@ const MAT = (() => {
     'diffuseColor.rgb = mix(diffuseColor.rgb, uGrimeCol, clamp(wfG, 0.0, 1.0));'
   ].join('\n');
 
-  /* Hatching goes on last, over the fogged frame, keyed on how much LIGHT the
-     surface caught rather than how dark it ended up -- albedo is divided back
-     out so a rust-red wall in full sun stays unhatched while a cream wall in
-     shade gets the lines. Fog lifts the term at range, which retires the
-     hatching into the distance exactly as it should. */
+  /* The two light-keyed marks, applied to the shaded colour BEFORE fog.
+     Both are keyed on how much LIGHT the surface caught rather than on how
+     dark it ended up -- albedo is divided back out so a rust-red wall in full
+     sun stays unhatched while a cream wall in shade gets the lines.
+
+     Reading before fog is the load-bearing detail. This used to run after it
+     and got its distance falloff for free from a pale fog lifting the light
+     term out of the top of the band. That is a coincidence, not a design: the
+     moment the fog goes dark the same mechanism drags the term DOWN into the
+     band and the entire horizon hatches. Distance now retires the marks
+     explicitly, and the fog colour is nobody's business but the fog's.
+
+     wfSh is the shaded side, where ink goes on. wfDk is deeper still -- past
+     the point where more ink can do anything, because it would be ink on ink
+     -- and there the same structural channel is drawn back in white instead.
+     That is the scratchboard half of the trick, and it is what keeps a barn
+     wall from turning into a silhouette the instant it faces away. */
   const SURF_HATCH = [
     'float wfAlb = max(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.02);',
     'float wfLit = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)) / wfAlb;',
-    'float wfSh = smoothstep(uSurfBand.x, uSurfBand.y, wfLit) * (1.0 - smoothstep(uSurfBand.z, uSurfBand.w, wfLit));',
-    'gl_FragColor.rgb *= 1.0 - (1.0 - wfS.b) * wfSh * uSurfAmt.z;'
+    'float wfNear = 1.0 - smoothstep(uSurfFade.x, uSurfFade.y, vSurfD);',
+    'float wfSh = smoothstep(uSurfBand.x, uSurfBand.y, wfLit) * (1.0 - smoothstep(uSurfBand.z, uSurfBand.w, wfLit)) * wfNear;',
+    'gl_FragColor.rgb *= 1.0 - (1.0 - wfS.b) * wfSh * uSurfAmt.z;',
+    'float wfDk = (1.0 - smoothstep(uSurfBand.x, uSurfBand.z, wfLit)) * wfNear;',
+    'gl_FragColor.rgb += (1.0 - wfS.g) * wfDk * uSurfAmt.w;'
   ].join('\n');
 
   function surfAmounts(f) {
@@ -4436,9 +4556,11 @@ const MAT = (() => {
     const tier = CONFIG.render.tiers[CONFIG.render.quality] || {};
     const h = tier.surfaceHatch === undefined ? 1 : tier.surfaceHatch;
     return {
-      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.line * T.line * on, f.hatch * T.hatch * h * on),
+      amt: new THREE.Vector4(f.mottle * T.mottle * on, f.line * T.line * on,
+                             f.hatch * T.hatch * h * on, (f.lift || 0) * T.lift * on),
       grime: new THREE.Vector2(f.grime[0], f.grime[1] * T.grime * on),
-      band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3])
+      band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3]),
+      fade: new THREE.Vector2(T.fade[0], T.fade[1])
     };
   }
 
@@ -4452,13 +4574,17 @@ const MAT = (() => {
       sh.uniforms.uGrime = { value: a.grime };
       sh.uniforms.uGrimeCol = { value: new THREE.Color(PAL.dirtDeep) };
       sh.uniforms.uSurfBand = { value: a.band };
+      sh.uniforms.uSurfFade = { value: a.fade };
       sh.vertexShader = SURF_VERT_DECL + '\n' + sh.vertexShader
         .replace('#include <begin_vertex>', '#include <begin_vertex>\n' +
                  'vSurfP = transformed;\nvSurfN = normal;\n' +
-                 'vSurfY = (modelMatrix * vec4(transformed, 1.0)).y;');
+                 'vSurfY = (modelMatrix * vec4(transformed, 1.0)).y;')
+        // mvPosition only exists after project_vertex, and view depth is the
+        // one thing the finish needs that object space cannot supply.
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvSurfD = -mvPosition.z;');
       sh.fragmentShader = SURF_FRAG_DECL + '\n' + sh.fragmentShader
         .replace('#include <map_fragment>', '#include <map_fragment>\n' + SURF_ALBEDO)
-        .replace('#include <dithering_fragment>', SURF_HATCH + '\n#include <dithering_fragment>');
+        .replace('#include <fog_fragment>', SURF_HATCH + '\n#include <fog_fragment>');
       surfUniforms.push({ f: f, u: sh.uniforms });
     };
     /* REQUIRED, not an optimisation. r128 keys the program cache on material
@@ -4480,6 +4606,7 @@ const MAT = (() => {
       e.u.uSurfAmt.value.copy(a.amt);
       e.u.uGrime.value.copy(a.grime);
       e.u.uSurfBand.value.copy(a.band);
+      e.u.uSurfFade.value.copy(a.fade);
     }
   }
 
