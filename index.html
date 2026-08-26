@@ -25782,6 +25782,14 @@ const ENEMY = (() => {
       // ellipse rather than sweeping a flat plane
       bend[1] = cw * 0.14 * swing;
       bend[3] = -cw * 0.14 * swing * propArm;
+      /* Bandy legs: the thigh goes out at the hip and the shin comes back
+         under the body, so the knee is the widest point and the gap between
+         the legs is a lens rather than a slot. Rolling both segments the
+         same way (which is what REST_SPLAY alone does) just puts the feet
+         further apart and leaves the outline straight-sided — the bow is
+         the whole point, and a bow needs the two segments to disagree. */
+      bend[5] = splay * 0.75;
+      bend[7] = -splay * 0.75;
     }
 
     /* ---------------- squash and stretch on top of everything ----------
