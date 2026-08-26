@@ -472,27 +472,37 @@
      reading as the same colour at 19px. */
   #throwableCount{background:var(--olive-deep);}
 
-  /* The Jays row on the vitals card -- same collapse behaviour as the
-     throwable row on the arms card, for the same reason. */
+  /* The Jays ribbon, running out from behind the pep medallion.
+     It used to be a row on a card, and when the card became a medallion the
+     row came with it -- still collapsing its HEIGHT and still drawing a
+     horizontal rule above itself, which in a side-by-side layout is a stray
+     line floating next to a disc. It collapses along the axis it actually
+     lies on now, so it looks drawn out from under the medallion and pulled
+     back under it. */
   #jaysHud{
-    display:flex;align-items:center;gap:6px;
-    height:0;margin-top:0;padding-top:0;overflow:hidden;opacity:0;
-    border-top:0 solid var(--hud-rule);
-    color:var(--hud-type);font:900 9px/1 var(--hud-slab);
-    letter-spacing:1.1px;text-transform:uppercase;
-    transition:height .16s var(--hud-snap),margin-top .16s var(--hud-snap),
-               padding-top .16s var(--hud-snap),opacity .1s ease;
+    margin-left:-15px;min-height:29px;padding:0;
+    max-width:0;opacity:0;overflow:hidden;
+    transition:max-width .16s var(--hud-snap),padding .16s var(--hud-snap),opacity .1s ease;
   }
   #jaysHud.on{
-    height:19px;margin-top:5px;padding-top:5px;opacity:1;
-    border-top-width:1.5px;
-    transition:height .24s var(--hud-spring),margin-top .24s var(--hud-spring),
-               padding-top .24s var(--hud-spring),opacity .16s ease;
+    max-width:190px;padding:4px 15px 5px 22px;opacity:1;
+    transition:max-width .3s var(--hud-spring),padding .3s var(--hud-spring),opacity .16s ease;
   }
-  #jaysHud.active{color:var(--jays);}
-  #jaysHud small{color:var(--hud-type-2);font-size:7px;letter-spacing:.8px;}
+  #jaysHud.active b{color:var(--jays);}
+  /* "J to use" is a control hint, not news, and a permanent one is furniture.
+     The slot only prints while a dose is regenerating -- where the seconds
+     left are a real fact -- or while the player is asking (detail key). */
+  #jaysHud small{
+    max-width:0;margin-left:0;overflow:hidden;
+    color:var(--hud-type-2);font:800 7px/1 var(--hud-slab);
+    letter-spacing:.8px;text-transform:uppercase;text-shadow:var(--hud-type-drop);
+    transition:max-width .18s var(--hud-snap),margin-left .18s var(--hud-snap);
+  }
+  body.hud-detail #jaysHud small,#jaysHud.active small{
+    max-width:84px;margin-left:6px;
+    transition:max-width .28s var(--hud-spring),margin-left .28s var(--hud-spring);
+  }
   #jaysHud.active small{color:var(--jays);}
-  #jaysCount{background:var(--jays);color:var(--ink);}
   /* A ROW of pips, not a column of labelled rows. Five buffs at once was five
      stacked lines of cream text, ~110px tall, permanently parked over the
      left of the frame; as a row of discs the same five facts are 19px tall.
@@ -569,19 +579,27 @@
 
   /* ---------- Bottom-left: the pep medallion ----------
      The reference's whole HUD, in the one frame that shows a firefight, is
-     two enamel medallions in the bottom corners. This is the left one.
+     two corner medallions with a hand-drawn ribbon running out of each. This
+     is the left one: the medallion says WHAT, the ribbon says HOW MANY.
 
-     Pep and guard were two stacked bars on a 158x76 card. They are now two
-     concentric arcs on a 62px dial: guard is the outer armour ring -- which
-     is what a guard IS -- and pep is the inner one, with the heart struck in
-     the middle. Same two facts, a third of the area, and a circle instead of
-     the fifth rounded rectangle in the corner.
+     Pep and guard were two stacked bars on a 158x76 card, then two arcs on a
+     flat disc. The disc was the wrong half of the lesson. Measured off the
+     reference's own medallions, the RIM is the bright thing -- a shaded torus
+     with the light coming from the upper left -- and the interior is mid and
+     dark. The flat version painted var(--hud-card) and then covered all but a
+     4px band of it with two masked conics, so what actually reached the screen
+     was a black disc with two coloured hoops. Over northbarn (median 20) that
+     is a hole in the frame, not an object in it.
+
+     So: the rim is banded cel shading, hard-edged, never blurred; guard lights
+     the outermost hoop of that rim (armour IS the rim, and unlit it simply
+     falls back to bezel rather than punching a dark ring); pep is a fat
+     grooved gauge inside it with a real ink trough; and the emblem is struck
+     on a mid face at the centre. Ink lines separate every band, which is what
+     stops the whole thing from reading as an airbrush.
 
      `--pep` / `--guard` are 0..1 and are the only thing the JS sets; the
-     conic stops read them. Guard at 0 leaves an unlit ring rather than a hole
-     in the layout, so the dial does not change size when guard comes and
-     goes -- the collapsing #guardRow existed only because a bar had to earn
-     its row. */
+     conic stops read them. */
   #vitals{
     position:fixed;left:18px;bottom:16px;z-index:30;
     display:flex;flex-direction:column;align-items:flex-start;
@@ -604,44 +622,117 @@
      full pep and no guard no matter what the player's actually at. */
   @property --pep{syntax:"<number>";inherits:true;initial-value:1;}
   @property --guard{syntax:"<number>";inherits:true;initial-value:0;}
+  /* 68px, 3px keyline: a 62px painting radius of 31px. Every stop below is a
+     percentage of that radius, and the two conic children are cut to match --
+     change one and change its partner.
+       100-86%  guard hoop   (blue when lit, bare rim when not)
+        86-74%  rim shoulder (the shaded torus, always visible)
+        74-70%  ink groove
+        70-52%  pep gauge    (mustard/rust over an ink trough)
+        52-0%   struck face  (the emblem)
+     The face is deliberately the biggest single band, and the gauge is thin.
+     A first pass gave the gauge the width, and a radial sample down the unlit
+     side then read eight solid pixels of #16120f between the emblem and the
+     rim -- at 41% pep the medallion was a bright ring around a black hole,
+     which is the flat disc's failure redrawn. The reference's medallion
+     interior is mid-value with the emblem filling it; the gauge is a groove
+     around the emblem, not the subject of the badge. */
   #pepDial{
-    position:relative;flex:0 0 auto;width:64px;height:64px;border-radius:50%;
-    background:var(--hud-card);
+    position:relative;flex:0 0 auto;width:68px;height:68px;border-radius:50%;
+    /* Painted over the rim: face, ink line, the window the pep gauge fills,
+       the groove, then nothing -- the rim shows through the rest. */
+    background:
+      radial-gradient(closest-side,
+        var(--hud-card-flat) 0 52%,
+        transparent 52% 70%,var(--ink) 70% 74%,transparent 74%),
+      /* Cel shading: four hard bands across the diagonal, no blur anywhere.
+         A blurred bevel is what a UI toolkit draws; a painter puts down four
+         flat tones and an ink line. */
+      linear-gradient(147deg,
+        #E4D4B2 0 11%,#C0AE8B 11% 27%,#96856A 27% 48%,#6E6049 48% 72%,#4E4334 72%);
     border:var(--hud-line) solid var(--ink);
     box-shadow:0 0 0 1.8px var(--hud-bezel),0 0 0 3.6px var(--ink),var(--hud-drop);
     --pep:1;--guard:0;
     transition:--pep .24s var(--hud-spring),--guard .24s var(--hud-spring);
   }
-  /* Both rings are the same object at different radii: a conic sweep masked
-     down to an annulus, struck into the enamel face rather than floating over
-     the scene. The unlit remainder is the gauge well, so a nearly-empty ring
-     still reads as a ring instead of thinning away to nothing. */
+  /* Both gauges are the same object at different radii: a conic sweep masked
+     down to an annulus, struck into the medallion rather than floating over
+     the scene. */
   #pepFill,#shieldFill{
     position:absolute;border-radius:50%;pointer-events:none;
     transition:background .2s ease;
   }
+  /* 70-52% of 31px is 21.7-16.1px, so the box is 43.4px (inset 9.3) and the
+     mask cuts its inner 74%. The unlit remainder is a real ink trough: pep is
+     the number the player is actually reading, and a gauge with no visible
+     empty cannot be read at a glance. */
   #pepFill{
-    inset:11px;
+    inset:9.3px;
     background:conic-gradient(var(--mustard) 0 calc(var(--pep) * 360deg),var(--hud-well) 0);
-    -webkit-mask:radial-gradient(closest-side,transparent 0 60%,#000 60.5%);
-            mask:radial-gradient(closest-side,transparent 0 60%,#000 60.5%);
+    -webkit-mask:radial-gradient(closest-side,transparent 0 74%,#000 74.5%);
+            mask:radial-gradient(closest-side,transparent 0 74%,#000 74.5%);
   }
   #pepDial.hurt #pepFill{
     background:conic-gradient(var(--rust) 0 calc(var(--pep) * 360deg),var(--hud-well) 0);
   }
+  /* Guard's unlit remainder is transparent, not a well: the rim underneath is
+     already an object, so an empty hoop reads as bare plating instead of as a
+     dark ring cut out of the medallion. */
   #shieldFill{
     inset:0;
-    background:conic-gradient(var(--blue) 0 calc(var(--guard) * 360deg),var(--hud-well) 0);
-    -webkit-mask:radial-gradient(closest-side,transparent 0 75%,#000 75.5%);
-            mask:radial-gradient(closest-side,transparent 0 75%,#000 75.5%);
-    opacity:0;transform:scale(.86);
+    background:conic-gradient(var(--blue) 0 calc(var(--guard) * 360deg),transparent 0);
+    -webkit-mask:radial-gradient(closest-side,transparent 0 86%,#000 86.5%);
+            mask:radial-gradient(closest-side,transparent 0 86%,#000 86.5%);
+    opacity:0;transform:scale(.9);
     transition:opacity .14s ease,transform .3s var(--hud-spring);
   }
   #vitals.has-guard #shieldFill{opacity:1;transform:scale(1);}
-  /* The struck emblem in the middle of the dial. */
+  /* The struck emblem on the face. Ink line and a hard offset shadow, drawn
+     at the size the face can hold (52% of 31px is a 32.2px window) but no
+     bigger: the ring of face left showing round it is what makes the emblem
+     read as struck ON something. */
   .vital-ico{
     position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-4deg);
-    filter:drop-shadow(1.2px 1.6px 0 rgba(18,15,12,.5));
+    filter:drop-shadow(1px 1.3px 0 rgba(18,15,12,.42));
+  }
+
+  /* ---------- The ribbon ----------
+     The other half of the reference's corner: a hand-drawn banner running out
+     from behind the medallion with a swallowtail cut in the far end, carrying
+     one count in outlined cartoon numerals. It is the overlay's second and
+     last surface -- medallion for a standing fact, ribbon for its number,
+     card for a slip of paper the world hands you.
+
+     The ink line has to follow the swallowtail, and a border cannot: clip-path
+     cuts the border off with everything else. So the shape is one clipped
+     layer and its outline is a ring of hard drop-shadows on that layer, which
+     DO follow the clipped alpha. The content sits above it untouched -- the
+     filter is on ::before precisely so it never reaches the type. */
+  .hud-ribbon{position:relative;display:flex;align-items:center;white-space:nowrap;}
+  .hud-ribbon::before{
+    content:'';position:absolute;inset:0;
+    background:var(--hud-card);
+    /* Parallel-sided with a gentle upward bow and a swallowtail cut in the
+       far end. A single sloping top edge -- the first attempt -- reads as a
+       "next" arrow rather than as a strip of paper hung between two points. */
+    clip-path:polygon(0 10%,52% 2%,100% 7%,87% 51%,100% 95%,52% 90%,0 98%);
+    filter:
+      drop-shadow(1.7px 0 0 var(--ink)) drop-shadow(-1.7px 0 0 var(--ink))
+      drop-shadow(0 1.7px 0 var(--ink)) drop-shadow(0 -1.7px 0 var(--ink))
+      drop-shadow(2.4px 3px 0 rgba(18,15,12,.55));
+  }
+  .hud-ribbon > *{position:relative;}
+  /* The number on a ribbon is cream inside a full ink edge, the way the
+     reference letters its counts -- so it survives even where the ribbon
+     itself is only a couple of pixels of tail. */
+  .hud-ribbon b{
+    font:900 17px/1 var(--hud-slab);letter-spacing:-.5px;
+    color:var(--cream);text-shadow:var(--hud-ink-edge);
+  }
+  .hud-ribbon span{
+    margin-left:6px;
+    font:900 8.5px/1 var(--hud-slab);letter-spacing:1.3px;text-transform:uppercase;
+    color:var(--hud-stamp);text-shadow:var(--hud-type-drop);
   }
 
   /* ---------- Pickup / objective slip ----------
@@ -1820,9 +1911,9 @@
       <div id="pepDial" role="img" aria-label="Pep and guard">
         <i id="shieldFill" aria-hidden="true"></i>
         <i id="pepFill" aria-hidden="true"></i>
-        <svg class="vital-ico" width="17" height="16" viewBox="0 0 30 28" aria-hidden="true" focusable="false"><path d="M15 26C6 19.5 2 14.6 2 9.6 2 5.4 5.2 2 9.2 2c2.4 0 4.6 1.2 5.8 3.2C16.2 3.2 18.4 2 20.8 2 24.8 2 28 5.4 28 9.6c0 5-4 9.9-13 16.4z" fill="#A85A3C" stroke="#16120F" stroke-width="3.6" stroke-linejoin="round"/></svg>
+        <svg class="vital-ico" width="20" height="19" viewBox="0 0 30 28" aria-hidden="true" focusable="false"><path d="M15 26C6 19.5 2 14.6 2 9.6 2 5.4 5.2 2 9.2 2c2.4 0 4.6 1.2 5.8 3.2C16.2 3.2 18.4 2 20.8 2 24.8 2 28 5.4 28 9.6c0 5-4 9.9-13 16.4z" fill="#DCA692" stroke="#16120F" stroke-width="3.6" stroke-linejoin="round"/><ellipse cx="8.6" cy="8.6" rx="2.5" ry="3.4" transform="rotate(-28 8.6 8.6)" fill="#F6E9D2"/></svg>
       </div>
-      <div id="jaysHud" aria-live="polite"><b id="jaysCount" class="hud-pip">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
+      <div id="jaysHud" class="hud-ribbon" aria-live="polite"><b id="jaysCount">0</b><span>Jays</span><small id="jaysState">J to use</small></div>
     </div>
   </div>
   <div id="pickupToast" class="hud-ticket"></div>
