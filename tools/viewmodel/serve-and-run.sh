@@ -7,7 +7,7 @@ SRV=$!
 trap 'kill $SRV 2>/dev/null' EXIT
 for i in $(seq 1 20); do curl -s -o /dev/null -m 1 http://127.0.0.1:9102/preview.html && break; sleep 0.5; done
 rc=1
-for a in 1 2 3 4 5; do
+for a in 1 2 3; do
   timeout 900 "$@" > /tmp/wpnrun.out 2>/tmp/wpnrun.err
   rc=$?
   [ $rc -eq 0 ] && break
