@@ -23401,6 +23401,17 @@ const ENEMY = (() => {
       rig: assetRig
     } : CAST.build(id);
     const isAssetBoss = anyBoss && !!assetRig;
+    /* [RUBBERHOSE] Yaw first, then pitch, then roll. The group carries the
+       character's facing on .y and every whole-body tilt we own on .x/.z —
+       the boss attack lunges, and the topple a corpse takes as it goes over.
+       Under the default XYZ order .x is applied LAST, which makes it a
+       *world* pitch: the Warden lunged toward world north whatever way it
+       was actually facing, and every corpse in the game fell the same
+       compass direction no matter where the shot came from, despite the
+       death code going to the trouble of resolving the blow into the body's
+       own frame first. YXZ is the standard character order and makes those
+       two channels mean what the code that writes them already assumes. */
+    built.rig.root.rotation.order = 'YXZ';
     const def = anyBoss ? Object.assign({}, built.def, {
       stats: Object.assign({}, built.def.stats, {
         hp: bc.hp, speed: bc.speed, damage: bc.damage, reach: bc.reach,
@@ -24092,6 +24103,14 @@ const ENEMY = (() => {
        +push means the blow is driving the character forward (shot in the
        back) and +side means it is driving them to their own right. */
     recordHit(e, dir, zone);
+    /* [RUBBERHOSE] ...and start the flinch clock. The grunts read their
+       flinch off the stagger state's own timer, but a boss cannot: Bear
+       Claw never enters `stagger` at all, and interrupting the Warden's
+       swing to play a reaction would change when its blow lands. A separate
+       clock lets the reaction sit ON TOP of whatever the boss is already
+       doing, which is what an animator draws anyway — the arm keeps going
+       and the body shudders under it. */
+    e.flinchT = 0;
     const shove = force === undefined ? 1.6 : force;
     e.vel.x += dir.x * shove * (1 / e.def.stats.weight);
     e.vel.z += dir.z * shove * (1 / e.def.stats.weight);
@@ -25172,6 +25191,30 @@ const ENEMY = (() => {
     e.assetMixer.update(Math.min(e.assetDelta || 0, 0.08));
   }
 
+  /* [RUBBERHOSE] The four drawings of a flinch, shared by everything in the
+     game that can be hit.
+
+     An impact is not a curve to sample, it is a short sequence of poses:
+
+       0  IMPACT — the full extreme, on the drawing the blow lands
+       1  the same extreme, HELD. This is the drawing the hit reads on.
+       2  COUNTER-SWING, past neutral the other way
+       3  the settle
+
+     One signed envelope covers all four, because the flinch and the rebound
+     were never independent quantities. `lag` is the same envelope a drawing
+     late, which is what an extremity does — on drawing 2 the chest is
+     already swinging back while the head is still out at the impact pose.
+     That opposition is the whole of a whiplash, and it is far cheaper and
+     far more legible than asking the trail springs to invent it. */
+  const SWAY = [1, 0.92, -0.42, 0.14];
+  function flinchFrames(timer) {
+    const d = Math.floor(UTIL.clamp(timer, 0, 1) * C.stepFPS);
+    const sway = d < SWAY.length ? SWAY[d] : 0;
+    const lag = d > 0 && d <= SWAY.length ? SWAY[d - 1] : 0;
+    return { sway: sway, lag: lag, mag: Math.abs(sway) };
+  }
+
   /* [RUBBERHOSE] Shared attack shaping for the three GLB bosses.
 
      These three have no procedural limb rig to bend, so all the cartoon
@@ -25261,11 +25304,31 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] The flinch, laid over the top of whatever the GLB clip is
+       already playing. Being shot did nothing to this character but change
+       its size for a few frames — the one boss the player empties a magazine
+       into, and the only acknowledgement was a pulse. It rides ON TOP rather
+       than replacing the pose because a boss must not have its attack timing
+       interrupted, and because a body shuddering under an arm that keeps
+       going is the drawing anyway. */
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    let flYaw = 0;
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.24 * push * fl.sway;
+      roll += -side * 0.20 * fl.sway;
+      // the twist arrives a drawing after the tilt, so the mass reads as
+      // having been shoved rather than as having chosen to turn
+      flYaw = side * 0.16 * fl.lag;
+      extra -= 0.11 * fl.mag;
+    }
+
     const sq = 1 + e.squash + extra;
     const scale = e.visualScale || 1;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + B.assetForwardCorrection, roll);
+    e.group.rotation.set(pitch, e.yaw + B.assetForwardCorrection + flYaw, roll);
   }
 
   /* Bear Claw uses the replacement GLB's authored clips when available.
@@ -25337,11 +25400,33 @@ const ENEMY = (() => {
        on the frame it lands and eases out after. On a rigged character this
        is a wave up the body; on a single mesh it is all the overlap there
        is to have. */
+    /* [RUBBERHOSE] The flinch, over the top of the clip — see poseAsset.
+       Bear Claw needs this more than either of the others, because it is the
+       one boss that never enters the `stagger` state at all: hitting it did
+       literally nothing to the drawing except a size pulse. Bigger numbers
+       than the Warden's, because the claws are already whipping around and a
+       small shudder disappears underneath them. */
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    let flYaw = 0, flRoll = 0;
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.26 * push * fl.sway;
+      flRoll = -side * 0.22 * fl.sway;
+      flYaw = side * 0.18 * fl.lag;
+      extra -= 0.12 * fl.mag;
+      // the claws recoil back into the body a drawing late, so the arms are
+      // still out when the chest has already given
+      if (e.clawArms) {
+        e.clawArms.left.stretch.position.z -= 0.10 * fl.lag;
+        e.clawArms.right.stretch.position.z -= 0.10 * fl.lag;
+      }
+    }
     const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
     const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction, (e.turn || 0) * 0.12);
+    e.group.rotation.set(pitch, e.yaw + correction + flYaw, (e.turn || 0) * 0.12 + flRoll);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -25389,6 +25474,16 @@ const ENEMY = (() => {
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
+    // [RUBBERHOSE] The flinch, over the top of the clip — see poseAsset.
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.28 * push * fl.sway;
+      roll += -side * 0.24 * fl.sway;
+      yawExtra += side * 0.18 * fl.lag;
+      extra -= 0.12 * fl.mag;
+    }
     const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
     const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
@@ -26053,42 +26148,21 @@ const ENEMY = (() => {
     }
 
     if (e.state === 'stagger') {
-      /* Getting hit is a shudder, not a lean. Ring it out so the whole
-         body rattles and comes to rest instead of sliding back linearly.
+      /* A stagger is FOUR DRAWINGS long — 0.34s at 12fps — so it is laid out
+         as four drawings (see flinchFrames) rather than sampled off a
+         continuous curve and hoped for. The old version rang out at 2.6
+         cycles across those four, which is well past the point where the
+         grid can carry the wave: the rattle aliased into a different
+         arbitrary set of angles on every hit, none of which was a pose
+         anyone chose.
 
-         The flinch now goes somewhere: `hitPush`/`hitSide` are the blow in
+         The flinch also goes somewhere: `hitPush`/`hitSide` are the blow in
          the body's own frame, so a shot in the chest bows the character
-         backwards and one in the flank spins it. Everything used to be
-         symmetric, which meant a character hit from any angle did the same
-         drawing — and a symmetric reaction is what makes a hit read as a
-         glitch rather than as an impact.
-
-         `decay` holds at full for the first drawing before it recovers. A
-         hit that starts recovering on the frame it lands never has a pose,
-         and a hit with no held pose does not register at this frame rate. */
-      /* A stagger is FOUR DRAWINGS long — 0.34s at 12fps — so it gets laid
-         out as four drawings rather than sampled off a continuous curve and
-         hoped for. The old version rang out at 2.6 cycles across those four,
-         which is well past the point where the grid can carry the wave: the
-         rattle aliased into a different arbitrary set of angles on every
-         hit, none of which was a pose anyone chose.
-
-         What an animator draws instead, and what this is now:
-           0  IMPACT — the full extreme, on the drawing the blow lands
-           1  the same extreme, HELD. This is the drawing the hit reads on.
-           2  COUNTER-SWING, past neutral the other way
-           3  the settle
-         One signed envelope covers all four, because the flinch and the
-         rebound were never independent quantities. */
-      const SWAY = [1, 0.92, -0.42, 0.14];
-      const d = Math.round(qt * C.stepFPS);
-      const sway = d < SWAY.length ? SWAY[d] : 0;
-      /* Extremities are a drawing behind the chest, which is the whole of a
-         whiplash: on drawing 2 the torso is already swinging back while the
-         head and hands are still out at the impact extreme. Cheaper and far
-         more legible than asking the trail springs to invent it. */
-      const lag = d > 0 && d <= SWAY.length ? SWAY[d - 1] : 0;
-      const mag = Math.abs(sway);
+         backwards and one in the flank spins it. It used to be symmetric,
+         which meant a character hit from any angle did the same drawing —
+         and that is what makes a hit read as a glitch rather than impact. */
+      const fl = flinchFrames(qt);
+      const sway = fl.sway, lag = fl.lag, mag = fl.mag;
       const push = e.hitPush === undefined ? -1 : e.hitPush;
       const side = e.hitSide || 0;
       // a head hit whips the neck harder than it moves the body
@@ -26128,6 +26202,11 @@ const ENEMY = (() => {
 
   /* ---------------- per-enemy update ---------------- */
   function updateOne(e, dt, t) {
+    /* [RUBBERHOSE] The flinch clock, advanced here rather than inside any
+       one state's update so a boss state that returns early cannot leave a
+       character frozen at the impact drawing. Grunts read their flinch off
+       the stagger state's own timer and ignore this. */
+    e.flinchT = e.flinchT === undefined ? 9 : Math.min(e.flinchT + dt, 9);
     if (e.isBoss) {
       updateBoss(e, dt, t);
       return;
