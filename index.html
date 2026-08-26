@@ -2427,17 +2427,31 @@ const CONFIG = {
        single material. */
     texture: {
       on: true,
-      mottle: 1.0,      // broad value break-up (wear, damp, uneven paint)
-      tooth: 1.0,       // fine paper grain
-      hatch: 1.0,       // ink line work on the shaded side of a form
+      mottle: 1.0,      // broad value break-up, wear, and fine paper grain
+      line: 1.0,        // structural ink lines: plank seams, courses, ribs
+      hatch: 1.0,       // hatching on the shaded side of a form
       grime: 1.0,       // dirt climbing the bottom of every standing surface
+      /* Structure drawn back in the OTHER polarity where the plane is dark.
+         An ink line laid on a shadowed surface is ink on ink and reads as
+         nothing; an inker working a black passage switches to scratchboard
+         and picks the same structure out in white. Same channel, opposite
+         sign, so a plank seam survives on the shaded side of the barn. */
+      lift: 1.0,
       /* Which part of the light range the hatching lives in, as a pair of
          ramps on the surface's own light term (albedo divided out, so a dark
          red barn wall in full sun is "lit", not "shaded"). Hatch fades IN
          above x..y and OUT above z..w. The lower ramp matters: without it
          the hatch keeps darkening pixels that are already at true black and
          quietly eats the shadow detail the grade works so hard to hold. */
-      band: [0.02, 0.13, 0.36, 0.86]
+      band: [0.02, 0.13, 0.36, 0.86],
+      /* Metres over which the light-keyed marks (hatch and lift) retire.
+         They used to retire for free, because bright fog lifted the light
+         term out of the top of the band -- which quietly made the whole
+         hand-drawn layer a hostage of the fog COLOUR. Against a dark sky
+         the same fog pushes the term down into the band instead and the
+         horizon fills with hatching. Distance is measured directly now, and
+         the light term is read before fog is applied. */
+      fade: [30, 130]
     },
 
     /* ---- render core (see [RENDERCORE]) ---------------------------------
@@ -2450,17 +2464,21 @@ const CONFIG = {
       high: {
         post: true, samples: 4,
         shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowBlur: 3.4,
-        viewShadows: true, chroma: true, softEdge: true
+        viewShadows: true, chroma: true, softEdge: true, surfaceHatch: 1.0
       },
       medium: {
         post: true, samples: 0,
         shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowBlur: 2.2,
-        viewShadows: false, chroma: true, softEdge: false
+        viewShadows: false, chroma: true, softEdge: false, surfaceHatch: 1.0
       },
       low: {
         post: true, samples: 0,
         shadows: false, shadowMapSize: 512, shadowRadius: 30, shadowBlur: 1.0,
-        viewShadows: false, chroma: false, softEdge: false
+        /* The finish hatch is the only part of the drawn surface layer that
+           costs anything beyond its one shared texture fetch, and it is the
+           part that reads least on a small or low-end screen. Structural
+           lines and mottle stay on at every tier. */
+        viewShadows: false, chroma: false, softEdge: false, surfaceHatch: 0.0
       }
     },
     /* Print curve + grade. The world is rendered into a linear-encoded
@@ -3423,16 +3441,30 @@ const TEX = (() => {
      whatever mesh it was merged into. Three independent masks ride in the
      three channels, which is why one fetch buys three effects:
 
-       R  broad value mottle  -- damp patches, wear, uneven paint
-       G  fine tooth          -- the paper the thing was drawn on
-       B  ink hatch           -- line work, shown only where the surface has
-                                 already turned away from the key light
+       R  value mottle    -- per-cell tone, damp patches, wear, paper tooth
+       G  structural line -- plank seams, mortar courses, corrugation ribs
+       B  ink hatch       -- shading strokes, shown only where the surface has
+                             already turned away from the key light
 
-     R and G are authored around mid-grey and B around white, because that is
-     the value each has to average to for the finish to *disappear* as the
-     texture mips down at distance rather than shifting the whole midground.
-     Hatching therefore fades out with range the way real cross-hatching does
-     when a drawing is reduced. */
+     R and G are drawn to the SAME grid wherever a material is built in units:
+     each brick, plank or pane gets its own flat tone in R and the joints that
+     bound it go into G. Uncorrelated noise plus a line grid reads as a grid
+     drawn over fog; a tone that changes exactly at the joint reads as
+     masonry. See cellTone().
+
+     G is the channel that matters most and it is the one this file used to
+     get wrong. Measured against the reference stills, the metric that
+     separates their surfaces from ours is EDGE -- Sobel density -- and their
+     high scorers (a brick laboratory, a tiled alley) earn it with *structure*:
+     every plank, course and rib is a drawn line at a spacing you can still
+     resolve across the room. Noise does not score there; it mips away. So the
+     line channel is authored at a real physical spacing (20-40cm) and, unlike
+     the hatch, is not gated on light -- a seam is a seam on the sunny side too.
+
+     R is authored around mid-grey and G/B around white, because that is the
+     value each has to average to for the finish to *disappear* as the texture
+     mips down at distance rather than shifting the whole midground. The
+     drawing therefore retires with range the way it does in a reduced print. */
   const SURF = {};
 
   /* Anything drawn near a tile edge has to come back on the opposite side or
@@ -3527,6 +3559,192 @@ const TEX = (() => {
     }
   }
 
+  /* An even screen of parallel lines reads as a filter, not as drawing. A
+     real inker's hatching pools where the form turns and opens up where it
+     does not, so the whole hatch channel gets lifted back toward white in
+     soft patches after it is laid down. Call last on a B channel. */
+  function openUp(x, s, n, rMin, rMax, alpha) {
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s), r = UTIL.rng(rMin, rMax);
+      const a = alpha * UTIL.rng(0.5, 1);
+      wrapPts(s, px, py, Math.min(r, s * 0.49)).forEach(p => {
+        const g = x.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
+        g.addColorStop(0, 'rgba(255,255,255,' + a + ')');
+        g.addColorStop(0.6, 'rgba(255,255,255,' + (a * 0.55) + ')');
+        g.addColorStop(1, 'rgba(255,255,255,0)');
+        x.fillStyle = g;
+        x.beginPath(); x.arc(p[0], p[1], r, 0, 6.3); x.fill();
+      });
+    }
+  }
+
+  /* A running-bond course pattern: `rows` horizontal joints across the tile
+     with each row's vertical joints offset half a unit from its neighbours.
+     This is the highest-yield mark in the whole kit. The reference's densest
+     frames -- the brick laboratory, the tiled alley -- earn their edge score
+     on courses and floorboards, not on noise, because structure at 20-40cm
+     still resolves from across a room while noise has long since mipped away. */
+  function courses(x, s, rows, perRow, width, alpha, wob) {
+    hatch(x, s, 0, s / rows, width, alpha, wob);
+    const rh = s / rows, cw = s / perRow;
+    x.lineCap = 'round';
+    for (let r = 0; r < rows; r++) {
+      const y0 = r * rh, off = (r % 2) * cw * 0.5;
+      for (let k = 0; k < perRow; k++) {
+        const jx = off + k * cw + UTIL.rng(-cw * 0.07, cw * 0.07);
+        const lean = UTIL.rng(-wob, wob);
+        x.strokeStyle = 'rgba(0,0,0,' + (alpha * UTIL.rng(0.65, 1)) + ')';
+        x.lineWidth = width * UTIL.rng(0.7, 1.1);
+        x.beginPath();
+        // drawn twice so a joint near the right edge comes back on the left
+        [jx, jx - s].forEach(px => { x.moveTo(px + lean, y0); x.lineTo(px - lean, y0 + rh); });
+        x.stroke();
+      }
+    }
+  }
+
+  /* A stable 0..1 hash for one cell of a bond. The tone pass and the joint
+     pass are drawn into different channels, by different calls, each with its
+     own RNG state -- so a shared random sequence cannot make the two agree,
+     and they have to agree exactly, because the whole point is that the tone
+     break falls ON the joint rather than near it. */
+  function cellHash(i, j, salt) {
+    const n = Math.sin(i * 127.1 + j * 311.7 + salt * 74.7) * 43758.5453;
+    return n - Math.floor(n);
+  }
+
+  /* Walk the same grid courses() inks, handing each cell its rect and hash.
+     `stagger` is the half-unit row offset (0.5 for running bond, 0 for a
+     square grid like glazing). Cells in an offset row overhang the right
+     edge, so those are handed out at both positions and the tone wraps the
+     way the joints do. */
+  function bond(s, rows, perRow, stagger, cb) {
+    const rh = s / rows, cw = s / perRow;
+    for (let r = 0; r < rows; r++) {
+      const off = (r % 2) * cw * stagger;
+      for (let k = 0; k < perRow; k++) {
+        const x0 = off + k * cw, h = cellHash(r, k, 1);
+        cb(x0, r * rh, cw, rh, h);
+        if (x0 + cw > s) cb(x0 - s, r * rh, cw, rh, h);
+      }
+    }
+  }
+
+  /* Per-cell value, for the R channel.
+
+     This is the loudest single difference between the reference's masonry and
+     ours. Their bricks and floorboards are DISCRETE: each one carries its own
+     flat tone and the tone changes at the joint. Ours were a noise field with
+     a joint grid drawn over the top, which reads as exactly that -- a grid on
+     fog -- because nothing in the value break-up knew where the bricks were.
+     Every cell also darkens toward its own rim, which is what gives a drawn
+     stone its roundness and a plank its cupping. */
+  function cellTone(x, s, rows, perRow, stagger, spread, rim) {
+    bond(s, rows, perRow, stagger, (x0, y0, w, h, hsh) => {
+      const v = (hsh - 0.5) * 2 * spread;
+      x.fillStyle = 'rgba(' + (v > 0 ? '255,255,255' : '0,0,0') + ',' + Math.abs(v) + ')';
+      x.fillRect(x0, y0, w, h);
+      for (let q = 0; q < 3 && rim; q++) {
+        x.strokeStyle = 'rgba(0,0,0,' + (rim * (1 - q / 3)) + ')';
+        x.lineWidth = 2;
+        x.strokeRect(x0 + 1 + q * 2, y0 + 1 + q * 2,
+                     Math.max(w - 2 - q * 4, 1), Math.max(h - 2 - q * 4, 1));
+      }
+    });
+  }
+
+  /* Wear along each unit's exposed arris, for the R channel; call after
+     cellTone so it sits on top of the cell's own flat value.
+
+     A brick or a plank does not wear evenly. Its top edge is the one that
+     catches the light, gets walked on and loses its paint first, so it comes
+     up lighter than the face; its bottom edge sits over the joint where dirt
+     collects, so it goes darker. That pair is the difference between a
+     rectangle of tone and a unit with a top and a bottom, and in an inked
+     drawing it is most of what the eye reads as relief -- the reference puts
+     a light sliver on every brick and floorboard it draws.
+
+     Depth is a fraction of the cell rather than a pixel count so it stays
+     proportional whatever grid it is handed, and each unit is worn by a
+     different amount, because an even bevel reads as machining. */
+  function arris(x, s, rows, perRow, stagger, amt) {
+    bond(s, rows, perRow, stagger, (x0, y0, w, h, hsh) => {
+      const d = Math.max(1.5, h * 0.13), a = amt * (0.45 + hsh * 0.9);
+      x.fillStyle = 'rgba(255,255,255,' + a + ')';
+      x.fillRect(x0 + 1, y0 + 1, Math.max(w - 2, 1), d);
+      x.fillStyle = 'rgba(0,0,0,' + (a * 0.85) + ')';
+      x.fillRect(x0 + 1, y0 + h - d - 1, Math.max(w - 2, 1), d);
+    });
+  }
+
+  /* A value ramp across each corrugation rib: down one flank, up the other.
+     Corrugated iron is the one material here whose read is a light gradient
+     rather than a line, and drawing it as a line grid alone is most of why
+     the silos have looked like painted cylinders. Two single-colour ramps
+     rather than one black-to-white gradient, which canvas takes through mud.
+     Pitch must match the rib hatch in the line channel or the two fight. */
+  function ribs(x, s, pitch, amp, vertical) {
+    const K = Math.max(1, Math.round(s / pitch)), d = s / K;
+    for (let k = 0; k < K; k++) {
+      const a = k * d;
+      [['0,0,0', a, 1, 0], ['255,255,255', a + d * 0.5, 0, 1]].forEach(p => {
+        const g = vertical ? x.createLinearGradient(p[1], 0, p[1] + d * 0.5, 0)
+                           : x.createLinearGradient(0, p[1], 0, p[1] + d * 0.5);
+        g.addColorStop(0, 'rgba(' + p[0] + ',' + (amp * p[2]) + ')');
+        g.addColorStop(1, 'rgba(' + p[0] + ',' + (amp * p[3]) + ')');
+        x.fillStyle = g;
+        if (vertical) x.fillRect(p[1], 0, d * 0.5, s); else x.fillRect(0, p[1], s, d * 0.5);
+      });
+    }
+  }
+
+  /* A wandering crack network. Same job as courses() for surfaces that were
+     never built in units -- dried mud, weathered concrete, old paint. */
+  function cracks(x, s, n, steps, len, width, alpha) {
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    for (let i = 0; i < n; i++) {
+      let px = UTIL.rng(0, s), py = UTIL.rng(0, s), a = UTIL.rng(0, 6.28);
+      x.strokeStyle = 'rgba(0,0,0,' + (alpha * UTIL.rng(0.5, 1)) + ')';
+      x.lineWidth = width * UTIL.rng(0.6, 1.3);
+      x.beginPath(); x.moveTo(px, py);
+      for (let k = 0; k < steps; k++) {
+        a += UTIL.rng(-0.85, 0.85);
+        px += Math.cos(a) * len; py += Math.sin(a) * len;
+        x.lineTo(px, py);
+      }
+      x.stroke();
+    }
+  }
+
+  /* Loose stones, drawn as closed contours rather than filled specks.
+
+     The yard is one 400m plane and it fills the bottom third of nearly every
+     frame, which makes it the largest single surface the player ever looks
+     at -- and it was carrying two crack lines and a wash. A drawn dirt ground
+     in this idiom is not a wash; it is covered in small closed shapes, and
+     an OUTLINE is what buys that: it costs almost no mean value, so the tile
+     still averages near white and the midground does not go muddy, while
+     giving the near field the small-shape density that reads as ink.
+
+     Each contour gets a heavier lower arc -- the side the stone sits on --
+     which is enough to seat it on the ground rather than float it. */
+  function stones(x, s, n, rMin, rMax, width, alpha) {
+    x.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s);
+      const r = UTIL.rng(rMin, rMax), sq = UTIL.rng(0.55, 0.9), rot = UTIL.rng(0, 3.14);
+      const a = alpha * UTIL.rng(0.5, 1);
+      wrapPts(s, px, py, r + 2).forEach(p => {
+        x.lineWidth = width;
+        x.strokeStyle = 'rgba(0,0,0,' + a + ')';
+        x.beginPath(); x.ellipse(p[0], p[1], r, r * sq, rot, 0, 6.3); x.stroke();
+        x.lineWidth = width * 1.9;
+        x.strokeStyle = 'rgba(0,0,0,' + (a * 0.8) + ')';
+        x.beginPath(); x.ellipse(p[0], p[1], r, r * sq, rot, 0.5, 2.6); x.stroke();
+      });
+    }
+  }
+
   function chan(s, base, fn) {
     const c = cv(s, s), x = c.getContext('2d');
     x.fillStyle = base; x.fillRect(0, 0, s, s);
@@ -3535,7 +3753,7 @@ const TEX = (() => {
   }
 
   function pack(s, r, g, b) {
-    const R = chan(s, '#808080', r), G = chan(s, '#808080', g), B = chan(s, '#ffffff', b);
+    const R = chan(s, '#808080', r), G = chan(s, '#ffffff', g), B = chan(s, '#ffffff', b);
     const c = cv(s, s), x = c.getContext('2d'), img = x.createImageData(s, s);
     for (let i = 0; i < s * s; i++) {
       img.data[i * 4]     = R[i * 4];
@@ -3545,10 +3763,8 @@ const TEX = (() => {
     }
     x.putImageData(img, 0, 0);
     // Repeat is 1: a finish is scaled in the shader by world size, not by a
-    // UV multiplier. Anisotropy is doubled over the shared default because a
-    // finish is most often seen on the ground at a grazing angle.
+    // UV multiplier.
     const t = finish(c, 1, 1);
-    t.anisotropy = 8;
     return t;
   }
 
@@ -3560,74 +3776,260 @@ const TEX = (() => {
     let t;
     if (kind === 'wood') {
       t = pack(s,
-        x => {                                  // sap streaks, plank seams, knots
+        x => {                                  // plank tone, sap streaks, weathering
+          cellTone(x, s, 4, 1, 0.5, 0.20, 0.10);
+          arris(x, s, 4, 1, 0.5, 0.22);
           blobs(x, s, 22, 40, 170, 0.11, 0.45);
           scratch(x, s, 220, 90, 380, 2.4, 0.15, 0, 0.05, 0.32);
-          hatch(x, s, 0, s / 4, 5, 0.30, 2.4);  // the seams between boards
-          for (let i = 0; i < 5; i++) {         // knots, drawn as ringed ovals
+          scratch(x, s, 700, 40, 190, 1.1, 0.12, 0, 0.03, 0.4);
+          grit(x, s, 900, 0.4, 1.4, 0.14);
+        },
+        x => {                                  // boarding: 40cm planks, butt joints, nails
+          courses(x, s, 4, 1, 3.4, 0.72, 2.6);
+          /* Grain, and the reason every material below gains a mark at this
+             frequency. The structural grid is authored at 20-40cm so it still
+             resolves across a room, which is right -- but it also means that
+             a surface at arm's reach shows two or three lines and nothing
+             else, and the frame goes flat exactly where the player is looking
+             hardest. Measured: every vantage point scores 90-150 on edge
+             except the one standing at a wall, which scores 33.
+             So each material gets a second octave an order finer, thin and
+             low-alpha enough that it mips to nearly nothing by mid-range and
+             does not darken the distance. Here it is board grain, running
+             the length of the plank. */
+          scratch(x, s, 150, 150, 400, 1.25, 0.30, 0, 0.045, 0);
+          for (let i = 0; i < 6; i++) {         // knots, drawn as ringed ovals
             const kx = UTIL.rng(0, s), ky = UTIL.rng(0, s);
             for (let r = 1; r <= 4; r++) {
-              x.strokeStyle = 'rgba(0,0,0,' + (0.30 - r * 0.05) + ')';
+              x.strokeStyle = 'rgba(0,0,0,' + (0.34 - r * 0.05) + ')';
               x.lineWidth = 2.4;
               wrapPts(s, kx, ky, r * 9).forEach(p => {
                 x.beginPath(); x.ellipse(p[0], p[1], r * 9, r * 6, 0.3, 0, 6.3); x.stroke();
               });
             }
           }
+          for (let i = 0; i < 26; i++) {        // nail heads on the stud lines
+            const nx = UTIL.rng(0, s), ny = Math.round(UTIL.rng(0, 4)) * (s / 4) + UTIL.rng(6, s / 4 - 6);
+            x.fillStyle = 'rgba(0,0,0,.55)';
+            wrapPts(s, nx, ny, 3).forEach(pp => { x.beginPath(); x.arc(pp[0], pp[1], 2.2, 0, 6.3); x.fill(); });
+          }
         },
-        x => { scratch(x, s, 700, 40, 190, 1.1, 0.14, 0, 0.03, 0.4); grit(x, s, 900, 0.4, 1.4, 0.16); },
-        x => hatch(x, s, 0, 11, 2.0, 0.34, 1.3));
+        x => { hatch(x, s, 0, 11, 2.0, 0.38, 1.3); openUp(x, s, 16, 40, 150, 0.55); });
     } else if (kind === 'metal') {
       t = pack(s,
-        x => {                                  // rolled sheet + rust blooms
+        x => {                                  // corrugation relief, rolled sheet, rust blooms
+          ribs(x, s, s / 18, 0.34, true);
           scratch(x, s, 90, 200, 512, 5, 0.10, Math.PI / 2, 0.02, 0.5);
           blobs(x, s, 30, 18, 90, 0.16, 0.25);
           grit(x, s, 260, 1.5, 5, 0.20, 0.2);
+          scratch(x, s, 420, 12, 70, 1.0, 0.13, 0, 3.14, 0.45);
         },
-        x => { scratch(x, s, 420, 12, 70, 1.0, 0.16, 0, 3.14, 0.45); grit(x, s, 700, 0.4, 1.2, 0.13); },
-        x => { hatch(x, s, 90, 12, 2.1, 0.36, 1.0); hatch(x, s, 90, 61, 4.0, 0.22, 1.6); });
+        x => {                                  // corrugation at ~8cm pitch, sheet laps, bolts
+          hatch(x, s, 90, s / 18, 3.0, 0.66, 0.7);
+          hatch(x, s, 0, s / 2, 3.4, 0.55, 1.8);
+          // Fine octave: rolling marks, running down the sheet with the ribs.
+          scratch(x, s, 170, 60, 220, 1.1, 0.22, Math.PI / 2, 0.04, 0);
+          for (let i = 0; i < 24; i++) {
+            const bx = UTIL.rng(0, s), by = Math.round(UTIL.rng(0, 2)) * (s / 2) + UTIL.rng(-3, 3);
+            x.fillStyle = 'rgba(0,0,0,.6)';
+            wrapPts(s, bx, by, 4).forEach(pp => { x.beginPath(); x.arc(pp[0], pp[1], 2.6, 0, 6.3); x.fill(); });
+          }
+        },
+        x => { hatch(x, s, 90, 12, 2.1, 0.40, 1.0); hatch(x, s, 90, 61, 4.0, 0.24, 1.6);
+               openUp(x, s, 14, 45, 160, 0.5); });
     } else if (kind === 'stone') {
       t = pack(s,
-        x => {                                  // aggregate + chips + a crack
+        x => {                                  // block tone, then aggregate + chips
+          cellTone(x, s, 6, 3, 0.5, 0.24, 0.17);
+          arris(x, s, 6, 3, 0.5, 0.26);
           blobs(x, s, 60, 14, 80, 0.17, 0.44);
           grit(x, s, 900, 1.2, 5.5, 0.20);
-          scratch(x, s, 14, 90, 300, 2.2, 0.22, 0.6, 1.2, 0.1);
+          grit(x, s, 2600, 0.5, 2.0, 0.16);
         },
-        x => grit(x, s, 2600, 0.5, 2.0, 0.20),
-        x => { hatch(x, s, 45, 15, 2.0, 0.30, 1.6); hatch(x, s, 135, 34, 1.6, 0.20, 1.6); });
+        x => {                                  // masonry: 29cm courses, 57cm blocks
+          courses(x, s, 6, 3, 3.2, 0.74, 2.2);
+          cracks(x, s, 10, 5, 22, 1.6, 0.34);
+          // Fine octave: the pick marks of a dressed face, so a block seen up
+          // close is worked stone rather than a panel between two joints.
+          scratch(x, s, 260, 10, 34, 1.3, 0.24, 0, 3.14, 0);
+        },
+        x => { hatch(x, s, 45, 15, 2.0, 0.34, 1.6); hatch(x, s, 135, 34, 1.6, 0.22, 1.6);
+               openUp(x, s, 18, 35, 130, 0.55); });
     } else if (kind === 'earth') {
       t = pack(s,
         x => {                                  // trodden patches and cart ruts
           blobs(x, s, 46, 30, 190, 0.17, 0.44);
           scratch(x, s, 120, 120, 460, 6, 0.10, 0.35, 1.4, 0.35);
           grit(x, s, 1400, 1.0, 6.0, 0.16);
+          grit(x, s, 2800, 0.5, 2.4, 0.16);
         },
-        x => { grit(x, s, 2800, 0.5, 2.4, 0.20); grit(x, s, 90, 3, 7, 0.16, 0.55); },
-        x => { hatch(x, s, 45, 26, 2.2, 0.26, 3.2); hatch(x, s, 135, 44, 1.8, 0.18, 3.2); });
+        x => {                                  // dried-mud crack network + hoof scuffs
+          cracks(x, s, 26, 7, 26, 2.0, 0.50);
+          scratch(x, s, 90, 20, 70, 2.2, 0.26, 0.4, 3.14, 0);
+          // Fine octave: the crack network's own hairline branches, and the
+          // loose stone the yard is actually made of. The ground fills the
+          // bottom of nearly every frame, so it is the surface the player is
+          // closest to for the largest share of the time -- and it was the
+          // emptiest thing in the game.
+          cracks(x, s, 46, 4, 11, 1.15, 0.28);
+          stones(x, s, 190, 2.0, 7.0, 1.15, 0.34);
+          stones(x, s, 34, 8.0, 16.0, 1.5, 0.30);
+        },
+        x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
+               openUp(x, s, 20, 50, 180, 0.6); });
+    } else if (kind === 'glass') {
+      t = pack(s,
+        // Per-pane tone is what stops a greenhouse reading as one sheet of
+        // tinted plastic: real glazing has some panes catching sky and some
+        // going dark, and the change happens exactly at the bar.
+        x => { cellTone(x, s, 3, 3, 0, 0.22, 0.08); arris(x, s, 3, 3, 0, 0.14);
+               blobs(x, s, 22, 30, 130, 0.14, 0.5); scratch(x, s, 50, 60, 200, 3, 0.08, Math.PI / 2, 0.2, 0.6); },
+        x => {                                  // glazing bars, ~40cm panes
+          hatch(x, s, 0, s / 3, 4.2, 0.62, 1.2);
+          hatch(x, s, 90, s / 3, 4.2, 0.62, 1.2);
+          cracks(x, s, 5, 4, 20, 1.4, 0.34);    // a couple of starred panes
+        },
+        x => { hatch(x, s, 45, 22, 1.6, 0.20, 1.2); openUp(x, s, 12, 50, 170, 0.6); });
+    } else if (kind === 'bark') {
+      t = pack(s,
+        x => {                                  // fibrous, running the trunk
+          scratch(x, s, 320, 120, 460, 3.0, 0.15, Math.PI / 2, 0.07, 0.35);
+          blobs(x, s, 26, 24, 110, 0.15, 0.36);
+          grit(x, s, 900, 0.5, 2.2, 0.15);
+        },
+        x => {                                  // furrows every ~10cm, and their forks
+          hatch(x, s, 90, s / 12, 3.6, 0.66, 3.2);
+          scratch(x, s, 110, 30, 110, 2.4, 0.40, Math.PI / 2, 0.32, 0);
+          scratch(x, s, 40, 14, 34, 2.0, 0.30, 0, 0.5, 0);
+        },
+        x => { hatch(x, s, 90, 10, 1.9, 0.34, 1.8); openUp(x, s, 14, 40, 140, 0.5); });
+    } else if (kind === 'leaf') {
+      t = pack(s,
+        x => {                                  // dry blight, mostly darker
+          scratch(x, s, 130, 200, 512, 2.2, 0.16, 0, 0.06, 0.25);
+          blobs(x, s, 34, 20, 90, 0.20, 0.30);
+          grit(x, s, 1200, 0.4, 1.6, 0.13);
+        },
+        x => {                                  // midrib every 70cm, veins off it
+          hatch(x, s, 0, s / 2, 3.2, 0.62, 2.0);
+          hatch(x, s, 0, s / 12, 1.5, 0.34, 1.2);
+          scratch(x, s, 150, 20, 60, 1.2, 0.26, 0.5, 0.45, 0);
+        },
+        x => { hatch(x, s, 0, 9, 1.7, 0.30, 1.0); openUp(x, s, 16, 40, 140, 0.55); });
     } else if (kind === 'cloth') {
       t = pack(s,
-        x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5); },
-        x => { hatch(x, s, 0, 6, 1.2, 0.10, 0.4); hatch(x, s, 90, 6, 1.2, 0.10, 0.4); grit(x, s, 500, 0.4, 1.2, 0.12); },
-        x => hatch(x, s, 135, 14, 2.0, 0.30, 1.4));
+        x => { blobs(x, s, 30, 40, 180, 0.13, 0.5); scratch(x, s, 60, 90, 300, 6, 0.10, 1.2, 0.5, 0.5);
+               grit(x, s, 900, 0.4, 1.4, 0.14); },
+        x => {                                  // weave, and a seam with stitches
+          hatch(x, s, 0, 7, 1.1, 0.26, 0.4); hatch(x, s, 90, 7, 1.1, 0.26, 0.4);
+          hatch(x, s, 90, s / 2, 2.6, 0.5, 2.4);
+        },
+        x => { hatch(x, s, 135, 14, 2.0, 0.34, 1.4); openUp(x, s, 14, 45, 150, 0.5); });
     } else {                                    // 'paper': plaster, paint, skin
       t = pack(s,
-        x => { blobs(x, s, 40, 30, 160, 0.12, 0.46); scratch(x, s, 40, 60, 220, 4, 0.07, Math.PI / 2, 0.25, 0.4); },
-        x => grit(x, s, 2400, 0.4, 1.8, 0.20),
-        x => { hatch(x, s, 45, 13, 1.9, 0.32, 1.5); hatch(x, s, 135, 29, 1.5, 0.20, 1.5); });
+        x => { blobs(x, s, 40, 30, 160, 0.12, 0.46); scratch(x, s, 40, 60, 220, 4, 0.07, Math.PI / 2, 0.25, 0.4);
+               grit(x, s, 2400, 0.4, 1.8, 0.18); },
+        // Almost nothing: this is the default finish, so it lands on gloves
+        // and gun parts as well as walls. A hairline crack network is safe
+        // on both; boarding is not. Two octaves of it rather than one, so
+        // the surface still has something to show at arm's length -- crazing
+        // is the one mark that looks like itself at any magnification, which
+        // is exactly what a finish with no idea of its subject's size needs.
+        x => { cracks(x, s, 7, 5, 26, 1.3, 0.30); cracks(x, s, 30, 4, 9, 1.0, 0.22); },
+        x => { hatch(x, s, 45, 13, 1.9, 0.36, 1.5); hatch(x, s, 135, 29, 1.5, 0.22, 1.5);
+               openUp(x, s, 18, 40, 145, 0.55); });
     }
     SURF[kind] = t;
     return t;
   }
 
+  /* The single largest surface in nearly every frame, and for a long time the
+     flattest: one tone of dirt with some speckle on it, which the grade then
+     lifted into an undifferentiated pale sheet. What it was missing is not
+     detail -- the earth *finish* supplies that at metre scale -- but VALUE:
+     patches of ground that are plainly darker than their neighbours, at a
+     size big enough to survive the walk across them.
+     So this is built in three passes with descending scale: broad damp/dry
+     patches first, then dried-mud crack networks and pebbles, then the ink
+     scratch that keeps it looking drawn. Every mark wraps, so the 15-metre
+     tile does not announce itself. */
   function ground() {
     if (cache.ground) return cache.ground;
     const w = 512, c = cv(w, w), x = c.getContext('2d');
     x.fillStyle = hex(PAL.dirt); x.fillRect(0, 0, w, w);
+    /* Knocked down to a real mid tone before anything else is drawn.
+       Measured, sunlit ground was printing at ~226 -- above the grade's
+       highlight knee, where the shoulder compresses everything into a single
+       value. Nothing drawn into the texture survived there, and since the
+       ground is 30-50% of most frames it was also most of the reason the set
+       sat 50 points brighter than the reference. Dropping the albedo about a
+       third puts the whole surface back on the straight part of the curve,
+       where its own detail can be seen. */
+    x.globalAlpha = 0.85; x.fillStyle = hex(PAL.dirtDeep); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 0.30; x.fillStyle = hex(PAL.oliveDeep); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 0.12; x.fillStyle = hex(PAL.charcoal); x.fillRect(0, 0, w, w);
+    x.globalAlpha = 1;
+
+    // broad patches -- the value structure the old texture had none of
+    const patch = (colors, n, rMin, rMax, alpha) => {
+      for (let i = 0; i < n; i++) {
+        const px = UTIL.rng(0, w), py = UTIL.rng(0, w), r = UTIL.rng(rMin, rMax);
+        const col = hex(UTIL.pick(colors)), a = alpha * UTIL.rng(0.45, 1);
+        wrapPts(w, px, py, Math.min(r, w * 0.49)).forEach(p => {
+          const g = x.createRadialGradient(p[0], p[1], 0, p[0], p[1], r);
+          g.addColorStop(0, col); g.addColorStop(0.55, col); g.addColorStop(1, col);
+          x.globalAlpha = a;
+          x.fillStyle = g;
+          x.beginPath();
+          // a lobed outline, not a disc -- a circular patch reads as a stain
+          for (let k = 0; k <= 18; k++) {
+            const ang = k / 18 * 6.283;
+            const rr = r * (0.72 + 0.28 * Math.sin(ang * 3 + i) * 0.6 + 0.1 * Math.sin(ang * 7 + i));
+            const qx = p[0] + Math.cos(ang) * rr, qy = p[1] + Math.sin(ang) * rr;
+            if (k === 0) x.moveTo(qx, qy); else x.lineTo(qx, qy);
+          }
+          x.closePath(); x.fill();
+          x.globalAlpha = 1;
+        });
+      }
+    };
+    patch([PAL.dirtDeep, PAL.peachDeep], 30, 55, 165, 0.42);
+    patch([PAL.oliveDeep, PAL.rustDeep], 14, 40, 120, 0.24);
+    patch([PAL.cream, PAL.creamDim], 16, 45, 130, 0.26);
+
     speckle(x, w, w, [PAL.dirtDeep, PAL.olive, PAL.peachDeep], 260, 6, 34, 0.30);
     speckle(x, w, w, [PAL.oliveDeep, PAL.rustDeep], 120, 2, 9, 0.22);
+
+    // dried-mud crack network: a few wandering polylines that branch once
+    x.lineCap = 'round';
+    for (let i = 0; i < 26; i++) {
+      let px = UTIL.rng(0, w), py = UTIL.rng(0, w), a = UTIL.rng(0, 6.28);
+      x.strokeStyle = 'rgba(20,16,12,' + UTIL.rng(0.10, 0.22) + ')';
+      x.lineWidth = UTIL.rng(0.9, 2.2);
+      x.beginPath(); x.moveTo(px, py);
+      for (let k = 0; k < 7; k++) {
+        a += UTIL.rng(-0.9, 0.9);
+        px += Math.cos(a) * UTIL.rng(8, 26); py += Math.sin(a) * UTIL.rng(8, 26);
+        x.lineTo(px, py);
+      }
+      x.stroke();
+    }
+    // pebbles, each with a drawn contour so it reads as an object not a blob
+    for (let i = 0; i < 70; i++) {
+      const px = UTIL.rng(0, w), py = UTIL.rng(0, w), r = UTIL.rng(1.6, 4.6);
+      const ry = r * UTIL.rng(0.6, 1.1), rot = UTIL.rng(0, 3.14);
+      wrapPts(w, px, py, r + ry).forEach(p => {
+        x.fillStyle = hex(UTIL.pick([PAL.creamDim, PAL.blueGray, PAL.dirtDeep]));
+        x.globalAlpha = 0.6;
+        x.beginPath(); x.ellipse(p[0], p[1], r, ry, rot, 0, 6.3); x.fill();
+        x.globalAlpha = 1;
+        x.strokeStyle = 'rgba(20,16,12,.34)'; x.lineWidth = 1;
+        x.beginPath(); x.ellipse(p[0], p[1], r, ry, rot, 0, 6.3); x.stroke();
+      });
+    }
     // scratchy ink hatching
     x.strokeStyle = 'rgba(20,16,12,.16)'; x.lineWidth = 1.4;
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 130; i++) {
       const sx = UTIL.rng(0, w), sy = UTIL.rng(0, w), a = UTIL.rng(0, 6.3), l = UTIL.rng(8, 40);
       x.beginPath(); x.moveTo(sx, sy);
       x.quadraticCurveTo(sx + Math.cos(a) * l * .5 + UTIL.rng(-5, 5), sy + Math.sin(a) * l * .5,
@@ -3638,17 +4040,34 @@ const TEX = (() => {
     return cache.ground;
   }
 
+  /* Boarding. The plank *values* are what carries this, not the grain: a run
+     of boards that all sit at the same tone reads as a printed pattern, while
+     a couple of distinctly darker weathered ones read as a wall somebody
+     built. Nail heads, end splits and cupping shadow do the rest.
+
+     The cache key includes `dark` and `rep` because it used to key on `base`
+     alone -- two call sites asking for the same base colour at different plank
+     scales silently shared whichever texture happened to be built first. */
   function wood(base, dark, rep) {
-    const key = 'wood' + base;
+    const key = 'wood' + base + '_' + dark + '_' + (rep || 2);
     if (cache[key]) return cache[key];
     const w = 256, h = 256, c = cv(w, h), x = c.getContext('2d');
     x.fillStyle = hex(base); x.fillRect(0, 0, w, h);
     const planks = 5, ph = h / planks;
     for (let i = 0; i < planks; i++) {
       const y = i * ph;
-      x.globalAlpha = UTIL.rng(0.05, 0.2);
+      // Board tone: mostly close to base, but every third board or so is
+      // properly weathered down. That spread is the whole read.
+      x.globalAlpha = UTIL.rand() < 0.32 ? UTIL.rng(0.26, 0.44) : UTIL.rng(0.03, 0.14);
       x.fillStyle = hex(dark); x.fillRect(0, y, w, ph);
       x.globalAlpha = 1;
+      // cupping: each board is slightly darker along its lower edge
+      const cup = x.createLinearGradient(0, y, 0, y + ph);
+      cup.addColorStop(0, 'rgba(18,15,13,.13)');
+      cup.addColorStop(0.35, 'rgba(18,15,13,0)');
+      cup.addColorStop(0.86, 'rgba(18,15,13,0)');
+      cup.addColorStop(1, 'rgba(18,15,13,.20)');
+      x.fillStyle = cup; x.fillRect(0, y, w, ph);
       // plank seam, slightly wavy
       x.strokeStyle = 'rgba(18,15,13,.55)'; x.lineWidth = 3;
       x.beginPath(); x.moveTo(0, y);
@@ -3656,14 +4075,24 @@ const TEX = (() => {
       x.stroke();
       // grain
       x.strokeStyle = 'rgba(18,15,13,.20)'; x.lineWidth = 1.2;
-      for (let g = 0; g < 5; g++) {
+      for (let g = 0; g < 7; g++) {
         const gy = y + UTIL.rng(6, ph - 6);
         x.beginPath(); x.moveTo(0, gy);
         for (let sx = 0; sx <= w; sx += 24) x.lineTo(sx, gy + Math.sin(sx * .07 + g * 2) * 1.6);
         x.stroke();
       }
-      // knot
+      // a split running in from one end -- old boards check before they rot
       if (UTIL.rand() > .55) {
+        const fromLeft = UTIL.rand() > .5, len = UTIL.rng(18, 60);
+        const sy = y + UTIL.rng(ph * .3, ph * .7);
+        x.strokeStyle = 'rgba(18,15,13,.42)'; x.lineWidth = 1.6;
+        x.beginPath(); x.moveTo(fromLeft ? 0 : w, sy);
+        x.quadraticCurveTo(fromLeft ? len * .5 : w - len * .5, sy + UTIL.rng(-3, 3),
+                           fromLeft ? len : w - len, sy + UTIL.rng(-2, 2));
+        x.stroke();
+      }
+      // knot
+      if (UTIL.rand() > .5) {
         const kx = UTIL.rng(20, w - 20), ky = y + ph * .5;
         x.strokeStyle = 'rgba(18,15,13,.4)';
         for (let k = 1; k <= 3; k++) {
@@ -3671,18 +4100,67 @@ const TEX = (() => {
           x.ellipse(kx, ky, k * 3.2, k * 2.2, .4, 0, 6.3); x.stroke();
         }
       }
+      // nail heads at the stud lines, each with its own rust bloom
+      [0.13, 0.87].forEach(u => {
+        const nx = u * w + UTIL.rng(-4, 4), ny = y + ph * UTIL.rng(0.35, 0.65);
+        x.globalAlpha = 0.5;
+        x.fillStyle = hex(PAL.rustDeep);
+        x.beginPath(); x.ellipse(nx, ny + 2, 3.4, 4.6, 0, 0, 6.3); x.fill();
+        x.globalAlpha = 1;
+        x.fillStyle = 'rgba(18,15,13,.62)';
+        x.beginPath(); x.arc(nx, ny, 1.7, 0, 6.3); x.fill();
+      });
     }
     cache[key] = finish(c, rep || 2, rep || 2);
     return cache[key];
   }
 
+  /* Galvanised sheet. Was a flat fill with a few scan lines on it, which on a
+     silo the size of a house printed as one unbroken grey slab. Now it is
+     built the way the real thing is: rolled sheets bolted at their laps, with
+     the rust that always starts at a fastener and runs down from it. The
+     sheet-scale detail lives here; the metre-scale corrugation and pitting
+     comes from the `metal` finish on top. */
   function metal() {
     if (cache.metal) return cache.metal;
-    const w = 128, c = cv(w, w), x = c.getContext('2d');
+    const w = 256, c = cv(w, w), x = c.getContext('2d');
     x.fillStyle = hex(PAL.blueGray); x.fillRect(0, 0, w, w);
-    speckle(x, w, w, [PAL.blueGrayDk, PAL.rustDeep, PAL.cream], 90, 2, 12, 0.18);
-    x.strokeStyle = 'rgba(18,15,13,.2)'; x.lineWidth = 1;
-    for (let i = 0; i < 22; i++) {
+    // uneven galvanising -- soft spangle patches, lighter and darker
+    for (let i = 0; i < 26; i++) {
+      const px = UTIL.rng(0, w), py = UTIL.rng(0, w), r = UTIL.rng(14, 52);
+      const g = x.createRadialGradient(px, py, 0, px, py, r);
+      const col = UTIL.rand() < .5 ? hex(PAL.blueGrayDk) : hex(PAL.cream);
+      x.globalAlpha = UTIL.rng(0.06, 0.16);
+      g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g;
+      x.beginPath(); x.arc(px, py, r, 0, 6.3); x.fill();
+      x.globalAlpha = 1;
+    }
+    speckle(x, w, w, [PAL.blueGrayDk, PAL.rustDeep, PAL.cream], 140, 2, 12, 0.16);
+    // the lap where two sheets overlap, and its line of bolts
+    [0.28, 0.74].forEach(v => {
+      const sy = v * w;
+      x.fillStyle = 'rgba(18,15,13,.10)';
+      x.fillRect(0, sy, w, 5);
+      x.strokeStyle = 'rgba(18,15,13,.45)'; x.lineWidth = 1.6;
+      x.beginPath(); x.moveTo(0, sy);
+      for (let sx = 0; sx <= w; sx += 32) x.lineTo(sx, sy + Math.sin(sx * .04 + v) * 1.4);
+      x.stroke();
+      for (let b = 0; b < 7; b++) {
+        const bx = (b + 0.5) / 7 * w + UTIL.rng(-3, 3), by = sy + 2.5;
+        // rust always starts at the bolt and runs down
+        const rg = x.createLinearGradient(0, by, 0, by + 26);
+        rg.addColorStop(0, 'rgba(126,63,42,.36)');
+        rg.addColorStop(1, 'rgba(126,63,42,0)');
+        x.fillStyle = rg;
+        x.fillRect(bx - 2.5, by, 5, 26);
+        x.fillStyle = 'rgba(18,15,13,.55)';
+        x.beginPath(); x.arc(bx, by, 2.1, 0, 6.3); x.fill();
+      }
+    });
+    // scan lines from the rolling mill, kept faint
+    x.strokeStyle = 'rgba(18,15,13,.16)'; x.lineWidth = 1;
+    for (let i = 0; i < 34; i++) {
       const sy = UTIL.rng(0, w);
       x.beginPath(); x.moveTo(0, sy); x.lineTo(w, sy + UTIL.rng(-3, 3)); x.stroke();
     }
@@ -4264,22 +4742,48 @@ const MAT = (() => {
 
      Per-finish numbers below: `scale` is texture tiles per world unit (so it
      is a real physical size, not a UV count), the three strengths are how
-     much of each packed channel to use, and `grime` is [height, strength] for
-     the dirt that climbs the bottom of a standing surface.
+     much of each packed channel to use, `grime` is [height, strength] for the
+     dirt that climbs the bottom of a standing surface, and `lift` is how
+     brightly the structural channel is drawn back in on the shadow side. Lift
+     tracks how sharp the material's arrises are -- a corrugation rib or a bark
+     furrow throws a real catch-light along its crest, a cloth seam does not --
+     so it is high on metal and stone and near zero on cloth.
 
-     `paper` is deliberately weak and finely scaled: it is the DEFAULT for
-     every toon material that does not name one, which means it lands on
-     characters, props and the viewmodel as well as walls. At 1.1 tiles per
-     unit a white glove sees a fraction of one tile -- a whisper of grain --
-     while a barn wall sees a dozen. Same material family, right density at
-     both ends. */
+     `paper` is deliberately weak, finely scaled and almost free of structural
+     line, because it is the DEFAULT for every toon material that does not
+     name one -- it lands on gloves and gun parts as well as walls. At 1.1
+     tiles per unit a white glove sees a fraction of one tile, a whisper of
+     grain, while a barn wall sees a dozen; and boarding drawn across a
+     mouse's hand would be worse than no texture at all. Anything that should
+     read as BUILT is given a named finish instead. */
   const FINISH = {
-    paper: { tex: 'paper', scale: 1.10, mottle: 0.16, tooth: 0.13, hatch: 0.42, grime: [0.45, 0.10] },
-    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, tooth: 0.17, hatch: 0.60, grime: [0.75, 0.26] },
-    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, tooth: 0.15, hatch: 0.52, grime: [0.70, 0.22] },
-    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, tooth: 0.19, hatch: 0.46, grime: [0.95, 0.30] },
-    earth: { tex: 'earth', scale: 0.085, mottle: 0.34, tooth: 0.22, hatch: 0.34, grime: [0, 0] },
-    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, tooth: 0.22, hatch: 0.50, grime: [0.40, 0.16] },
+    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.24, hatch: 0.42, grime: [0.45, 0.10], lift: 0.06 },
+    wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26], lift: 0.17 },
+    metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22], lift: 0.2 },
+    /* Held objects need their own scale. A finish is sized in metres, which is
+       the whole point of it -- but 8cm corrugation is right on a silo and
+       absurd on a shotgun receiver, and at the coarse scale a 30cm gun part
+       sees a fifth of one tile and comes out as flat grey. `tool` and `stock`
+       are the same two tiles run four times finer, where the corrugation
+       reads as machined seams and the boarding as grain. */
+    tool:  { tex: 'metal', scale: 3.10, mottle: 0.26, line: 0.44, hatch: 0.56, grime: [0, 0], lift: 0.14 },
+    stock: { tex: 'wood',  scale: 2.30, mottle: 0.28, line: 0.36, hatch: 0.58, grime: [0, 0], lift: 0.12 },
+    stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30], lift: 0.19 },
+    /* The ground's colour MAP already carries the 15-metre patchwork; the
+       finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
+       hatching you can actually see at the bottom of the frame. Running it at
+       the map's own scale, as it was, just doubled up on the same low
+       frequency and left the ground reading as one pale sheet. */
+    earth: { tex: 'earth', scale: 0.28, mottle: 0.36, line: 0.42, hatch: 0.38, grime: [0, 0], lift: 0.1 },
+    leaf:  { tex: 'leaf',  scale: 1.45, mottle: 0.30, line: 0.34, hatch: 0.44, grime: [0, 0], lift: 0.08 },
+    bark:  { tex: 'bark',  scale: 0.80, mottle: 0.30, line: 0.58, hatch: 0.52, grime: [0.55, 0.20], lift: 0.17 },
+    cloth: { tex: 'cloth', scale: 1.60, mottle: 0.20, line: 0.26, hatch: 0.50, grime: [0.40, 0.16], lift: 0.07 },
+    /* Glazing bars are the whole read of a greenhouse, and they belong on
+       an unlit material -- see buildGreenhouseShell for why the glass is
+       MAT.flat. The hatch and lift strengths here are nearly free: with no
+       lighting term the light ratio they key on sits at 1.0, which is off
+       the top of the band, so both self-disable. */
+    glass: { tex: 'glass', scale: 0.80, mottle: 0.16, line: 0.55, hatch: 0.20, grime: [0.30, 0.10], lift: 0.1 },
     none:  null
   };
 
@@ -4290,26 +4794,35 @@ const MAT = (() => {
   const SURF_VERT_DECL = [
     'varying vec3 vSurfP;',
     'varying vec3 vSurfN;',
-    'varying float vSurfY;'
+    'varying float vSurfY;',
+    'varying float vSurfD;'
   ].join('\n');
 
-  /* Position and normal are captured in OBJECT space, before skinning and
-     before the model matrix. Object space is the right frame for two
-     separate reasons: a batched mesh was baked at world coordinates so its
-     object space already is world space, and a prop or a character carries
-     its texture with it instead of swimming through a world-space grid as it
-     moves. Only the grime term needs true height, so that -- and only that --
-     pays for the model-matrix multiply. */
+  /* Position and normal are captured in OBJECT space, in the rest pose,
+     before skinning and before the model matrix. Object space is the right
+     frame for two separate reasons: a batched mesh was baked at world
+     coordinates so its object space already is world space, and a prop or a
+     character carries its texture with it instead of swimming through a
+     world-space grid as it moves. Only the grime term needs true height, so
+     that -- and only that -- pays for the model-matrix multiply.
+
+     The normal comes from the raw `normal` attribute rather than from
+     objectNormal, which is what makes this work on MeshBasicMaterial too:
+     r128 wraps meshbasic's whole normal block in `#ifdef USE_ENVMAP`, so an
+     injection that referenced objectNormal would land inside a dead branch
+     and leave the varying undefined. */
   const SURF_FRAG_DECL = [
     'uniform sampler2D uSurf;',
     'uniform float uSurfScale;',
-    'uniform vec3 uSurfAmt;',      // mottle, tooth, hatch
+    'uniform vec4 uSurfAmt;',      // mottle, line, hatch, shadow-side lift
     'uniform vec2 uGrime;',        // height, strength
     'uniform vec3 uGrimeCol;',
     'uniform vec4 uSurfBand;',
+    'uniform vec2 uSurfFade;',     // metres: light-keyed marks retire between
     'varying vec3 vSurfP;',
     'varying vec3 vSurfN;',
     'varying float vSurfY;',
+    'varying float vSurfD;',
     /* Triplanar, but picking the dominant axis instead of blending three
        samples. Blending would cost three fetches to hide seams that only
        appear on faces within a few degrees of 45 -- and these tiles are
@@ -4324,32 +4837,55 @@ const MAT = (() => {
   const SURF_ALBEDO = [
     'vec3 wfS = wfSurfSample();',
     'diffuseColor.rgb *= 1.0 + (wfS.r - 0.5) * 2.0 * uSurfAmt.x;',
-    'diffuseColor.rgb *= 1.0 + (wfS.g - 0.5) * 2.0 * uSurfAmt.y;',
+    // Structural lines are a straight multiply, not a signed offset: a seam
+    // only ever darkens, and it darkens whether or not the plane is lit.
+    'diffuseColor.rgb *= 1.0 - (1.0 - wfS.g) * uSurfAmt.y;',
     // Dirt climbs the foot of every standing surface, broken up by the same
     // mottle so the line where it stops is never a straight one.
     'float wfG = uGrime.y * smoothstep(uGrime.x, 0.0, vSurfY) * (0.35 + 0.65 * (1.0 - wfS.r));',
     'diffuseColor.rgb = mix(diffuseColor.rgb, uGrimeCol, clamp(wfG, 0.0, 1.0));'
   ].join('\n');
 
-  /* Hatching goes on last, over the fogged frame, keyed on how much LIGHT the
-     surface caught rather than how dark it ended up -- albedo is divided back
-     out so a rust-red wall in full sun stays unhatched while a cream wall in
-     shade gets the lines. Fog lifts the term at range, which retires the
-     hatching into the distance exactly as it should. */
+  /* The two light-keyed marks, applied to the shaded colour BEFORE fog.
+     Both are keyed on how much LIGHT the surface caught rather than on how
+     dark it ended up -- albedo is divided back out so a rust-red wall in full
+     sun stays unhatched while a cream wall in shade gets the lines.
+
+     Reading before fog is the load-bearing detail. This used to run after it
+     and got its distance falloff for free from a pale fog lifting the light
+     term out of the top of the band. That is a coincidence, not a design: the
+     moment the fog goes dark the same mechanism drags the term DOWN into the
+     band and the entire horizon hatches. Distance now retires the marks
+     explicitly, and the fog colour is nobody's business but the fog's.
+
+     wfSh is the shaded side, where ink goes on. wfDk is deeper still -- past
+     the point where more ink can do anything, because it would be ink on ink
+     -- and there the same structural channel is drawn back in white instead.
+     That is the scratchboard half of the trick, and it is what keeps a barn
+     wall from turning into a silhouette the instant it faces away. */
   const SURF_HATCH = [
     'float wfAlb = max(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.02);',
     'float wfLit = dot(gl_FragColor.rgb, vec3(0.299, 0.587, 0.114)) / wfAlb;',
-    'float wfSh = smoothstep(uSurfBand.x, uSurfBand.y, wfLit) * (1.0 - smoothstep(uSurfBand.z, uSurfBand.w, wfLit));',
-    'gl_FragColor.rgb *= 1.0 - (1.0 - wfS.b) * wfSh * uSurfAmt.z;'
+    'float wfNear = 1.0 - smoothstep(uSurfFade.x, uSurfFade.y, vSurfD);',
+    'float wfSh = smoothstep(uSurfBand.x, uSurfBand.y, wfLit) * (1.0 - smoothstep(uSurfBand.z, uSurfBand.w, wfLit)) * wfNear;',
+    'gl_FragColor.rgb *= 1.0 - (1.0 - wfS.b) * wfSh * uSurfAmt.z;',
+    'float wfDk = (1.0 - smoothstep(uSurfBand.x, uSurfBand.z, wfLit)) * wfNear;',
+    'gl_FragColor.rgb += (1.0 - wfS.g) * wfDk * uSurfAmt.w;'
   ].join('\n');
 
   function surfAmounts(f) {
     const T = CONFIG.render.texture;
     const on = T.on ? 1 : 0;
+    // The quality tier can retire the hatch on its own; mottle and structural
+    // lines are free enough to stay on everywhere.
+    const tier = CONFIG.render.tiers[CONFIG.render.quality] || {};
+    const h = tier.surfaceHatch === undefined ? 1 : tier.surfaceHatch;
     return {
-      amt: new THREE.Vector3(f.mottle * T.mottle * on, f.tooth * T.tooth * on, f.hatch * T.hatch * on),
+      amt: new THREE.Vector4(f.mottle * T.mottle * on, f.line * T.line * on,
+                             f.hatch * T.hatch * h * on, (f.lift || 0) * T.lift * on),
       grime: new THREE.Vector2(f.grime[0], f.grime[1] * T.grime * on),
-      band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3])
+      band: new THREE.Vector4(T.band[0], T.band[1], T.band[2], T.band[3]),
+      fade: new THREE.Vector2(T.fade[0], T.fade[1])
     };
   }
 
@@ -4363,14 +4899,17 @@ const MAT = (() => {
       sh.uniforms.uGrime = { value: a.grime };
       sh.uniforms.uGrimeCol = { value: new THREE.Color(PAL.dirtDeep) };
       sh.uniforms.uSurfBand = { value: a.band };
+      sh.uniforms.uSurfFade = { value: a.fade };
       sh.vertexShader = SURF_VERT_DECL + '\n' + sh.vertexShader
-        .replace('#include <begin_vertex>',
-                 '#include <begin_vertex>\nvSurfP = transformed;\nvSurfY = (modelMatrix * vec4(transformed, 1.0)).y;')
-        .replace('#include <beginnormal_vertex>',
-                 '#include <beginnormal_vertex>\nvSurfN = objectNormal;');
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\n' +
+                 'vSurfP = transformed;\nvSurfN = normal;\n' +
+                 'vSurfY = (modelMatrix * vec4(transformed, 1.0)).y;')
+        // mvPosition only exists after project_vertex, and view depth is the
+        // one thing the finish needs that object space cannot supply.
+        .replace('#include <project_vertex>', '#include <project_vertex>\nvSurfD = -mvPosition.z;');
       sh.fragmentShader = SURF_FRAG_DECL + '\n' + sh.fragmentShader
         .replace('#include <map_fragment>', '#include <map_fragment>\n' + SURF_ALBEDO)
-        .replace('#include <dithering_fragment>', SURF_HATCH + '\n#include <dithering_fragment>');
+        .replace('#include <fog_fragment>', SURF_HATCH + '\n#include <fog_fragment>');
       surfUniforms.push({ f: f, u: sh.uniforms });
     };
     /* REQUIRED, not an optimisation. r128 keys the program cache on material
@@ -4392,6 +4931,7 @@ const MAT = (() => {
       e.u.uSurfAmt.value.copy(a.amt);
       e.u.uGrime.value.copy(a.grime);
       e.u.uSurfBand.value.copy(a.band);
+      e.u.uSurfFade.value.copy(a.fade);
     }
   }
 
@@ -4418,11 +4958,17 @@ const MAT = (() => {
     return m;
   }
 
+  /* Unlit. A finish still works here -- the mottle and the structural lines
+     are albedo, not shading -- and it is the only way to draw glazing bars on
+     glass that has deliberately opted out of the lighting rig. */
   function flat(color, opts) {
     opts = opts || {};
+    const fname = opts.finish === undefined ? null : opts.finish;
+    const fin = fname && FINISH[fname] ? FINISH[fname] : null;
     const key = 'flat|' + color + '|' + (opts.map ? opts.map.uuid : '-') + '|' + (opts.side || 0) +
                 '|' + (opts.transparent ? 1 : 0) + '|' + (opts.opacity === undefined ? 1 : opts.opacity) +
-                '|' + (opts.depthWrite === false ? 0 : 1) + '|' + (opts.fog === false ? 0 : 1);
+                '|' + (opts.depthWrite === false ? 0 : 1) + '|' + (opts.fog === false ? 0 : 1) +
+                '|' + (fin ? fname : '-');
     if (cache.has(key)) return cache.get(key);
     const m = new THREE.MeshBasicMaterial({
       color: color,
@@ -4433,6 +4979,7 @@ const MAT = (() => {
       depthWrite: opts.depthWrite === false ? false : true,
       fog: opts.fog === false ? false : true
     });
+    if (fin) applySurface(m, fin);
     cache.set(key, m);
     return m;
   }
@@ -4986,6 +5533,7 @@ const RENDERCORE = (() => {
     tier = currentTier();
     if (!renderer) return;
     applyShadowTier();
+    if (typeof MAT !== 'undefined' && MAT.syncSurface) MAT.syncSurface();
     if (quadMat) applyDefines();
     const wantsMSAA = tier.samples > 1 && renderer.capabilities.isWebGL2 ? tier.samples : 0;
     if (wantsMSAA !== lastSamples) makeTarget();
@@ -5909,7 +6457,7 @@ const PROPS = (() => {
     g.rotation.y = UTIL.rng(0, 6.28);
     const h = opts.h || 1.25, r = opts.r || 0.52;
     const col = opts.color || UTIL.pick([PAL.rust, PAL.olive, PAL.blueDeep, PAL.mustardDk]);
-    const body = PRIM.cyl(r, r * 0.9, h, 12, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1) }),
+    const body = PRIM.cyl(r, r * 0.9, h, 12, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1), finish: 'wood' }),
       { pos: [0, h / 2, 0], parent: g, warp: 0.02 });
     body.scale.set(1, 1, 1);
     // belly
@@ -5932,7 +6480,7 @@ const PROPS = (() => {
     g.position.set(x, y, z);
     g.rotation.y = rotY === undefined ? UTIL.rng(-0.5, 0.5) : rotY;
     const col = UTIL.pick([PAL.rust, PAL.mustardDk, PAL.rustDeep]);
-    PRIM.box(s, s, s, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1) }),
+    PRIM.box(s, s, s, MAT.toon(col, { map: TEX.wood(col, PAL.rustDeep, 1), finish: 'wood' }),
       { pos: [0, s / 2, 0], parent: g, warp: 0.018 });
     // corner battens
     const b = MAT.toon(PAL.rustDeep);
@@ -5948,7 +6496,7 @@ const PROPS = (() => {
 
   function plank(parent, x, y, z, len, rx, ry, rz) {
     const col = PAL.rustDeep;
-    const m = PRIM.box(len, 0.09, 0.34, MAT.toon(col, { map: TEX.wood(col, PAL.charcoal, 1) }),
+    const m = PRIM.box(len, 0.09, 0.34, MAT.toon(col, { map: TEX.wood(col, PAL.charcoal, 1), finish: 'wood' }),
       { pos: [x, y, z], rot: [rx || 0, ry || 0, rz || 0], parent: parent, warp: 0.02 });
     return m;
   }
@@ -5958,7 +6506,7 @@ const PROPS = (() => {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     g.rotation.y = UTIL.rng(0, 6.28);
-    PRIM.cyl(0.11, 0.11, 0.28, 10, MAT.toon(PAL.creamDim, { map: TEX.metal() }), { pos: [0, 0.14, 0], parent: g, outline: 0.028 });
+    PRIM.cyl(0.11, 0.11, 0.28, 10, MAT.toon(PAL.creamDim, { map: TEX.metal(), finish: 'metal' }), { pos: [0, 0.14, 0], parent: g, outline: 0.028 });
     PRIM.cyl(0.115, 0.115, 0.07, 10, MAT.toon(PAL.rust), { pos: [0, 0.16, 0], parent: g, outline: 0.025, ray: false });
     parent.add(g);
     registerWobble(g, 1.35);
@@ -6021,7 +6569,7 @@ const PROPS = (() => {
     g.position.set(x, 0, z);
     g.rotation.y = rotY || 0;
     const ph = opts.postH || 1.9;
-    PRIM.box(0.16, ph, 0.16, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }),
+    PRIM.box(0.16, ph, 0.16, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }),
       { pos: [0, ph / 2, 0], parent: g, rot: [0, 0, UTIL.rng(-0.04, 0.04)], warp: 0.02 });
     const bw = opts.w || 1.7, bh = opts.h || 0.85;
     const face = TEX.sign(lines, opts.bg || PAL.cream, opts.fg || PAL.rustDeep, 512, Math.round(512 * bh / bw));
@@ -6065,7 +6613,7 @@ const PROPS = (() => {
     s = s || 1;
     const geo = new THREE.IcosahedronGeometry(s, 0);
     PRIM.warp(geo, s * 0.22);
-    const m = PRIM.mesh(geo, MAT.toon(PAL.blueGray), {
+    const m = PRIM.mesh(geo, MAT.toon(PAL.blueGray, { finish: 'stone' }), {
       pos: [x, s * 0.45, z],
       rot: [UTIL.rng(0, 1), UTIL.rng(0, 6.28), UTIL.rng(0, 1)],
       scale: [1, 0.75, 1.05],
@@ -6085,7 +6633,7 @@ const PROPS = (() => {
     // trunk: a bent rubber-hose tube
     const a = new THREE.Vector3(0, 0, 0);
     const b = new THREE.Vector3(UTIL.rng(-0.7, 0.7), h, UTIL.rng(-0.5, 0.5));
-    PRIM.hose(a, b, UTIL.rng(-0.9, -0.3), 0.24 * scale, MAT.toon(PAL.rustDeep), { parent: g, outline: 0.05 });
+    PRIM.hose(a, b, UTIL.rng(-0.9, -0.3), 0.24 * scale, MAT.toon(PAL.rustDeep, { finish: 'bark' }), { parent: g, outline: 0.05 });
     const canopy = new THREE.Group();
     canopy.position.set(b.x, b.y + 0.5 * scale, b.z);
     const col = UTIL.pick([PAL.olive, PAL.oliveDeep]);
@@ -6185,7 +6733,14 @@ const LEVEL = (() => {
        The tint is warm-neutral so the texture keeps its own hue. */
     const g = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      MAT.toon(0xA79B90, { map: TEX.ground() })
+      /* Merge note: the albedo drop that comment describes is already in
+         TEX.ground() itself, which was re-toned about a third down for the
+         same reason. Multiplying the full 0xA79B90 tint onto the darker
+         texture would apply the correction twice and put the yard near 0.27,
+         so the tint here is only the warm-neutral half of it -- enough to
+         take the largest surface in the game off pure white without
+         re-darkening what the texture already darkened. */
+      MAT.toon(0xE4DCD2, { map: TEX.ground(), finish: 'earth' })
     );
     g.rotation.x = -Math.PI / 2;
     g.position.y = 0;
@@ -6261,7 +6816,7 @@ const LEVEL = (() => {
 
   /* ---------------- crooked entrance gate ---------------- */
   function buildGate(parent) {
-    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
     const b = new PRIM.Batch(woodMat, 0.05);
     // two fat leaning posts
     b.box(0.6, 5.4, 0.6, -3.4, 2.7, 30, 0, 0, 0.05, 0.04);
@@ -6392,7 +6947,7 @@ const LEVEL = (() => {
     }
   }
   function buildFences(parent) {
-    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
+    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2), finish: 'wood' });
     const b = new PRIM.Batch(woodMat, 0.04);
     const M = CONFIG.map;
     // v0.29 carries the east wing from the corn maze to the farm's north
@@ -6576,7 +7131,7 @@ const LEVEL = (() => {
       [[[22.5, -16], [28.5, -16]], 1.5, 0.35]
     ];
     runs.forEach(r => {
-      const b = new PRIM.Batch(MAT.toon(PAL.olive), 0.06);
+      const b = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.06);
       hedgeRun(b, r[0], r[1], r[2]);
       b.build(parent);
     });
@@ -6589,7 +7144,7 @@ const LEVEL = (() => {
   function buildBarn(parent) {
     const X0 = 6, X1 = 22, Z0 = -15, Z1 = -1;
     const WALL = 0.42, TOP = 6, RIDGE = 9.4;
-    const red = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 3) });
+    const red = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 3), finish: 'wood' });
     const b = new PRIM.Batch(red, 0.05);
 
     // --- west wall (main door faces the yard) ---
@@ -6651,7 +7206,7 @@ const LEVEL = (() => {
     b.build(parent);
 
     // --- roof ---
-    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 4) });
+    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 4), finish: 'wood' });
     const rb = new PRIM.Batch(roofMat, 0.055);
     const ang = Math.atan2(rise, 8);
     rb.box(9.4, 0.36, 15.4, 10, 7.72, -8, 0, 0, ang, 0.03);
@@ -6662,7 +7217,7 @@ const LEVEL = (() => {
     rb.build(parent);
 
     // --- big sliding doors, cracked open ---
-    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2) });
+    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2), finish: 'wood' });
     const db = new PRIM.Batch(doorMat, 0.045);
     db.box(0.16, 4.4, 1.5, X0 - 0.16, 2.25, -9.9, 0, 0, 0.02, 0.03);
     db.box(0.16, 4.4, 1.1, X0 - 0.16, 2.2, -5.2, 0, 0, -0.03, 0.03);
@@ -6675,12 +7230,12 @@ const LEVEL = (() => {
     WORLD.add(X0 - 0.16, 2.2, -5.2, 0.5, 4.4, 1.1, 'door');
 
     // --- interior floor boards + loft ---
-    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 5) });
+    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 5), finish: 'wood' });
     const fb = new PRIM.Batch(floorMat, 0);
     fb.plane(15.6, 13.6, 14, 0.03, -8, -Math.PI / 2, 0, 0);
     fb.build(parent, { ray: false });
 
-    const loftMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 4) });
+    const loftMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 4), finish: 'wood' });
     const lb = new PRIM.Batch(loftMat, 0.045);
     lb.box(15.6, 0.32, 5.9, 14, 3.24, -11.9, 0, 0, 0, 0.02);
     // support posts + beam
@@ -6723,7 +7278,7 @@ const LEVEL = (() => {
     PROPS.lantern(parent, 23.6, 2.4, -13.0, 0);
 
     // Workbench stays along the south wall, outside the gated stair footprint.
-    const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.04);
+    const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.04);
     wb.box(2.8, 0.14, 0.9, 16.6, 0.92, -1.9, 0, 0, 0.01, 0.02);
     [[15.35, -1.55], [17.85, -1.55], [15.35, -2.25], [17.85, -2.25]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
     wb.build(parent);
@@ -6750,7 +7305,7 @@ const LEVEL = (() => {
   /* ---------------- water tower with a climbable overlook ---------------- */
   function buildTower(parent) {
     const CX = -17, CZ = -6.75;
-    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const b = new PRIM.Batch(wood, 0.05);
 
     // four splayed legs
@@ -6815,7 +7370,7 @@ const LEVEL = (() => {
     });
 
     // the tank
-    const tankMat = MAT.toon(PAL.blueDeep, { map: TEX.metal() });
+    const tankMat = MAT.toon(PAL.blueDeep, { map: TEX.metal(), finish: 'metal' });
     PRIM.cyl(2.15, 2.25, 3.4, 14, tankMat, { pos: [CX, 7.9, CZ], parent: parent, outline: 0.055 });
     PRIM.cone(2.5, 1.1, 14, MAT.toon(PAL.charcoal), { pos: [CX, 10.1, CZ], parent: parent, outline: 0.055, ray: false });
     [6.9, 8.9].forEach(y =>
@@ -6829,7 +7384,7 @@ const LEVEL = (() => {
     }), { pos: [CX, 8.1, CZ + 2.22], parent: parent, ray: false, outline: 0.03 });
 
     // spigot pipe running down a leg
-    PRIM.cyl(0.14, 0.14, 6.0, 8, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+    PRIM.cyl(0.14, 0.14, 6.0, 8, MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }),
       { pos: [CX + 2.55, 3.2, CZ + 3.6], parent: parent, outline: 0.03, ray: false });
 
     // the overlook nook up top
@@ -6844,7 +7399,7 @@ const LEVEL = (() => {
   /* ---------------- squeaky windmill ---------------- */
   function buildWindmill(parent) {
     const CX = -6, CZ = -26;
-    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const b = new PRIM.Batch(wood, 0.05);
     const legs = [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]];
     legs.forEach(l => {
@@ -6864,7 +7419,7 @@ const LEVEL = (() => {
     // hub + fan
     const hub = new THREE.Group();
     hub.position.set(CX, 8.9, CZ + 0.9);
-    PRIM.cyl(0.38, 0.38, 0.5, 12, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+    PRIM.cyl(0.38, 0.38, 0.5, 12, MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }),
       { rot: [Math.PI / 2, 0, 0], parent: hub, outline: 0.035, ray: false });
     const fan = new THREE.Group();
     const bladeMat = MAT.toon(PAL.creamDim);
@@ -6895,7 +7450,7 @@ const LEVEL = (() => {
   /* ---------------- warped storage shed ---------------- */
   function buildShed(parent) {
     const X0 = -22.5, X1 = -15.5, Z0 = 12, Z1 = 18, H = 3.4;
-    const wood = MAT.toon(PAL.blueGray, { map: TEX.wood(PAL.blueGray, PAL.blueGrayDk, 3) });
+    const wood = MAT.toon(PAL.blueGray, { map: TEX.wood(PAL.blueGray, PAL.blueGrayDk, 3), finish: 'wood' });
     const b = new PRIM.Batch(wood, 0.05);
     const lean = 0.055;
     // walls, each leaning a different way so the whole thing looks tired
@@ -6917,7 +7472,7 @@ const LEVEL = (() => {
     WORLD.add(X1, H / 2, 17.1, 0.7, H, 1.7, 'shed');
 
     // shelving inside, stocked with things worth shooting
-    const sb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.035);
+    const sb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.035);
     [0.85, 1.75].forEach(y => sb.box(5.4, 0.1, 0.55, -19.6, y, 12.6, 0, 0, 0.015));
     [-22.0, -19.6, -17.2].forEach(x => sb.box(0.12, 1.9, 0.5, x, 0.95, 12.6));
     sb.build(parent);
@@ -6954,8 +7509,8 @@ const LEVEL = (() => {
      hero field can afford detail the 1000-plant maze cannot. */
   function cornBatches() {
     return {
-      stalk: new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.03),
-      leaf: new PRIM.Batch(MAT.toon(PAL.olive), 0.03),
+      stalk: new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.03),
+      leaf: new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.03),
       head: new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.028)
     };
   }
@@ -7001,7 +7556,7 @@ const LEVEL = (() => {
 
   function buildField(parent) {
     const corn = cornBatches();
-    const cabbage = new PRIM.Batch(MAT.toon(PAL.olive), 0.05);
+    const cabbage = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.05);
     const dirt = new PRIM.Batch(MAT.toon(PAL.dirtDeep), 0);
 
     for (let row = 0; row < 5; row++) {
@@ -7035,7 +7590,7 @@ const LEVEL = (() => {
     cabbage.build(parent);
 
     // scarecrow-free: just a bare cross post, nothing wearing a face
-    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.045);
+    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }), 0.045);
     cb.box(0.18, 2.6, 0.18, 17.5, 1.3, 15.5, 0, 0, 0.06, 0.02);
     cb.box(2.0, 0.16, 0.16, 17.5, 2.15, 15.5, 0, 0, 0.09, 0.02);
     cb.build(parent);
@@ -7051,7 +7606,7 @@ const LEVEL = (() => {
 
   /* ---------------- irrigation pipes on stands ---------------- */
   function buildPipes(parent) {
-    const pipe = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const pipe = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const b = new PRIM.Batch(pipe, 0.045);
     // Long run behind the yard, high enough to walk under and narrow enough
     // that using it as a shortcut still feels like balancing on a real pipe.
@@ -7092,7 +7647,7 @@ const LEVEL = (() => {
   /* ---------------- yard dressing + hidden nook + scatter ---------------- */
   function buildYard(parent) {
     // stone well
-    const stone = MAT.toon(PAL.blueGray);
+    const stone = MAT.toon(PAL.blueGray, { finish: 'stone' });
     const wb = new PRIM.Batch(stone, 0.045);
     const R = 1.15;
     for (let i = 0; i < 14; i++) {
@@ -7111,7 +7666,7 @@ const LEVEL = (() => {
     WORLD.addFloor(3, 0, 11.2, 2.9, 0.5, 0.5, 'well');  // south curb
     WORLD.addFloor(1.8, 0, 10, 0.5, 0.5, 1.9, 'well');  // west curb
     WORLD.addFloor(4.2, 0, 10, 0.5, 0.5, 1.9, 'well');  // east curb
-    const wr = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.04);
+    const wr = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }), 0.04);
     wr.box(0.16, 2.0, 0.16, 1.95, 1.0, 10);
     wr.box(0.16, 2.0, 0.16, 4.05, 1.0, 10);
     wr.box(2.6, 0.16, 1.9, 3, 2.15, 10, 0.06, 0, 0.03, 0.03);
@@ -7119,13 +7674,13 @@ const LEVEL = (() => {
     wr.build(parent);
     WORLD.addFloor(1.95, 0, 10, 0.4, 2.1, 0.4, 'well');
     WORLD.addFloor(4.05, 0, 10, 0.4, 2.1, 0.4, 'well');
-    const bucket = PRIM.cyl(0.24, 0.2, 0.34, 10, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }),
+    const bucket = PRIM.cyl(0.24, 0.2, 0.34, 10, MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }),
       { pos: [3, 1.05, 10], parent: parent, outline: 0.03 });
     animated.hangers.push({ obj: bucket, phase: 1.1, amp: 0.09, speed: 1.4 });
     PROPS.registerWobble(bucket, 1.2);
 
     // water trough
-    const tb = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2) }), 0.045);
+    const tb = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2), finish: 'wood' }), 0.045);
     tb.box(3.0, 0.7, 1.1, -5, 0.35, 13, 0, 0.2, 0.02, 0.03);
     tb.build(parent);
     WORLD.addFloor(-5, 0, 13, 3.1, 0.75, 1.3, 'trough');
@@ -7134,7 +7689,7 @@ const LEVEL = (() => {
     const cart = new THREE.Group();
     cart.position.set(-9.5, 0, 4.5);
     cart.rotation.y = 0.7;
-    const cbb = new PRIM.Batch(MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 2) }), 0.045);
+    const cbb = new PRIM.Batch(MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 2), finish: 'wood' }), 0.045);
     cbb.box(2.4, 0.16, 1.3, 0, 0.75, 0, 0, 0, 0.08, 0.03);
     cbb.box(2.4, 0.5, 0.12, 0, 1.0, 0.62, 0, 0, 0.08, 0.03);
     cbb.box(2.4, 0.5, 0.12, 0, 1.0, -0.62, 0, 0, 0.08, 0.03);
@@ -7197,7 +7752,7 @@ const LEVEL = (() => {
      serves as the north landing for the barn catwalk. */
   function buildNorthPasture(parent) {
     const CX = 19, CZ = -43;
-    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
     const b = new PRIM.Batch(timber, 0.045);
 
     [[-2.8, -2.0], [2.8, -2.0], [-2.8, 2.0], [2.8, 2.0]].forEach(p => {
@@ -7303,7 +7858,7 @@ const LEVEL = (() => {
     };
 
     const corn = cornBatches();
-    const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.02);
+    const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.02);
     const WALL_H = 2.4;
     function cornWall(cx, cz, horizontal) {
       for (let i = 0; i < 5; i++) {
@@ -7348,7 +7903,7 @@ const LEVEL = (() => {
     // corn. They deliberately have no WORLD collider: the omitted corn walls
     // are the doorway, and adding posts to the shared solver would re-create
     // the same blocked-entry bug at the threshold.
-    const gate = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }), 0.035);
+    const gate = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }), 0.035);
     const entranceZ = Z0 + WEST_ENTRANCE_ROW * CELL + CELL / 2;
     gate.box(0.28, 2.8, 0.28, X0 - 0.3, 1.4, entranceZ - 1.35, 0, 0, 0, 0.02);
     gate.box(0.28, 2.8, 0.28, X0 - 0.3, 1.4, entranceZ + 1.35, 0, 0, 0, 0.02);
@@ -7389,7 +7944,7 @@ const LEVEL = (() => {
      shorter hay-bale jump route to the roof. */
   function buildHorseStable(parent) {
     const CX = 48, CZ = -46, HW = 5, HD = 5, POST_H = 3.1, ROOF_Y = 3.35;
-    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
     const b = new PRIM.Batch(timber, 0.045);
 
     const posts = [[-HW, -HD], [HW, -HD], [-HW, HD], [HW, HD], [-HW, 0], [HW, 0]];
@@ -7456,7 +8011,7 @@ const LEVEL = (() => {
     const X0 = 33, X1 = 63, Z0 = -79, Z1 = -55;
     const CX = 48, CZ = -67, WALL = 0.48, TOP = 8.0, RIDGE = 12.6;
     const UPPER_Y = 4.2;
-    const red = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 4) });
+    const red = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 4), finish: 'wood' });
     const shell = new PRIM.Batch(red, 0.055);
 
     // South face: a broad double-door opening on the stable route.
@@ -7492,7 +8047,7 @@ const LEVEL = (() => {
     shell.build(parent);
 
     // Deep charcoal roof, pitched across the full 30 m span.
-    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 5) });
+    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 5), finish: 'wood' });
     const roof = new PRIM.Batch(roofMat, 0.06);
     const roofAngle = Math.atan2(rise, 15);
     const roofSlope = Math.hypot(15, rise) + 0.8;
@@ -7504,8 +8059,8 @@ const LEVEL = (() => {
     // Both ground-level entrances are real hinged double doors. QUEST owns
     // the Barn Key check; LEVEL owns each set of leaves and its authoritative
     // blocker so players and enemies agree on whether the route is passable.
-    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
-    const doorMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
+    const doorMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
 
     const westLeafW = 2.92, westLeafH = 4.72, westHingeX = X0 + 0.12;
     function northBarnWestDoorLeaf(hingeZ, inwardSign) {
@@ -7580,12 +8135,12 @@ const LEVEL = (() => {
 
     // Ground boards plus a nearly full second floor. The southeast cut-out is
     // once again the original north/south stairwell from v0.29.
-    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 6) });
+    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 6), finish: 'wood' });
     const floor = new PRIM.Batch(floorMat, 0);
     floor.plane(29.4, 23.4, CX, 0.025, CZ, -Math.PI / 2, 0, 0);
     floor.build(parent, { ray: false });
 
-    const upperMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 5) });
+    const upperMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 5), finish: 'wood' });
     const upper = new PRIM.Batch(upperMat, 0.045);
     upper.box(29.2, 0.32, 13.2, CX, UPPER_Y - 0.16, -72.0, 0, 0, 0, 0.02);
     upper.box(22.2, 0.32, 9.0, 44.5, UPPER_Y - 0.16, -60.0, 0, 0, 0, 0.02);
@@ -7636,8 +8191,8 @@ const LEVEL = (() => {
     function oldTractor(x, z, rotation, stripped) {
       const g = new THREE.Group();
       g.position.set(x, 0, z); g.rotation.y = rotation || 0;
-      const bodyMat = MAT.toon(stripped ? PAL.blueGrayDk : PAL.oliveDeep, { map: TEX.metal() });
-      const metalMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      const bodyMat = MAT.toon(stripped ? PAL.blueGrayDk : PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
+      const metalMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
       const tireMat = MAT.toon(PAL.charcoal);
       const tb = new PRIM.Batch(bodyMat, 0.045);
       tb.box(2.0, 0.72, 2.1, 0, 1.05, 0.25, 0, 0, 0, 0.025);
@@ -7679,8 +8234,8 @@ const LEVEL = (() => {
     // Tool rack: pitchfork, rake and shovel silhouettes against the east wall.
     const tools = new THREE.Group();
     tools.position.set(62.2, 0, -61.5);
-    const handleMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-    const toolMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const handleMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
+    const toolMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     [-1.1, 0, 1.1].forEach((z, i) => {
       PRIM.cyl(0.045, 0.045, 2.3, 7, handleMat,
         { pos: [0, 1.15, z], rot: [0, 0, (i - 1) * 0.09], parent: tools, outline: 0.025 });
@@ -7701,7 +8256,7 @@ const LEVEL = (() => {
     PROPS.barrel(parent, 55.0, -56.6, { color: PAL.rust });
     PROPS.barrel(parent, 36.0, -70.0, { color: PAL.blueDeep });
     PROPS.barrel(parent, 52.0, -58.0, { color: PAL.oliveDeep });
-    const parts = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.035);
+    const parts = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }), 0.035);
     // Keep loose machinery west of the restored v0.29 stair run.
     parts.box(2.4, 0.72, 1.4, 45.5, 0.36, -68.5, 0, 0.3, 0.04, 0.02);
     parts.box(1.7, 0.35, 1.0, 43.5, 0.18, -69.7, 0.08, -0.2, 0.03, 0.015);
@@ -7721,8 +8276,8 @@ const LEVEL = (() => {
       id: 'north_barn_workbench', craftingStation: true,
       status: 'offline', feature: 'special_weapons_coming_later'
     };
-    const benchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
-    const computerMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const benchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
+    const computerMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const wb = new PRIM.Batch(benchMat, 0.04);
     wb.box(5.2, 0.18, 1.45, 0, 1.02, 0, 0, 0, 0.01, 0.018);
     [[-2.25, -0.55], [2.25, -0.55], [-2.25, 0.55], [2.25, 0.55]].forEach(p =>
@@ -7798,7 +8353,7 @@ const LEVEL = (() => {
     // "nearly impossible to maneuver" once more than one player and their
     // weapon sway were up there) -- HW/HD are the new half-extents.
     const HW = 6.0, HD = 6.0;
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const b = new PRIM.Batch(metal, 0.05);
 
     const legs = [[-4.6, -5.0], [4.6, -5.0], [-4.6, 5.0], [4.6, 5.0]];
@@ -7864,7 +8419,7 @@ const LEVEL = (() => {
     });
 
     // the silo tank -- taller and narrower than the water tower
-    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
     PRIM.cyl(2.3, 2.45, 5.6, 16, tankMat, { pos: [CX, DECK_Y + 2.9, CZ], parent: parent, outline: 0.055 });
     PRIM.cone(2.6, 1.6, 16, MAT.toon(PAL.charcoal), { pos: [CX, DECK_Y + 6.5, CZ], parent: parent, outline: 0.055, ray: false });
     [DECK_Y + 1.2, DECK_Y + 3.4, DECK_Y + 5.4].forEach(y =>
@@ -7920,7 +8475,7 @@ const LEVEL = (() => {
     // through, anything lower blends toward the backdrop's own color long
     // before it reads as tinted glass. depthWrite off is the standard fix
     // for a transparent surface wrongly occluding what's behind it.
-    const glassMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.62, depthWrite: false });
+    const glassMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.62, depthWrite: false, finish: 'glass' });
     const b = new PRIM.Batch(glassMat, 0.02);
     const DOOR_HALF = 1.7;
 
@@ -7960,7 +8515,7 @@ const LEVEL = (() => {
     const slopeLen = Math.sqrt(halfW * halfW + RISE * RISE);
     const slopeAngle = Math.atan2(RISE, halfW);
     const roofLen = halfL * 2 + 0.3;
-    const roofMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+    const roofMat = MAT.flat(PAL.blue, { transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false, finish: 'glass' });
     [-1, 1].forEach(side => {
       // West (side=-1) slopes up from the wall to the ridge as x increases,
       // so its local +X axis (rotation +slopeAngle) must point that way;
@@ -7996,7 +8551,7 @@ const LEVEL = (() => {
     const leafCol = stage === 'seed' ? PAL.jaysLight : stage === 'mid' ? PAL.jays : PAL.oliveDeep;
     const leafMat = MAT.toon(leafCol);
     const stemMat = MAT.toon(PAL.jaysDeep);
-    const potMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const potMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
     const stalkH = stage === 'seed' ? 0.45 : stage === 'mid' ? 1.1 : 2.0;
     const leafR = stage === 'seed' ? 0.22 : stage === 'mid' ? 0.45 : 0.85;
     PRIM.cyl(0.22, 0.26, 0.22, 8, potMat, { pos: [0, 0.11, 0], parent: g, outline: 0.02 });
@@ -8019,7 +8574,7 @@ const LEVEL = (() => {
   }
 
   function buildGrowBench(parent, x, z, len, wid, h, tag) {
-    const topMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const topMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const legMat = MAT.toon(PAL.charcoal);
     PRIM.box(len, 0.08, wid, topMat, { pos: [x, h, z], parent: parent, outline: 0.02 });
     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(c => {
@@ -8040,8 +8595,8 @@ const LEVEL = (() => {
     const g = new THREE.Group();
     g.position.set(x, 0, z);
     g.rotation.y = UTIL.rng(0, 6.28);
-    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-    const sackMat = MAT.toon(PAL.dirt);
+    const woodMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
+    const sackMat = MAT.toon(PAL.dirt, { finish: 'cloth' });
     for (let i = -1; i <= 1; i++) {
       PRIM.box(1.1, 0.06, 0.16, woodMat, { pos: [0, 0.06, i * 0.32], parent: g, outline: 0.015 });
     }
@@ -8118,7 +8673,7 @@ const LEVEL = (() => {
      parametrized so it can be planted three times -- one per greenhouse,
      giving each a vertical sniper-perch accent outside its own footprint. */
   function buildWaterTank(parent, cx, cz, tag) {
-    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const b = new PRIM.Batch(wood, 0.05);
 
     const legs = [[-2.7, -3.5], [2.7, -3.5], [-2.7, 3.5], [2.7, 3.5]];
@@ -8173,7 +8728,7 @@ const LEVEL = (() => {
       tag: tag + '_ladder'
     });
 
-    const tankMat = MAT.toon(PAL.blue, { map: TEX.metal() });
+    const tankMat = MAT.toon(PAL.blue, { map: TEX.metal(), finish: 'metal' });
     PRIM.cyl(2.2, 2.3, 3.5, 14, tankMat, { pos: [cx, 8.15, cz], parent: parent, outline: 0.055 });
     PRIM.cone(2.55, 1.15, 14, MAT.toon(PAL.charcoal), { pos: [cx, 10.4, cz], parent: parent, outline: 0.055, ray: false });
     [7.1, 9.15].forEach(y =>
@@ -8216,9 +8771,9 @@ const LEVEL = (() => {
   function buildWestSilo(parent, cx, cz, tag) {
     const CYL_R = 2.5, BODY_H = 9.0, DOME_R = 2.3;
     const WALK_Y = 6.2, R_WALK = 3.3;
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const tankMat = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'metal' });
+    const woodMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2), finish: 'wood' });
     const b = new PRIM.Batch(metal, 0.05);
 
     // Poured-footing collar, purely decorative -- grounds the tower instead
@@ -8326,8 +8881,8 @@ const LEVEL = (() => {
      this is real fighting height, not just a visual bridge. */
   function buildWestSiloWalkway(parent, cx, z1, z2, y) {
     const WALK_W = 2.4;
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const zMin = Math.min(z1, z2), zMax = Math.max(z1, z2);
     const len = zMax - zMin, midZ = (zMin + zMax) / 2;
     const railInset = WALK_W / 2 - 0.15;
@@ -8392,8 +8947,8 @@ const LEVEL = (() => {
   function buildYardTractor(parent, x, z, rotation, stripped) {
     const g = new THREE.Group();
     g.position.set(x, 0, z); g.rotation.y = rotation || 0;
-    const bodyMat = MAT.toon(stripped ? PAL.blueGrayDk : PAL.oliveDeep, { map: TEX.metal() });
-    const metalMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const bodyMat = MAT.toon(stripped ? PAL.blueGrayDk : PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
+    const metalMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const tireMat = MAT.toon(PAL.charcoal);
     const tb = new PRIM.Batch(bodyMat, 0.045);
     tb.box(2.0, 0.72, 2.1, 0, 1.05, 0.25, 0, 0, 0, 0.025);
@@ -8469,7 +9024,7 @@ const LEVEL = (() => {
     const DECK_Y = CONFIG.map.catwalkY;
     const CX = 18.2, Z0 = -14.8, Z1 = -41.0;
     const deckH = 0.24;
-    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const deck = new PRIM.Batch(deckMat, 0.038);
 
     // Crooked cross-planks over two continuous under-beams. The collision deck
@@ -8563,7 +9118,7 @@ const LEVEL = (() => {
     const LOW_Y = CONFIG.map.catwalkY, TOWER_Y = 6.2;
     const TX = -17, TZ = -6.75, LINK_X = -6.5, TURN_Z = -17, MAIN_X = 18.2;
     const deckH = 0.22;
-    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3) });
+    const deckMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
     const deck = new PRIM.Batch(deckMat, 0.036);
 
     // Eight shallow suspended steps descend east from the tower opening.
@@ -8598,7 +9153,7 @@ const LEVEL = (() => {
     WORLD.addFloor(LINK_X, LOW_Y - deckH, northCenter, 2.6, deckH, northSpan, 'tower_catwalk_deck');
     WORLD.addFloor(eastCenter, LOW_Y - deckH, TURN_Z, eastSpan, deckH, 2.6, 'tower_catwalk_deck');
 
-    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
     const support = new PRIM.Batch(timber, 0.032);
     [[LINK_X, -10.2], [LINK_X, -14.3], [0, TURN_Z], [7, TURN_Z], [14, TURN_Z]].forEach(p => {
       support.box(0.30, LOW_Y - 0.12, 0.30, p[0], (LOW_Y - 0.12) * 0.5, p[1], 0, 0, 0.02, 0.014);
@@ -8671,8 +9226,8 @@ const LEVEL = (() => {
     const MIN_X = 8, MAX_X = 28, MIN_Z = -20, MAX_Z = -3;
     WORLD.addLayer('basement', { floorY: FLOOR_Y, ceilingY: CEIL_Y, tag: 'basement' });
 
-    const concrete = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const trim = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
+    const concrete = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const trim = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
     const room = new PRIM.Batch(concrete, 0.032);
     // A continuous floor and four low walls keep the first test room easy to
     // reason about while leaving the surface map untouched above it.
@@ -8809,7 +9364,7 @@ const LEVEL = (() => {
     // The original barn flight now runs north/south. Its high landing begins
     // against the north wall and descends south into the basement; every rise
     // stays below PLAYER.stepHeight.
-    const stairMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) });
+    const stairMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2), finish: 'wood' });
     const stairs = new PRIM.Batch(stairMat, 0.030);
     const stairCount = 10, stairW = 2.70, stairX = 14.0, stairStep = 0.68, stairZ0 = -13.85;
     for (let i = 0; i < stairCount; i++) {
@@ -8849,8 +9404,8 @@ const LEVEL = (() => {
     // Two longitudinal leaves hinge upward from the opening's west/east
     // edges. Shut leaves form a real walkable floor; open leaves become guard
     // rails and expose the rotated staircase.
-    const gateWood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 3) });
-    const gateMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const gateWood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 3), finish: 'wood' });
+    const gateMetal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     function stairGateLeaf(hingeX, inwardSign) {
       const pivot = new THREE.Group();
       pivot.position.set(hingeX, 0.095, -10.75);
@@ -8883,7 +9438,7 @@ const LEVEL = (() => {
 
     // Reusable hatch authoring keeps every entrance mechanically identical and
     // makes later expansion a data-only placement decision.
-    const ladderMat = MAT.toon(PAL.rustDeep, { map: TEX.metal() });
+    const ladderMat = MAT.toon(PAL.rustDeep, { map: TEX.metal(), finish: 'metal' });
     animated.basementHatches.length = 0;
     animated.basementHatch = null;
     animated.northBarnHatch = null;
@@ -8907,10 +9462,10 @@ const LEVEL = (() => {
       const hatchPivot = new THREE.Group();
       hatchPivot.position.set(HX, 0.075, HZ - 0.575 * normalZ);
       parent.add(hatchPivot);
-      PRIM.box(1.45, 0.10, 1.15, MAT.toon(PAL.rustDeep, { map: TEX.metal() }), {
+      PRIM.box(1.45, 0.10, 1.15, MAT.toon(PAL.rustDeep, { map: TEX.metal(), finish: 'metal' }), {
         pos: [0, 0.05, 0.575 * normalZ], parent: hatchPivot, ray: false, outline: 0.030
       });
-      const hatchBrace = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.018);
+      const hatchBrace = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }), 0.018);
       hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.35 * normalZ);
       hatchBrace.box(1.28, 0.06, 0.10, 0, 0.115, 0.80 * normalZ);
       hatchBrace.box(0.10, 0.06, 0.92, 0, 0.115, 0.575 * normalZ);
@@ -8921,7 +9476,7 @@ const LEVEL = (() => {
         // Same brass lock language as both barn door sets. The cellar itself
         // remains reachable through the underground network; only this ladder
         // route is disabled while the surface hatch is shut.
-        PRIM.box(0.34, 0.08, 0.46, MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), {
+        PRIM.box(0.34, 0.08, 0.46, MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }), {
           pos: [0.42, 0.18, 0.575 * normalZ], parent: hatchPivot, outline: 0.022, ray: false
         });
         PRIM.torus(0.06, 0.023, MAT.toon(PAL.mustard), {
@@ -9400,7 +9955,7 @@ const LEVEL = (() => {
 
     // Sparse cover gives both rooms gameplay purpose while preserving wide
     // loops for later four-player combat tests.
-    const machinery = new PRIM.Batch(MAT.toon(PAL.blueDeep, { map: TEX.metal() }), 0.032);
+    const machinery = new PRIM.Batch(MAT.toon(PAL.blueDeep, { map: TEX.metal(), finish: 'metal' }), 0.032);
     machinery.box(3.6, 1.35, 1.25, -21.8, FLOOR_Y + 0.675, -15.8, 0, 0.04, 0, 0.015);
     machinery.box(1.4, 1.9, 1.4, -22.2, FLOOR_Y + 0.95, -7.4, 0, -0.05, 0, 0.015);
     machinery.box(2.2, 0.35, 0.9, -16.8, FLOOR_Y + 0.175, -16.4, 0, 0.08, 0, 0.012);
@@ -9442,8 +9997,8 @@ const LEVEL = (() => {
     shieldBench.position.set(50.0, FLOOR_Y, -73.0);
     shieldBench.name = 'ShieldWorkbench';
     shieldBench.userData = { id: 'shield_workbench', craftingStation: true };
-    const shieldBenchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) });
-    const shieldClampMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const shieldBenchMat = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' });
+    const shieldClampMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const swb = new PRIM.Batch(shieldBenchMat, 0.04);
     swb.box(2.6, 0.16, 1.2, 0, 0.82, 0, 0, 0, 0.01, 0.016);
     [[-1.1, -0.45], [1.1, -0.45], [-1.1, 0.45], [1.1, 0.45]].forEach(p =>
@@ -9452,7 +10007,7 @@ const LEVEL = (() => {
     PRIM.box(0.5, 0.3, 0.22, shieldClampMat, { pos: [0.6, 0.98, 0], parent: shieldBench, outline: 0.03 });
     // A part-assembled riot shield leaning against the bench -- same shape
     // family as SHIELD.build()'s first-person viewmodel, just bench-sized.
-    const shieldLeanMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const shieldLeanMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
     PRIM.box(0.62, 0.85, 0.07, shieldLeanMat,
       { pos: [-0.95, 0.6, 0.55], rot: [0.25, 0, 0.05], parent: shieldBench, outline: 0.025, warp: 0.012 });
     const shieldBenchGlow = new THREE.PointLight(0xC98A52, 0.4, 3.5, 2);
@@ -9544,7 +10099,7 @@ const LEVEL = (() => {
     rockSpots.forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
 
     // a collapsed outbuilding — hides the north-west corner
-    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.045);
+    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.045);
     for (let i = 0; i < 14; i++) {
       cb.box(UTIL.rng(2.2, 4.2), 0.16, UTIL.rng(0.4, 0.7),
         -25 + UTIL.rng(-2.2, 2.2), UTIL.rng(0.1, 1.3), -25 + UTIL.rng(-2.2, 2.2),
@@ -9561,7 +10116,7 @@ const LEVEL = (() => {
 
     // a couple of stumps to sit the eye on
     [[-11, 9], [8, 20], [-16, -16]].forEach(p => {
-      PRIM.cyl(0.55, 0.62, 0.7, 10, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) }),
+      PRIM.cyl(0.55, 0.62, 0.7, 10, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }),
         { pos: [p[0], 0.35, p[1]], parent: parent, outline: 0.045 });
       PROPS.blobShadow(parent, p[0], p[1], 0.9, 0.9);
       WORLD.addFloor(p[0], 0, p[1], 1.3, 0.7, 1.3, 'stump');
@@ -9583,14 +10138,14 @@ const LEVEL = (() => {
 
      Nine merged batches carry the lot. */
   function buildDressing(parent) {
-    const wood = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.038);
-    const pale = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2) }), 0.034);
-    const iron = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal() }), 0.036);
+    const wood = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.038);
+    const pale = new PRIM.Batch(MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2), finish: 'wood' }), 0.034);
+    const iron = new PRIM.Batch(MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' }), 0.036);
     const cloth = new PRIM.Batch(MAT.toon(PAL.dirt), 0.038);
     const clay = new PRIM.Batch(MAT.toon(PAL.rust), 0.032);
     const cord = new PRIM.Batch(MAT.toon(PAL.charcoal), 0.02);
     const bulb = new PRIM.Batch(MAT.flat(PAL.mustard), 0.024);
-    const green = new PRIM.Batch(MAT.toon(PAL.olive), 0.03);
+    const green = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.03);
     const spill = new PRIM.Batch(MAT.flat(0xffffff, {
       map: pathTexture(), transparent: true, depthWrite: false, opacity: 0.6
     }), 0);
@@ -9803,8 +10358,8 @@ const LEVEL = (() => {
     /* --- I. the far treeline: a horizon just beyond the boundary fence,
        so every outward-facing frame ends on a silhouette instead of on
        blank paper. Two batches, no colliders, nothing reachable. --- */
-    const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.05);
-    const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.055);
+    const trunkB = new PRIM.Batch(MAT.toon(PAL.rustDeep, { finish: 'bark' }), 0.05);
+    const leafB = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.055);
     function farTree(x, z, s) {
       const h = UTIL.rng(4.6, 7.8) * s;
       const bx = UTIL.rng(-.7, .7), bz = UTIL.rng(-.7, .7);
@@ -9889,7 +10444,7 @@ const LEVEL = (() => {
 
   function buildGroundDetail(parent) {
     const M = CONFIG.map;
-    const scrub = new PRIM.Batch(MAT.toon(PAL.oliveDeep), 0.022);
+    const scrub = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.022);
     const dry = new PRIM.Batch(MAT.toon(PAL.mustardDk), 0.022);
     const chaff = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.025);
     const chips = new PRIM.Batch(MAT.toon(PAL.rustDeep), 0.02);
@@ -10855,7 +11410,7 @@ const FX = (() => {
     }));
   }
   function buildJunkHotdog(parent) {
-    const bun = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1) });
+    const bun = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1), finish: 'wood' });
     const sausage = MAT.toon(PAL.rust);
     const mustard = MAT.toon(PAL.jays);
     PRIM.cyl(0.055, 0.055, 0.26, 8, bun, { rot: [0, 0, Math.PI / 2], parent: parent, warp: 0.01, outline: 0.01, ray: false });
@@ -13854,10 +14409,10 @@ const WEAPON = (() => {
   function buildPipePopper() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
-    const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const steel = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const steelDark = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
+    const timberDark = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
 
     PRIM.box(0.15, 0.17, 0.42, steel, { pos: [0, 0, -0.06], rot: [0, 0, 0.03], parent: g, warp: 0.008, outline: 0.012, ray: false });
     PRIM.box(0.17, 0.06, 0.2, steelDark, { pos: [0, 0.09, -0.02], parent: g, outline: 0.011, ray: false });
@@ -13896,10 +14451,10 @@ const WEAPON = (() => {
     // The recovery weapon is intentionally unmistakable: two separated
     // barrels, two muzzle rings and a break-action hinge. It is not the
     // normal Pipe Popper with a different ammo count.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-    const woodLight = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const wood = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
+    const woodLight = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
     PRIM.box(0.3, 0.2, 0.34, steel, { pos: [0, 0, -0.08], parent: g, outline: 0.014, ray: false });
     [-0.092, 0.092].forEach(x => {
       PRIM.cyl(0.057, 0.064, 1.08, 10, steelLight, {
@@ -13928,9 +14483,9 @@ const WEAPON = (() => {
   function buildTinSixer() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const timber = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
 
     PRIM.box(0.14, 0.16, 0.34, steel, { pos: [0, 0, -0.12], parent: g, warp: 0.006, outline: 0.012, ray: false });
     // The cylinder is its own group so the reload can actually swing it out
@@ -13963,9 +14518,9 @@ const WEAPON = (() => {
   function buildFieldhand() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const olive = MAT.toon(PAL.oliveDeep);
-    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
+    const timber = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
 
     PRIM.box(0.16, 0.19, 0.5, olive, { pos: [0, 0, -0.08], parent: g, warp: 0.008, outline: 0.013, ray: false });
     PRIM.box(0.14, 0.08, 0.55, steel, { pos: [0, 0.09, -0.24], parent: g, outline: 0.011, ray: false });
@@ -14005,8 +14560,8 @@ const WEAPON = (() => {
     // "barrel" is one long tapered cone with root-ridge rings, capped by a
     // leafy green tuft standing in for a buttstock. A small steel receiver
     // and grip keep the silhouette readable as a held gun.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const carrotSkin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1) });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const carrotSkin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1), finish: 'stock' });
     const carrotDeep = MAT.toon(PAL.mustardDk);
     const leaf = MAT.toon(PAL.jays);
     const leafDeep = MAT.toon(PAL.jaysDeep);
@@ -14053,8 +14608,8 @@ const WEAPON = (() => {
     // duct-tape bands, loose tubing, and a magnifying glass doing double
     // duty as the focusing lens. Nothing here is a clean manufactured
     // part -- everything reads as scrap held together on purpose.
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const scrapMetal = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const scrapMetal = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const tape = MAT.toon(PAL.creamDim);
     const wire = MAT.toon(PAL.charcoal);
     const glass = MAT.toon(PAL.blue);
@@ -14122,9 +14677,9 @@ const WEAPON = (() => {
     // broad guide bar with individual teeth. The guide bar sits in the view
     // plane rather than at the player's feet, so it cannot read as a floor
     // block when the emergency swap engages.
-    const body = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1) });
-    const bodyDeep = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const body = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 1), finish: 'stock' });
+    const bodyDeep = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'stock' });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const chain = MAT.toon(PAL.mustard);
     PRIM.box(0.3, 0.28, 0.38, body, { pos: [0, -0.02, -0.02], parent: g, warp: 0.01, outline: 0.014, ray: false });
     PRIM.box(0.2, 0.13, 0.3, bodyDeep, { pos: [0, -0.18, 0.18], rot: [0.2, 0, 0], parent: g, outline: 0.012, ray: false });
@@ -14160,9 +14715,9 @@ const WEAPON = (() => {
   function buildSprayTorch() {
     const g = new THREE.Group();
     rig.add(g);
-    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal() });
-    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal(), finish: 'tool' });
+    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const lighterBody = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const flint = MAT.toon(PAL.mustardDk);
 
     // Right hand + spray can.
@@ -14211,10 +14766,10 @@ const WEAPON = (() => {
   function buildTheClaw() {
     const g = new THREE.Group();
     rig.add(g);
-    const shell = MAT.toon(PAL.rust, { map: TEX.metal() });
+    const shell = MAT.toon(PAL.rust, { map: TEX.metal(), finish: 'tool' });
     const shellDeep = MAT.toon(PAL.rustDeep);
     const chainMat = MAT.toon(PAL.charcoal);
-    const grip = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const grip = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     PRIM.cyl(0.05, 0.055, 0.34, 8, grip, { pos: [0, -0.05, 0.08], rot: [0.3, 0, 0], parent: g, outline: 0.012, ray: false });
     for (let i = 0; i < 5; i++) {
       const z = -0.12 - i * 0.14;
@@ -14241,9 +14796,9 @@ const WEAPON = (() => {
   function buildSeedSpitter() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
-    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1) });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
+    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1), finish: 'stock' });
     const petal = MAT.toon(PAL.mustard);
     const petalDeep = MAT.toon(PAL.mustardDk);
     const seedFace = MAT.toon(PAL.charcoal);
@@ -14287,13 +14842,13 @@ const WEAPON = (() => {
   function buildPortalGun() {
     const g = new THREE.Group();
     rig.add(g);
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
+    const steelLight = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
     const tape = MAT.toon(PAL.creamDim);
     const wire = MAT.toon(PAL.charcoal);
     const boardMat = MAT.toon(PAL.charcoal);
     const traceMat = MAT.toon(PAL.jaysLight);
-    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal() });
+    const socketMat = MAT.toon(0x3F8F68, { map: TEX.metal(), finish: 'tool' });
     const portalGreen = 0x67e8a5;
 
     // Chassis -- the scrap-metal fragment, plated straight onto a boxy
@@ -14366,13 +14921,13 @@ const WEAPON = (() => {
   function buildGlizzyGat() {
     const g = new THREE.Group();
     rig.add(g);
-    const bunMat = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1) });
+    const bunMat = MAT.toon(PAL.mustardDk, { map: TEX.wood(PAL.mustardDk, PAL.rustDeep, 1), finish: 'stock' });
     const sausageMat = MAT.toon(PAL.rust);
     const mustardMat = MAT.toon(PAL.jays);
-    const scopeMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const scopeMat = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'tool' });
     const capMat = MAT.toon(PAL.charcoal);
     const lensMat = MAT.toon(PAL.blue);
-    const boltMat = MAT.toon(PAL.blueGray, { map: TEX.metal() });
+    const boltMat = MAT.toon(PAL.blueGray, { map: TEX.metal(), finish: 'tool' });
 
     // Bun: the split roll, doubling as the whole rifle body/stock.
     PRIM.cyl(0.09, 0.075, 1.0, 10, bunMat, {
@@ -15960,7 +16515,7 @@ const SHIELD = (() => {
   function build(viewScene) {
     viewGroup = new THREE.Group();
     viewGroup.visible = false;
-    const bodyMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const bodyMat = MAT.toon(PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
     const rimMat = MAT.toon(PAL.charcoal);
     PRIM.box(0.46, 0.62, 0.05, bodyMat, { pos: [0, 0, 0], parent: viewGroup, outline: 0.02, warp: 0.01, ray: false });
     PRIM.box(0.5, 0.66, 0.02, rimMat, { pos: [0, 0, -0.02], parent: viewGroup, outline: 0.015, ray: false });
@@ -16073,8 +16628,8 @@ const THROWABLE = (() => {
     const root = new THREE.Group();
     root.scale.setScalar(scale || 1);
     parent.add(root);
-    const body = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const body = MAT.toon(PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     PRIM.sph(0.18, body, {
       parent: root, scale: [1, 0.94, 1], outline: 0.026, ray: false
     });
@@ -16103,7 +16658,7 @@ const THROWABLE = (() => {
     const root = new THREE.Group();
     root.scale.setScalar(scale || 1);
     parent.add(root);
-    const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
+    const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
     const strap = MAT.toon(PAL.creamDim);
     PRIM.cyl(0.09, 0.09, 0.5, 10, body, {
       pos: [0, 0.09, 0], rot: [0, 0, Math.PI / 2], parent: root, outline: 0.02, ray: false
@@ -16146,7 +16701,7 @@ const THROWABLE = (() => {
     const root = new THREE.Group();
     root.scale.setScalar(scale || 1);
     parent.add(root);
-    const body = MAT.toon(PAL.mustard, { map: TEX.metal() });
+    const body = MAT.toon(PAL.mustard, { map: TEX.metal(), finish: 'metal' });
     const dark = MAT.toon(PAL.mustardDk);
     const speaker = MAT.toon(PAL.charcoal);
     PRIM.box(0.42, 0.24, 0.14, body, { parent: root, outline: 0.02, ray: false });
@@ -18468,7 +19023,7 @@ const PICKUP = (() => {
   }
 
   function buildWeaponVisual(parent, def) {
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const accent = MAT.toon(def.color);
     if (def.weaponId === 'tinSixer') {
       PRIM.box(0.18, 0.18, 0.44, metal, { pos: [0, 0.05, 0], parent: parent, outline: 0.025, ray: false });
@@ -18487,7 +19042,7 @@ const PICKUP = (() => {
      person model's tapered-cone-plus-leafy-tuft build so the pickup reads as
      the same object the player then carries. */
   function buildCarrotCannonVisual(parent) {
-    const skin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1) });
+    const skin = MAT.toon(PAL.mustard, { map: TEX.wood(PAL.mustard, PAL.mustardDk, 1), finish: 'wood' });
     const deep = MAT.toon(PAL.mustardDk);
     const leaf = MAT.toon(PAL.jays);
     const leafDeep = MAT.toon(PAL.jaysDeep);
@@ -18513,8 +19068,8 @@ const PICKUP = (() => {
      sunflower drum magazine, scaled up the same way buildCarrotCannonVisual
      is relative to its held viewmodel -- see WEAPON.buildSeedSpitter. */
   function buildSeedSpitterVisual(parent) {
-    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
-    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1) });
+    const steel = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
+    const stemWood = MAT.toon(PAL.jaysDeep, { map: TEX.wood(PAL.jaysDeep, PAL.charcoal, 1), finish: 'wood' });
     const petal = MAT.toon(PAL.mustard);
     const petalDeep = MAT.toon(PAL.mustardDk);
     const seedFace = MAT.toon(PAL.charcoal);
@@ -18563,8 +19118,8 @@ const PICKUP = (() => {
      existing one. Mirrors WEAPON's own can prop so the two read as the
      same item. */
   function buildSpraycanVisual(parent) {
-    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal() });
-    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const canBody = MAT.toon(PAL.hotSauce, { map: TEX.metal(), finish: 'metal' });
+    const canCap = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     PRIM.cyl(0.17, 0.17, 0.52, 12, canBody, { parent: parent, warp: 0.01, outline: 0.026, ray: false });
     PRIM.cyl(0.14, 0.17, 0.06, 12, canCap, { pos: [0, 0.29, 0], parent: parent, outline: 0.018, ray: false });
     PRIM.cyl(0.06, 0.06, 0.08, 10, canCap, { pos: [0, 0.36, 0], parent: parent, outline: 0.014, ray: false });
@@ -20832,7 +21387,7 @@ const CAST = (() => {
         b.sphere(0.021, Math.cos(a) * 0.145, -0.02 - Math.sin(a) * 0.075, -0.115, 1, 1, 0.8);
       }
       b.build(group, { ray: false });
-      const leaf = new PRIM.Batch(MAT.toon(PAL.olive), 0.011);
+      const leaf = new PRIM.Batch(MAT.toon(PAL.olive, { finish: 'leaf' }), 0.011);
       [-2, -1, 0, 1, 2].forEach(i => {
         const a = i * 0.34;
         leaf.custom(() => new THREE.ConeGeometry(0.017, 0.095 - Math.abs(i) * 0.014, 5),
@@ -20936,7 +21491,7 @@ const CAST = (() => {
       }));
     },
     fieldRifle(group, skin) {
-      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
       const body = MAT.toon(skin.accent);
       PRIM.box(0.16, 0.16, 0.38, body, {
         pos: [0, 0.02, -0.24], parent: group, outline: 0.022, ray: false
@@ -20951,8 +21506,8 @@ const CAST = (() => {
       });
     },
     chainsaw(group, skin) {
-      const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1) });
-      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+      const body = MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' });
+      const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
       PRIM.box(0.13, 0.15, 0.28, body, {
         pos: [0, -0.02, -0.17], rot: [0.08, 0, 0.08], parent: group,
         outline: 0.022, ray: false
@@ -22187,10 +22742,10 @@ const INTRO = (() => {
   /* ---------------- helicopter ---------------- */
   function buildHelicopter() {
     const g = new THREE.Group();
-    const body = MAT.toon(PAL.olive, { map: TEX.metal() });
-    const bodyDeep = MAT.toon(PAL.oliveDeep, { map: TEX.metal() });
+    const body = MAT.toon(PAL.olive, { map: TEX.metal(), finish: 'metal' });
+    const bodyDeep = MAT.toon(PAL.oliveDeep, { map: TEX.metal(), finish: 'metal' });
     const glass = MAT.flat(0xBFE3EE, { transparent: true, opacity: 0.55, depthWrite: false, fog: false });
-    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal() });
+    const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const accent = MAT.toon(PAL.mustard);
 
     PRIM.sph(1, body, {
