@@ -21251,9 +21251,20 @@ const CAST = (() => {
 
   function shoe(parent, mirror, skin) {
     const g = new THREE.Group();
+    /* [RUBBERHOSE] Turned OUT, and flat. The reference draws a shoe as a
+       long low oval seen broadside, splayed away from the body — two of
+       them give the figure a wide base and a clear negative triangle
+       between the legs at any size. Ours pointed straight down the barrel,
+       so at gameplay distance the pair collapsed into one blob under the
+       hips and contributed nothing to the outline. */
+    g.rotation.y = -mirror * 0.32;
     const b = new PRIM.Batch(MAT.toon(skin.shoe), 0.02);
     b.box(0.165, 0.115, 0.31, 0, 0.075, -0.05, 0, 0, 0, 0.012);
-    b.box(0.15, 0.14, 0.13, 0, 0.145, 0.055, 0.16, 0, 0, 0.012);
+    /* The ankle counter used to top out at 0.215 — which made this a boot,
+       and a boot that swallowed the bottom third of the leg hose. Halved
+       and dropped: the leg above it is worth more to the silhouette than
+       the collar is. */
+    b.box(0.15, 0.10, 0.13, 0, 0.10, 0.055, 0.16, 0, 0, 0.012);
     b.build(g, { ray: false });
     const s = new PRIM.Batch(MAT.toon(skin.sole), 0.02);
     s.box(0.175, 0.055, 0.325, 0, 0.028, -0.05, 0, 0, 0, 0.01);
@@ -21272,13 +21283,21 @@ const CAST = (() => {
     const bob = new THREE.Group();          // vertical bounce + squash/stretch
     root.add(bob);
 
-    // hips / shorts
+    /* hips / shorts
+       [RUBBERHOSE] The hem used to hang to 0.46, and the boot reached up to
+       0.285, which left 0.175 of leg visible out of a 1.45m figure — 12%.
+       At the size the reference draws a character that is not a leg, it is
+       a seam, and it is why our walk read as a rectangle vibrating on two
+       shoes. Reference proportions are shorts high on the hip and a long
+       thin leg below them; raising the hem to 0.54 (top unchanged, so the
+       torso overlap and every jacket/back prop is where it was) more than
+       doubles the visible hose. */
     const hips = new PRIM.Batch(MAT.toon(skin.shorts), 0.026);
-    hips.box(0.40, 0.34, 0.32, 0, 0.63, 0, 0, 0, 0, 0.018);
+    hips.box(0.40, 0.26, 0.32, 0, 0.67, 0, 0, 0, 0, 0.018);
     hips.build(bob, { ray: false });
     const btn = new PRIM.Batch(MAT.toon(skin.sole), 0.012);
-    btn.sphere(0.028, 0.11, 0.60, -0.165, 1, 1, 0.6);
-    btn.sphere(0.028, -0.11, 0.60, -0.165, 1, 1, 0.6);
+    btn.sphere(0.028, 0.11, 0.64, -0.165, 1, 1, 0.6);
+    btn.sphere(0.028, -0.11, 0.64, -0.165, 1, 1, 0.6);
     btn.build(bob, { ray: false });
 
     // torso
@@ -21379,9 +21398,15 @@ const CAST = (() => {
     const legs = [];
     [-1, 1].forEach(s => {
       const j = new THREE.Group();
-      j.position.set(s * 0.115, 0.55, 0);
+      /* [RUBBERHOSE] Hip sockets moved out to the corners of the shorts and
+         up inside them, and the hose lengthened to match so the shoe stays
+         exactly where it was. Two things come out of that: the thigh leaves
+         the shorts block at its widest point instead of from under the
+         middle of it, and the leg is longer at the same radius — which is
+         the reference's spindly-leg-big-shoe read rather than a stump. */
+      j.position.set(s * 0.135, 0.60, 0);
       bob.add(j);
-      const knee = new V(s * 0.012, -0.245, 0.008);
+      const knee = new V(s * 0.012, -0.27, 0.008);
       PRIM.hose(new V(0, 0, 0), knee, 0.028, 0.064, limbMat, {
         parent: j, outline: 0.021, ray: false, taper: 0.88, bulge: 1.05,
         side: [s * 0.016, 0], seg: 9, radial: 7
@@ -21389,12 +21414,13 @@ const CAST = (() => {
       const mid = new THREE.Group();
       mid.position.copy(knee);
       j.add(mid);
-      const ankle = new V(s * 0.008, -0.235, -0.008);
+      const ankle = new V(s * 0.008, -0.26, -0.008);
       PRIM.hose(new V(0, 0, 0), ankle, 0.024, 0.056, limbMat, {
         parent: mid, outline: 0.021, ray: false, taper: 0.82, bulge: 1.04,
         side: [s * 0.01, 0], seg: 9, radial: 7
       });
-      // knee + ankle sum back to the old foot offset of (s*0.02, -0.48, 0)
+      // knee + ankle still sum to the old foot offset of (s*0.02, -0.53, 0)
+      // measured from the new socket, so the shoe lands where it always did
       const foot = new THREE.Group();
       foot.position.copy(ankle);
       mid.add(foot);
@@ -21459,9 +21485,16 @@ const CAST = (() => {
      Signs: +x at a mid swings the lower segment forward (-Z); +z swings its
      tip toward +X. Left limbs are index 0/2, right 1/3. */
   const REST_BEND = [0.22, 0.22, -0.12, -0.12];
-  // The leg splay is also doing a practical job: at ±0.05 the two shoes sat
-  // in the same place and interpenetrated on every standing frame.
-  const REST_SPLAY = [0.15, -0.15, -0.10, 0.10];
+  /* The leg splay is also doing a practical job: at ±0.05 the two shoes sat
+     in the same place and interpenetrated on every standing frame.
+
+     The ARM figures were the bigger problem and went the wrong way. Curling
+     the forearm back in toward the body is the right rubberhose read — the
+     arm is a C, not a comma — but at 0.15 it cancelled the shoulder's
+     outward angle exactly, and the hand came to rest against the hip where
+     it contributes nothing to the outline. Halved: enough curl that the arm
+     still bows, not enough to pull the glove back inside the body. */
+  const REST_SPLAY = [0.08, -0.08, -0.10, 0.10];
   // Slow, tiny wander on the resting curve so a parked character's noodles
   // are alive rather than frozen. Seeded per rig; a crowd never breathes in
   // unison.
@@ -23778,6 +23811,17 @@ const ENEMY = (() => {
       rig: assetRig
     } : CAST.build(id);
     const isAssetBoss = anyBoss && !!assetRig;
+    /* [RUBBERHOSE] Yaw first, then pitch, then roll. The group carries the
+       character's facing on .y and every whole-body tilt we own on .x/.z —
+       the boss attack lunges, and the topple a corpse takes as it goes over.
+       Under the default XYZ order .x is applied LAST, which makes it a
+       *world* pitch: the Warden lunged toward world north whatever way it
+       was actually facing, and every corpse in the game fell the same
+       compass direction no matter where the shot came from, despite the
+       death code going to the trouble of resolving the blow into the body's
+       own frame first. YXZ is the standard character order and makes those
+       two channels mean what the code that writes them already assumes. */
+    built.rig.root.rotation.order = 'YXZ';
     const def = anyBoss ? Object.assign({}, built.def, {
       stats: Object.assign({}, built.def.stats, {
         hp: bc.hp, speed: bc.speed, damage: bc.damage, reach: bc.reach,
@@ -24427,6 +24471,24 @@ const ENEMY = (() => {
   }
 
   /* ---------------- damage ---------------- */
+
+  /* [RUBBERHOSE] Resolve a world-space hit direction into the body's own
+     frame and stash it for the drawing code. Local forward is -Z and the
+     group carries the yaw, so forward = (-sin y, -cos y) and the character's
+     own right = (cos y, -sin y). Nothing in the sim reads these; they exist
+     so a hit reaction has a direction and a corpse falls away from the shot
+     rather than always folding the same way. Defaults elsewhere assume a
+     frontal hit, which is what the player mostly delivers. */
+  function recordHit(e, dir, zone) {
+    if (!dir) { e.hitPush = -1; e.hitSide = 0; e.hitHigh = zone === 'head' ? 1 : 0; return; }
+    const sy = Math.sin(e.yaw), cy = Math.cos(e.yaw);
+    const len = Math.hypot(dir.x, dir.z) || 1;
+    const dx = dir.x / len, dz = dir.z / len;
+    e.hitPush = UTIL.clamp(dx * -sy + dz * -cy, -1, 1);
+    e.hitSide = UTIL.clamp(dx * cy + dz * -sy, -1, 1);
+    e.hitHigh = zone === 'head' ? 1 : 0;
+  }
+
   function applyDamage(e, amount, point, dir, zone, force) {
     if (!e.alive) return;
     // A join's melee/blast/gun hits still run this same query-and-target
@@ -24445,6 +24507,20 @@ const ENEMY = (() => {
     e.hp -= amount;
     e.hitFlash = 0.12;
     e.squashVel -= 7;
+    /* [RUBBERHOSE] Record where the blow came from, in the body's own frame,
+       so the flinch and the topple can go somewhere instead of being a
+       symmetric wobble. `dir` runs along the shot, forward is local -Z, so
+       +push means the blow is driving the character forward (shot in the
+       back) and +side means it is driving them to their own right. */
+    recordHit(e, dir, zone);
+    /* [RUBBERHOSE] ...and start the flinch clock. The grunts read their
+       flinch off the stagger state's own timer, but a boss cannot: Bear
+       Claw never enters `stagger` at all, and interrupting the Warden's
+       swing to play a reaction would change when its blow lands. A separate
+       clock lets the reaction sit ON TOP of whatever the boss is already
+       doing, which is what an animator draws anyway — the arm keeps going
+       and the body shudders under it. */
+    e.flinchT = 0;
     const shove = force === undefined ? 1.6 : force;
     e.vel.x += dir.x * shove * (1 / e.def.stats.weight);
     e.vel.z += dir.z * shove * (1 / e.def.stats.weight);
@@ -24885,13 +24961,29 @@ const ENEMY = (() => {
 
   /* ---------------- state machine ---------------- */
   function setState(e, s) {
+    const prev = e.state;
     e.state = s;
     e.timer = 0;
+    /* [RUBBERHOSE] Anticipation on the one move the pose code cannot see
+       coming. A grunt that decides to charge accelerates over the next
+       several frames, so by the time `accel` notices, the launch has already
+       happened — the body was arriving at a run it never visibly started.
+       Kicking the squash spring DOWN here compresses the figure for two
+       drawings and the spring's own overshoot then throws it up into the
+       first stride: crouch, then go. Same idea in reverse when a charge
+       gives up — the body pops as the weight comes off. */
+    if (s === 'chase' && (prev === 'idle' || prev === 'alert' || prev === 'shine')) e.squashVel -= 5.5;
+    else if (prev === 'chase' && (s === 'idle' || s === 'attack')) e.squashVel += 3.2;
     if (s === 'shine') e.specialTickTimer = 0;
     if (s === 'alert') {
       e.mark.visible = true;
       AUDIO.enemyAlert(e.def.voice.pitch);
-      e.squashVel += 8;
+      /* Downward, not upward. The double-take in pose() now ducks before it
+         pops, and the squash spring has to duck with it — kicked positive,
+         the figure stretched tall on the same drawing the pose was trying to
+         compress it, and the two cancelled into nothing. Negative here, and
+         the spring's own overshoot arrives right under the rise. */
+      e.squashVel -= 6;
     } else {
       e.mark.visible = false;
     }
@@ -25509,6 +25601,30 @@ const ENEMY = (() => {
     e.assetMixer.update(Math.min(e.assetDelta || 0, 0.08));
   }
 
+  /* [RUBBERHOSE] The four drawings of a flinch, shared by everything in the
+     game that can be hit.
+
+     An impact is not a curve to sample, it is a short sequence of poses:
+
+       0  IMPACT — the full extreme, on the drawing the blow lands
+       1  the same extreme, HELD. This is the drawing the hit reads on.
+       2  COUNTER-SWING, past neutral the other way
+       3  the settle
+
+     One signed envelope covers all four, because the flinch and the rebound
+     were never independent quantities. `lag` is the same envelope a drawing
+     late, which is what an extremity does — on drawing 2 the chest is
+     already swinging back while the head is still out at the impact pose.
+     That opposition is the whole of a whiplash, and it is far cheaper and
+     far more legible than asking the trail springs to invent it. */
+  const SWAY = [1, 0.92, -0.42, 0.14];
+  function flinchFrames(timer) {
+    const d = Math.floor(UTIL.clamp(timer, 0, 1) * C.stepFPS);
+    const sway = d < SWAY.length ? SWAY[d] : 0;
+    const lag = d > 0 && d <= SWAY.length ? SWAY[d - 1] : 0;
+    return { sway: sway, lag: lag, mag: Math.abs(sway) };
+  }
+
   /* [RUBBERHOSE] Shared attack shaping for the three GLB bosses.
 
      These three have no procedural limb rig to bend, so all the cartoon
@@ -25528,7 +25644,18 @@ const ENEMY = (() => {
     const k = UTIL.clamp(timer / total, 0, 1);
     const wk = total > 0 ? windup / total : 0.5;
     if (k < wk) {
-      const coil = E.inQuart(UTIL.clamp((k / wk) / 0.82, 0, 1));
+      /* [RUBBERHOSE] Gather, then HOLD. A pure quartic is the right shape
+         for anticipation on a smooth curve and the wrong one on a stepped
+         clock: BearClaw's 0.75s wind-up is nine drawings, and on `inQuart`
+         alone the first five of them are within a per cent of standing
+         still. Five identical drawings before the biggest swing in the game
+         is not anticipation, it is the animation having stopped. The linear
+         pedestal puts visible movement on drawing one; clamping the quartic
+         at 0.75 spends the last quarter of the wind-up holding the coiled
+         pose, which is the drawing the audience needs to see to know what
+         is coming. */
+      const a = k / wk;
+      const coil = 0.22 * a + 0.78 * E.inQuart(UTIL.clamp(a / 0.75, 0, 1));
       return { anticip: coil, strike: 0, extra: -coil * 0.1 };
     }
     const a = UTIL.clamp((k - wk) / (1 - wk), 0, 1);
@@ -25587,11 +25714,31 @@ const ENEMY = (() => {
       }
     }
 
+    /* [RUBBERHOSE] The flinch, laid over the top of whatever the GLB clip is
+       already playing. Being shot did nothing to this character but change
+       its size for a few frames — the one boss the player empties a magazine
+       into, and the only acknowledgement was a pulse. It rides ON TOP rather
+       than replacing the pose because a boss must not have its attack timing
+       interrupted, and because a body shuddering under an arm that keeps
+       going is the drawing anyway. */
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    let flYaw = 0;
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.24 * push * fl.sway;
+      roll += -side * 0.20 * fl.sway;
+      // the twist arrives a drawing after the tilt, so the mass reads as
+      // having been shoved rather than as having chosen to turn
+      flYaw = side * 0.16 * fl.lag;
+      extra -= 0.11 * fl.mag;
+    }
+
     const sq = 1 + e.squash + extra;
     const scale = e.visualScale || 1;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + B.assetForwardCorrection, roll);
+    e.group.rotation.set(pitch, e.yaw + B.assetForwardCorrection + flYaw, roll);
   }
 
   /* Bear Claw uses the replacement GLB's authored clips when available.
@@ -25663,11 +25810,33 @@ const ENEMY = (() => {
        on the frame it lands and eases out after. On a rigged character this
        is a wave up the body; on a single mesh it is all the overlap there
        is to have. */
+    /* [RUBBERHOSE] The flinch, over the top of the clip — see poseAsset.
+       Bear Claw needs this more than either of the others, because it is the
+       one boss that never enters the `stagger` state at all: hitting it did
+       literally nothing to the drawing except a size pulse. Bigger numbers
+       than the Warden's, because the claws are already whipping around and a
+       small shudder disappears underneath them. */
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    let flYaw = 0, flRoll = 0;
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.26 * push * fl.sway;
+      flRoll = -side * 0.22 * fl.sway;
+      flYaw = side * 0.18 * fl.lag;
+      extra -= 0.12 * fl.mag;
+      // the claws recoil back into the body a drawing late, so the arms are
+      // still out when the chest has already given
+      if (e.clawArms) {
+        e.clawArms.left.stretch.position.z -= 0.10 * fl.lag;
+        e.clawArms.right.stretch.position.z -= 0.10 * fl.lag;
+      }
+    }
     const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
     const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
     syncBossHitboxes(e);
-    e.group.rotation.set(pitch, e.yaw + correction, (e.turn || 0) * 0.12);
+    e.group.rotation.set(pitch, e.yaw + correction + flYaw, (e.turn || 0) * 0.12 + flRoll);
   }
 
   /* Beat Slayer: same rig-less static-mesh shape as Bear Claw's own pose
@@ -25715,6 +25884,16 @@ const ENEMY = (() => {
     const attackAction = e.state === 'boss3_throw' ? e.assetAttackAction : null;
     updateAssetAction(e, moving, attackAction);
 
+    // [RUBBERHOSE] The flinch, over the top of the clip — see poseAsset.
+    const fl = flinchFrames(e.flinchT === undefined ? 9 : e.flinchT);
+    if (fl.sway) {
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      pitch += -0.28 * push * fl.sway;
+      roll += -side * 0.24 * fl.sway;
+      yawExtra += side * 0.18 * fl.lag;
+      extra -= 0.12 * fl.mag;
+    }
     const wave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.2, 0.2);
     const sq = 1 + e.squash + extra + wave * 0.5;
     e.group.scale.set(scale / Math.sqrt(sq), scale * sq, scale / Math.sqrt(sq));
@@ -25769,52 +25948,89 @@ const ENEMY = (() => {
 
     if (e.state === 'dead') {
       const k = UTIL.clamp(qt / C.corpseTime, 0, 1);
-      // Collapse fast, then hold, then pop out of existence — the old
-      // version faded linearly across the whole corpse time, which is the
-      // one timing a cartoon never uses.
-      const fall = E.outQuint(UTIL.clamp(k / 0.30, 0, 1));
-      const gone = UTIL.clamp((k - 0.72) / 0.28, 0, 1);
-      // squash flat on the first impact, spring back out, settle
-      const impact = k < 0.30 ? Math.sin(UTIL.clamp(k / 0.30, 0, 1) * Math.PI) : 0;
-      const wob = E.ring(k, 2.4, 6) * 0.16 * (1 - gone);
+      /* [RUBBERHOSE] A cartoon death is four beats, and the old version had
+         one. It started toppling on the frame of the hit — no anticipation —
+         got as far as a 35-degree lean, and then sat in that lean for eight
+         identical drawings before shrinking away. Beats now: the TAKE (the
+         body goes rigid and rises, two drawings, before gravity gets a
+         vote), the TOPPLE (accelerating over, not easing over), the LANDING
+         (one flat drawing, then everything loose rattles out of it), and the
+         EXIT. */
+      const TAKE = 0.13, FALLD = 0.30, LAND = TAKE + FALLD, GONE0 = 0.74;
+      const take = k < TAKE ? Math.sin(UTIL.clamp(k / TAKE, 0, 1) * Math.PI) : 0;
+      // A body going over gathers speed; outQuint would have it easing into
+      // the floor, which is the one thing a falling object never does.
+      const fa = UTIL.clamp((k - TAKE) / FALLD, 0, 1);
+      const fall = 0.32 * fa + 0.68 * fa * fa;
+      // The chest, head and arms are a drawing behind the hips the whole way
+      // over — the fold arrives at the extremities last, as always.
+      const fb = UTIL.clamp((k - TAKE - 0.075) / FALLD, 0, 1);
+      const lag = 0.32 * fb + 0.68 * fb * fb;
+      const hit = k >= LAND ? Math.max(0, 1 - (k - LAND) / 0.11) : 0;
+      const wob = k > LAND ? E.ring((k - LAND) / 0.30, 1.9, 4.2) * 0.19 : 0;
+      /* One last beat. Between the rattle dying out and the poof there were
+         six drawings of a corpse that had finished moving, which is the same
+         dead air the collapse itself used to have. So: the arm still propped
+         in the air gives up and drops, the head rolls the rest of the way
+         over, and underneath all of it the chest deflates slowly across the
+         whole hold — so no two drawings in the hold are the same one. */
+      const thud = Math.sin(UTIL.clamp((k - 0.58) / 0.145, 0, 1) * Math.PI);
+      const deflate = E.outCubic(UTIL.clamp((k - LAND) / 0.34, 0, 1));
       /* Vanish on an ease-IN: hold full size, then go in three or four
          drawings. On the ease-out it used to have this backwards — most of
          the shrink happened immediately and the last third of it crawled,
          so a corpse spent a second and a half as a slowly dwindling speck.
          A cartoon leaves the frame all at once. */
+      const gone = UTIL.clamp((k - GONE0) / 0.26, 0, 1);
       const off = E.inQuart(gone);
-      const sy = (1 - impact * 0.55 + wob) * (1 - off);
-      const sxz = (1 + impact * 0.42 - wob * 0.6) * (1 - off);
+      /* Which way it goes over. `hitPush` is the blow resolved into the
+         body's own frame, so a shot taken in the chest lays the character
+         out on its back with the front of the drawing facing camera, and one
+         taken in the back pitches it away. A side-on hit would leave the
+         pitch near zero, so floor the magnitude — nothing dies standing up.
+         Sign: +rotation.x tips the top toward +Z, and forward is -Z. */
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const tip = (push <= 0 ? 1 : -1) * (0.5 + 0.5 * Math.abs(push));
+      const roll = e.hitSide || 0;
+      // Rigid and TALL on the take, flat on the landing.
+      const sy = (1 + take * 0.17 - hit * 0.46 + wob * 0.9 - deflate * 0.05) * (1 - off);
+      const sxz = (1 - take * 0.07 + hit * 0.36 - wob * 0.5 + deflate * 0.03) * (1 - off);
       e.group.scale.set(sxz, sy, sxz);
-      // Topple the WHOLE body about its feet, not just the torso — a wilt
-      // that only bends at the waist reads as a bow, not a death. The hips
-      // carry the fold; the torso adds the rest on top of it.
-      e.group.rotation.x = -fall * 0.62 - wob * 0.25;
-      e.group.rotation.z = fall * 0.18 + wob * 0.2;
-      r.bob.rotation.x = -fall * 0.35;
-      r.torso.rotation.x = -fall * 0.75 - wob * 0.5;
-      r.torso.rotation.z = fall * 0.22;
-      r.head.rotation.z = fall * 1.5 + wob * 1.1;
-      r.head.rotation.x = fall * 0.35;
-      // arms fling up and keep swinging after the body has stopped
-      r.armL.rotation.x = -fall * 2.5 - wob * 1.6;
-      r.armR.rotation.x = -fall * 2.2 - wob * 1.9;
-      r.armL.rotation.z = -0.12 - fall * 0.5;
-      r.armR.rotation.z = 0.12 + fall * 0.45;
-      r.legL.rotation.x = fall * 0.5 + wob * 0.8;
-      r.legR.rotation.x = fall * 0.28 - wob * 0.7;
+      /* Topple the WHOLE body about its feet, not just the torso — a wilt
+         that only bends at the waist reads as a bow, not a death. The take
+         leans a few degrees the OTHER way first, which is what sells the
+         drop when it comes. Far enough over that the corpse is down rather
+         than leaning: the old 0.62 was a stumble. */
+      e.group.rotation.x = tip * (fall * 1.32 - take * 0.20);
+      e.group.rotation.z = -roll * fall * 0.5 + fall * 0.14 + wob * 0.2;
+      r.bob.rotation.x = tip * fall * 0.30;
+      r.torso.rotation.x = tip * (lag * 0.55 + take * 0.26) - wob * 0.5;
+      r.torso.rotation.z = fall * 0.20;
+      // the head lolls last and keeps going after the shoulders have stopped
+      r.head.rotation.z = (roll >= 0 ? 1 : -1) * (lag * 1.25 + thud * 0.22) + wob * 1.1;
+      r.head.rotation.x = tip * (lag * 0.42 + take * 0.5) + wob * 0.4 + deflate * 0.10;
+      /* Arms fling out on the take, trail through the fall, and are still
+         swinging two drawings after the body has landed. */
+      r.armL.rotation.x = -take * 1.3 - lag * 2.3 - wob * 1.6;
+      r.armR.rotation.x = -take * 1.5 - lag * 2.0 - wob * 1.9 + thud * 0.55;
+      r.armL.rotation.z = -0.12 - take * 0.75 - lag * 0.5;
+      r.armR.rotation.z = 0.12 + take * 0.75 + lag * 0.45;
+      // Legs snap straight under the take, then give way entirely.
+      r.legL.rotation.x = -take * 0.16 + fall * 0.5 + wob * 0.8;
+      r.legR.rotation.x = -take * 0.10 + fall * 0.28 - wob * 0.7;
       // Knees give way rather than staying two straight rods sticking out of
       // a folded body — the legs collapse under it and keep jittering.
       if (bend) {
-        bend[4] = -0.85 * fall - wob * 0.5;
-        bend[6] = -0.55 * fall + wob * 0.55;
-        bend[0] = 0.5 * fall + wob * 0.6;
-        bend[2] = 0.7 * fall - wob * 0.7;
+        bend[4] = 0.12 * take - 0.85 * fall - wob * 0.5;
+        bend[6] = 0.12 * take - 0.55 * fall + wob * 0.55;
+        bend[0] = 0.5 * lag + wob * 0.6;
+        bend[2] = 0.7 * lag - wob * 0.7 - thud * 0.45;
+        bend[6] -= thud * 0.30;
       }
-      r.bob.position.y = -fall * 0.10;
+      r.bob.position.y = take * 0.10 - fall * 0.10 - deflate * 0.02;
       // The wave runs through a corpse too: the hips flatten hardest.
-      r.bob.scale.set(1 + impact * 0.22, 1 - impact * 0.3, 1 + impact * 0.22);
-      if (r.headTrail) r.headTrail.scale.setScalar(1 + impact * 0.18);
+      r.bob.scale.set(1 + hit * 0.22, 1 - hit * 0.3, 1 + hit * 0.22);
+      if (r.headTrail) r.headTrail.scale.setScalar(1 + hit * 0.18 + take * 0.10);
       return;
     }
 
@@ -25846,33 +26062,66 @@ const ENEMY = (() => {
       const cw = Math.cos(e.stepPhase);
       const contact = 1 - Math.abs(cw);
       const breath = Math.sin(ts * 1.35 + seed) * 0.016;
+      /* Weight shift, on the 12fps grid. The biggest character in the game
+         was also the stillest one when parked — a boss standing in the open
+         is the figure a player spends the longest looking at, and it held a
+         single drawing between attacks. Slower and heavier than the grunts'
+         version: a big body takes its time deciding which foot to stand on. */
+      const bIdle = UTIL.clamp(1 - walk * 2.2, 0, 1);
+      const bShift = E.snapSin(ts * 0.44 + seed * 1.7, 0.62) * bIdle;
       r.legL.rotation.x = -sw * 0.8 * walk;
       r.legR.rotation.x = sw * 0.8 * walk;
+      /* Stance. A heavy character stands WIDE — wider than a grunt, not
+         narrower — and nothing here rolled the legs at all, so the Warden's
+         two legs hung parallel under a torso far broader than the gap
+         between them and the whole lower half was one mass. */
+      const bSplay = 0.17 + 0.07 * walk;
+      r.legL.rotation.z = -bSplay - UTIL.clamp(-sw, 0, 1) * 0.08 * walk;
+      r.legR.rotation.z = bSplay + UTIL.clamp(sw, 0, 1) * 0.08 * walk;
       r.armL.rotation.x = sw * 0.82 * walk;
       r.armR.rotation.x = -sw * 0.5 * walk;
-      r.armL.rotation.z = -0.1 - walk * 0.12 - breath;
-      r.armR.rotation.z = 0.18 + walk * 0.1 + breath;
+      // ...and carries its arms clear of the barrel chest rather than
+      // resting them on it, which is the only way the arm is ever a shape.
+      r.armL.rotation.z = -0.22 - walk * 0.12 + sw * 0.13 * walk
+        - breath - bShift * 0.06;
+      r.armR.rotation.z = 0.26 + walk * 0.10 + sw * 0.09 * walk
+        + breath - bShift * 0.06;
       if (r.footL) r.footL.rotation.x = -sw * 0.4 * walk;
       if (r.footR) r.footR.rotation.x = sw * 0.4 * walk;
-      let stepSquash = contact * 0.13 * walk;
-      r.bob.position.y = Math.pow(Math.abs(cw), 1.4) * 0.07 * walk + breath - stepSquash * 0.1;
-      r.torso.rotation.z = sw * 0.06 * walk;
+      let stepSquash = contact * 0.20 * walk;
+      // Heavy means it does not float — less rise over the passing position
+      // than a grunt, and a much harder drop into each contact.
+      r.bob.position.y = Math.pow(Math.abs(cw), 1.4) * 0.14 * walk + breath
+        - stepSquash * 0.14;
+      r.bob.position.x = bShift * 0.06;
+      r.bob.rotation.z = bShift * 0.055;
+      r.torso.rotation.z = sw * 0.06 * walk - bShift * 0.035;
       r.torso.rotation.x = e.lean - breath * 0.8;
       r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.3, 1 + breath * 0.8);
-      r.head.rotation.z = -sw * 0.09 * walk;
+      // hips and shoulders counter-rotate, at half the grunts' amplitude —
+      // a heavy torso twists less, but it must not twist not-at-all
+      r.bob.rotation.y = sw * 0.09 * walk;
+      r.torso.rotation.y = -sw * 0.12 * walk;
+      r.head.rotation.z = -sw * 0.09 * walk - bShift * 0.05;
       r.head.rotation.x = -e.lean * 0.5 + breath * 1.4;
+      r.head.rotation.y = sw * 0.07 * walk;
       r.torso.rotation.z += (e.turn || 0) * 0.10;
       /* Knees and elbows. A heavy character folds *less* at the knee than a
          grunt but sinks deeper into each contact, so the swing fold is the
          small half and the absorb is the large one. That difference is most
          of what separates the Warden's walk from a grunt's. */
       if (bend) {
-        bend[4] = -(0.26 * UTIL.clamp(-sw, 0, 1) + 0.24 * contact) * walk - 0.06;
-        bend[6] = -(0.26 * UTIL.clamp(sw, 0, 1) + 0.24 * contact) * walk - 0.06;
+        bend[4] = -(0.26 * UTIL.clamp(-sw, 0, 1) + 0.24 * contact) * walk - 0.06
+          - UTIL.clamp(bShift, 0, 1) * 0.18;
+        bend[6] = -(0.26 * UTIL.clamp(sw, 0, 1) + 0.24 * contact) * walk - 0.06
+          - UTIL.clamp(-bShift, 0, 1) * 0.18;
         bend[0] = 0.30 * UTIL.clamp(sw, 0, 1) * walk;
         bend[2] = 0.22 * UTIL.clamp(-sw, 0, 1) * walk;
         bend[1] = cw * 0.12 * walk;
         bend[3] = -cw * 0.12 * walk;
+        // bandy, same construction as the grunts
+        bend[5] = bSplay * 0.7;
+        bend[7] = -bSplay * 0.7;
       }
       let extra = 0;
       if (e.state === 'boss_melee') {
@@ -25931,8 +26180,6 @@ const ENEMY = (() => {
           extra = kick * 0.18;
           if (bend) { bend[2] = 0.75 * kick; bend[4] = -0.24 * kick; bend[6] = -0.24 * kick; }
         }
-      } else {
-        r.torso.rotation.y = 0;
       }
       // hips take the compression a beat before the chest, same as the grunts
       const bwave = UTIL.clamp(e.squash - (e.squashLag || 0), -0.22, 0.22);
@@ -25963,14 +26210,48 @@ const ENEMY = (() => {
        swing it while walking — damping the loaded arm is what an animator
        would do, and it costs the empty-handed characters nothing. */
     const propArm = e.def.hand ? 0.45 : 1;
-    r.legL.rotation.x = -sw * 0.72 * gait;
-    r.legR.rotation.x = sw * 0.72 * gait;
-    r.armL.rotation.x = sw * 1.05 * gait;
-    r.armR.rotation.x = -sw * 1.05 * gait * propArm;
-    // Arms swing OUT as well as forward, so the noodle clears the torso and
-    // its curve is actually visible in silhouette rather than buried in it.
-    r.armL.rotation.z = -0.12 - walk * 0.3 - Math.abs(sw) * 0.16 * gait;
-    r.armR.rotation.z = 0.12 + walk * 0.3 + Math.abs(sw) * 0.16 * gait * propArm;
+    /* [RUBBERHOSE] Amplitudes are set by what survives at gameplay DISTANCE,
+       not by what reads well in a close-up. An enemy is 60-90px tall on
+       screen — the size the reference draws them — and at that size the old
+       walk was a vibrating rectangle: the thighs lived inside the shorts
+       block, the gloves sat against the torso, and the whole figure was one
+       lump with a head on it. Every number below is larger than a plausible
+       walk, because plausible is invisible here. The test is the silhouette,
+       and the silhouette needs limbs OUTSIDE the body outline. */
+    r.legL.rotation.x = -sw * 0.98 * gait;
+    r.legR.rotation.x = sw * 0.98 * gait;
+    r.armL.rotation.x = sw * 1.25 * gait;
+    r.armR.rotation.x = -sw * 1.25 * gait * propArm;
+    /* Arms swing OUT as well as forward, so the noodle clears the torso and
+       its curve is visible in silhouette rather than buried in it.
+
+       But only just out. The previous pass drove this to 0.30 + 1.3*0.34 +
+       0.22 — fifty-six degrees of lateral spread at a run — because at the
+       time the arms were the only limbs contributing anything to the
+       outline, and they had to carry the whole figure. Now that there is a
+       leg below the hem doing its share, that much spread reads as a
+       crucifix: at the passing position both arms sat out sideways at the
+       same height and the drawing had no direction in it.
+
+       The `Math.abs` was the other half of that problem. An unsigned term
+       moves both arms the same way, which is the one thing a walk never
+       does. Signed, the forward arm swings slightly ACROSS the body and the
+       trailing one opens away from it — the arms disagree on every drawing,
+       which is what makes the pair read as alternating rather than as a
+       symmetrical spread being pumped. */
+    const armOut = 0.22 + walk * 0.16;
+    r.armL.rotation.z = -armOut + sw * 0.19 * gait;
+    r.armR.rotation.z = armOut + sw * 0.19 * gait * propArm;
+    /* Bandy legs. Nothing used to write leg roll at all, so both thighs hung
+       straight down inside a torso block wider than the gap between them and
+       the only part of a leg ever visible was the shoe. Rolling them out is
+       what puts a shin in the outline — and a wide stance is the reference's
+       default anyway, standing or moving. The swinging leg rolls out further
+       than the planted one, which is what keeps the two shapes separate
+       through the passing position instead of crossing into one. */
+    const splay = 0.13 + 0.10 * gait;
+    r.legL.rotation.z = -splay - UTIL.clamp(-sw, 0, 1) * 0.10 * gait;
+    r.legR.rotation.z = splay + UTIL.clamp(sw, 0, 1) * 0.10 * gait;
     // toes flick up on the forward reach and point on the push-off
     if (r.footL) r.footL.rotation.x = -sw * 0.34 * gait;
     if (r.footR) r.footR.rotation.x = sw * 0.34 * gait;
@@ -25998,8 +26279,8 @@ const ENEMY = (() => {
     // A rubberhose walk is mostly VERTICAL: the body rides up over the
     // passing position and drops hard into contact. These used to be small
     // enough that the character just slid along at a constant height.
-    const bounce = Math.pow(Math.abs(cw), 1.45) * 0.15 * gait;
-    const stepSquash = contact * 0.17 * gait;
+    const bounce = Math.pow(Math.abs(cw), 1.45) * 0.23 * gait;
+    const stepSquash = contact * 0.22 * gait;
 
     /* Weight shift: a slow lateral lean that holds on each foot. It used to
        move the hips 2cm, which at any real distance is nothing — the hips
@@ -26073,6 +26354,14 @@ const ENEMY = (() => {
       // ellipse rather than sweeping a flat plane
       bend[1] = cw * 0.14 * swing;
       bend[3] = -cw * 0.14 * swing * propArm;
+      /* Bandy legs: the thigh goes out at the hip and the shin comes back
+         under the body, so the knee is the widest point and the gap between
+         the legs is a lens rather than a slot. Rolling both segments the
+         same way (which is what REST_SPLAY alone does) just puts the feet
+         further apart and leaves the outline straight-sided — the bow is
+         the whole point, and a bow needs the two segments to disagree. */
+      bend[5] = splay * 0.75;
+      bend[7] = -splay * 0.75;
     }
 
     /* ---------------- squash and stretch on top of everything ----------
@@ -26101,33 +26390,54 @@ const ENEMY = (() => {
     const nLegLX = r.legL.rotation.x, nLegRX = r.legR.rotation.x;
 
     if (e.state === 'alert') {
-      /* Double-take: a fast recoil up onto the toes (stretch), then a
-         settle. The `!` mark pops with a back-ease overshoot. */
+      /* Double-take: duck, then a fast recoil up onto the toes (stretch),
+         then a settle. The `!` mark pops with a back-ease overshoot.
+
+         `duck` is the anticipation the take was missing. A character that
+         explodes upward on the frame it spots you has nowhere to explode
+         FROM — one drawing of the body compressing down into itself is what
+         makes the pop that follows read as a launch instead of a jump cut.
+
+         The windows are laid out ON the 12fps grid, not across it. `qt` only
+         ever takes the values 0, 1/12, 2/12 ... so alertTime's half second is
+         six drawings and a pulse has to peak ON one of them or it is never
+         drawn at all. The first attempt at this overlapped the duck and the
+         pop the way you would in a smooth curve, and at 12fps the one
+         drawing that should have been the gather came out 50% ducked and
+         60% popped — the two cancelled and the take had no anticipation in
+         it. Now: drawing 0 neutral, 1 all gather, 2-3 the held pop, 4-5 the
+         settle. One pose per drawing, which is how it would be shot. */
       const k = UTIL.clamp(qt / C.alertTime, 0, 1);
-      const pop = E.outQuint(UTIL.clamp(k / 0.22, 0, 1)) * (1 - E.outCubic(UTIL.clamp((k - 0.35) / 0.65, 0, 1)));
+      const duck = Math.sin(UTIL.clamp((k - 0.02) / 0.30, 0, 1) * Math.PI);
+      const pop = E.outQuint(UTIL.clamp((k - 0.26) / 0.10, 0, 1)) *
+        (1 - E.outCubic(UTIL.clamp((k - 0.5) / 0.5, 0, 1)));
       // Kept deliberately modest: the neck/head-trail springs multiply this
       // by a lot, and the double-take has to read as a recoil, not a fall.
-      r.torso.rotation.x = -0.2 * pop;
-      r.armL.rotation.x = -1.25 * pop;
-      r.armR.rotation.x = -1.25 * pop;
-      r.armL.rotation.z = -0.12 - 0.42 * pop;
-      r.armR.rotation.z = 0.12 + 0.42 * pop;
-      r.head.rotation.x = -0.14 * pop;
+      r.torso.rotation.x = -0.2 * pop + 0.30 * duck;
+      r.armL.rotation.x = -1.25 * pop + 0.35 * duck;
+      r.armR.rotation.x = -1.25 * pop + 0.35 * duck;
+      r.armL.rotation.z = -0.12 - 0.42 * pop + 0.10 * duck;
+      r.armR.rotation.z = 0.12 + 0.42 * pop - 0.10 * duck;
+      r.head.rotation.x = -0.14 * pop + 0.34 * duck;
       // the pop is mostly vertical: rise onto the toes and stretch
-      r.bob.position.y = bounce + breath + pop * 0.07;
+      r.bob.position.y = bounce + breath + pop * 0.07 - duck * 0.09;
       /* The legs used to sit this out entirely, which is what made the
          double-take read as a bust on a pedestal. Knees snap straight into
          the rise, elbows fly open, and the toes point as the heels leave
-         the ground. */
+         the ground — and fold under the duck on the way in. */
       if (bend) {
-        bend[4] = 0.15 * pop; bend[6] = 0.15 * pop;
-        bend[0] = -0.5 * pop; bend[2] = -0.5 * pop;
+        bend[4] = 0.15 * pop - 0.60 * duck; bend[6] = 0.15 * pop - 0.60 * duck;
+        bend[0] = -0.5 * pop + 0.5 * duck; bend[2] = -0.5 * pop + 0.5 * duck;
         bend[1] = 0.28 * pop; bend[3] = -0.28 * pop;
       }
       if (r.footL) r.footL.rotation.x = 0.34 * pop;
       if (r.footR) r.footR.rotation.x = 0.34 * pop;
-      const markK = UTIL.clamp(k / 0.3, 0, 1);
-      e.mark.scale.setScalar(0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
+      // squat wide on the gather, stretch thin on the pop
+      const as = 1 + e.squash - duck * 0.19 + pop * 0.10;
+      e.group.scale.set(1 / Math.sqrt(as), as, 1 / Math.sqrt(as));
+      // the mark is only allowed out once the body has committed to the pop
+      const markK = UTIL.clamp((k - 0.26) / 0.24, 0, 1);
+      e.mark.scale.setScalar(markK <= 0 ? 0.001 : 0.28 * (markK < 1 ? E.outBack(markK, 3.0) : 1) + 0.14 * pop);
     }
 
     if (e.state === 'attack') {
@@ -26248,38 +26558,65 @@ const ENEMY = (() => {
     }
 
     if (e.state === 'stagger') {
-      /* Getting hit is a shudder, not a lean. Ring it out so the whole
-         body rattles and comes to rest instead of sliding back linearly. */
-      const k = UTIL.clamp(qt / C.staggerTime, 0, 1);
-      const decay = 1 - E.outCubic(k);
-      const shake = E.ring(k, 2.6, 3.2) * decay;
-      r.torso.rotation.x = -0.55 * decay + shake * 0.22;
-      r.torso.rotation.z = shake * 0.16;
-      r.head.rotation.x = 0.7 * decay - shake * 0.4;
-      r.head.rotation.z = shake * 0.5;
-      r.armL.rotation.x = -0.5 * decay - shake * 0.7;
-      r.armR.rotation.x = -0.5 * decay + shake * 0.7;
-      /* Knees buckle under the hit and rattle back, and the body drops onto
-         them — without this the character absorbed a shotgun blast standing
-         on two straight pillars. One leg braces back so the stagger has a
-         direction instead of being a symmetric wobble. */
-      r.legL.rotation.x = -0.30 * decay + shake * 0.24;
-      r.legR.rotation.x = 0.16 * decay - shake * 0.20;
+      /* A stagger is FOUR DRAWINGS long — 0.34s at 12fps — so it is laid out
+         as four drawings (see flinchFrames) rather than sampled off a
+         continuous curve and hoped for. The old version rang out at 2.6
+         cycles across those four, which is well past the point where the
+         grid can carry the wave: the rattle aliased into a different
+         arbitrary set of angles on every hit, none of which was a pose
+         anyone chose.
+
+         The flinch also goes somewhere: `hitPush`/`hitSide` are the blow in
+         the body's own frame, so a shot in the chest bows the character
+         backwards and one in the flank spins it. It used to be symmetric,
+         which meant a character hit from any angle did the same drawing —
+         and that is what makes a hit read as a glitch rather than impact. */
+      const fl = flinchFrames(qt);
+      const sway = fl.sway, lag = fl.lag, mag = fl.mag;
+      const push = e.hitPush === undefined ? -1 : e.hitPush;
+      const side = e.hitSide || 0;
+      // a head hit whips the neck harder than it moves the body
+      const high = 1 + (e.hitHigh || 0) * 0.5;
+      r.torso.rotation.x = -0.62 * push * sway;
+      r.torso.rotation.z = -side * 0.38 * sway;
+      r.torso.rotation.y = side * 0.32 * sway;
+      // The head opposes the chest AND arrives a drawing late.
+      r.head.rotation.x = 0.85 * push * lag * high;
+      r.head.rotation.z = side * 0.55 * lag * high;
+      r.head.rotation.y = -side * 0.42 * lag;
+      // ...and the arms scissor rather than translating together
+      r.armL.rotation.x = 0.55 * push * lag - lag * 0.55;
+      r.armR.rotation.x = 0.55 * push * lag + lag * 0.55;
+      r.armL.rotation.z = -0.16 - side * 0.34 * sway;
+      r.armR.rotation.z = 0.16 - side * 0.34 * sway;
+      /* Knees buckle under the hit and brace out of it, and the body drops
+         onto them — without this the character absorbed a shotgun blast
+         standing on two straight pillars. Which knee takes it depends on
+         where the blow came from. */
+      r.legL.rotation.x = 0.34 * push * sway;
+      r.legR.rotation.x = -0.18 * push * sway;
       if (bend) {
-        bend[4] = -0.52 * decay - shake * 0.28;
-        bend[6] = -0.36 * decay + shake * 0.32;
-        bend[0] = 0.45 * decay + shake * 0.55;
-        bend[2] = 0.45 * decay - shake * 0.55;
-        bend[1] = shake * 0.30; bend[3] = shake * 0.30;
+        bend[4] = -0.58 * mag - 0.24 * sway * side;
+        bend[6] = -0.42 * mag + 0.24 * sway * side;
+        bend[0] = 0.45 * mag + lag * 0.50;
+        bend[2] = 0.45 * mag - lag * 0.50;
+        bend[1] = -side * 0.24 * sway;
+        bend[3] = -side * 0.24 * sway;
       }
-      r.bob.position.y = bounce - 0.06 * decay + shake * 0.03;
-      if (r.footL) r.footL.rotation.x = -0.2 * decay;
-      if (r.footR) r.footR.rotation.x = 0.24 * decay;
+      r.bob.position.y = bounce - 0.075 * mag;
+      r.bob.rotation.y = -side * 0.24 * sway;
+      if (r.footL) r.footL.rotation.x = 0.22 * push * lag;
+      if (r.footR) r.footR.rotation.x = -0.26 * push * lag;
     }
   }
 
   /* ---------------- per-enemy update ---------------- */
   function updateOne(e, dt, t) {
+    /* [RUBBERHOSE] The flinch clock, advanced here rather than inside any
+       one state's update so a boss state that returns early cannot leave a
+       character frozen at the impact drawing. Grunts read their flinch off
+       the stagger state's own timer and ignore this. */
+    e.flinchT = e.flinchT === undefined ? 9 : Math.min(e.flinchT + dt, 9);
     if (e.isBoss) {
       updateBoss(e, dt, t);
       return;
@@ -28242,36 +28579,111 @@ const COOP = (() => {
       return;
     }
 
+    /* [RUBBERHOSE] Landing. A remote that drops off the silo catwalk used
+       to arrive at exactly the size it left at — the single moment in the
+       whole traversal that most wants an impulse, and the body did not
+       acknowledge it. Read off the *rendered* height rather than the raw
+       snapshot, for the same reason the bank above is: one late packet must
+       not fire an impact that never happened. Stretch on the way down,
+       compress on the drawing the fall stops, and let the squash spring
+       that the footfalls already kick do the recovery. */
+    const yNow = remote.group.position.y;
+    const vy = (yNow - (remote.lastY === undefined ? yNow : remote.lastY)) /
+      Math.max(dt, 0.0005);
+    remote.lastY = yNow;
+    remote.fallVel = UTIL.damp(remote.fallVel || 0, UTIL.clamp(vy, -16, 16), 20, dt);
+    if ((remote.prevFall || 0) < -3.2 && remote.fallVel > -1.2) {
+      remote.squashVel = (remote.squashVel || 0) - 4.5 -
+        UTIL.clamp(-(remote.prevFall || 0) * 0.22, 0, 3);
+    }
+    remote.prevFall = remote.fallVel;
+    // The stretch is what makes the compression read as an arrival rather
+    // than as a pulse the body decided to have on its own.
+    const air = UTIL.clamp(-remote.fallVel / 9, 0, 1);
+
     const contact = 1 - Math.abs(cw);
-    const stepSquash = contact * 0.10 * walk;
+    const stepSquash = contact * 0.16 * walk;
     const breath = Math.sin(remote.animPhase * 0.34) * 0.014;
-    r.legL.rotation.set(-sw * 0.95 * walk, 0, 0);
-    r.legR.rotation.set(sw * 0.95 * walk, 0, 0);
-    r.armL.rotation.set(sw * 1.0 * walk, 0, -0.12 - walk * 0.14 - breath);
-    r.armR.rotation.set(-sw * 1.0 * walk, 0, 0.12 + walk * 0.14 + breath);
-    if (r.footL) r.footL.rotation.x = -sw * 0.5 * walk;
-    if (r.footR) r.footR.rotation.x = sw * 0.5 * walk;
-    r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.08 * walk + breath - stepSquash * 0.1;
+    /* Idle life, on the same 12fps grid as the walk: a slow weight shift
+       from foot to foot, and a sink-and-pop beat every few seconds. A
+       parked teammate was one drawing with a breath on it, and a co-op
+       partner standing beside a grunt should not be the stiller of the two.
+       Seeded off the rig so two remotes never pulse in unison. */
+    remote.animT = (remote.animT || 0) + dt;
+    const ts = Math.floor(remote.animT * 12) / 12;
+    const seed = remote.group.id * 0.618;
+    const idleAmt = UTIL.clamp(1 - walk * 2.2, 0, 1);
+    const shift = E.snapSin(ts * 0.62 + seed * 1.7, 0.62) * idleAmt;
+    const beatPh = (ts * 0.31 + seed * 0.41) % 1;
+    const beat = beatPh < 0.30 ? Math.sin(beatPh / 0.30 * Math.PI) * idleAmt : 0;
+    /* Splay, and a bow. Remote legs had rotation.z pinned at zero, so the
+       pair hung as two parallel rods under a torso wider than the gap
+       between them and nothing below the hem ever entered the outline.
+       Same construction as the grunts: roll the thigh out, counter the shin
+       back in under the body, and let the swinging leg roll further than
+       the planted one so the two shapes stay separate through the passing
+       position instead of merging into one. */
+    const splay = 0.13 + 0.10 * walk;
+    r.legL.rotation.set(-sw * 0.95 * walk, 0,
+      -splay - UTIL.clamp(-sw, 0, 1) * 0.10 * walk);
+    r.legR.rotation.set(sw * 0.95 * walk, 0,
+      splay + UTIL.clamp(sw, 0, 1) * 0.10 * walk);
+    /* Arms carried OUT, not tucked — at 0.12 the gloves rested on the hips
+       and each arm added a bulge to the torso outline instead of a visible
+       C with daylight inside it — and the lateral term is SIGNED, so the
+       forward arm swings slightly across the body while the trailing one
+       opens away from it. Unsigned, the pair spread and closed together,
+       which is the one thing a walk never does. */
+    const armOut = 0.22 + walk * 0.14;
+    r.armL.rotation.set(sw * 1.05 * walk, 0,
+      -armOut + sw * 0.18 * walk - breath - shift * 0.07);
+    r.armR.rotation.set(-sw * 1.05 * walk, 0,
+      armOut + sw * 0.18 * walk + breath - shift * 0.07);
+    if (r.footL) r.footL.rotation.x = -sw * 0.42 * walk;
+    if (r.footR) r.footR.rotation.x = sw * 0.42 * walk;
+    // A rubberhose walk is mostly VERTICAL: up over the passing position
+    // and down hard into contact. At 0.08 the body just slid along.
+    r.bob.position.y = Math.pow(Math.abs(cw), 1.45) * 0.20 * walk + breath
+      - stepSquash * 0.10 - beat * 0.045;
+    r.bob.position.x = shift * 0.055;
+    r.bob.rotation.z = shift * 0.075;
     const bank = remote.turn || 0;
-    r.torso.rotation.set(Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath, 0,
-      sw * 0.07 * walk + bank * 0.13);
+    // Hips and shoulders counter-rotate — the oldest trick in a walk cycle,
+    // and the one that stops a torso reading as a box being carried along.
+    // The head unwinds part of the shoulder twist so the face keeps
+    // pointing where the body is going.
+    r.bob.rotation.y = sw * 0.15 * walk;
+    r.torso.rotation.set(
+      Math.sin(remote.animPhase * 0.5) * 0.05 * walk - breath + beat * 0.09,
+      -sw * 0.19 * walk,
+      sw * 0.075 * walk + bank * 0.13 - shift * 0.045);
     r.torso.scale.set(1 + breath * 0.8, 1 + breath * 1.4, 1 + breath * 0.8);
-    r.head.rotation.set(breath * 1.4, bank * 0.22, -sw * 0.11 * walk - bank * 0.10);
+    r.head.rotation.set(breath * 1.4, bank * 0.22 + sw * 0.11 * walk,
+      -sw * 0.12 * walk - bank * 0.10 - shift * 0.06);
     /* Knees and elbows, same grammar as the local grunts: the knee folds
        while the leg is behind and absorbs on the contact frame, and the
        elbow tucks in quadrature with the arm pitch so the glove travels an
        ellipse rather than sweeping a flat plane. Idle keeps a soft brace so
        a parked teammate is never standing on two straight rods. */
     if (r.bend) {
-      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk - 0.05;
-      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk - 0.05;
+      // Standing, the loaded leg straightens and the free one breaks; that
+      // alternation is what makes the weight shift read as weight rather
+      // than as the body sliding sideways.
+      r.bend[4] = -(0.40 * UTIL.clamp(-sw, 0, 1) + 0.14 * contact) * walk
+        - UTIL.clamp(shift, 0, 1) * 0.22 - beat * 0.20 - 0.05;
+      r.bend[6] = -(0.40 * UTIL.clamp(sw, 0, 1) + 0.14 * contact) * walk
+        - UTIL.clamp(-shift, 0, 1) * 0.22 - beat * 0.20 - 0.05;
       r.bend[0] = 0.40 * UTIL.clamp(sw, 0, 1) * walk;
       r.bend[2] = 0.40 * UTIL.clamp(-sw, 0, 1) * walk;
       r.bend[1] = cw * 0.15 * walk;
       r.bend[3] = -cw * 0.15 * walk;
+      // Bandy: the shin comes back in under the body so the knee is the
+      // widest point and the gap between the legs is a lens, not a slot.
+      r.bend[5] = splay * 0.75;
+      r.bend[7] = -splay * 0.75;
     }
     // remote rigs are built at 1.08 scale; fold squash/stretch into it
-    const sq = 1 + remote.squash - stepSquash;
+    const sq = 1 + remote.squash - stepSquash + air * 0.15;
     r.root.scale.set(1.08 / Math.sqrt(sq), 1.08 * sq, 1.08 / Math.sqrt(sq));
     // hips take the compression first, chest counter-stretches against it
     const wave = UTIL.clamp(remote.squash - (remote.squashLag || 0), -0.22, 0.22);
