@@ -49,9 +49,38 @@ with headroom.
 | **shadow%** (<64) | **25–50** | reference runs 36–62. "Lots of shadow" is the target, not a failure. |
 | **high%** (>192) | **≤ 25** | bright things should be small and deliberate. Reference mean 10.8. |
 | **rms** | **≥ 55** | contrast. Reference mean 62.2. |
-| **edge** | **≥ 60** | linework density. Reference spans 44–118 — the high end is brick and machinery detail, which is a materials/geometry question, not a grade one. |
+| **edge** | **see the warning below — do not compare across resolutions** | linework density |
 | **sat** | **12–28** | **we stay in COLOUR.** The reference measures sat ≈ 0 because it is black and white. Do not chase this one. It is the single axis where matching the reference would be wrong. |
 | **spread** | max(p50)/min(p50) < 2.0 | judged across the daylight set |
+
+### The edge metric is not comparable across resolutions — a correction
+
+The reference stills are **not the same size as our captures**:
+
+| frame | size | edge |
+|---|---|---|
+| saloon interior | 216×168 | 89.4 |
+| laboratory | 218×168 | 107.9 |
+| skeleton alley | 218×168 | 118.1 |
+| **circus boss** | **900×506** | **57.1** |
+| our captures | 1280×720 | ~66 |
+
+Mean Sobel magnitude per pixel rises as an image is downscaled — the same
+edge gets packed into fewer pixels. That, not superior linework, is why the
+three thumbnails score 89–118 while the one large reference frame scores 57.
+
+So the earlier reading of this table — "reference 83.4, we are at 65.7, we
+need more linework" — was **wrong**, and it sent the materials pass chasing a
+deficit that does not exist. Against the only comparably-sized reference
+frame we were already above it. Credit to the materials agent for catching
+this rather than accepting the number.
+
+Two further cautions on this metric:
+
+- **Our film grain inflates our own Sobel too**, so even our number flatters
+  us. Measure a grain-free capture if you want the linework figure alone.
+- If you must compare, **resample both sides to the same dimensions first**,
+  or compare only against the 900×506 frame.
 
 Judge **per frame**, never on the set mean. A mean over a bimodal set reads as
 comfortable while half the frames are broken — that has already happened here
