@@ -2182,7 +2182,13 @@ const CONFIG = {
     // reaches full strength at the world edge, and its colour is a cool grey
     // rather than the warm ground tone, so distance reads as *cooler and
     // flatter* while keeping its own value separate from the sky behind it.
-    fogNear: 62, fogFar: 250, fogColor: 0xAFBCC6,
+    /* fogColor is also the clear colour, so it is the value everything distant
+       resolves to. It was 0xAFBCC6, a pale blue-grey: distance receded toward
+       paper, which flattens depth and holds the far half of every open frame
+       up near the top of the scale. The reference recedes into shadow instead
+       -- its far planes go dark and low-contrast while the near plane keeps
+       its blacks. A dustier slate does that without turning the day to night. */
+    fogNear: 62, fogFar: 250, fogColor: 0x7E8C97,
     // Minimum screen-space weight of an ink outline, in device pixels. The
     // baked world-space hull inflation adds to this on near geometry, so
     // contact edges stay heavier than distant detail -- but nothing ever
@@ -3478,13 +3484,27 @@ const TEX = (() => {
   function sky() {
     if (cache.sky) return cache.sky;
     const w = 8, h = 256, c = cv(w, h), x = c.getContext('2d');
+    /* The horizon band used to be PAL.white -- literally 0xFFFBF2 -- and that
+       band sits exactly where the camera looks at eye level. Since the sky is
+       an unlit MeshBasicMaterial it answers to nothing: not the light rig, not
+       exposure, and barely to gamma (values near 1 are near fixed points of
+       x^g). So it pinned the median of every open frame near the top of the
+       scale, and every attempt to bring the scene down pulled the lit geometry
+       away from a sky that would not move -- measured, raising gamma took the
+       frame-to-frame spread from 2.08x to 5.17x rather than closing it.
+
+       Not one of the five reference frames has a bright sky. This is still a
+       daytime sky -- we are not turning a sunny farm into their night
+       interiors, which would be copying the value structure of a different
+       scene rather than the craft -- but nothing in it reaches white any more,
+       so the rest of the grade can actually do its job. */
     const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0.00, '#8AAEC8');        // zenith: deepest, still airy
-    g.addColorStop(0.30, hex(PAL.blue));
-    g.addColorStop(0.55, '#D8E3EA');        // the band that lifts toward paper
-    g.addColorStop(0.72, hex(PAL.white));   // horizon: true white lives here
-    g.addColorStop(0.88, hex(PAL.cream));
-    g.addColorStop(1.00, hex(PAL.peach));   // below the horizon line
+    g.addColorStop(0.00, '#5C7E99');        // zenith: real depth at the top
+    g.addColorStop(0.30, '#8AAEC8');
+    g.addColorStop(0.55, '#B9CBD8');
+    g.addColorStop(0.72, '#D6D2C4');        // horizon: warm light grey, not paper
+    g.addColorStop(0.88, '#C8BCA8');
+    g.addColorStop(1.00, '#B09A88');        // below the horizon line
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
