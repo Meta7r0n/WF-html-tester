@@ -6000,9 +6000,21 @@ const LEVEL = (() => {
   }
 
   function buildGround(scene) {
+    /* The tint used to be 0xffffff, i.e. no tint at all, so the ground printed
+       at whatever TEX.ground() happened to be -- a 0.65-luma sand. Look at any
+       open frame and the ground is the single largest and brightest surface in
+       it, which is what actually held the median at 189 (not the sky, and not
+       the light rig: both were tested and neither moved it).
+
+       It also flattened the shadows. A cast shadow removes the key term, so on
+       a 0.65 albedo it only takes the ground from roughly 222 to 154 -- a pale
+       grey on pale sand, which reads as a smudge rather than a shape. Bringing
+       the albedo down to about 0.40 puts the lit ground near 163 and the
+       shadowed ground near 109, so the same shadow finally reads as a shadow.
+       The tint is warm-neutral so the texture keeps its own hue. */
     const g = new THREE.Mesh(
       new THREE.PlaneGeometry(400, 400),
-      MAT.toon(0xffffff, { map: TEX.ground() })
+      MAT.toon(0xA79B90, { map: TEX.ground() })
     );
     g.rotation.x = -Math.PI / 2;
     g.position.y = 0;
