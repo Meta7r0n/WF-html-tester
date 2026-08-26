@@ -3431,6 +3431,30 @@ const TEX = (() => {
     });
   }
 
+  /* Wear along each unit's exposed arris, for the R channel; call after
+     cellTone so it sits on top of the cell's own flat value.
+
+     A brick or a plank does not wear evenly. Its top edge is the one that
+     catches the light, gets walked on and loses its paint first, so it comes
+     up lighter than the face; its bottom edge sits over the joint where dirt
+     collects, so it goes darker. That pair is the difference between a
+     rectangle of tone and a unit with a top and a bottom, and in an inked
+     drawing it is most of what the eye reads as relief -- the reference puts
+     a light sliver on every brick and floorboard it draws.
+
+     Depth is a fraction of the cell rather than a pixel count so it stays
+     proportional whatever grid it is handed, and each unit is worn by a
+     different amount, because an even bevel reads as machining. */
+  function arris(x, s, rows, perRow, stagger, amt) {
+    bond(s, rows, perRow, stagger, (x0, y0, w, h, hsh) => {
+      const d = Math.max(1.5, h * 0.13), a = amt * (0.45 + hsh * 0.9);
+      x.fillStyle = 'rgba(255,255,255,' + a + ')';
+      x.fillRect(x0 + 1, y0 + 1, Math.max(w - 2, 1), d);
+      x.fillStyle = 'rgba(0,0,0,' + (a * 0.85) + ')';
+      x.fillRect(x0 + 1, y0 + h - d - 1, Math.max(w - 2, 1), d);
+    });
+  }
+
   /* A value ramp across each corrugation rib: down one flank, up the other.
      Corrugated iron is the one material here whose read is a light gradient
      rather than a line, and drawing it as a line grid alone is most of why
@@ -3470,6 +3494,35 @@ const TEX = (() => {
     }
   }
 
+  /* Loose stones, drawn as closed contours rather than filled specks.
+
+     The yard is one 400m plane and it fills the bottom third of nearly every
+     frame, which makes it the largest single surface the player ever looks
+     at -- and it was carrying two crack lines and a wash. A drawn dirt ground
+     in this idiom is not a wash; it is covered in small closed shapes, and
+     an OUTLINE is what buys that: it costs almost no mean value, so the tile
+     still averages near white and the midground does not go muddy, while
+     giving the near field the small-shape density that reads as ink.
+
+     Each contour gets a heavier lower arc -- the side the stone sits on --
+     which is enough to seat it on the ground rather than float it. */
+  function stones(x, s, n, rMin, rMax, width, alpha) {
+    x.lineCap = 'round';
+    for (let i = 0; i < n; i++) {
+      const px = UTIL.rng(0, s), py = UTIL.rng(0, s);
+      const r = UTIL.rng(rMin, rMax), sq = UTIL.rng(0.55, 0.9), rot = UTIL.rng(0, 3.14);
+      const a = alpha * UTIL.rng(0.5, 1);
+      wrapPts(s, px, py, r + 2).forEach(p => {
+        x.lineWidth = width;
+        x.strokeStyle = 'rgba(0,0,0,' + a + ')';
+        x.beginPath(); x.ellipse(p[0], p[1], r, r * sq, rot, 0, 6.3); x.stroke();
+        x.lineWidth = width * 1.9;
+        x.strokeStyle = 'rgba(0,0,0,' + (a * 0.8) + ')';
+        x.beginPath(); x.ellipse(p[0], p[1], r, r * sq, rot, 0.5, 2.6); x.stroke();
+      });
+    }
+  }
+
   function chan(s, base, fn) {
     const c = cv(s, s), x = c.getContext('2d');
     x.fillStyle = base; x.fillRect(0, 0, s, s);
@@ -3503,6 +3556,7 @@ const TEX = (() => {
       t = pack(s,
         x => {                                  // plank tone, sap streaks, weathering
           cellTone(x, s, 4, 1, 0.5, 0.20, 0.10);
+          arris(x, s, 4, 1, 0.5, 0.22);
           blobs(x, s, 22, 40, 170, 0.11, 0.45);
           scratch(x, s, 220, 90, 380, 2.4, 0.15, 0, 0.05, 0.32);
           scratch(x, s, 700, 40, 190, 1.1, 0.12, 0, 0.03, 0.4);
@@ -3510,6 +3564,18 @@ const TEX = (() => {
         },
         x => {                                  // boarding: 40cm planks, butt joints, nails
           courses(x, s, 4, 1, 3.4, 0.72, 2.6);
+          /* Grain, and the reason every material below gains a mark at this
+             frequency. The structural grid is authored at 20-40cm so it still
+             resolves across a room, which is right -- but it also means that
+             a surface at arm's reach shows two or three lines and nothing
+             else, and the frame goes flat exactly where the player is looking
+             hardest. Measured: every vantage point scores 90-150 on edge
+             except the one standing at a wall, which scores 33.
+             So each material gets a second octave an order finer, thin and
+             low-alpha enough that it mips to nearly nothing by mid-range and
+             does not darken the distance. Here it is board grain, running
+             the length of the plank. */
+          scratch(x, s, 150, 150, 400, 1.25, 0.30, 0, 0.045, 0);
           for (let i = 0; i < 6; i++) {         // knots, drawn as ringed ovals
             const kx = UTIL.rng(0, s), ky = UTIL.rng(0, s);
             for (let r = 1; r <= 4; r++) {
@@ -3539,6 +3605,8 @@ const TEX = (() => {
         x => {                                  // corrugation at ~8cm pitch, sheet laps, bolts
           hatch(x, s, 90, s / 18, 3.0, 0.66, 0.7);
           hatch(x, s, 0, s / 2, 3.4, 0.55, 1.8);
+          // Fine octave: rolling marks, running down the sheet with the ribs.
+          scratch(x, s, 170, 60, 220, 1.1, 0.22, Math.PI / 2, 0.04, 0);
           for (let i = 0; i < 24; i++) {
             const bx = UTIL.rng(0, s), by = Math.round(UTIL.rng(0, 2)) * (s / 2) + UTIL.rng(-3, 3);
             x.fillStyle = 'rgba(0,0,0,.6)';
@@ -3551,6 +3619,7 @@ const TEX = (() => {
       t = pack(s,
         x => {                                  // block tone, then aggregate + chips
           cellTone(x, s, 6, 3, 0.5, 0.24, 0.17);
+          arris(x, s, 6, 3, 0.5, 0.26);
           blobs(x, s, 60, 14, 80, 0.17, 0.44);
           grit(x, s, 900, 1.2, 5.5, 0.20);
           grit(x, s, 2600, 0.5, 2.0, 0.16);
@@ -3558,6 +3627,9 @@ const TEX = (() => {
         x => {                                  // masonry: 29cm courses, 57cm blocks
           courses(x, s, 6, 3, 3.2, 0.74, 2.2);
           cracks(x, s, 10, 5, 22, 1.6, 0.34);
+          // Fine octave: the pick marks of a dressed face, so a block seen up
+          // close is worked stone rather than a panel between two joints.
+          scratch(x, s, 260, 10, 34, 1.3, 0.24, 0, 3.14, 0);
         },
         x => { hatch(x, s, 45, 15, 2.0, 0.34, 1.6); hatch(x, s, 135, 34, 1.6, 0.22, 1.6);
                openUp(x, s, 18, 35, 130, 0.55); });
@@ -3572,6 +3644,14 @@ const TEX = (() => {
         x => {                                  // dried-mud crack network + hoof scuffs
           cracks(x, s, 26, 7, 26, 2.0, 0.50);
           scratch(x, s, 90, 20, 70, 2.2, 0.26, 0.4, 3.14, 0);
+          // Fine octave: the crack network's own hairline branches, and the
+          // loose stone the yard is actually made of. The ground fills the
+          // bottom of nearly every frame, so it is the surface the player is
+          // closest to for the largest share of the time -- and it was the
+          // emptiest thing in the game.
+          cracks(x, s, 46, 4, 11, 1.15, 0.28);
+          stones(x, s, 190, 2.0, 7.0, 1.15, 0.34);
+          stones(x, s, 34, 8.0, 16.0, 1.5, 0.30);
         },
         x => { hatch(x, s, 45, 26, 2.2, 0.30, 3.2); hatch(x, s, 135, 44, 1.8, 0.20, 3.2);
                openUp(x, s, 20, 50, 180, 0.6); });
@@ -3580,7 +3660,7 @@ const TEX = (() => {
         // Per-pane tone is what stops a greenhouse reading as one sheet of
         // tinted plastic: real glazing has some panes catching sky and some
         // going dark, and the change happens exactly at the bar.
-        x => { cellTone(x, s, 3, 3, 0, 0.22, 0.08);
+        x => { cellTone(x, s, 3, 3, 0, 0.22, 0.08); arris(x, s, 3, 3, 0, 0.14);
                blobs(x, s, 22, 30, 130, 0.14, 0.5); scratch(x, s, 50, 60, 200, 3, 0.08, Math.PI / 2, 0.2, 0.6); },
         x => {                                  // glazing bars, ~40cm panes
           hatch(x, s, 0, s / 3, 4.2, 0.62, 1.2);
@@ -3629,8 +3709,11 @@ const TEX = (() => {
                grit(x, s, 2400, 0.4, 1.8, 0.18); },
         // Almost nothing: this is the default finish, so it lands on gloves
         // and gun parts as well as walls. A hairline crack network is safe
-        // on both; boarding is not.
-        x => cracks(x, s, 7, 5, 26, 1.3, 0.30),
+        // on both; boarding is not. Two octaves of it rather than one, so
+        // the surface still has something to show at arm's length -- crazing
+        // is the one mark that looks like itself at any magnification, which
+        // is exactly what a finish with no idea of its subject's size needs.
+        x => { cracks(x, s, 7, 5, 26, 1.3, 0.30); cracks(x, s, 30, 4, 9, 1.0, 0.22); },
         x => { hatch(x, s, 45, 13, 1.9, 0.36, 1.5); hatch(x, s, 135, 29, 1.5, 0.22, 1.5);
                openUp(x, s, 18, 40, 145, 0.55); });
     }
@@ -4452,7 +4535,7 @@ const MAT = (() => {
      mouse's hand would be worse than no texture at all. Anything that should
      read as BUILT is given a named finish instead. */
   const FINISH = {
-    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.16, hatch: 0.42, grime: [0.45, 0.10], lift: 0.06 },
+    paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.24, hatch: 0.42, grime: [0.45, 0.10], lift: 0.06 },
     wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26], lift: 0.17 },
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22], lift: 0.2 },
     /* Held objects need their own scale. A finish is sized in metres, which is
