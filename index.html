@@ -10672,6 +10672,72 @@ const LEVEL = (() => {
       }
     });
 
+    /* ---- 4b. crazing. Everything above is held OFF the routes, which is
+       correct for anything that reads as an object and leaves the one part
+       of the frame a player looks at most -- the wide worn ground they are
+       standing on and walking across -- as a single unbroken cream.
+
+       The reference never leaves a floor blank. Its stone has drawn seams,
+       its dirt has cracks, and those lines are the only high-frequency
+       detail the ground carries; without them a floor is a fill.
+
+       A crack is the one mark allowed to lie on a path, and it is allowed
+       because it is not an object: 4 cm proud, no collider, not a ray
+       target, nothing to trip on and nothing to stand on. It wanders as it
+       goes, because a straight crack is a seam and a seam is a different
+       drawing. */
+    function crack(x, z, len, ang, w) {
+      const steps = Math.max(2, Math.round(len / 0.65));
+      let px = x, pz = z, a = ang;
+      for (let s = 0; s < steps; s++) {
+        a += UTIL.rng(-0.32, 0.32);
+        const seg = len / steps;
+        const nx = px + Math.sin(a) * seg, nz = pz + Math.cos(a) * seg;
+        // Tapering: a crack that keeps its width for four metres is a groove.
+        const t = 1 - s / steps * UTIL.rng(0.4, 0.8);
+        track.box(w * t * UTIL.rng(0.7, 1.3), 0.04, seg * 1.25,
+          (px + nx) / 2, 0.021, (pz + nz) / 2, 0, a, UTIL.rng(-.03, .03), 0.015);
+        px = nx; pz = nz;
+      }
+      return [px, pz, a];
+    }
+    // Along the routes first: that is where the bare ground actually is.
+    PATH_ROUTES.forEach(route => {
+      for (let i = 0; i < route.length - 1; i++) {
+        const a = route[i], c = route[i + 1];
+        const len = Math.hypot(c[0] - a[0], c[1] - a[1]);
+        for (let k = 0, n = Math.round(len / 5); k < n; k++) {
+          const t = UTIL.rand();
+          const ang = Math.atan2(c[0] - a[0], c[1] - a[1]);
+          const off = UTIL.rng(-2.6, 2.6);
+          const x = UTIL.lerp(a[0], c[0], t) + Math.cos(ang) * off;
+          const z = UTIL.lerp(a[1], c[1], t) - Math.sin(ang) * off;
+          if (underRoof(x, z) || !clear(x, z, 0.3)) continue;
+          const dir = ang + UTIL.rng(-1.2, 1.2);   // crazes across the wear, mostly
+          const L = UTIL.rng(1.1, 3.6), w = UTIL.rng(0.07, 0.15);
+          const end = crack(x, z, L, dir, w);
+          // One fork off the tail. Cracks branch; a lone stroke reads drawn.
+          if (UTIL.rand() < 0.5) {
+            crack(end[0], end[1], L * UTIL.rng(0.3, 0.6),
+              end[2] + UTIL.rng(0.5, 1.3) * (UTIL.rand() < 0.5 ? -1 : 1), w * 0.7);
+          }
+          if (UTIL.rand() < 0.35) splinter(x + UTIL.rng(-1, 1), z + UTIL.rng(-1, 1));
+        }
+      }
+    });
+    // Then the open acres, thinner, so the dirt between routes crazes too.
+    for (let i = 0; i < 200; i++) {
+      const x = UTIL.rng(M.west + 3, M.east - 3), z = UTIL.rng(M.north + 3, M.south - 2);
+      if (underRoof(x, z) || !clear(x, z, 0.5)) continue;
+      const L = UTIL.rng(0.9, 3.2);
+      const end = crack(x, z, L, UTIL.rand() * 6.28, UTIL.rng(0.06, 0.13));
+      if (UTIL.rand() < 0.4) {
+        crack(end[0], end[1], L * UTIL.rng(0.3, 0.6),
+          end[2] + UTIL.rng(0.5, 1.3) * (UTIL.rand() < 0.5 ? -1 : 1), 0.07);
+      }
+      if (UTIL.rand() < 0.5) pebble(x + UTIL.rng(-1.2, 1.2), z + UTIL.rng(-1.2, 1.2), UTIL.rng(0.1, 0.26));
+    }
+
     // ---- 5. edge: a weed line and a scatter of stones just inside the
     // perimeter fence, so the map ends in overgrowth instead of stopping
     // dead at a line of posts on blank paper.
