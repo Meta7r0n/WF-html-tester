@@ -596,9 +596,14 @@
   /* Registering the two ring values as real numbers is what lets them be
      transitioned at all -- an unregistered custom property is a token, so the
      conic stop would jump. Where @property is unsupported the declarations on
-     #pepDial still apply and the dial simply snaps. */
-  @property --pep{syntax:"<number>";inherits:false;initial-value:1;}
-  @property --guard{syntax:"<number>";inherits:false;initial-value:0;}
+     #pepDial still apply and the dial simply snaps.
+
+     `inherits:true` is load-bearing, not boilerplate: the value is set on the
+     dial and read by its two children, so a non-inheriting registration hands
+     the children the initial-value instead -- a dial that silently reports
+     full pep and no guard no matter what the player's actually at. */
+  @property --pep{syntax:"<number>";inherits:true;initial-value:1;}
+  @property --guard{syntax:"<number>";inherits:true;initial-value:0;}
   #pepDial{
     position:relative;flex:0 0 auto;width:64px;height:64px;border-radius:50%;
     background:var(--hud-card);
