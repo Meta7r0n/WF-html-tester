@@ -20829,9 +20829,20 @@ const CAST = (() => {
 
   function shoe(parent, mirror, skin) {
     const g = new THREE.Group();
+    /* [RUBBERHOSE] Turned OUT, and flat. The reference draws a shoe as a
+       long low oval seen broadside, splayed away from the body — two of
+       them give the figure a wide base and a clear negative triangle
+       between the legs at any size. Ours pointed straight down the barrel,
+       so at gameplay distance the pair collapsed into one blob under the
+       hips and contributed nothing to the outline. */
+    g.rotation.y = -mirror * 0.32;
     const b = new PRIM.Batch(MAT.toon(skin.shoe), 0.02);
     b.box(0.165, 0.115, 0.31, 0, 0.075, -0.05, 0, 0, 0, 0.012);
-    b.box(0.15, 0.14, 0.13, 0, 0.145, 0.055, 0.16, 0, 0, 0.012);
+    /* The ankle counter used to top out at 0.215 — which made this a boot,
+       and a boot that swallowed the bottom third of the leg hose. Halved
+       and dropped: the leg above it is worth more to the silhouette than
+       the collar is. */
+    b.box(0.15, 0.10, 0.13, 0, 0.10, 0.055, 0.16, 0, 0, 0.012);
     b.build(g, { ray: false });
     const s = new PRIM.Batch(MAT.toon(skin.sole), 0.02);
     s.box(0.175, 0.055, 0.325, 0, 0.028, -0.05, 0, 0, 0, 0.01);
@@ -20850,13 +20861,21 @@ const CAST = (() => {
     const bob = new THREE.Group();          // vertical bounce + squash/stretch
     root.add(bob);
 
-    // hips / shorts
+    /* hips / shorts
+       [RUBBERHOSE] The hem used to hang to 0.46, and the boot reached up to
+       0.285, which left 0.175 of leg visible out of a 1.45m figure — 12%.
+       At the size the reference draws a character that is not a leg, it is
+       a seam, and it is why our walk read as a rectangle vibrating on two
+       shoes. Reference proportions are shorts high on the hip and a long
+       thin leg below them; raising the hem to 0.54 (top unchanged, so the
+       torso overlap and every jacket/back prop is where it was) more than
+       doubles the visible hose. */
     const hips = new PRIM.Batch(MAT.toon(skin.shorts), 0.026);
-    hips.box(0.40, 0.34, 0.32, 0, 0.63, 0, 0, 0, 0, 0.018);
+    hips.box(0.40, 0.26, 0.32, 0, 0.67, 0, 0, 0, 0, 0.018);
     hips.build(bob, { ray: false });
     const btn = new PRIM.Batch(MAT.toon(skin.sole), 0.012);
-    btn.sphere(0.028, 0.11, 0.60, -0.165, 1, 1, 0.6);
-    btn.sphere(0.028, -0.11, 0.60, -0.165, 1, 1, 0.6);
+    btn.sphere(0.028, 0.11, 0.64, -0.165, 1, 1, 0.6);
+    btn.sphere(0.028, -0.11, 0.64, -0.165, 1, 1, 0.6);
     btn.build(bob, { ray: false });
 
     // torso
@@ -20957,9 +20976,15 @@ const CAST = (() => {
     const legs = [];
     [-1, 1].forEach(s => {
       const j = new THREE.Group();
-      j.position.set(s * 0.115, 0.55, 0);
+      /* [RUBBERHOSE] Hip sockets moved out to the corners of the shorts and
+         up inside them, and the hose lengthened to match so the shoe stays
+         exactly where it was. Two things come out of that: the thigh leaves
+         the shorts block at its widest point instead of from under the
+         middle of it, and the leg is longer at the same radius — which is
+         the reference's spindly-leg-big-shoe read rather than a stump. */
+      j.position.set(s * 0.135, 0.60, 0);
       bob.add(j);
-      const knee = new V(s * 0.012, -0.245, 0.008);
+      const knee = new V(s * 0.012, -0.27, 0.008);
       PRIM.hose(new V(0, 0, 0), knee, 0.028, 0.064, limbMat, {
         parent: j, outline: 0.021, ray: false, taper: 0.88, bulge: 1.05,
         side: [s * 0.016, 0], seg: 9, radial: 7
@@ -20967,12 +20992,13 @@ const CAST = (() => {
       const mid = new THREE.Group();
       mid.position.copy(knee);
       j.add(mid);
-      const ankle = new V(s * 0.008, -0.235, -0.008);
+      const ankle = new V(s * 0.008, -0.26, -0.008);
       PRIM.hose(new V(0, 0, 0), ankle, 0.024, 0.056, limbMat, {
         parent: mid, outline: 0.021, ray: false, taper: 0.82, bulge: 1.04,
         side: [s * 0.01, 0], seg: 9, radial: 7
       });
-      // knee + ankle sum back to the old foot offset of (s*0.02, -0.48, 0)
+      // knee + ankle still sum to the old foot offset of (s*0.02, -0.53, 0)
+      // measured from the new socket, so the shoe lands where it always did
       const foot = new THREE.Group();
       foot.position.copy(ankle);
       mid.add(foot);
