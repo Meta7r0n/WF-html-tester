@@ -2463,12 +2463,20 @@ const CONFIG = {
     tiers: {
       high: {
         post: true, samples: 4,
-        shadows: true, shadowMapSize: 2048, shadowRadius: 44, shadowBlur: 3.4,
+        /* shadowBlur was 3.4 and shadowRadius 44. Rendering the frame twice --
+           once with key.castShadow on, once off -- and diffing showed the
+           shadow contribution was almost entirely a thin rim tracing every
+           silhouette, not solid shadow shapes: soft enough, and spread thin
+           enough over an 88-unit box, that it read as edge noise. A cartoon
+           shadow is a shape you could cut out with scissors, so the penumbra
+           comes down hard and the box tightens around the player, which also
+           roughly doubles the texel density on what is actually on screen. */
+        shadows: true, shadowMapSize: 2048, shadowRadius: 26, shadowBlur: 1.1,
         viewShadows: true, chroma: true, softEdge: true, surfaceHatch: 1.0
       },
       medium: {
         post: true, samples: 0,
-        shadows: true, shadowMapSize: 1024, shadowRadius: 36, shadowBlur: 2.2,
+        shadows: true, shadowMapSize: 1024, shadowRadius: 24, shadowBlur: 0.9,
         viewShadows: false, chroma: true, softEdge: false, surfaceHatch: 1.0
       },
       low: {
@@ -4242,13 +4250,25 @@ const TEX = (() => {
        interiors, which would be copying the value structure of a different
        scene rather than the craft -- but nothing in it reaches white any more,
        so the rest of the grade can actually do its job. */
+    /* Second pass, this time against a measurement. A critic comparing our
+       frames to the reference found the single most consistent difference is
+       WHERE the brightest value sits: the reference puts it at frame centre in
+       five frames out of five (centre-to-top-edge ratios of 1.5x to 5.2x),
+       while ours inverted it -- yard sky 214 against a centre of 137, maze 208
+       against 111. The brightest thing in half our frames was empty sky.
+
+       So the gradient comes down again and, more importantly, gets darker
+       toward the TOP rather than running flat: the zenith is now the darkest
+       part of the sky, which is both what the reference does and what a real
+       sky does. The horizon stays lightest so the treeline still reads against
+       it. */
     const g = x.createLinearGradient(0, 0, 0, h);
-    g.addColorStop(0.00, '#5C7E99');        // zenith: real depth at the top
-    g.addColorStop(0.30, '#8AAEC8');
-    g.addColorStop(0.55, '#B9CBD8');
-    g.addColorStop(0.72, '#D6D2C4');        // horizon: warm light grey, not paper
-    g.addColorStop(0.88, '#C8BCA8');
-    g.addColorStop(1.00, '#B09A88');        // below the horizon line
+    g.addColorStop(0.00, '#3E5670');        // zenith: the darkest part of the sky
+    g.addColorStop(0.30, '#5C7E99');
+    g.addColorStop(0.55, '#8699A8');
+    g.addColorStop(0.72, '#A8A79C');        // horizon: mid grey, still readable
+    g.addColorStop(0.88, '#97907F');
+    g.addColorStop(1.00, '#7E7263');        // below the horizon line
     x.fillStyle = g; x.fillRect(0, 0, w, h);
     const t = new THREE.CanvasTexture(c);
     t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
