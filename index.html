@@ -14222,7 +14222,18 @@ const WEAPON = (() => {
      the scale INK.add gave it and its own bounding box, so this stays a
      multiplier on whatever each part was authored with instead of
      flattening them all to one number. Hands and boots are left alone:
-     they are already drawn to that weight by hand. */
+     they are already drawn to that weight by hand.
+
+     The cap is the whole difference between this reading as a heavier ink
+     and reading as damage. A shell grows by a fixed WORLD thickness, so on
+     a part that is already thinner than the line it is being given -- the
+     forend's 15mm grip ribs, a sight blade -- a bare multiplier does not
+     draw a heavier edge, it swallows the part in a black bar several times
+     its own height and welds the row of them into one stepped band along
+     the top of the gun. Clamping the boost to a fraction of the host's
+     SMALLEST dimension keeps the increase where it buys silhouette (the
+     receiver, the barrel, the stock) and leaves the small interior detail
+     at its authored weight, which is what keeps that detail legible. */
   function inkUpViewmodel(mult) {
     Object.keys(models).forEach(id => {
       const root = models[id] && models[id].root;
@@ -14235,7 +14246,12 @@ const WEAPON = (() => {
         const sx = Math.max(b.max.x - b.min.x, 0.001);
         const sy = Math.max(b.max.y - b.min.y, 0.001);
         const sz = Math.max(b.max.z - b.min.z, 0.001);
-        const t = sx * (o.scale.x - 1) * 0.5 * mult;
+        const t0 = sx * (o.scale.x - 1) * 0.5;
+        // Never let the line grow past a third of the thinnest axis of the
+        // thing it is drawing, and never end up below what the part asked
+        // for -- a clamp that thinned an already-thin part would cost the
+        // silhouette the boost is here to buy.
+        const t = Math.max(t0, Math.min(t0 * mult, Math.min(sx, sy, sz) * 0.34));
         o.scale.set((sx + t * 2) / sx, (sy + t * 2) / sy, (sz + t * 2) / sz);
         o.updateMatrix();
       });
@@ -14264,10 +14280,16 @@ const WEAPON = (() => {
        4cm of every other's, so one pair serves them all.
        Both are turned to put the knuckles toward the camera -- seen along
        the fingers a glove is a sock, and the scalloped edge the knuckles
-       cut is most of what says "hand". */
-    const gripHand = glove(armedHands, 0.268, -0.392, -0.435, -0.30, 1.35);
+       cut is most of what says "hand".
+       The support hand sits a little BELOW the forend's axis rather than on
+       it, because glove() builds its knuckles above the palm: centred on
+       the axis the palm rode on top of the pump and the knuckles cleared it
+       entirely, which is what read as a ball resting on a plank. Dropped by
+       the knuckle offset, the palm goes behind the pump and the knuckles
+       arc over it, so the wood passes through the hand and the grip reads. */
+    const gripHand = glove(armedHands, 0.268, -0.392, -0.435, -0.30, 1.38);
     gripHand.rotation.x = 0.30;
-    const pumpHand = glove(armedHands, 0.305, -0.258, -0.945, 0.44, 1.35);
+    const pumpHand = glove(armedHands, 0.310, -0.302, -0.955, 0.44, 1.45);
     pumpHand.rotation.x = -0.26;
     pumpHand.rotation.z = 0.18;
 
