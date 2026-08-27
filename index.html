@@ -2416,6 +2416,17 @@ const CONFIG = {
     // contact edges stay heavier than distant detail -- but nothing ever
     // falls below a legible line. See MAT.ink().
     inkPixels: 2.0,
+    /* The viewmodel's line, which is a separate problem from the world's --
+       see MAT.inkView(). Held geometry used to buy its weight from baked
+       world-space inflation, which is why it blobbed: a fixed world offset on
+       an object 40cm from the lens is enormous in pixels, and wherever two
+       parts sat within twice that of each other their two hulls merged and
+       filled the gap between them. The arm crossing the barrel went solid.
+       All of the weight now comes from the screen-space term, so the line is
+       the same 3.4px everywhere and dense geometry no longer fills in.
+       inkViewColor is that line's value: distinctly the darkest thing on the
+       gun, not the darkest thing in the frame. */
+    inkPixelsView: 3.4, inkViewColor: 0x1C1917,
     // Aim (RMB): a modest hip-aim zoom rather than a real scope -- there's
     // no scope model, just a tighter FOV that reads as "steadying up."
     adsFov: 58, adsFovLerp: 11,
@@ -4824,14 +4835,24 @@ const MAT = (() => {
     paper: { tex: 'paper', scale: 1.10, mottle: 0.18, line: 0.24, hatch: 0.42, grime: [0.45, 0.10], lift: 0.06 },
     wood:  { tex: 'wood',  scale: 0.62, mottle: 0.26, line: 0.62, hatch: 0.60, grime: [0.75, 0.26], lift: 0.17 },
     metal: { tex: 'metal', scale: 0.72, mottle: 0.24, line: 0.50, hatch: 0.52, grime: [0.70, 0.22], lift: 0.2 },
-    /* Held objects need their own scale. A finish is sized in metres, which is
-       the whole point of it -- but 8cm corrugation is right on a silo and
-       absurd on a shotgun receiver, and at the coarse scale a 30cm gun part
-       sees a fifth of one tile and comes out as flat grey. `tool` and `stock`
-       are the same two tiles run four times finer, where the corrugation
-       reads as machined seams and the boarding as grain. */
-    tool:  { tex: 'metal', scale: 3.10, mottle: 0.26, line: 0.44, hatch: 0.56, grime: [0, 0], lift: 0.14 },
-    stock: { tex: 'wood',  scale: 2.30, mottle: 0.28, line: 0.36, hatch: 0.58, grime: [0, 0], lift: 0.12 },
+    /* Held objects need their own scale -- and, it turns out, their own
+       strengths. A finish is sized in metres, which is the whole point of it,
+       but 8cm corrugation is absurd on a shotgun receiver, so these two are
+       the metal and wood tiles run finer.
+
+       The strengths are then cut to a fraction of what a wall gets, because
+       the viewmodel is the one surface the texture is REALLY resolved on: a
+       gun part fills a couple of hundred pixels, so the same tile that reads
+       as tooth on a barn twenty metres away reads as a woven checkerboard
+       here. Thresholding the frame to black showed the receiver dissolving
+       into dither -- the shape was gone. The reference draws a held weapon as
+       flat interior values with a small number of DRAWN contour lines on top,
+       and it can only do that if the fill underneath is quiet. So: enough
+       mottle to keep the fill from being vector-flat, structural line and
+       hatch pulled right back, and the interior lines that matter added as
+       real geometry instead (see creaseRing/creaseLine). */
+    tool:  { tex: 'metal', scale: 1.55, mottle: 0.15, line: 0.15, hatch: 0.20, grime: [0, 0], lift: 0.06 },
+    stock: { tex: 'wood',  scale: 1.30, mottle: 0.17, line: 0.16, hatch: 0.22, grime: [0, 0], lift: 0.06 },
     stone: { tex: 'stone', scale: 0.58, mottle: 0.30, line: 0.58, hatch: 0.46, grime: [0.95, 0.30], lift: 0.19 },
     /* The ground's colour MAP already carries the 15-metre patchwork; the
        finish is here for the 3.5-metre detail underfoot -- gravel, ruts and
@@ -5094,30 +5115,54 @@ const MAT = (() => {
     '}'
   ].join('\n');
 
+  function makeInk(color) {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        uInk: { value: new THREE.Color(color) },
+        // Overwritten every frame by RENDERCORE from the live FOV and
+        // viewport height, so the line holds its pixel weight through ADS
+        // zoom and window resizes alike.
+        uWidth: { value: 0.0038 },
+        uFogColor: { value: new THREE.Color(CONFIG.render.fogColor) },
+        uFogNear: { value: CONFIG.render.fogNear },
+        uFogFar: { value: CONFIG.render.fogFar },
+        uFogHold: { value: 0.42 }
+      },
+      vertexShader: INK_VERT,
+      fragmentShader: INK_FRAG,
+      side: THREE.BackSide,
+      fog: false
+    });
+  }
+
   function ink() {
-    if (!inkMat) {
-      inkMat = new THREE.ShaderMaterial({
-        uniforms: {
-          uInk: { value: new THREE.Color(PAL.ink) },
-          // Overwritten every frame by RENDERCORE from the live FOV and
-          // viewport height, so the line holds its pixel weight through ADS
-          // zoom and window resizes alike.
-          uWidth: { value: 0.0038 },
-          uFogColor: { value: new THREE.Color(CONFIG.render.fogColor) },
-          uFogNear: { value: CONFIG.render.fogNear },
-          uFogFar: { value: CONFIG.render.fogFar },
-          uFogHold: { value: 0.42 }
-        },
-        vertexShader: INK_VERT,
-        fragmentShader: INK_FRAG,
-        side: THREE.BackSide,
-        fog: false
-      });
-    }
+    if (!inkMat) inkMat = makeInk(PAL.ink);
     return inkMat;
   }
 
-  return { toon, flat, ink, gradientMap, syncSurface, FINISH };
+  /* [VIEWMODEL INK] The held weapon gets its own ink, for two reasons that
+     both follow from it being 40cm from the lens instead of twenty metres.
+
+     Weight. The shared line is solved for a pixel width against the WORLD
+     camera. The viewmodel is drawn by a second camera through a second FOV,
+     and it is the one object in the frame whose contour the reference draws
+     heaviest of all -- so it gets its own uWidth, solved against the view
+     camera and asked for a heavier line (CONFIG.render.inkPixelsView).
+
+     Value. PAL.ink reaches the screen at 1-3. On a fence at thirty metres
+     that is right; on the object filling the bottom third of the frame it is
+     the only true black in the picture, and that is most of why the
+     viewmodel reads as a sticker over the photograph rather than something
+     inside it. The viewmodel's ink is lifted to just above the frame's own
+     floor -- still the darkest thing on the gun by a wide margin, no longer
+     darker than anything the world is able to produce. */
+  let inkViewMat = null;
+  function inkView() {
+    if (!inkViewMat) inkViewMat = makeInk(CONFIG.render.inkViewColor);
+    return inkViewMat;
+  }
+
+  return { toon, flat, ink, inkView, gradientMap, syncSurface, FINISH };
 })();
 
 /* ================================ [INK] ============================== */
@@ -5700,6 +5745,14 @@ const RENDERCORE = (() => {
 
   function render(sceneA, camA, sceneB, camB) {
     if (!renderer) return;
+    // The viewmodel's line is solved against the view camera, which has its
+    // own FOV and its own ADS zoom -- update() only ever sees the world one.
+    const vi = MAT.inkView();
+    if (vi && vi.uniforms && camB && camB.isPerspectiveCamera) {
+      vi.uniforms.uWidth.value = CONFIG.render.inkPixelsView * 2 *
+        Math.tan(camB.fov * Math.PI / 360) / Math.max(1, height);
+      vi.uniforms.uInk.value.set(CONFIG.render.inkViewColor);
+    }
     if (!quadOk || !tier.post) {
       renderer.setRenderTarget(null);
       drawScenes(sceneA, camA, sceneB, camB);
@@ -15392,28 +15445,72 @@ const WEAPON = (() => {
        - it is big. Ours read as a doll's hand next to a real one; the
          reference gloves are enormous, and a rubberhose hand being out of
          proportion to what it is holding is the style, not an error. */
+  /* ===================== [DRAWN INTERIOR] ==========================
+     An inverted hull can only ever draw a form's OUTER contour. A knuckle
+     resting on a palm has its whole shell buried inside the palm's body, so
+     four knuckles and a thumb come out as one white disc with nothing
+     between them -- which is exactly what ours did. Every interior line in a
+     drawn glove is a place where one rounded form laps over another, and
+     none of those places can be reached by inflating hulls.
+
+     So they are drawn. A crease is a thin card of the viewmodel's own ink
+     standing in the plane where two forms meet, sunk deep enough that only
+     the sliver standing proud of both surfaces shows. Being geometry and not
+     a decal it stays correct as the hand rolls: face-on it is a line,
+     edge-on it vanishes -- which is what the valley it stands in does too.
+
+     `w` is the line's length, `d` how far it sinks into the forms either
+     side. Thickness is fixed at roughly three pixels at the viewmodel's own
+     distance, so it matches the contour line it has to sit beside. */
+  const CREASE_T = 0.0026;
+  function crease(parent, w, d, pos, rot) {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(CREASE_T, d, w),
+      MAT.flat(CONFIG.render.inkViewColor, { fog: false }));
+    m.position.set(pos[0], pos[1], pos[2]);
+    if (rot) m.rotation.set(rot[0], rot[1], rot[2]);
+    m.matrixAutoUpdate = false;
+    m.updateMatrix();
+    m.raycast = function () {};
+    parent.add(m);
+    return m;
+  }
+
   function glove(parent, x, y, z, rotY, scale) {
     const g = new THREE.Group();
     g.position.set(x, y, z);
     g.rotation.y = rotY || 0;
     g.scale.setScalar(scale || 1);
-    const white = MAT.flat(PAL.white);
+    /* MAT.toon, not MAT.flat. Unlit pure white is why the glove came out as a
+       blown-out disc: one value, no terminator, nothing to say it was round.
+       Through the toon ramp the same white lands as three flat bands --
+       highlight, body, core shadow -- which is how the reference's glove is
+       painted, and it is now the same shading vocabulary as the gun it is
+       wrapped around instead of a separate drawing pasted on top. */
+    const white = MAT.toon(PAL.white);
     PRIM.sph(0.082, white, { parent: g, scale: [1, 0.94, 1.18], outline: 0.024, ray: false });
-    /* The knuckles have to break the palm's own silhouette. At the sizes
-       these started from they sat *inside* it, which is why the glove read
-       as one white blob: every interior line in a drawn glove is a place
-       where one rounded shape overlaps another, and there were no
-       overlaps to draw. */
+    /* Four knuckles, each breaking the palm's silhouette at the top and each
+       given the line to its neighbour by hand. Slightly further apart than
+       they were so there is a real valley for the crease to stand in. */
+    const KX = [-0.048, -0.016, 0.016, 0.048];
     for (let i = 0; i < 4; i++) {
-      PRIM.sph(0.046, white, {
-        pos: [-0.045 + i * 0.030, 0.030, -0.106 - (i === 3 ? 0.014 : 0)],
+      PRIM.sph(0.044, white, {
+        pos: [KX[i], 0.030, -0.106 - (i === 3 ? 0.014 : 0)],
         parent: g, outline: 0.014, ray: false
       });
     }
+    for (let i = 0; i < 3; i++) {
+      // Along the finger, not across it: the valley between two fingers runs
+      // the way the fingers do, and it is deepest at the knuckle.
+      crease(g, 0.086, 0.052, [(KX[i] + KX[i + 1]) * 0.5, 0.030, -0.104], [0.34, 0, 0]);
+    }
+    // Thumb, and the fold where it leaves the palm.
     PRIM.sph(0.044, white, { pos: [0.090, -0.004, -0.022], parent: g, outline: 0.014, ray: false });
+    crease(g, 0.070, 0.050, [0.062, 0.004, -0.030], [0, 0.62, 0.30]);
+    // Cuff, and the band that separates it from the palm.
     PRIM.cyl(0.077, 0.066, 0.058, 10, white, {
       pos: [0, -0.026, 0.082], rot: [Math.PI / 2, 0, 0], parent: g, outline: 0.022, ray: false
     });
+    crease(g, 0.150, 0.150, [0, -0.010, 0.056], [0, Math.PI / 2, Math.PI / 2]);
     parent.add(g);
     return g;
   }
@@ -16047,49 +16144,46 @@ const WEAPON = (() => {
     };
   }
 
-  /* The weapon is the closest drawn object in the game and in the
-     reference it carries the heaviest line in the frame -- ours was inked
-     more lightly than a fence post, and once the gloves were drawn to the
-     reference's contour weight the gun beside them read as a flat grey
-     box. Rather than re-author an outline value on every primitive across
-     twelve builders, the weapon models' shells are re-inflated once, here,
-     after the rig exists. Each shell's original weight is recoverable from
-     the scale INK.add gave it and its own bounding box, so this stays a
-     multiplier on whatever each part was authored with instead of
-     flattening them all to one number. Hands and boots are left alone:
-     they are already drawn to that weight by hand.
+  /* [VIEWMODEL INK] Re-solve every outline in the rig once, after it is
+     built, and hand it MAT.inkView().
 
-     The cap is the whole difference between this reading as a heavier ink
-     and reading as damage. A shell grows by a fixed WORLD thickness, so on
-     a part that is already thinner than the line it is being given -- the
-     forend's 15mm grip ribs, a sight blade -- a bare multiplier does not
-     draw a heavier edge, it swallows the part in a black bar several times
-     its own height and welds the row of them into one stepped band along
-     the top of the gun. Clamping the boost to a fraction of the host's
-     SMALLEST dimension keeps the increase where it buys silhouette (the
-     receiver, the barrel, the stock) and leaves the small interior detail
-     at its authored weight, which is what keeps that detail legible. */
-  function inkUpViewmodel(mult) {
-    Object.keys(models).forEach(id => {
-      const root = models[id] && models[id].root;
-      if (!root) return;
-      root.traverse(o => {
-        if (!o.userData.outline) return;
-        const host = o.parent;
-        if (!host || !host.geometry || !host.geometry.boundingBox) return;
-        const b = host.geometry.boundingBox;
-        const sx = Math.max(b.max.x - b.min.x, 0.001);
-        const sy = Math.max(b.max.y - b.min.y, 0.001);
-        const sz = Math.max(b.max.z - b.min.z, 0.001);
-        const t0 = sx * (o.scale.x - 1) * 0.5;
-        // Never let the line grow past a third of the thinnest axis of the
-        // thing it is drawing, and never end up below what the part asked
-        // for -- a clamp that thinned an already-thin part would cost the
-        // silhouette the boost is here to buy.
-        const t = Math.max(t0, Math.min(t0 * mult, Math.min(sx, sy, sz) * 0.34));
-        o.scale.set((sx + t * 2) / sx, (sy + t * 2) / sy, (sz + t * 2) / sz);
-        o.updateMatrix();
-      });
+     The problem this replaces: each shell was inflated in WORLD space by
+     whatever thickness its primitive was authored with (5-24mm), and a
+     multiplier on top of that. At the viewmodel's distance one metre is
+     about 1600 device pixels, so a 20mm inflation is a THIRTY-pixel skin --
+     and wherever two parts sat within twice that of each other, their two
+     hulls met in the air between them and filled the gap solid. That is the
+     sleeve welding to the barrel, and the four knuckles of a glove fusing
+     into one white disc with a black bar across it. Nothing about it was a
+     line; it was a blob whose size tracked how dense the geometry was.
+
+     So the world inflation is cut to an epsilon and all of the weight comes
+     from MAT.inkView()'s screen-space push, which is constant in pixels by
+     construction. What is left of the world term is only there to close the
+     hull at a hard corner, where three faces of a box each push along their
+     own normal and leave a notch between them: sized against the part's own
+     smallest axis so a 15mm rib gets a proportionally small one, capped at
+     roughly a pixel so it can never re-inflate anything.
+
+     Every shell in the rig is included -- gun parts, gloves, sleeves, boots,
+     brass. A lifted ink on the gun beside a pure-black ink on the hand
+     holding it would read as two different drawings. */
+  const VIEW_INK_EPS = 0.0011;
+  function inkViewmodel(root) {
+    if (!root) return;
+    root.traverse(o => {
+      if (!o.userData.outline) return;
+      o.material = MAT.inkView();
+      const host = o.parent;
+      if (!host || !host.geometry) return;
+      if (!host.geometry.boundingBox) host.geometry.computeBoundingBox();
+      const b = host.geometry.boundingBox;
+      const sx = Math.max(b.max.x - b.min.x, 0.001);
+      const sy = Math.max(b.max.y - b.min.y, 0.001);
+      const sz = Math.max(b.max.z - b.min.z, 0.001);
+      const t = Math.min(VIEW_INK_EPS, Math.min(sx, sy, sz) * 0.09);
+      o.scale.set((sx + t * 2) / sx, (sy + t * 2) / sy, (sz + t * 2) / sz);
+      o.updateMatrix();
     });
   }
 
@@ -16208,7 +16302,7 @@ const WEAPON = (() => {
       });
     }
 
-    inkUpViewmodel(1.9);
+    inkViewmodel(rig);
     RAY_TARGETS.length = rayCount;
     initInventory();
     setCurrent('pipePopper', true, true);
