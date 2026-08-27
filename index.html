@@ -20057,29 +20057,6 @@ const PICKUP = (() => {
     };
   });
 
-  function labelSprite(text, color) {
-    const c = document.createElement('canvas');
-    c.width = 384; c.height = 96;
-    const x = c.getContext('2d');
-    x.clearRect(0, 0, c.width, c.height);
-    x.fillStyle = '#F6E9D2';
-    x.strokeStyle = '#16120F';
-    x.lineWidth = 9;
-    x.beginPath();
-    x.roundRect ? x.roundRect(8, 8, 368, 80, 18) : x.rect(8, 8, 368, 80);
-    x.fill(); x.stroke();
-    x.fillStyle = '#' + color.toString(16).padStart(6, '0');
-    x.font = '900 31px Rockwell, Georgia, serif';
-    x.textAlign = 'center'; x.textBaseline = 'middle';
-    x.fillText(text.toUpperCase(), 192, 50, 340);
-    const tex = new THREE.CanvasTexture(c);
-    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
-      map: tex, transparent: true, depthWrite: false, fog: false
-    }));
-    sprite.scale.set(2.6, 0.65, 1);
-    return sprite;
-  }
-
   function buildWeaponVisual(parent, def) {
     const metal = MAT.toon(PAL.blueGrayDk, { map: TEX.metal(), finish: 'metal' });
     const accent = MAT.toon(def.color);
@@ -20322,12 +20299,16 @@ const PICKUP = (() => {
     const ring = PRIM.torus(0.5, 0.045, MAT.toon(def.color), {
       pos: [0, 0.12, 0], rot: [Math.PI / 2, 0, 0], parent: root, outline: 0.018, ray: false
     });
-    const label = labelSprite(def.label, def.color);
-    label.position.y = 1.62;
-    root.add(label);
+    /* No floating name card. Every pickup used to carry a 2.6-unit sprite at
+       eye height with fog off, so a scattering of them across open ground put
+       a row of cream billboards between the player and everything worth
+       looking at -- and being fog-exempt, the distant ones stayed as loud as
+       the near ones. The pickup's own silhouette and its ring say "something
+       is here"; the interact hint says what it is when you are close enough to
+       take it, and the toast on collection confirms it. */
 
     const p = {
-      def: def, root: root, visual: visual, ring: ring, label: label,
+      def: def, root: root, visual: visual, ring: ring,
       active: true, timer: 0, phase: UTIL.rng(0, Math.PI * 2),
       devSpawn: !!options.devSpawn,
       // Boss-dropped quest pieces belong to one run. Without removing them,
