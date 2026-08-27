@@ -10882,6 +10882,160 @@ const LEVEL = (() => {
       if (UTIL.rand() < 0.6) tuft(scrub, x + UTIL.rng(-.7, .7), z + UTIL.rng(-.7, .7), UTIL.rng(0.8, 1.3), 3);
     }
 
+    /* ---- 7. mass. Everything above this line is ankle-to-chest, and from
+       eye level a field of ankle-height detail is still a flat field. The
+       reference gets its depth from objects that OVERLAP each other at
+       different heights -- a crate in front of a shack in front of a fir --
+       not from more things lying on the floor. It also gets shapes thrown
+       across open ground, and a shadow needs something tall enough to
+       throw one; our cast shadows currently do little but self-shadow the
+       structures they come from.
+
+       These are the only pieces in this function that take a collider,
+       because a three-metre hay rick a player walks through is worse than
+       no hay rick at all. That collider is the whole reason the placement
+       rules here are stricter than anything else in this file:
+
+         - 3.2 m clear of every ground-touching solid,
+         - 7 m off every authored desire line,
+         - 5 m off every door, gate, hatch, ladder and stair -- and that
+           test is SEPARATE on purpose. `clear()` runs against `surf`,
+           which deliberately excludes those tags so weeds can grow up to
+           a doorframe; reusing it here would have let a rick park itself
+           squarely in front of the barn door,
+         - and 11 m clear of the spawn, which has no collider to be found
+           by any of the above.
+
+       Placement is attempt-based, not count-based: a rejected spot is
+       skipped, never nudged until it fits. Nudging is how a prop ends up
+       against the one wall the rules were protecting. */
+    const OPENING = /door|gate|hatch|ladder|stair|portal/;
+    const mouths = WORLD.solids.filter(s => OPENING.test(s.tag || ''));
+    function offMouth(x, z, r) {
+      for (let i = 0; i < mouths.length; i++) {
+        const s = mouths[i];
+        if (x > s.minX - r && x < s.maxX + r && z > s.minZ - r && z < s.maxZ + r) return false;
+      }
+      return true;
+    }
+    const SP = CONFIG.player.startPos;
+
+    const rick = new PRIM.Batch(MAT.toon(PAL.mustardDk, { finish: 'earth' }), 0.05);
+    const frame = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2) }), 0.05);
+
+    /* A hay rick. Fat at the shoulder, slumped to one side and never a
+       cone: the whole point is that its outline is doing something a
+       cylinder cannot. */
+    function hayRick(x, z) {
+      const h = UTIL.rng(2.6, 3.8), r = UTIL.rng(1.3, 1.9);
+      rick.lathe(h, [[0, 0.66], [0.22, 1], [0.5, 0.94], [0.8, 0.6], [1, 0.09]]
+        .map(o => [o[0], o[1] * r]), 11, x, h / 2, z,
+        UTIL.rng(-.08, .08), UTIL.rng(0, 6.28), UTIL.rng(-.08, .08),
+        [UTIL.rng(0.1, 0.22), UTIL.rng(0.05, 0.12), UTIL.rng(0, 6.28)]);
+      // A pole through the middle, leaning. Rick + pole is the drawing.
+      const ph = h * UTIL.rng(1.1, 1.35);
+      frame.bow(ph, 0.07, 0.05, UTIL.rng(-.3, .3), UTIL.rng(-.3, .3), 4, 3, 1, x, ph / 2, z);
+      WORLD.add(x, h / 2, z, r * 1.7, h, r * 1.7, 'hay_rick');
+      return h;
+    }
+
+    /* Three poles lashed at the head, with something hung off them. Mostly
+       air, so it adds a silhouette and a cast shadow without adding a wall
+       -- and the lashing point is a hard little knot of black that reads
+       from a long way off. */
+    function tripod(x, z) {
+      const h = UTIL.rng(2.4, 3.4), sp = h * UTIL.rng(0.24, 0.34), a0 = UTIL.rng(0, 6.28);
+      for (let i = 0; i < 3; i++) {
+        const a = a0 + i * 2.094;
+        const lx = Math.cos(a) * sp, lz = Math.sin(a) * sp;
+        // Leg leans in from its foot to the head: bow carries it back to
+        // centre, so the tips converge without a joint to author.
+        frame.bow(h, 0.075, 0.05, -lx * 0.94, -lz * 0.94, 4, 3, 1,
+          x + lx, h / 2, z + lz, 0, 0, 0);
+      }
+      frame.torus(0.16, 0.045, 4, 8, 6.28, x, h * 0.94, z, UTIL.rng(-.3, .3), a0, UTIL.rng(-.3, .3));
+      // A sack or a bundle slung under the head, well above head height.
+      const sh = UTIL.rng(0.45, 0.8);
+      rick.lathe(sh, [[0, 0.2], [0.3, 0.52], [0.7, 0.46], [1, 0.12]].map(o => [o[0], o[1] * 1.5]),
+        8, x + UTIL.rng(-.15, .15), h * 0.94 - 0.42 - sh / 2, z + UTIL.rng(-.15, .15),
+        UTIL.rng(-.12, .12), UTIL.rng(0, 6.28), UTIL.rng(-.12, .12),
+        [UTIL.rng(0.1, 0.2), 0.08, UTIL.rng(0, 6.28)]);
+      WORLD.add(x, h / 2, z, sp * 1.5, h, sp * 1.5, 'drying_tripod');
+      return h;
+    }
+
+    /* A cart that lost an axle: bed tipped up on one corner, shafts in the
+       air. The one shape here with a real overhang, which is what makes it
+       the one that throws a shadow with a hole in it. */
+    function cartHulk(x, z) {
+      const a = UTIL.rng(0, 6.28), tip = UTIL.rng(0.7, 1.05);
+      const L = UTIL.rng(2.4, 3.2), W = UTIL.rng(1.1, 1.5);
+      frame.box(W, 0.22, L, x, Math.sin(tip) * L * 0.42, z, tip, a, UTIL.rng(-.08, .08), 0.09);
+      for (const sg of [-1, 1]) {
+        frame.box(0.14, 0.5, L * 0.9,
+          x + Math.cos(a) * W * 0.46 * sg, Math.sin(tip) * L * 0.42 + 0.3, z - Math.sin(a) * W * 0.46 * sg,
+          tip, a, UTIL.rng(-.08, .08), 0.06);
+      }
+      // The one wheel still on it, and the stub of the one that is not.
+      const wr = UTIL.rng(0.5, 0.72);
+      frame.torus(wr, wr * 0.13, 4, 12, 6.28,
+        x + Math.sin(a) * L * 0.22, wr * 0.9, z + Math.cos(a) * L * 0.22,
+        UTIL.rng(-.25, .25), a + 1.57, 0);
+      for (let i = 0; i < 5; i++) {
+        frame.box(wr * 1.7, 0.07, 0.07, x + Math.sin(a) * L * 0.22, wr * 0.9,
+          z + Math.cos(a) * L * 0.22, 0, a + 1.57, i / 5 * 3.14, 0.02);
+      }
+      const top = Math.sin(tip) * L * 0.85;
+      WORLD.add(x, top / 2, z, L * 0.7, top, L * 0.7, 'cart_hulk');
+      return top;
+    }
+
+    /* A trunk snapped off at three metres, with the stubs of two limbs. No
+       canopy: this is the piece that is meant to be read as a line against
+       whatever is behind it, not as a mass. */
+    function stump(x, z) {
+      const h = UTIL.rng(2.6, 4.2), lean = UTIL.rng(-0.25, 0.25);
+      frame.bow(h, UTIL.rng(0.3, 0.44), UTIL.rng(0.14, 0.22), lean * h, UTIL.rng(-.3, .3),
+        6, 4, 1, x, h / 2, z);
+      for (let i = 0, n = 1 + Math.floor(UTIL.rand() * 3); i < n; i++) {
+        const t = UTIL.rng(0.5, 0.92), y = h * t, ang = UTIL.rand() * 6.28;
+        const tilt = UTIL.rng(0.6, 1.2), L = UTIL.rng(0.6, 1.4);
+        const d = [Math.sin(tilt) * Math.cos(ang), Math.cos(tilt), -Math.sin(tilt) * Math.sin(ang)];
+        frame.bow(L, 0.13, 0.05, UTIL.rng(-.3, .3) * L, 0, 4, 3, 0,
+          x + lean * h * t + d[0] * L / 2, y + d[1] * L / 2, z + d[2] * L / 2, 0, ang, -tilt);
+      }
+      WORLD.add(x, h / 2, z, 0.9, h, 0.9, 'dead_stump');
+      return h;
+    }
+
+    const MASS = [hayRick, tripod, cartHulk, stump, hayRick, stump];
+    // `surf` is a snapshot taken at the top of this function, so it cannot
+    // see the colliders this loop is adding -- two ricks would happily
+    // occupy the same three metres. Kept separately rather than by
+    // re-filtering WORLD.solids each pass, which is 1300 boxes a throw.
+    const placed = [];
+    let massed = 0;
+    for (let i = 0; i < 420 && massed < 34; i++) {
+      const x = UTIL.rng(M.west + 6, M.east - 6), z = UTIL.rng(M.north + 6, M.south - 5);
+      if (underRoof(x, z) || !clear(x, z, 3.2) || !offPath(x, z, 7)) continue;
+      if (!offMouth(x, z, 5)) continue;
+      if (Math.hypot(x - SP.x, z - SP.z) < 11) continue;
+      if (placed.some(p => Math.hypot(x - p[0], z - p[1]) < 7)) continue;
+      placed.push([x, z]);
+      const h = MASS[Math.floor(UTIL.rand() * MASS.length)](x, z);
+      massed++;
+      // Whatever it is, it has been standing there: the ground under it is
+      // trodden, the weeds have come up round its foot, and the shadow it
+      // drops is helped along by a painted pool at its base for the hours
+      // the sun cannot reach it.
+      pool.plane(h * 1.5, h * 1.5, x, 0.02, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      for (let k = 0, n = 2 + Math.floor(UTIL.rand() * 4); k < n; k++) {
+        const a = UTIL.rand() * 6.28, rr = UTIL.rng(1.1, 2.2);
+        tuft(UTIL.rand() < 0.5 ? scrub : dry, x + Math.cos(a) * rr, z + Math.sin(a) * rr,
+          UTIL.rng(0.9, 1.5), 4);
+      }
+    }
+
     // Beds go down first so the paths, ruts and stains all read as marks
     // made ON the ground rather than as more of the same soup.
     BEDS.forEach(t => t.build(parent, { ray: false }));
@@ -10893,6 +11047,11 @@ const LEVEL = (() => {
     swell.build(parent, { ray: false });
     track.build(parent, { ray: false });
     stain.build(parent, { ray: false });
+    // The mass props are the only things in here a bullet should stop on,
+    // so unlike everything above they stay ray targets and keep their
+    // shadow casting.
+    rick.build(parent);
+    frame.build(parent);
   }
 
   function build(scene) {
