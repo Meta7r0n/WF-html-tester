@@ -6514,7 +6514,14 @@ const PROPS = (() => {
       MAT.flat(0xffffff, { map: TEX.shadow(), transparent: true, depthWrite: false, opacity: 0.75 })
     );
     m.rotation.x = -Math.PI / 2;
-    m.position.set(x, 0.02, z);
+    /* Was 0.02, which is UNDER the ground detail pass's tonal beds and its
+       contact shade. A blob is translucent and does not write depth, so it
+       was not blending with those -- it was being depth-rejected by them
+       and vanishing entirely wherever the ground had any mark on it, which
+       is most of the farm. 6 cm clears the tallest of them. The blob is
+       the soft outer falloff now; the opaque contact shade under a prop is
+       what actually does the grounding. */
+    m.position.set(x, 0.06, z);
     m.renderOrder = -1;
     m.raycast = function () {};
     parent.add(m);
@@ -11078,7 +11085,34 @@ const LEVEL = (() => {
        always cored inside a rust bed, so it reads as a fire pit rather than
        as a hole in the world. */
     const char = bedSheet(PAL.charcoal);
-    const BEDS = [soil, sward, scorch, bleach, char];
+    /* Contact shade. Not a palette entry, and deliberately not one of the
+       four beds above: the palette's darkest earth (dirtDeep) is a midtone
+       and reads as one more patch of ground rather than as shade, while
+       charcoal on its own at this size reads as a hole cut in the floor.
+       This is charcoal warmed a third of the way back toward the dirt it
+       lies on, which is what shade on warm ground actually is. */
+    const shade = bedSheet(0x4A3A30);
+    const BEDS = [soil, sward, scorch, bleach, char, shade];
+
+    /* Ground marks stack, and until this pass they stacked in the wrong
+       order. A bed is OPAQUE geometry crowning at 6 cm; a contact pool is a
+       decal painted at 1.4 cm. Depth does not care which was authored
+       first -- the bed simply occludes the pool -- so every painted shadow
+       that happened to land on a patch of different earth was being erased
+       by it, and beds cover most of the farm. That is half of why nothing
+       on this map appeared to throw anything.
+
+       The other half is recorded above the beds: a translucent dark over
+       ground this bright survives the print gamma as about ten levels out
+       of 255. So the marks that MUST read -- contact shade -- are opaque
+       geometry like the beds, and only the soft long shadows stay painted.
+
+       Crowns, declared together so the order is something you can read
+       rather than something you reconstruct from six call sites. A lathe
+       bed sits at y = h*0.18 and crowns at h*0.68, so these are crowns and
+       the heights are derived from them. */
+    const LY = { bed: 0.038, pool: 0.044, shade: 0.050, core: 0.053 };
+    const bedH = c => c / 0.68;
     // Contact pools stay painted: a shadow is the one ground mark that
     // should have no edge of its own and no light of its own.
     const pool = new PRIM.Batch(MAT.flat(PAL.charcoal, {
@@ -11141,14 +11175,21 @@ const LEVEL = (() => {
           UTIL.rng(1.0, 1.45), UTIL.rng(-0.06, 0.06) * s, UTIL.rng(-0.06, 0.06) * s]);
       }
       bat.tuft(specs, x, y === undefined ? 0.012 : y, z);
+      // A clump growing out of a shadow of its own is the difference
+      // between grass and a pin stuck in a cushion. Skipped for the clumps
+      // planted up a swell's flank, where the ground is not at y=0 and a
+      // flat disc would bury itself.
+      if (y === undefined || y < 0.06) foot(x, z, UTIL.rng(0.2, 0.3) * s, UTIL.rand() < 0.3);
     }
     function pebble(x, z, s) {
       chaff.box(s, s * UTIL.rng(0.5, 0.85), s * UTIL.rng(0.7, 1.3), x, s * 0.3, z,
         UTIL.rng(-.3, .3), UTIL.rng(0, 3.14), UTIL.rng(-.3, .3), s * 0.28);
+      foot(x, z, s * UTIL.rng(0.7, 1.0), true);
     }
     function splinter(x, z) {
       chips.box(UTIL.rng(0.3, 0.8), 0.045, UTIL.rng(0.07, 0.16), x, 0.03, z,
         0, UTIL.rng(0, 3.14), UTIL.rng(-.06, .06), 0.012);
+      foot(x, z, UTIL.rng(0.16, 0.28), false);
     }
     /* Straw lying flat -- the same blade the tufts are built from, pitched
        almost horizontal so it reads as dropped rather than growing. A tuft
@@ -11215,7 +11256,7 @@ const LEVEL = (() => {
       const x = UTIL.rng(M.west - 6, M.east + 4), z = UTIL.rng(M.north - 6, M.south + 6);
       if (underRoof(x, z) || !offPath(x, z, OFF_ROAD)) continue;
       const r = UTIL.rand();
-      bed(r < 0.44 ? soil : r < 0.78 ? sward : scorch, x, z, UTIL.rng(3.5, 9.5), UTIL.rng(0.05, 0.09));
+      bed(r < 0.44 ? soil : r < 0.78 ? sward : scorch, x, z, UTIL.rng(3.5, 9.5), bedH(UTIL.rng(0.026, LY.bed)));
     }
     // Then smaller blooms, so the ground still has something to say underfoot.
     for (let i = 0; i < 210; i++) {
@@ -11223,15 +11264,15 @@ const LEVEL = (() => {
       if (underRoof(x, z) || !offPath(x, z, OFF_ROAD)) continue;
       const r = UTIL.rand();
       bed(r < 0.34 ? soil : r < 0.58 ? sward : r < 0.8 ? scorch : bleach,
-        x, z, UTIL.rng(1.1, 3.2), UTIL.rng(0.04, 0.07));
+        x, z, UTIL.rng(1.1, 3.2), bedH(UTIL.rng(0.02, 0.032)));
     }
     // Burn scars: a rust bed with a black core and a ring of ash-white rim.
     for (let i = 0; i < 34; i++) {
       const x = UTIL.rng(M.west - 2, M.east), z = UTIL.rng(M.north - 2, M.south + 2);
       if (underRoof(x, z) || !offPath(x, z, 4.5) || !clear(x, z, 2.2)) continue;
       const r = UTIL.rng(1.3, 2.6);
-      bed(scorch, x, z, r, 0.055);
-      bed(char, x + UTIL.rng(-.3, .3), z + UTIL.rng(-.3, .3), r * UTIL.rng(0.45, 0.66), 0.075);
+      bed(scorch, x, z, r, bedH(0.028));
+      bed(char, x + UTIL.rng(-.3, .3), z + UTIL.rng(-.3, .3), r * UTIL.rng(0.45, 0.66), bedH(LY.bed));
     }
     /* Contact pools. The key sits at CONFIG.render.lights.keyDir, so a shadow
        leans along +x/-z; a pool nudged that way and scaled by the object's
@@ -11250,7 +11291,7 @@ const LEVEL = (() => {
       if (big < 0.8 || SKIP.test(s.tag) || NOPOOL.test(s.tag)) return;
       const drop = Math.min(4.5, (s.maxY - Math.max(0, s.minY)) * 0.34);
       pool.plane((w + drop) * 1.25, (d + drop) * 1.25,
-        (s.minX + s.maxX) / 2 + SHX * drop, 0.014, (s.minZ + s.maxZ) / 2 + SHZ * drop,
+        (s.minX + s.maxX) / 2 + SHX * drop, LY.pool, (s.minZ + s.maxZ) / 2 + SHZ * drop,
         -Math.PI / 2, 0, UTIL.rng(0, 6.28));
     });
 
@@ -11279,7 +11320,7 @@ const LEVEL = (() => {
     const SHANG = Math.atan2(-SHX, -SHZ);
     const PX = Math.cos(SHANG), PZ = -Math.sin(SHANG);
     function band(x, z, w, len, jit) {
-      pool.plane(w, len, x + UTIL.rng(-jit, jit), 0.0145, z + UTIL.rng(-jit, jit),
+      pool.plane(w, len, x + UTIL.rng(-jit, jit), LY.pool, z + UTIL.rng(-jit, jit),
         -Math.PI / 2, 0, SHANG + UTIL.rng(-.05, .05));
     }
     // A picket run: the long shadow of a fence standing off past the edge of
@@ -11312,7 +11353,7 @@ const LEVEL = (() => {
       let ox = 0, oz = 0;
       for (let i = 0; i < n; i++) {
         const len = UTIL.rng(2.5, 6.5), skew = UTIL.rng(-.5, .5);
-        pool.plane(UTIL.rng(0.16, 0.4), len, x + ox, 0.0145, z + oz,
+        pool.plane(UTIL.rng(0.16, 0.4), len, x + ox, LY.pool, z + oz,
           -Math.PI / 2, 0, SHANG + skew);
         ox += PX * UTIL.rng(-1.6, 1.6) + SHX * len * 0.3;
         oz += PZ * UTIL.rng(-1.6, 1.6) + SHZ * len * 0.3;
@@ -11326,6 +11367,95 @@ const LEVEL = (() => {
       if (underRoof(x, z)) continue;
       CASTERS[Math.floor(UTIL.rand() * CASTERS.length)](x, z);
     }
+
+    /* ---- 0c. contact. The loudest "this is a 3D scene" tell we had left.
+       A rock carries a fat black outline and throws nothing. Grass stands
+       in the sand like pins in a cushion. A three-storey barn meets grass
+       running at full brightness right up to its wall. In every case the
+       object is a solid pushed through a plane.
+
+       Neither of the two shadow systems already here fixes it. The real
+       cast shadow is at its THINNEST at the point of contact -- that is
+       the geometry of a shadow, not a bug -- and it stops entirely at the
+       edge of the shadow camera's box. The painted pools cannot fix it for
+       the reason recorded above the beds: a translucent dark over ground
+       this bright survives the print gamma as about ten levels out of 255.
+
+       So contact is opaque geometry, like the beds, and it crowns higher
+       than anything else on the ground (LY above) so nothing can erase it.
+       Build order is no protection here -- these are all opaque and depth
+       decides, which is exactly how the painted pools got lost.
+
+       Two tones, because one does not work. The warm shade on its own
+       reads as one more patch of earth; the charcoal on its own reads as a
+       hole cut in the floor. A black core inside a warm spread reads as
+       shade, which is how it is drawn in the reference. */
+    /* Small ones get one band and five sides -- 20 triangles. That matters:
+       there are thousands of these and they all live in one merged mesh, so
+       the budget is decided here and nowhere else. */
+    function foot(x, z, r, deep) {
+      // Drawn out along the key so it hands off to the real cast shadow
+      // rather than sitting across it.
+      const e = r * UTIL.rng(1.15, 1.55), sh = bedH(LY.shade), sm = r < 0.5;
+      shade.lathe(sh, sm ? [[0.3, e], [1, e * 0.8]] : [[0, e * 0.62], [0.55, e], [1, e * 0.84]],
+        sm ? 5 : 8, x + SHX * r * 0.4, LY.shade - sh / 2, z + SHZ * r * 0.4,
+        0, UTIL.rng(0, 3.14), 0,
+        [UTIL.rng(0.16, 0.36), UTIL.rng(0.06, 0.2), UTIL.rng(0, 6.28)]);
+      if (!deep) return;
+      const ch = bedH(LY.core);
+      char.lathe(ch, [[0.35, r * 0.72], [1, r * 0.58]], 5,
+        x + SHX * r * 0.12, LY.core - ch / 2, z + SHZ * r * 0.12,
+        0, UTIL.rng(0, 3.14), 0,
+        [UTIL.rng(0.2, 0.44), UTIL.rng(0.1, 0.24), UTIL.rng(0, 6.28)]);
+    }
+
+    /* A footprint's worth of contact rather than a point's: walked around
+       the AABB perimeter as overlapping blobs, because one plane sized to
+       the whole box is invisible under a barn and a hard rectangle
+       everywhere else. Blob count is capped, not proportional, so the
+       perimeter fence costs the same per solid as the barn does.
+
+       Depth on the lee side is stretched by the object's height, which is
+       what turns a row of fence posts into a row of shadows leaning the
+       same way instead of a row of dots. */
+    function hug(s, scale) {
+      const w = s.maxX - s.minX, d = s.maxZ - s.minZ;
+      const per = 2 * (w + d), tall = Math.min(6, s.maxY - Math.max(0, s.minY));
+      const n = Math.max(3, Math.min(12, Math.round(per / 2.4)));
+      const step = per / n, r = Math.max(0.28, step * 0.62) * (scale || 1);
+      for (let i = 0; i < n; i++) {
+        let t = (i + UTIL.rng(0.15, 0.85)) * step, x, z, ox = 0, oz = 0;
+        if (t < w) { x = s.minX + t; z = s.minZ; oz = -1; }
+        else if ((t -= w) < d) { x = s.maxX; z = s.minZ + t; ox = 1; }
+        else if ((t -= d) < w) { x = s.maxX - t; z = s.maxZ; oz = 1; }
+        else { x = s.minX; z = s.maxZ - (t - w); ox = -1; }
+        // How far this side faces the sun decides how far its shade runs.
+        const lee = Math.max(0, ox * SHX + oz * SHZ);
+        const out = r * UTIL.rng(0.25, 0.5) + tall * lee * UTIL.rng(0.1, 0.22);
+        foot(x + ox * out, z + oz * out, r * (0.8 + lee * 0.7), UTIL.rand() < 0.45);
+      }
+    }
+
+    /* Every solid that meets the dirt, including the two the painted pools
+       skip: a tree and a rock each carry a blobShadow, and a blobShadow is
+       a translucent wash, which is exactly the thing that does not survive
+       the grade. They were the two props the critique named. */
+    for (let i = 0; i < surf.length; i++) {
+      const s = surf[i];
+      const big = Math.max(s.maxX - s.minX, s.maxZ - s.minZ);
+      if (big < 0.34 || s.maxY - Math.max(0, s.minY) < 0.35) continue;
+      hug(s, big < 1 ? 0.8 : 1);
+    }
+    // The corn is a wall of stalks with a floor of bare dirt under it and no
+    // collider per plant, so it gets its shade from the block outline it
+    // does have -- inside as well as around, or the middle of a field is
+    // lit ground under a canopy.
+    WORLD.solids.forEach(s => {
+      if (!/corn_wall/.test(s.tag || '')) return;
+      for (let k = 0; k < 3; k++) {
+        foot(UTIL.rng(s.minX, s.maxX), UTIL.rng(s.minZ, s.maxZ), UTIL.rng(0.5, 1.1), UTIL.rand() < 0.3);
+      }
+    });
 
     // ---- 1. contour: low earth swells so the ground has a horizon line
     // that isn't a ruler edge. Kept under 0.3 m and well clear of anything
@@ -11380,7 +11510,7 @@ const LEVEL = (() => {
       // A scuff of bare dirt under the bigger footprints, so a barn or a
       // silo sits in worked ground rather than on clean paper.
       if (big > 2.4 && UTIL.rand() < 0.55) {
-        stain.plane(big * 1.5, Math.max(d, 1) * 1.5 + 1, (s.minX + s.maxX) / 2, 0.019,
+        stain.plane(big * 1.5, Math.max(d, 1) * 1.5 + 1, (s.minX + s.maxX) / 2, LY.pool,
           (s.minZ + s.maxZ) / 2, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
       }
     }
@@ -11407,7 +11537,7 @@ const LEVEL = (() => {
           else if (r < 0.86) splinter(x, z);
           else straw(x, z, UTIL.rng(0.7, 1.3));
         }
-        if (UTIL.rand() < 0.4) stain.plane(spread * 2.4, spread * 2.4, cx, 0.017, cz, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+        if (UTIL.rand() < 0.4) stain.plane(spread * 2.4, spread * 2.4, cx, LY.pool, cz, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
       }
     });
 
@@ -11454,8 +11584,8 @@ const LEVEL = (() => {
           const mx = UTIL.lerp(a[0], c[0], t), mz = UTIL.lerp(a[1], c[1], t);
           const gauge = UTIL.rng(0.5, 0.62);
           [-1, 1].forEach(side => {
-            track.box(UTIL.rng(0.12, 0.2), 0.05, len / steps + 0.25,
-              mx + nx * gauge * side + UTIL.rng(-.05, .05), 0.022,
+            track.box(UTIL.rng(0.12, 0.2), 0.04, len / steps + 0.25,
+              mx + nx * gauge * side + UTIL.rng(-.05, .05), 0.016,
               mz + nz * gauge * side + UTIL.rng(-.05, .05),
               0, ang + UTIL.rng(-.05, .05), UTIL.rng(-.03, .03), 0.02);
           });
@@ -11492,8 +11622,8 @@ const LEVEL = (() => {
         const nx = px + Math.sin(a) * seg, nz = pz + Math.cos(a) * seg;
         // Tapering: a crack that keeps its width for four metres is a groove.
         const t = 1 - s / steps * UTIL.rng(0.4, 0.8);
-        track.box(w * t * UTIL.rng(0.7, 1.3), 0.04, seg * 1.25,
-          (px + nx) / 2, 0.021, (pz + nz) / 2, 0, a, UTIL.rng(-.03, .03), 0.015);
+        track.box(w * t * UTIL.rng(0.7, 1.3), 0.035, seg * 1.25,
+          (px + nx) / 2, 0.014, (pz + nz) / 2, 0, a, UTIL.rng(-.03, .03), 0.015);
         px = nx; pz = nz;
       }
       return [px, pz, a];
@@ -11675,7 +11805,7 @@ const LEVEL = (() => {
       CLUTTER[Math.floor(UTIL.rand() * CLUTTER.length)](x, z);
       // Clutter is dropped, not placed: it lands in trodden ground and it
       // collects weeds. Both marks are what stop it reading as spawned in.
-      stain.plane(UTIL.rng(1.6, 2.8), UTIL.rng(1.6, 2.8), x, 0.018, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      stain.plane(UTIL.rng(1.6, 2.8), UTIL.rng(1.6, 2.8), x, LY.pool, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
       if (UTIL.rand() < 0.6) tuft(scrub, x + UTIL.rng(-.7, .7), z + UTIL.rng(-.7, .7), UTIL.rng(0.8, 1.3), 3);
     }
 
@@ -11825,7 +11955,14 @@ const LEVEL = (() => {
       // trodden, the weeds have come up round its foot, and the shadow it
       // drops is helped along by a painted pool at its base for the hours
       // the sun cannot reach it.
-      pool.plane(h * 1.5, h * 1.5, x, 0.02, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      pool.plane(h * 1.5, h * 1.5, x, LY.pool, z, -Math.PI / 2, 0, UTIL.rng(0, 6.28));
+      // These are added after `surf` was snapshotted, so the contact pass
+      // above cannot see them; they ground themselves.
+      for (let k = 0; k < 4; k++) {
+        const a = UTIL.rand() * 6.28, rr = UTIL.rng(0, 0.8);
+        foot(x + Math.cos(a) * rr + SHX * h * 0.16, z + Math.sin(a) * rr + SHZ * h * 0.16,
+          UTIL.rng(0.7, 1.2), k < 2);
+      }
       for (let k = 0, n = 2 + Math.floor(UTIL.rand() * 4); k < n; k++) {
         const a = UTIL.rand() * 6.28, rr = UTIL.rng(1.1, 2.2);
         tuft(UTIL.rand() < 0.5 ? scrub : dry, x + Math.cos(a) * rr, z + Math.sin(a) * rr,
