@@ -91,7 +91,38 @@ Before you drop in, you can also flip the difficulty switch:
 | `Esc` | Release the mouse / pause |
 | `` ` `` (Backquote) | Open the developer console (single-player only) |
 
-Every one of these can be reassigned under **Options → Controls**.
+Every one of these can be reassigned under **Options → Keyboard & Mouse**.
+
+### Controller
+
+Plug in a gamepad and press a button — the farm picks it up on its own, and a toast confirms which pad it found. Names below follow the standard layout; on a PlayStation pad read A/B/X/Y as Cross/Circle/Square/Triangle and LB/RB/LT/RT as L1/R1/L2/R2.
+
+| Input | Action |
+| --- | --- |
+| Left Stick | Move — analog, so you can walk instead of only sprint-or-stop. Push up or down on a ladder to climb it |
+| Right Stick | Look |
+| `RT` | Fire |
+| `LT` | Aim down sights |
+| `A` | Jump |
+| `B` | Quick melee |
+| `X` | Reload |
+| `Y` | Next weapon |
+| `LB` | Throw the selected throwable |
+| `RB` | Interact |
+| `L3` (click left stick) | Sprint |
+| `R3` (click right stick) | Crouch / slide |
+| `D-Up` | Use a Jays pack |
+| `D-Down` | Toggle lantern |
+| `D-Left` | Cycle throwable type |
+| `D-Right` | Raise the Plow Shield |
+| `Back` | Hold to talk |
+| `Start` | Pause |
+
+Previous Weapon starts unbound — there are sixteen standard buttons and seventeen things worth reaching, so the least-used one waits for you to assign it rather than stealing a face button. Every button above can be reassigned under **Options → Controller**, along with look sensitivity, stick dead zone, invert-Y, and vibration.
+
+Both sticks are analog and can't be remapped: movement and look are the two things a pad must never be able to lose.
+
+> **Field note:** the browser only hands over mouse-look capture in response to a click, so starting a run and leaving a pause still want one. Everything between them plays on the pad alone.
 
 ### Touch Controls
 
@@ -401,7 +432,7 @@ Online rooms are hosted with a shareable six-character room code — host a room
 - **Main Menu** — pick single-player or online multiplayer, set difficulty, or jump to Options / the Farm Map.
 - **Online Multiplayer Lobby** — choose your hosting mode (Co-op / FFA / Team Deathmatch), your farmhand, host or join a room, and watch the live roster fill in.
 - **Character Select** (single-player) — pick one of the five classic farmhands, or launch the Hangar Pilot Builder.
-- **Options** — Sound (Master, Effects, Music, Wind sliders), Voice Chat (on/off, hold-to-talk volume), Display brightness, an auto-equip toggle for picked-up weapons, a **Spray Torch Signature** upload (drop in your own PNG or JPEG, under 512KB — it gets resized and burned into your flamethrower's spray tags so your mark is genuinely yours), and full control rebinding.
+- **Options** — Sound (Master, Effects, Music, Wind sliders), Voice Chat (on/off, hold-to-talk volume), Display brightness, an auto-equip toggle for picked-up weapons, a **Spray Torch Signature** upload (drop in your own PNG or JPEG, under 512KB — it gets resized and burned into your flamethrower's spray tags so your mark is genuinely yours), **Keyboard & Mouse** rebinding, and a **Controller** panel — connection status, look sensitivity, stick dead zone, invert-Y, vibration, and a button-by-button remap.
 - **Farm Map** — the live two-panel surface/underground view described above, with your position and any teammates' positions marked live.
 - **Pause Menu** — resume, jump to Options or the Map without losing your place, restart the run, or return to the main menu.
 

@@ -2240,9 +2240,27 @@
         <p class="opt-hint">Equip the Spray Torch and press <b>V</b> (or Melee on touch) near a wall or floor to tag it without using fuel.</p>
       </div>
       <div class="opt-section">
-        <p class="opt-heading">Controls</p>
+        <p class="opt-heading">Keyboard &amp; Mouse</p>
         <ul id="optControlsList" class="opt-controls"></ul>
-        <button class="alt" id="optResetControls">Reset controls to default</button>
+        <button class="alt" id="optResetControls">Reset keyboard to default</button>
+      </div>
+      <div class="opt-section">
+        <p class="opt-heading">Controller</p>
+        <p class="opt-hint" id="optPadStatus" aria-live="polite">No controller detected.</p>
+        <label class="opt-row"><span>Look Sensitivity</span><input type="range" id="optPadSens" min="40" max="250" step="5" /><b id="optPadSensVal"></b></label>
+        <label class="opt-row"><span>Stick Dead Zone</span><input type="range" id="optPadDead" min="4" max="40" step="1" /><b id="optPadDeadVal"></b></label>
+        <div id="padInvertToggle" role="group" aria-label="Vertical look direction">
+          <button type="button" class="mode-toggle-btn active" id="padInvertOffBtn">Normal Y</button>
+          <button type="button" class="mode-toggle-btn" id="padInvertOnBtn">Invert Y</button>
+        </div>
+        <div id="padRumbleToggle" role="group" aria-label="Controller vibration">
+          <button type="button" class="mode-toggle-btn active" id="padRumbleOnBtn">Vibration On</button>
+          <button type="button" class="mode-toggle-btn" id="padRumbleOffBtn">Vibration Off</button>
+        </div>
+        <ul id="optPadList" class="opt-controls"></ul>
+        <button class="alt" id="optResetPad">Reset controller to default</button>
+        <p class="opt-hint">Left stick walks, right stick looks — both are analog and can’t be remapped. Button names follow the standard layout; on a PlayStation pad A/B/X/Y read as Cross/Circle/Square/Triangle and LB/RB/LT/RT as L1/R1/L2/R2.</p>
+        <p class="opt-hint">The browser only grants mouse-look capture from a click, so starting a run and leaving a pause still need one — everything between them is playable on the pad alone.</p>
       </div>
       <button class="go compact" id="optionsBackBtn">Back →</button>
     </div>
@@ -3239,7 +3257,17 @@ const CONFIG = {
     pickupRateMult: 0.75, healEffectMult: 0.75
   },
   input: {
-    touchLookScale: 1.5, stickDeadZone: 0.14, stickSprint: 0.86
+    touchLookScale: 1.5, stickDeadZone: 0.14, stickSprint: 0.86,
+    /* Gamepad. padLookRate is quoted in the same units PLAYER applies to a
+       mouse delta, not in radians, so INPUT never has to reach across into
+       CONFIG.player to convert: at the default mouseSensitivity of 0.0021 a
+       fully deflected right stick turns about 3.1 rad/s, or ~180 degrees a
+       second. padLookExpo bends the stick's response so the outer half of
+       its travel does most of the turning and small corrections near centre
+       stay controllable -- a linear stick is the single biggest reason pad
+       aim feels unusable in a shooter. padTrigger is where an analog trigger
+       counts as a press. */
+    padDeadZone: 0.16, padLookRate: 1500, padLookExpo: 1.9, padTrigger: 0.35
   },
   palette: {
     peach:      0xF2CDBB,
@@ -3287,7 +3315,9 @@ const SETTINGS = (() => {
     wind: CONFIG.audio.wind, voice: CONFIG.audio.voice,
     brightness: 100, ultra: CONFIG.ultra.active,
     graphics: CONFIG.render.quality,
-    autoEquipPickups: true, sprayTagImage: null, keymap: {}
+    autoEquipPickups: true, sprayTagImage: null, keymap: {},
+    padmap: {}, padSensitivity: 1, padInvertY: false,
+    padDeadZone: CONFIG.input.padDeadZone, padRumble: true
   };
   let current = Object.assign({}, DEFAULTS);
 
@@ -3296,7 +3326,10 @@ const SETTINGS = (() => {
       const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      current = Object.assign({}, DEFAULTS, parsed, { keymap: Object.assign({}, parsed.keymap || {}) });
+      current = Object.assign({}, DEFAULTS, parsed, {
+        keymap: Object.assign({}, parsed.keymap || {}),
+        padmap: Object.assign({}, parsed.padmap || {})
+      });
     } catch (err) { /* corrupt or blocked storage — defaults are fine */ }
   }
   function save() {
@@ -3316,7 +3349,10 @@ const SETTINGS = (() => {
       AUDIO.setWindVolume(current.wind);
       AUDIO.setVoiceVolume(current.voice);
     }
-    if (typeof INPUT !== 'undefined') INPUT.applyBindings(current.keymap);
+    if (typeof INPUT !== 'undefined') {
+      INPUT.applyBindings(current.keymap);
+      INPUT.applyPadBindings(current.padmap);
+    }
     applyBrightness();
   }
 
@@ -3365,11 +3401,52 @@ const SETTINGS = (() => {
     save();
   }
 
+  /* Controller. Same shape as the keyboard pair above -- INPUT owns the live
+     map, this only mirrors it for persistence -- except the stored value is a
+     button INDEX rather than a KeyboardEvent.code, and null is meaningful
+     (the player deliberately unbound that action). */
+  function setPadBinding(action, buttonIndex) {
+    if (typeof INPUT === 'undefined') return { ok: false };
+    const result = INPUT.padRebind(action, buttonIndex);
+    if (result.ok) { current.padmap = INPUT.getPadBindings(); save(); }
+    return result;
+  }
+  function resetPadBindings() {
+    if (typeof INPUT !== 'undefined') {
+      INPUT.resetPadmap();
+      current.padmap = INPUT.getPadBindings();
+    } else {
+      current.padmap = {};
+    }
+    save();
+  }
+  function setPadSensitivity(v) {
+    const n = Number(v);
+    current.padSensitivity = Number.isFinite(n) ? Math.min(2.5, Math.max(0.4, n)) : 1;
+    save();
+  }
+  function setPadInvertY(v) { current.padInvertY = !!v; save(); }
+  function setPadDeadZone(v) {
+    const n = Number(v);
+    // Floor above zero: a stick with a worn centre reports a small idle
+    // offset forever, and a zero dead zone turns that into a camera that
+    // drifts on its own with nobody touching the pad.
+    current.padDeadZone = Number.isFinite(n) ? Math.min(0.40, Math.max(0.04, n)) : CONFIG.input.padDeadZone;
+    save();
+  }
+  function setPadRumble(v) { current.padRumble = !!v; save(); }
+
   load();
 
   return {
     applyAll, setMaster, setSfx, setMusic, setWind, setVoice, setUltra, setBrightness,
     setGraphics, setAutoEquipPickups, setSprayTagImage, setBinding, resetBindings,
+    setPadBinding, resetPadBindings, setPadSensitivity, setPadInvertY,
+    setPadDeadZone, setPadRumble,
+    get padSensitivity() { return current.padSensitivity; },
+    get padInvertY() { return !!current.padInvertY; },
+    get padDeadZone() { return current.padDeadZone; },
+    get padRumble() { return current.padRumble !== false; },
     get master() { return current.master; },
     get voice() { return current.voice; },
     get sfx() { return current.sfx; },
@@ -14231,6 +14308,62 @@ const INPUT = (() => {
     'slot1', 'slot2', 'slot3', 'slot4', 'slot5', 'slot6', 'slot7', 'slot8', 'slot9'
   ];
 
+  /* ------------------------- gamepad -------------------------
+     Buttons are addressed by index in the W3C "standard" mapping, which is
+     what every mainstream pad reports. A pad that reports a non-standard
+     mapping still works -- its indices just may not match the labels printed
+     on the hardware, which is the whole reason every one of these is
+     rebindable rather than fixed.
+
+     Movement and look are deliberately NOT in this table. Both sticks are
+     analog and feed moveAxes()/the look delta directly; only the digital
+     buttons are mappable, so there is no way for a player to rebind
+     themselves into a pad that cannot walk. */
+  const PAD_BUTTON_LABELS = [
+    'A', 'B', 'X', 'Y', 'LB', 'RB', 'LT', 'RT',
+    'Back', 'Start', 'L3', 'R3', 'D-Up', 'D-Down', 'D-Left', 'D-Right', 'Guide'
+  ];
+  const PAD_DEFAULTS = {
+    fire: 7, ads: 6, jump: 0, melee: 1, reload: 2, nextWeapon: 3,
+    throwable: 4, interact: 5, voiceTalk: 8, pause: 9, sprint: 10, crouch: 11,
+    useJays: 12, lantern: 13, switchThrowable: 14, shield: 15,
+    // Sixteen standard buttons and seventeen things worth reaching, so the
+    // least-used one starts unbound rather than stealing a face button.
+    prevWeapon: null
+  };
+  const PAD_REBINDABLE = [
+    'fire', 'ads', 'jump', 'sprint', 'crouch', 'reload', 'melee',
+    'nextWeapon', 'prevWeapon', 'throwable', 'switchThrowable', 'useJays',
+    'lantern', 'interact', 'shield', 'voiceTalk', 'pause'
+  ];
+  const padMap = Object.assign({}, PAD_DEFAULTS);
+  const padHeld = {};
+  let padIndex = -1, padName = '', padStandard = true;
+  let padMoveX = 0, padMoveY = 0;
+  let padListening = false, padCaptured = null, padListenReady = [];
+  // Two scratch vectors, not one reused twice: the move result has to survive
+  // until the look result is computed, and sharing one object made that a
+  // silent dependency on statement order.
+  const _padMoveVec = { x: 0, y: 0, mag: 0 };
+  const _padLookVec = { x: 0, y: 0, mag: 0 };
+
+  /* Which physical keys are down right now, so a release can tell whether
+     some OTHER key still wants the same action. W and ArrowUp both mean
+     forward, both Shifts mean sprint, both Ctrls mean crouch -- without this,
+     releasing one of a pair cancelled the action while the other was still
+     held. The gamepad makes that worse (a pad button releasing would cancel
+     a held key), so both sources now check each other before clearing. */
+  const downCodes = new Set();
+  const mouseHeld = {};
+  function codeStillHeld(action) {
+    let held = false;
+    downCodes.forEach(code => { if (KEYMAP[code] === action) held = true; });
+    return held;
+  }
+  function otherSourceHolds(action) {
+    return codeStillHeld(action) || !!mouseHeld[action] || !!padHeld[action];
+  }
+
   function primaryCodeFor(action) {
     for (const code in KEYMAP) {
       if (KEYMAP[code] === action && !PERMANENT_CODES.has(code)) return code;
@@ -14277,6 +14410,48 @@ const INPUT = (() => {
     REBINDABLE_ACTIONS.forEach(a => { if (map[a]) rebind(a, map[a]); });
   }
 
+  function padLabel(index) {
+    if (index === null || index === undefined) return '—';
+    return PAD_BUTTON_LABELS[index] || ('Btn ' + index);
+  }
+  /* Mirrors rebind() above, including the bumped-action report, except a pad
+     button that gets stolen leaves its old action UNBOUND rather than
+     silently swapping -- there is no equivalent of "some other key is still
+     free", so the honest result is an empty slot the player can see. */
+  function padRebind(action, index) {
+    if (PAD_REBINDABLE.indexOf(action) === -1) return { ok: false };
+    if (!Number.isFinite(index) || index < 0) return { ok: false };
+    let bumpedAction = null;
+    PAD_REBINDABLE.forEach(a => {
+      if (a !== action && padMap[a] === index) { bumpedAction = a; padMap[a] = null; }
+    });
+    padMap[action] = index;
+    return { ok: true, bumpedAction: bumpedAction };
+  }
+  function resetPadmap() {
+    PAD_REBINDABLE.forEach(a => {
+      padMap[a] = Object.prototype.hasOwnProperty.call(PAD_DEFAULTS, a) ? PAD_DEFAULTS[a] : null;
+    });
+  }
+  function getPadBindings() {
+    const out = {};
+    PAD_REBINDABLE.forEach(a => { out[a] = (padMap[a] === undefined ? null : padMap[a]); });
+    return out;
+  }
+  /* A saved null is meaningful -- it means the player deliberately cleared
+     that action -- so this checks for the key's presence rather than its
+     truthiness. An action added to PAD_REBINDABLE after a player last saved
+     is simply absent from their map and keeps its default. */
+  function applyPadBindings(map) {
+    if (!map) return;
+    PAD_REBINDABLE.forEach(a => {
+      if (Object.prototype.hasOwnProperty.call(map, a)) {
+        const v = map[a];
+        padMap[a] = Number.isFinite(v) && v >= 0 ? v : null;
+      }
+    });
+  }
+
   function on(evt, fn) { (listeners[evt] || (listeners[evt] = [])).push(fn); }
   function emit(evt, a) { (listeners[evt] || []).forEach(f => f(a)); }
   function now() { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); }
@@ -14300,6 +14475,10 @@ const INPUT = (() => {
   function clearActions() {
     Object.keys(actions).forEach(k => actions[k] = false);
     Object.keys(pressed).forEach(k => delete pressed[k]);
+    Object.keys(padHeld).forEach(k => delete padHeld[k]);
+    Object.keys(mouseHeld).forEach(k => delete mouseHeld[k]);
+    downCodes.clear();
+    padMoveX = padMoveY = 0;
     touchMoveX = touchMoveY = 0;
     touchSprint = false;
     touchResetters.forEach(reset => reset());
@@ -14398,7 +14577,10 @@ const INPUT = (() => {
     const action = KEYMAP[e.code];
     if (!action) return;
     if ((action === 'jump' || action === 'reload' || action === 'lantern' || action === 'melee' || action === 'throwable' || action === 'useJays' || action === 'interact' || action === 'shield' || action.indexOf('slot') === 0) && e.preventDefault) e.preventDefault();
-    setAction(action, down);
+    if (down) downCodes.add(e.code); else downCodes.delete(e.code);
+    // Release only really releases when nothing else is holding the same
+    // action -- the other Shift, the other arrow key, a pad button.
+    setAction(action, down || otherSourceHolds(action));
   }
 
   function safeCapture(el, pointerId) {
@@ -14572,15 +14754,17 @@ const INPUT = (() => {
     });
     document.addEventListener('mousedown', e => {
       if (!engaged || mode === 'touch') return;
-      if (e.button === 0) setAction('fire', true);
+      if (e.button === 0) { mouseHeld.fire = true; setAction('fire', true); }
       // RMB used to be a melee shortcut; it's aim (ADS) now -- melee stays
       // fully reachable on its own key (V by default), never lost.
-      if (e.button === 2) setAction('ads', true);
+      if (e.button === 2) { mouseHeld.ads = true; setAction('ads', true); }
     });
     document.addEventListener('mouseup', e => {
       if (mode === 'touch') return;
-      if (e.button === 0) setAction('fire', false);
-      if (e.button === 2) setAction('ads', false);
+      // Same rule as the keyboard: letting go of the mouse must not cancel a
+      // trigger the player is also holding on the pad.
+      if (e.button === 0) { mouseHeld.fire = false; setAction('fire', otherSourceHolds('fire')); }
+      if (e.button === 2) { mouseHeld.ads = false; setAction('ads', otherSourceHolds('ads')); }
     });
     document.addEventListener('contextmenu', e => { if (engaged && e.preventDefault) e.preventDefault(); });
     // Scroll to cycle weapons -- same nextWeapon/prevWeapon pulse the mobile
@@ -14628,6 +14812,143 @@ const INPUT = (() => {
     else setEngaged(false);
   }
 
+  /* ---------------------- gamepad polling ----------------------
+     The Gamepad API has no events for sticks or buttons -- state is only
+     readable by polling a fresh snapshot -- so GAME calls this once per
+     frame, before it reads the look delta. */
+
+  // Radial dead zone, not per-axis: a square dead zone lets a stick pushed
+  // diagonally register while the same deflection straight up does not,
+  // which reads as the pad "sticking" on the cardinals.
+  function stickVector(x, y, dead, out) {
+    const mag = Math.hypot(x, y);
+    if (!(mag > dead)) { out.x = 0; out.y = 0; out.mag = 0; return out; }
+    const scaled = Math.min(1, (mag - dead) / (1 - dead));
+    out.x = x / mag * scaled;
+    out.y = y / mag * scaled;
+    out.mag = scaled;
+    return out;
+  }
+
+  function applyPad(action, down) {
+    if (down === !!padHeld[action]) return;   // edge only
+    padHeld[action] = down;
+    // Never write `false` over an action the keyboard or mouse still holds.
+    setAction(action, down || codeStillHeld(action) || !!mouseHeld[action]);
+  }
+  function releasePadActions() {
+    Object.keys(padHeld).forEach(a => { if (padHeld[a]) applyPad(a, false); });
+  }
+
+  function padButtonDown(pad, index) {
+    if (!Number.isFinite(index) || index < 0) return false;
+    const b = pad.buttons[index];
+    if (!b) return false;
+    // Analog triggers report `pressed` only at the very end of their travel
+    // on some pads, so treat the axis value as the real signal.
+    return !!b.pressed || (typeof b.value === 'number' && b.value >= CONFIG.input.padTrigger);
+  }
+
+  function pollGamepad(dt) {
+    let pads = null;
+    try { pads = navigator.getGamepads ? navigator.getGamepads() : null; } catch (e) {}
+    if (!pads) pads = [];
+    let pad = padIndex >= 0 ? pads[padIndex] : null;
+    if (!pad || !pad.connected) {
+      pad = null;
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) { pad = pads[i]; padIndex = i; break; }
+      }
+    }
+    if (!pad) {
+      if (padIndex !== -1) { padIndex = -1; padName = ''; releasePadActions(); }
+      padMoveX = padMoveY = 0;
+      return;
+    }
+    padName = pad.id || 'Controller';
+    padStandard = pad.mapping === 'standard';
+
+    /* Rebinding claims the whole pad. Same rule the keyboard capture in GAME
+       follows: a button pressed to ASSIGN an action must never also fire
+       that button's current binding on its way through. */
+    if (padListening) {
+      releasePadActions();
+      padMoveX = padMoveY = 0;
+      for (let i = 0; i < pad.buttons.length; i++) {
+        if (!padButtonDown(pad, i)) { padListenReady[i] = true; continue; }
+        // A button already held when the row opened is ignored until it has
+        // been seen released -- otherwise a pad-driven click on the row would
+        // instantly assign the same button it was clicked with.
+        if (padListenReady[i] && padCaptured === null) padCaptured = i;
+      }
+      return;
+    }
+
+    if (!engaged) {
+      releasePadActions();
+      padMoveX = padMoveY = 0;
+      return;
+    }
+
+    const dead = (typeof SETTINGS !== 'undefined' ? SETTINGS.padDeadZone : CONFIG.input.padDeadZone);
+    const ax = i => (typeof pad.axes[i] === 'number' ? pad.axes[i] : 0);
+
+    // Left stick: movement. Fed through moveAxes() like the touch pad rather
+    // than faked as forward/back key presses, so it stays analog and never
+    // collides with a held W.
+    const move = stickVector(ax(0), ax(1), dead, _padMoveVec);
+    padMoveX = move.x;
+    padMoveY = -move.y;          // pad +Y is down; forward is +Y for moveAxes
+
+    // Right stick: look. Scaled by dt because a stick is a RATE while a mouse
+    // delta is a distance -- without it, aim speed would track frame rate.
+    const look = stickVector(ax(2), ax(3), dead, _padLookVec);
+    if (look.mag > 0) {
+      const sens = (typeof SETTINGS !== 'undefined' ? SETTINGS.padSensitivity : 1);
+      const invert = (typeof SETTINGS !== 'undefined' && SETTINGS.padInvertY) ? -1 : 1;
+      // Remap the magnitude through the expo curve while keeping direction:
+      // look.x already carries magnitude `mag`, so scale by mag^(expo-1).
+      const gain = Math.pow(look.mag, CONFIG.input.padLookExpo - 1);
+      const rate = CONFIG.input.padLookRate * sens * dt;
+      mouseDX += look.x * gain * rate;
+      mouseDY += look.y * gain * rate * invert;
+    }
+
+    for (let i = 0; i < PAD_REBINDABLE.length; i++) {
+      const action = PAD_REBINDABLE[i];
+      applyPad(action, padButtonDown(pad, padMap[action]));
+    }
+  }
+
+  function beginPadListen() { padListening = true; padCaptured = null; padListenReady = []; }
+  function endPadListen() { padListening = false; padCaptured = null; }
+  function consumePadCapture() {
+    const c = padCaptured;
+    padCaptured = null;
+    return c;
+  }
+
+  /* Fire-and-forget haptics. Every branch here is a real device: pads with
+     no actuator, Firefox's older hapticActuators array, and a playEffect
+     that rejects when the pad is busy or the page is backgrounded. */
+  function rumble(strong, weak, ms) {
+    if (typeof SETTINGS !== 'undefined' && !SETTINGS.padRumble) return;
+    if (padIndex < 0) return;
+    let pad = null;
+    try { pad = (navigator.getGamepads ? navigator.getGamepads() : [])[padIndex]; } catch (e) {}
+    const actuator = pad && (pad.vibrationActuator || (pad.hapticActuators && pad.hapticActuators[0]));
+    if (!actuator || !actuator.playEffect) return;
+    try {
+      const p = actuator.playEffect('dual-rumble', {
+        startDelay: 0,
+        duration: Math.max(20, Math.min(600, ms || 90)),
+        strongMagnitude: UTIL.clamp(strong, 0, 1),
+        weakMagnitude: UTIL.clamp(weak, 0, 1)
+      });
+      if (p && p.catch) p.catch(() => {});
+    } catch (e) {}
+  }
+
   function consumeMouse() {
     const d = { x: mouseDX, y: mouseDY };
     mouseDX = mouseDY = 0;
@@ -14635,8 +14956,8 @@ const INPUT = (() => {
   }
 
   function moveAxes() {
-    let x = (actions.right ? 1 : 0) - (actions.left ? 1 : 0) + touchMoveX;
-    let y = (actions.forward ? 1 : 0) - (actions.back ? 1 : 0) + touchMoveY;
+    let x = (actions.right ? 1 : 0) - (actions.left ? 1 : 0) + touchMoveX + padMoveX;
+    let y = (actions.forward ? 1 : 0) - (actions.back ? 1 : 0) + touchMoveY + padMoveY;
     const length = Math.sqrt(x * x + y * y);
     if (length > 1) { x /= length; y /= length; }
     moveOut.x = x; moveOut.y = y;
@@ -14652,12 +14973,18 @@ const INPUT = (() => {
     init, on, actions, requestLock, releaseLock, consumeMouse, consumePress, moveAxes,
     clearActions, clearTransientInput,
     rebind, resetKeymap, getBindings, applyBindings, codeLabel,
+    pollGamepad, padRebind, resetPadmap, getPadBindings, applyPadBindings, padLabel,
+    beginPadListen, endPadListen, consumePadCapture, rumble,
+    padActions: PAD_REBINDABLE,
     get locked() { return locked; },
     get engaged() { return engaged; },
     get mode() { return mode; },
     get mobile() { return touchMode; },
     get sprinting() { return actions.sprint || touchSprint; },
-    get diagnosis() { return diagnosis; }
+    get diagnosis() { return diagnosis; },
+    get padConnected() { return padIndex >= 0; },
+    get padName() { return padName; },
+    get padStandard() { return padStandard; }
   };
 })();
 
@@ -14811,6 +15138,12 @@ const PLAYER = (() => {
     if (!options.noHitRecovery) hitInvuln = C.invulnAfterHit;
     regenTimer = 0;
     shake = options.subtle ? Math.max(shake, C.hurtShake * 0.22) : C.hurtShake;
+    // Longer and heavier than a shot: taking a hit should be the strongest
+    // thing the pad does, and it never fires at a weapon's rate.
+    if (typeof INPUT !== 'undefined' && INPUT.rumble) {
+      const bite = UTIL.clamp((amount + absorbed) / 28, 0.2, 1);
+      INPUT.rumble(bite, bite * 0.8, options.subtle ? 90 : 200);
+    }
     UI.hurtFlash(UTIL.clamp(
       (amount + absorbed * 0.35) / 20,
       options.subtle ? 0.08 : 0.22,
@@ -15556,6 +15889,13 @@ const WEAPON = (() => {
     // throws it back out long a couple of frames later.
     squashVel -= 4.5 + 6.5 * Math.min(1.6, amount);
     anticTimer = anticLen = UTIL.clamp(0.030 + amount * 0.016, 0.028, 0.062);
+    /* Haptics ride the same `amount` the viewmodel kick does, so a pad feels
+       the difference between the Pipe Popper and the Carrot Cannon for free.
+       Kept short -- a full-auto weapon calls this every shot, and anything
+       longer than the fire interval would smear into one continuous buzz. */
+    if (typeof INPUT !== 'undefined' && INPUT.rumble) {
+      INPUT.rumble(UTIL.clamp(0.18 + amount * 0.34, 0, 1), UTIL.clamp(amount * 0.22, 0, 1), 70);
+    }
   }
 
   const _handM = new THREE.Matrix4();
@@ -18659,6 +18999,16 @@ const UI = (() => {
     el.optSprayTagPreview = document.getElementById('optSprayTagPreview');
     el.optSprayTagStatus = document.getElementById('optSprayTagStatus');
     el.optControlsList = document.getElementById('optControlsList');
+    el.optPadList = document.getElementById('optPadList');
+    el.optPadStatus = document.getElementById('optPadStatus');
+    el.optPadSens = document.getElementById('optPadSens');
+    el.optPadSensVal = document.getElementById('optPadSensVal');
+    el.optPadDead = document.getElementById('optPadDead');
+    el.optPadDeadVal = document.getElementById('optPadDeadVal');
+    el.padInvertOffBtn = document.getElementById('padInvertOffBtn');
+    el.padInvertOnBtn = document.getElementById('padInvertOnBtn');
+    el.padRumbleOnBtn = document.getElementById('padRumbleOnBtn');
+    el.padRumbleOffBtn = document.getElementById('padRumbleOffBtn');
     el.loading = document.getElementById('loading');
     el.crosshair = document.getElementById('crosshair');
     el.interactHint = document.getElementById('interactHint');
@@ -19648,9 +19998,16 @@ const UI = (() => {
     throwable: 'Throw Explosive', switchThrowable: 'Switch Explosive', useJays: 'Use Jays', interact: 'Interact',
     voiceTalk: 'Push to Talk', shield: 'Raise Plow Shield',
     slot1: 'Weapon Slot 1', slot2: 'Weapon Slot 2', slot3: 'Weapon Slot 3', slot4: 'Weapon Slot 4',
-    slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8'
+    slot5: 'Weapon Slot 5', slot6: 'Weapon Slot 6', slot7: 'Weapon Slot 7', slot8: 'Weapon Slot 8',
+    slot9: 'Weapon Slot 9',
+    // Pad-only actions. Fire and Aim live on the mouse buttons and the weapon
+    // wheel lives on the scroll wheel, so none of them appear in the keyboard
+    // list -- but all four are real buttons on a controller.
+    fire: 'Fire', ads: 'Aim', nextWeapon: 'Next Weapon', prevWeapon: 'Previous Weapon',
+    pause: 'Pause'
   };
   let rebindingAction = null;
+  let padRebindingAction = null;
   let optionsReturnFocus = null;
   function renderControlsList() {
     if (!el.optControlsList || typeof INPUT === 'undefined') return;
@@ -19664,7 +20021,41 @@ const UI = (() => {
   }
   function setRebinding(action) {
     rebindingAction = action;
+    // The two lists share one "listening" state by design -- a keyboard
+    // capture and a pad capture running at once would race for the same row.
+    if (action && padRebindingAction) setPadRebinding(null);
     renderControlsList();
+  }
+
+  function renderPadList() {
+    if (!el.optPadList || typeof INPUT === 'undefined') return;
+    const bindings = INPUT.getPadBindings();
+    el.optPadList.innerHTML = INPUT.padActions.map(action => {
+      const listening = padRebindingAction === action;
+      const label = listening ? 'Press a button…' : INPUT.padLabel(bindings[action]);
+      return '<li><span>' + (CONTROL_LABELS[action] || action) + '</span>' +
+        '<button class="key-btn' + (listening ? ' listening' : '') + '" data-padrebind="' + action + '">' + label + '</button></li>';
+    }).join('');
+  }
+  function setPadRebinding(action) {
+    padRebindingAction = action;
+    if (typeof INPUT !== 'undefined') {
+      if (action) INPUT.beginPadListen(); else INPUT.endPadListen();
+    }
+    if (action && rebindingAction) { rebindingAction = null; renderControlsList(); }
+    renderPadList();
+  }
+  /* Called on gamepadconnected/disconnected as well as on open, because a pad
+     that was plugged in while this panel was already showing should say so
+     without making the player close and reopen Options. */
+  function refreshPadStatus() {
+    if (!el.optPadStatus || typeof INPUT === 'undefined') return;
+    if (!INPUT.padConnected) {
+      el.optPadStatus.textContent = 'No controller detected — plug one in and press a button.';
+      return;
+    }
+    el.optPadStatus.textContent = 'Connected: ' + INPUT.padName +
+      (INPUT.padStandard ? '' : ' · non-standard layout, button names below may not match the hardware');
   }
   function syncOptionsUI() {
     if (el.optMaster) { const v = Math.round(SETTINGS.master * 100); el.optMaster.value = v; el.optMasterVal.textContent = v + '%'; }
@@ -19709,8 +20100,36 @@ const UI = (() => {
       el.voiceHint.textContent = (typeof VOICE !== 'undefined' && VOICE.lastError) ? VOICE.lastError
         : 'Party chat in Co-op, proximity mic in Deathmatch/Teams.';
     }
+    if (el.optPadSens) {
+      const v = Math.round(SETTINGS.padSensitivity * 100);
+      el.optPadSens.value = v;
+      el.optPadSensVal.textContent = (SETTINGS.padSensitivity).toFixed(2) + '×';
+    }
+    if (el.optPadDead) {
+      const v = Math.round(SETTINGS.padDeadZone * 100);
+      el.optPadDead.value = v;
+      el.optPadDeadVal.textContent = v + '%';
+    }
+    if (el.padInvertOffBtn) {
+      el.padInvertOffBtn.classList.toggle('active', !SETTINGS.padInvertY);
+      el.padInvertOffBtn.setAttribute('aria-pressed', SETTINGS.padInvertY ? 'false' : 'true');
+    }
+    if (el.padInvertOnBtn) {
+      el.padInvertOnBtn.classList.toggle('active', SETTINGS.padInvertY);
+      el.padInvertOnBtn.setAttribute('aria-pressed', SETTINGS.padInvertY ? 'true' : 'false');
+    }
+    if (el.padRumbleOnBtn) {
+      el.padRumbleOnBtn.classList.toggle('active', SETTINGS.padRumble);
+      el.padRumbleOnBtn.setAttribute('aria-pressed', SETTINGS.padRumble ? 'true' : 'false');
+    }
+    if (el.padRumbleOffBtn) {
+      el.padRumbleOffBtn.classList.toggle('active', !SETTINGS.padRumble);
+      el.padRumbleOffBtn.setAttribute('aria-pressed', SETTINGS.padRumble ? 'false' : 'true');
+    }
     rebindingAction = null;
     renderControlsList();
+    setPadRebinding(null);
+    refreshPadStatus();
   }
   function setSprayTagStatus(message, bad) {
     if (!el.optSprayTagStatus) return;
@@ -19733,6 +20152,9 @@ const UI = (() => {
       el.options.setAttribute('aria-hidden', 'true');
     }
     rebindingAction = null;
+    // Closing while a pad row was listening must take the pad off capture,
+    // or it would swallow every button press for the rest of the session.
+    setPadRebinding(null);
     const target = optionsReturnFocus;
     optionsReturnFocus = null;
     if (target && target.isConnected) requestAnimationFrame(() => target.focus({ preventScroll: true }));
@@ -19816,7 +20238,8 @@ const UI = (() => {
     setDeadCoopMode, setDeadHint,
     showDowned, hideDowned, setDownedTimer, showEndGame, hideEndGame,
     showStart, showSplash, hideSplash, showLockError, clearLockError,
-    showOptions, hideOptions, syncOptionsUI, setSprayTagStatus, renderControlsList, setRebinding, showMap, hideMap,
+    showOptions, hideOptions, syncOptionsUI, setSprayTagStatus, renderControlsList, setRebinding,
+    renderPadList, setPadRebinding, refreshPadStatus, showMap, hideMap,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showKillcam, hideKillcam,
@@ -19824,6 +20247,7 @@ const UI = (() => {
     pushChat, showChatInput, setChatComposing, setVoiceChip,
     showDevConsole, setDevConsoleInput, pushDevConsoleLog, clearDevConsoleLog,
     get rebindingAction() { return rebindingAction; },
+    get padRebindingAction() { return padRebindingAction; },
     showPlayerSelect, hidePlayerSelect, renderCoopCharacterChoices,
     setRadarContacts, drawRadar,
     get deadShown() { return deadShown; },
@@ -21372,6 +21796,50 @@ const GAME = (() => {
       SETTINGS.resetBindings();
       UI.renderControlsList();
     });
+    document.getElementById('optPadList').addEventListener('click', e => {
+      const btn = e.target.closest('[data-padrebind]');
+      if (btn) UI.setPadRebinding(btn.getAttribute('data-padrebind'));
+    });
+    document.getElementById('optResetPad').addEventListener('click', e => {
+      e.stopPropagation();
+      SETTINGS.resetPadBindings();
+      UI.setPadRebinding(null);
+    });
+    document.getElementById('optPadSens').addEventListener('input', e => {
+      SETTINGS.setPadSensitivity(Number(e.target.value) / 100);
+      UI.syncOptionsUI();
+    });
+    document.getElementById('optPadDead').addEventListener('input', e => {
+      SETTINGS.setPadDeadZone(Number(e.target.value) / 100);
+      UI.syncOptionsUI();
+    });
+    document.getElementById('padInvertOffBtn').addEventListener('click', e => {
+      e.stopPropagation(); SETTINGS.setPadInvertY(false); UI.syncOptionsUI();
+    });
+    document.getElementById('padInvertOnBtn').addEventListener('click', e => {
+      e.stopPropagation(); SETTINGS.setPadInvertY(true); UI.syncOptionsUI();
+    });
+    document.getElementById('padRumbleOnBtn').addEventListener('click', e => {
+      e.stopPropagation();
+      SETTINGS.setPadRumble(true);
+      UI.syncOptionsUI();
+      // Confirm the setting with the thing it controls, so a player whose pad
+      // has no actuator finds that out here rather than mid-firefight.
+      INPUT.rumble(0.5, 0.3, 140);
+    });
+    document.getElementById('padRumbleOffBtn').addEventListener('click', e => {
+      e.stopPropagation(); SETTINGS.setPadRumble(false); UI.syncOptionsUI();
+    });
+    window.addEventListener('gamepadconnected', e => {
+      UI.refreshPadStatus();
+      UI.renderPadList();
+      const name = (e && e.gamepad && e.gamepad.id) ? e.gamepad.id : 'Controller';
+      UI.toast('Controller connected — ' + name.slice(0, 42), 2.4);
+    });
+    window.addEventListener('gamepaddisconnected', () => {
+      UI.refreshPadStatus();
+      UI.toast('Controller disconnected.', 2);
+    });
     // Capture phase + stopPropagation, ahead of INPUT's own window-level
     // bubble-phase keydown listener, so a key pressed to rebind an action
     // never also fires that key's *current* game action on its way through.
@@ -21381,7 +21849,10 @@ const GAME = (() => {
         if (e.code === 'Escape' && UI.el.options && !UI.el.options.classList.contains('hidden')) {
           e.preventDefault();
           e.stopPropagation();
-          UI.hideOptions();
+          // Escape backs out one level at a time: cancel a listening pad row
+          // first, and only close the panel once nothing is capturing.
+          if (UI.padRebindingAction) UI.setPadRebinding(null);
+          else UI.hideOptions();
         }
         return;
       }
@@ -21946,6 +22417,26 @@ const GAME = (() => {
     last = now;
     if (dt > 0.06) dt = 0.06;   // never let a stall throw the player through a wall
     time += dt;
+
+    /* The Gamepad API is poll-only -- no events for sticks or buttons -- so
+       this runs before every early return below, including the cutscene ones.
+       A pad left holding a button through a cutscene has to keep reporting it,
+       and Options is reachable from the start screen where none of the code
+       further down runs at all. INPUT itself gates on `engaged`, so polling
+       here never means the pad drives a paused game. */
+    INPUT.pollGamepad(dt);
+    if (UI.padRebindingAction) {
+      const captured = INPUT.consumePadCapture();
+      if (captured !== null && captured !== undefined) {
+        const action = UI.padRebindingAction;
+        const result = SETTINGS.setPadBinding(action, captured);
+        UI.setPadRebinding(null);
+        if (!result.ok) UI.toast('That button can’t be used there.', 1.4);
+        else if (result.bumpedAction) {
+          UI.toast(INPUT.padLabel(captured) + ' was on ' + result.bumpedAction + ' — now unbound.', 2.2);
+        }
+      }
+    }
 
     if (INTRO.active) {
       // Drained but unused -- no pointer lock is held yet during the intro,
