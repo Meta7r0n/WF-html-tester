@@ -3,9 +3,15 @@
 // driven from the test. That exercises the real polling path in INPUT -- the
 // same code a real pad would hit -- rather than calling internals directly.
 //
-//   node padtest.js [url]
+//   node tools/gamepad-test.js [url]
+//
+// Needs a preview.html served somewhere (see tools/render-audit/README.md for
+// how that is built and why the CDN tags are vendored for it).
 const { chromium } = require('/opt/node22/lib/node_modules/playwright');
-const H = require('./harness');
+// The shared boot/goTo harness lives with the render-audit tools, not beside
+// this file -- './harness' resolved to nothing and the script died on require
+// before it could run a single check.
+const H = require('./render-audit/harness');
 
 const VIRTUAL_PAD = () => {
   const buttons = [];
