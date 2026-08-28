@@ -4705,12 +4705,48 @@ const TEX = (() => {
     x.strokeRect(6, 6, c.width - 12, c.height - 12);
     x.fillStyle = hex(fg);
     x.textAlign = 'center'; x.textBaseline = 'middle';
+
+    /* Type is measured, and one size serves the whole board.
+
+       The old rule sized every line INDEPENDENTLY from a guessed average glyph
+       width of 0.62em: `min(h/(n+.7), w/(len*.62))`. Two things went wrong.
+       Lines of different length came out at different sizes on the same sign --
+       the gate notice at 512x329 gave its 'NO' at 122px over its second line
+       at 75px -- which is the one thing a painted board never does. And a
+       one-character line was sized as though it were a full line of text, so
+       a lone arrow on a second line ballooned to the height limit while the
+       words it pointed for stayed small.
+
+       One measured size fixes both, but it makes a lone arrow line the
+       opposite kind of wrong: the glyph draws on the math axis instead of
+       filling cap height, so at the shared size it is a thin stroke in an
+       empty band. Directional boards therefore put the arrow INLINE with the
+       words -- ['SILO ROW →'], not ['SILO ROW','→'].
+
+       measureText knows the real width of the actual glyphs, so ask it once at
+       a reference size and scale. The frame stroke is 8px wide centred on 6,
+       so it covers out to x=10; PAD clears it properly instead of letting long
+       lines run under the border. */
+    const PAD = Math.max(14, Math.round(Math.min(c.width, c.height) * 0.09));
+    const availW = c.width - PAD * 2;
+    const availH = c.height - PAD * 2;
     const n = lines.length;
+    const LEADING = 1.16;
+
+    x.font = '900 100px Rockwell, Georgia, serif';
+    let widest = 0;
+    for (let i = 0; i < n; i++) widest = Math.max(widest, x.measureText(lines[i]).width);
+    const byWidth  = widest > 0 ? (availW / widest) * 100 : Infinity;
+    const byHeight = availH / (n * LEADING);
+    const size = Math.max(8, Math.floor(Math.min(byWidth, byHeight)));
+    x.font = '900 ' + size + 'px Rockwell, Georgia, serif';
+
+    // Centre the whole block rather than spreading lines over the full height,
+    // which used to push the top line's caps up into the border.
+    const top = (c.height - n * size * LEADING) / 2;
     lines.forEach((ln, i) => {
-      const size = Math.min(c.height / (n + .7), c.width / (ln.length * .62));
-      x.font = '900 ' + size + 'px Rockwell, Georgia, serif';
       x.save();
-      x.translate(c.width / 2, c.height * ((i + .5) / n) + 2);
+      x.translate(c.width / 2, top + size * LEADING * (i + 0.5));
       // Was +/-.03rad per line. Stacked on top of the board's own tilt it
       // pushed longer lines visibly out of square; the hand-lettered feel
       // survives at a third of that.
@@ -6923,7 +6959,7 @@ const LEVEL = (() => {
     // used to stand opposite it is gone: pure directional filler, three
     // metres from a gate the player is already walking through, in the one
     // spot on the farm where there is nowhere else to go.
-    PROPS.signPost(parent, 5.2, 28.6, ['NO', 'TRESPASSIN'], -0.4, { w: 1.4, h: 0.9, bg: PAL.mustard, fg: PAL.rustDeep });
+    PROPS.signPost(parent, 5.2, 28.6, ['NO', "TRESPASSIN'"], -0.4, { w: 1.4, h: 0.9, bg: PAL.mustard, fg: PAL.rustDeep });
   }
 
   /* ---------------- perimeter + interior fencing ---------------- */
@@ -7845,7 +7881,12 @@ const LEVEL = (() => {
 
     PROPS.signPost(parent, 9.4, -35.0, ['NORTH', 'PASTURE'], 0.12,
       { w: 1.8, h: 0.82, bg: PAL.mustard, fg: PAL.rustDeep, postH: 1.7 });
-    PROPS.signPost(parent, -21.5, -35.0, ['BACK FORTY', '→'], -0.18,
+    // Arrow inline, not on its own line. Now that every line on a board
+    // shares one measured size, an arrow alone on line two draws at the same
+    // size as the words -- but the glyph sits on the math axis rather than
+    // filling cap height, so it came out a thin stroke floating in an empty
+    // lower half. Inline it reads as part of the label and the board fills.
+    PROPS.signPost(parent, -21.5, -35.0, ['BACK FORTY →'], -0.18,
       { w: 1.9, h: 0.78, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
 
     // Sparse windbreaks frame the new play space without turning it into a maze.
@@ -8403,7 +8444,7 @@ const LEVEL = (() => {
       .forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
     [[-6, -58, 0.65], [6, -61, 0.7]].forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
 
-    PROPS.signPost(parent, 10, -52.5, ['SILO ROW', '→'], -0.3,
+    PROPS.signPost(parent, 10, -52.5, ['SILO ROW →'], -0.3,
       { w: 1.7, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
 
     WORLD.addSpawn(-10, 0, -58, 'orchard');
@@ -8609,8 +8650,10 @@ const LEVEL = (() => {
     // above the wall top (door opening runs floor-to-wallH with no lintel)
     // so its lower edge clears both the door opening and player eye height,
     // instead of hanging at chest level in the doorway itself.
+    // 256x94 matches the 3.0x1.1 plate's 2.73:1. At the old 256x130 the
+    // canvas was 1.97:1 and every greenhouse name came out 39% too wide.
     PRIM.box(3.0, 1.1, 0.12, MAT.toon(0xffffff, {
-      map: TEX.sign(nameLines, PAL.cream, PAL.oliveDeep, 256, 130)
+      map: TEX.sign(nameLines, PAL.cream, PAL.oliveDeep, 256, 94)
     }), { pos: [cx, wallH + 0.75, cz + halfL + 0.14], parent: parent, ray: false, outline: 0.03 });
   }
 
@@ -9004,7 +9047,7 @@ const LEVEL = (() => {
     buildWestSiloWalkway(parent, SILO_X, 9 - R_WALK, -25 + R_WALK, WALK_Y);
     buildWestSiloWalkway(parent, SILO_X, -25 - R_WALK, -59 + R_WALK, WALK_Y);
 
-    PROPS.signPost(parent, SILO_X + 5.5, 9 + 2.0, ['WEST SILOS', '←'], -0.4,
+    PROPS.signPost(parent, SILO_X + 5.5, 9 + 2.0, ['← WEST SILOS'], -0.4,
       { w: 1.8, h: 0.8, bg: PAL.cream, fg: PAL.blueDeep, postH: 1.6 });
   }
 
@@ -9073,7 +9116,7 @@ const LEVEL = (() => {
     // south edge (gate spans westGate1Z +/- WEST_GATE1_HALF, i.e. z=-11.6
     // to -4.4 at the fence line) instead of standing dead-center in the
     // opening, so it reads on the way in without sitting in the desire line.
-    PROPS.signPost(parent, -27.0, -11.5, ['THE GARDENERS', 'GREENHOUSES'], 0.9,
+    PROPS.signPost(parent, -27.0, -11.5, ["THE GARDENERS'", 'GREENHOUSES'], 0.9,
       { w: 2.0, h: 0.9, bg: PAL.jaysDeep, fg: PAL.cream, postH: 1.8 });
     PROPS.barrel(parent, -28.5, -6.0, { color: PAL.olive });
     PROPS.crate(parent, -29.5, 0, -10.0, 0.85, 0.6);
@@ -9503,8 +9546,13 @@ const LEVEL = (() => {
       collider: floorGateSolid, portal: stairPortal
     };
 
+    // Plate is 1.85 long by 0.72 tall, so the canvas has to be 2.57:1 to
+    // match. The old 220x130 was 1.69:1 and the texture stretched every
+    // letter 52% wider than it was drawn. The wording was a stray 'E' over
+    // 'STAIR GATE' -- no other sign on the farm is compass-lettered, and
+    // the gate's own toast calls it the barn stair gate, so it says that.
     PRIM.box(0.08, 0.72, 1.85, MAT.toon(0xffffff, {
-      map: TEX.sign(['E', 'STAIR GATE'], PAL.cream, PAL.rustDeep, 220, 130)
+      map: TEX.sign(['BARN', 'STAIR GATE'], PAL.cream, PAL.rustDeep, 256, 100)
     }), { pos: [16.2, 1.0, -10.75], parent: parent, outline: 0.025, ray: false });
 
     // Reusable hatch authoring keeps every entrance mechanically identical and
