@@ -3321,6 +3321,56 @@ const SETTINGS = (() => {
   };
   let current = Object.assign({}, DEFAULTS);
 
+  /* localStorage is user-writable, shared across every version this origin
+     has ever run, and survives changes to the code that wrote it -- so what
+     comes out of it is untrusted input, not a saved preference. The setters
+     below all validate; load() did not, and Object.assign let any stored
+     value overwrite its default unchecked.
+
+     For the pad settings that fails SILENTLY, which is the worst way to
+     fail: a NaN dead zone makes `!(mag > dead)` true for every reading, so
+     both sticks go stone dead with nothing logged and no way for a player to
+     work out why. A NaN sensitivity kills look the same way, and a huge one
+     spins the camera. Clamp on the way in. */
+  function num(v, lo, hi, fallback) {
+    /* Type-check before Number(), because Number() is too forgiving to use as
+       a validator: Number(null), Number('') and Number([]) are all 0, so a
+       stored null -- which is what a NaN becomes once it has been through
+       JSON -- would clamp to the low end of the range instead of falling back
+       to the default. "Absent" and "zero" are different answers, and for a
+       dead zone the difference is a floor of 0.04 versus the intended 0.16.
+       Numeric strings are still accepted; hand-edited storage often has
+       them. */
+    if (typeof v !== 'number' && typeof v !== 'string') return fallback;
+    if (v === '') return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
+  }
+  /* Button indices are array positions, so they must be whole numbers in
+     range -- 2.7 reads pad.buttons[2.7], which is undefined, and the action
+     is silently unreachable forever. Two actions must never share a button
+     either: padRebind() enforces that when a player rebinds, but this is the
+     path taken on every single page load and it enforced nothing.
+
+     A dropped entry falls back to that action's default. A duplicate keeps
+     the first and explicitly unbinds the rest, so the collision shows up in
+     Options as an empty slot the player can see and fix, rather than as two
+     things firing off one button. */
+  function sanitizePadmap(map) {
+    const out = {}, taken = {};
+    if (!map || typeof map !== 'object') return out;
+    Object.keys(map).forEach(action => {
+      const v = map[action];
+      if (v === null) { out[action] = null; return; }
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0 || n > 31) return;
+      if (taken[n]) { out[action] = null; return; }
+      taken[n] = true;
+      out[action] = n;
+    });
+    return out;
+  }
+
   function load() {
     try {
       const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
@@ -3328,7 +3378,12 @@ const SETTINGS = (() => {
       const parsed = JSON.parse(raw);
       current = Object.assign({}, DEFAULTS, parsed, {
         keymap: Object.assign({}, parsed.keymap || {}),
-        padmap: Object.assign({}, parsed.padmap || {})
+        padmap: sanitizePadmap(parsed.padmap),
+        // Bounds mirror the setters exactly; see setPadSensitivity/setPadDeadZone.
+        padSensitivity: num(parsed.padSensitivity, 0.4, 2.5, DEFAULTS.padSensitivity),
+        padDeadZone: num(parsed.padDeadZone, 0.04, 0.40, DEFAULTS.padDeadZone),
+        padInvertY: !!parsed.padInvertY,
+        padRumble: parsed.padRumble !== false
       });
     } catch (err) { /* corrupt or blocked storage — defaults are fine */ }
   }
@@ -14444,11 +14499,35 @@ const INPUT = (() => {
      is simply absent from their map and keeps its default. */
   function applyPadBindings(map) {
     if (!map) return;
+    // SETTINGS.sanitizePadmap already screens what comes out of storage, but
+    // this is a public entry point (the dev console and the test harness both
+    // reach it directly), so it re-checks rather than trusting its caller.
+    // Whole numbers only -- pad.buttons[2.7] is undefined, which would make
+    // the action silently unreachable -- and no two actions on one button.
+    // Incoming bindings win over defaults. Seeding `taken` with the CURRENT
+    // map first looks like the safe order and is exactly wrong: a stored
+    // `jump: 4` would lose to throwable's default 4 and come back unbound,
+    // so a player who had deliberately moved jump onto LB would find it gone
+    // after a reload. A stored value is a choice; a default is only where
+    // nothing has been moved yet.
+    const taken = {};
     PAD_REBINDABLE.forEach(a => {
-      if (Object.prototype.hasOwnProperty.call(map, a)) {
-        const v = map[a];
-        padMap[a] = Number.isFinite(v) && v >= 0 ? v : null;
-      }
+      if (!Object.prototype.hasOwnProperty.call(map, a)) return;
+      const v = map[a];
+      // Unlike sanitizePadmap -- which DROPS a bad entry so the default
+      // survives -- a bad value arriving through this public entry point is
+      // taken as an explicit unbind. The caller named the action, so leaving
+      // it on something else would be the surprising answer.
+      if (!Number.isInteger(v) || v < 0 || taken[v] !== undefined) { padMap[a] = null; return; }
+      taken[v] = a;
+      padMap[a] = v;
+    });
+    // Now bump anything the map did NOT mention off a button an incoming
+    // binding just claimed, so no button ever drives two actions.
+    PAD_REBINDABLE.forEach(a => {
+      if (Object.prototype.hasOwnProperty.call(map, a)) return;
+      const v = padMap[a];
+      if (v !== null && v !== undefined && taken[v] !== undefined) padMap[a] = null;
     });
   }
 
@@ -14865,7 +14944,18 @@ const INPUT = (() => {
       padMoveX = padMoveY = 0;
       return;
     }
-    padName = pad.id || 'Controller';
+    // A DIFFERENT pad arriving at the index we were reading -- a hot-swap, or
+    // a wheel and a pad trading slots -- must not inherit the old one's held
+    // buttons. Without this the successor starts life holding whatever the
+    // predecessor was holding when it vanished, and nothing ever clears it
+    // because the release edge belonged to a device that is gone.
+    const id = pad.id || 'Controller';
+    if (id !== padName) {
+      releasePadActions();
+      padMoveX = padMoveY = 0;
+      padListenReady = [];
+    }
+    padName = id;
     padStandard = pad.mapping === 'standard';
 
     /* Rebinding claims the whole pad. Same rule the keyboard capture in GAME
