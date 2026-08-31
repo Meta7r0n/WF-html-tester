@@ -1,4 +1,10 @@
+# Bare `vendor` catches scratch/preview vendor dirs anywhere in the tree...
 vendor
+# ...but tools/vendor is the committed, pinned set that tools/make-preview.js
+# copies from. It must ship: the build step deliberately does not download,
+# and this pattern silently dropped all three libraries from the commit that
+# added them.
+!tools/vendor/
 preview.html
 _extract.js
 tools/render-audit/shots
