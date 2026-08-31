@@ -1766,6 +1766,71 @@
   .key-btn.listening{background:var(--mustard);animation:keyPulse 1s ease-in-out infinite;}
   @keyframes keyPulse{50%{opacity:.6;}}
 
+  /* ---------- [ENGINE] Level editor ----------
+     Same visual language as the rest of the game -- Rockwell, ink borders,
+     the farm palette -- so the editor reads as part of Withered Farm rather
+     than as a tool bolted to the side of it. */
+  #editor{position:fixed;inset:0;z-index:60;pointer-events:none;font:600 12px/1.35 "Rockwell",Georgia,serif;color:var(--ink);}
+  #editor.hidden{display:none;}
+  #editor .ed-panel,#edTopbar,#edFooter{pointer-events:auto;}
+  #edTopbar{
+    position:absolute;top:0;left:0;right:0;display:flex;align-items:center;gap:12px;
+    padding:8px 12px;background:rgba(246,233,210,.95);border-bottom:3px solid var(--ink);
+  }
+  #edBrand{font:900 13px/1 "Rockwell",Georgia,serif;letter-spacing:2px;color:var(--rust-deep);}
+  #edTools{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  #edTools button,.ed-file{
+    padding:5px 10px;cursor:pointer;background:var(--peach);border:2px solid var(--ink);
+    border-radius:6px;font:700 11px/1 "Rockwell",Georgia,serif;color:var(--ink);box-shadow:0 2px 0 var(--ink);
+  }
+  #edTools button:hover,.ed-file:hover{background:var(--cream);}
+  #edTools button.on{background:var(--mustard);}
+  #edTools button.ed-play{background:var(--jays);}
+  #edImportFile{display:none;}
+  .ed-sep{width:1px;height:18px;background:var(--ink);opacity:.35;}
+  .ed-panel{
+    position:absolute;top:56px;bottom:44px;width:212px;overflow-y:auto;
+    background:rgba(246,233,210,.95);border:3px solid var(--ink);border-radius:8px;padding:10px;
+  }
+  #edLeft{left:10px;}
+  #edRight{right:10px;}
+  .ed-panel h3{
+    margin:0 0 8px;font:900 11px/1 "Rockwell",Georgia,serif;letter-spacing:1.6px;
+    text-transform:uppercase;color:var(--rust-deep);
+  }
+  .ed-panel h3+h3,#edRight h3:not(:first-child){margin-top:14px;}
+  .ed-cat{margin-bottom:10px;}
+  .ed-cat h4{margin:0 0 4px;font:800 10px/1 "Rockwell",Georgia,serif;letter-spacing:1.2px;color:var(--olive-deep);text-transform:uppercase;}
+  .ed-item,.ed-map{
+    display:block;width:100%;margin:0 0 3px;padding:5px 7px;text-align:left;cursor:pointer;
+    background:var(--cream);border:2px solid var(--ink);border-radius:5px;
+    font:700 11px/1.1 "Rockwell",Georgia,serif;color:var(--ink);
+  }
+  .ed-item:hover,.ed-map:hover{background:var(--peach);}
+  .ed-item.on{background:var(--mustard);}
+  .ed-row{display:flex;align-items:center;gap:6px;margin:0 0 4px;}
+  .ed-row span{flex:0 0 54px;font:700 10px/1 "Rockwell",Georgia,serif;color:var(--ink-soft);}
+  .ed-row input{
+    flex:1;min-width:0;padding:4px 6px;background:var(--cream);border:2px solid var(--ink);
+    border-radius:5px;font:600 11px/1 "Rockwell",Georgia,serif;color:var(--ink);
+  }
+  .ed-sel{margin:0 0 8px;font:900 12px/1.2 "Rockwell",Georgia,serif;color:var(--rust-deep);}
+  .ed-sel span{display:block;font:600 10px/1.2 "Rockwell",Georgia,serif;color:var(--ink-soft);letter-spacing:.6px;}
+  .ed-empty{margin:0 0 8px;font:600 11px/1.3 "Rockwell",Georgia,serif;color:var(--ink-soft);opacity:.8;}
+  #edFooter{
+    position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:14px;
+    padding:7px 12px;background:rgba(246,233,210,.95);border-top:3px solid var(--ink);
+    font:600 11px/1 "Rockwell",Georgia,serif;
+  }
+  #edStatus{color:var(--rust-deep);font-weight:800;}
+  #edNotice{color:var(--olive-deep);}
+  #edNotice.bad{color:var(--rust);}
+  #edHelp{margin-left:auto;color:var(--ink-soft);opacity:.75;}
+  @media (max-width:820px){
+    .ed-panel{width:168px;}
+    #edHelp{display:none;}
+  }
+
   /* ---------- Farm map (see MAPVIEW) ---------- */
   #mapView{z-index:42;touch-action:pan-y;}
   #mapView .map-card{max-width:96vw;max-height:92vh;overflow-y:auto;}
@@ -2293,6 +2358,53 @@
       </ul>
       <p class="map-live-hint">Your marker is rust. Teammates are blue; markers on the other floor stay on that floor's map.</p>
       <button class="go compact" id="mapBackBtn">Back →</button>
+    </div>
+  </div>
+
+  <!-- [ENGINE] Level editor. Deliberately NOT a .veil: a veil is opaque and
+       blocks the scene, and the editor has to keep the farm visible and
+       clickable underneath it. Panels are pinned to the edges instead, with
+       the middle of the screen left alone as the viewport. -->
+  <div id="editor" class="hidden">
+    <div id="edTopbar">
+      <span id="edBrand">WF EDITOR</span>
+      <div id="edTools">
+        <button data-tool="select" class="on">Select</button>
+        <button data-tool="move">Move</button>
+        <button data-tool="rotate">Rotate</button>
+        <button data-tool="delete">Delete</button>
+        <button data-tool="duplicate">Duplicate</button>
+        <span class="ed-sep"></span>
+        <button data-tool="undo">Undo</button>
+        <button data-tool="redo">Redo</button>
+        <span class="ed-sep"></span>
+        <button data-tool="new">New</button>
+        <button data-tool="save">Save</button>
+        <button data-tool="export">Export</button>
+        <label class="ed-file" for="edImportFile">Import</label>
+        <input id="edImportFile" type="file" accept="application/json,.json" />
+        <span class="ed-sep"></span>
+        <button data-tool="play" class="ed-play">▶ Play</button>
+      </div>
+    </div>
+
+    <div id="edLeft" class="ed-panel">
+      <h3>Objects</h3>
+      <div id="edBrowser"></div>
+    </div>
+
+    <div id="edRight" class="ed-panel">
+      <h3>Inspector</h3>
+      <div id="edInspector"></div>
+      <h3>Map</h3>
+      <label class="ed-row"><span>Name</span><input type="text" id="edMapName" value="Untitled Farm" /></label>
+      <div id="edMaps"></div>
+    </div>
+
+    <div id="edFooter">
+      <span id="edStatus"></span>
+      <span id="edNotice"></span>
+      <span id="edHelp">WASD/QE fly · hold RMB look · LMB select or place · Rotate tool + wheel · Del remove · Ctrl+Z/Y · Ctrl+D duplicate · F2 play</span>
     </div>
   </div>
 
@@ -6424,6 +6536,49 @@ const WORLD = {
   // straight into a wall of corn.
   cornMaze: null,
 
+  /* ---------------------- registration capture ----------------------
+     [ENGINE] WORLD was append-only: four flat arrays, no ownership, no way
+     to remove one entry without already knowing its index. That is fine for
+     a level built once at boot and never touched, and it is the single thing
+     that makes an editor impossible -- an editor must be able to delete.
+
+     Rather than rewrite the arrays (LEVEL registers into them from ~5,400
+     lines of authored construction code, none of which should have to
+     change), a builder can wrap its work in a capture scope:
+
+         const h = WORLD.beginCapture();
+         ...call any existing builder, which registers as it always has...
+         WORLD.endCapture();
+         ...later...
+         WORLD.release(h);          // un-registers exactly what it added
+
+     Capture is a stack, so nesting is safe, and it is inert when nothing has
+     opened one -- every existing caller is completely unaffected. */
+  _captureStack: [],
+  beginCapture() {
+    const handle = { solids: [], ladders: [], portals: [], spawnMarkers: [] };
+    this._captureStack.push(handle);
+    return handle;
+  },
+  endCapture() { return this._captureStack.pop() || null; },
+  _capture(kind, entry) {
+    const top = this._captureStack[this._captureStack.length - 1];
+    if (top) top[kind].push(entry);
+    return entry;
+  },
+  release(handle) {
+    if (!handle) return;
+    ['solids', 'ladders', 'portals', 'spawnMarkers'].forEach(kind => {
+      const list = this[kind], owned = handle[kind];
+      if (!list || !owned) return;
+      for (let i = 0; i < owned.length; i++) {
+        const at = list.indexOf(owned[i]);
+        if (at !== -1) list.splice(at, 1);
+      }
+      owned.length = 0;
+    });
+  },
+
   add(cx, cy, cz, w, h, d, tag) {
     const s = {
       minX: cx - w / 2, maxX: cx + w / 2,
@@ -6433,18 +6588,20 @@ const WORLD = {
       enabled: true
     };
     this.solids.push(s);
-    return s;
+    return this._capture('solids', s);
   },
   /* bottom-anchored convenience: y is the floor of the box */
   addFloor(cx, y, cz, w, h, d, tag) {
     return this.add(cx, y + h / 2, cz, w, h, d, tag);
   },
   addSpawn(x, y, z, kind, layerId) {
-    this.spawnMarkers.push({
+    const m = {
       position: new THREE.Vector3(x, y, z),
       kind: kind || 'generic',
       layerId: layerId || (y < -0.2 ? 'basement' : 'surface')
-    });
+    };
+    this.spawnMarkers.push(m);
+    return this._capture('spawnMarkers', m);
   },
   addLayer(id, options) {
     options = options || {};
@@ -6500,7 +6657,7 @@ const WORLD = {
       enabled: options.enabled !== false
     };
     this.portals.push(portal);
-    return portal;
+    return this._capture('portals', portal);
   },
   portalAt(x, y, z, layerId) {
     for (let i = 0; i < this.portals.length; i++) {
@@ -6544,7 +6701,7 @@ const WORLD = {
       playerOnly: !!options.playerOnly
     };
     this.ladders.push(ladder);
-    return ladder;
+    return this._capture('ladders', ladder);
   },
   ladderAt(x, y, z, radius, height, layerId) {
     for (let i = 0; i < this.ladders.length; i++) {
@@ -15794,6 +15951,16 @@ const PLAYER = (() => {
     setLook(y, p) {
       if (Number.isFinite(y)) yaw = y;
       if (Number.isFinite(p)) pitch = UTIL.clamp(p, -C.pitchLimit, C.pitchLimit);
+    },
+    /* [ENGINE] Teleport for the editor's playtest, which has to drop the
+       player at a map-authored spawn. Zeroes velocity for the same reason
+       the capture harness's goTo does: leaving it set makes the player
+       carry their old momentum into the new position and slide. */
+    setPosition(x, y, z) {
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return false;
+      pos.set(x, y, z);
+      vel.set(0, 0, 0);
+      return true;
     }
   };
 })();
@@ -20078,6 +20245,19 @@ const UI = (() => {
   }
   function hideLoading() { el.loading.classList.add('hidden'); }
 
+  /* [ENGINE] The editor shell. Hides the gameplay HUD while authoring --
+     a crosshair and an ammo counter over a level editor are noise -- and
+     puts them back on the way out. */
+  function showEditor(on) {
+    const ed = document.getElementById('editor');
+    if (ed) ed.classList.toggle('hidden', !on);
+    ['crosshair', 'radar', 'weaponInventory'].forEach(k => {
+      if (el[k]) el[k].classList.toggle('on', !on && el[k].classList.contains('on'));
+    });
+    if (el.hud) el.hud.classList.toggle('editing', !!on);
+    document.body.classList.toggle('editor-open', !!on);
+  }
+
   /* Options is a veil layered on top of whatever opened it (start or pause)
      rather than swapping screens — every .veil background is ~95% opaque,
      so the screen underneath is fully covered and just reappears untouched
@@ -20322,7 +20502,7 @@ const UI = (() => {
   return {
     init, setWeapon, setWeaponInventory, setThrowable, showReloadHint, crosshairKick, enterGame, hideMenus, showHud, showCoopLobby, hideCoopLobby,
     setCoopLobbyStep, setCoopStatus, setSignalOutput, getSignalInput, toast, setInteractionHint,
-    showPause, hidePause, showMobileControls, hideLoading, update,
+    showPause, hidePause, showMobileControls, hideLoading, update, showEditor,
     setDetail, peekArsenal, peekQuestBoard,
     setHealth, setShield, setJays, setBuffs, setKills, setBoss, setBoss2, setBoss3, setStun, setSlow, setPilotLives, hurtFlash, specialFlash, showDead, hideDead,
     setDeadCoopMode, setDeadHint,
@@ -22111,6 +22291,11 @@ const GAME = (() => {
     document.addEventListener('pointerdown', retryMenuMusic);
     document.addEventListener('keydown', retryMenuMusic);
 
+    // [ENGINE] Editor listeners. Bound after the renderer canvas exists,
+    // since the editor picks against it. F2 toggles; nothing else here is
+    // reachable until the editor is actually open.
+    if (typeof EDITOR !== 'undefined') EDITOR.init();
+
     last = performance.now();
     requestAnimationFrame(loop);
   }
@@ -22491,6 +22676,9 @@ const GAME = (() => {
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
     viewCamera.aspect = w / h; viewCamera.updateProjectionMatrix();
+    // The editor camera is a third camera onto the same scene and needs the
+    // same aspect, or a resize while authoring stretches the viewport.
+    if (typeof EDITOR !== 'undefined' && EDITOR.resize) EDITOR.resize();
     RENDERCORE.setSize(w, h, renderer.getPixelRatio());
   }
 
@@ -22526,6 +22714,25 @@ const GAME = (() => {
           UI.toast(INPUT.padLabel(captured) + ' was on ' + result.bumpedAction + ' — now unbound.', 2.2);
         }
       }
+    }
+
+    /* [ENGINE] Editor mode. Takes the frame before every gameplay branch
+       below: the simulation must be completely frozen while authoring, or
+       enemies walk around and the player falls through the world the editor
+       is flying over. LEVEL.update still runs so the farm keeps breathing
+       (doors, windmill, wobble) -- the scene being edited should look alive.
+       Renders the SAME scene through the editor's own camera; there is no
+       duplicate world. */
+    if (typeof EDITOR !== 'undefined' && EDITOR.active) {
+      INPUT.consumeMouse();
+      EDITOR.update(dt);
+      LEVEL.update(dt, time);
+      FX.update(dt, time);
+      AUDIO.update(dt);
+      UI.update(dt);
+      RENDERCORE.update(dt, EDITOR.camera);
+      RENDERCORE.render(scene, EDITOR.camera, null, null);
+      return;
     }
 
     if (INTRO.active) {
@@ -31406,6 +31613,1120 @@ const CHAT = (() => {
    consumableId/buffId) -- so every weapon, pickup and throwable that gets
    added to the game from here on is automatically spawnable with zero
    changes to this module. ===================================================================== */
+/* ============================ [REGISTRY] =============================
+   [ENGINE] The one authoritative table of editor-placeable objects.
+
+   This replaces nothing. DEVCONSOLE's spawn/list is a *dispatcher* -- it
+   resolves a string by trying PICKUP.definitions, then ENEMY.roster, then a
+   hardcoded boss alias table. That is three lookups wearing a trenchcoat, and
+   it cannot answer the questions an editor asks: what can I place, what
+   category is it in, what can I edit about it.
+
+   Critically, an entry does NOT reimplement its object. `build` calls the
+   same PROPS/PICKUP/ENEMY construction code gameplay calls. There is exactly
+   one implementation of a barrel in this codebase and the editor uses it.
+
+   An entry:
+     id          stable string, what map data stores
+     name        display
+     category    object-browser grouping
+     placeable   can the editor place it
+     collides    does building it register colliders
+     build(ctx, data) -> THREE.Object3D
+                 the editor-visible representation. For static props this IS
+                 the real object. For gameplay entities it is a marker (see
+                 `activate`), because an editor should not have live AI
+                 running at it while it works.
+     activate(ctx, data)
+                 optional. Called when entering PLAY. Spawns the real
+                 gameplay entity. Absent for props -- they are already real.
+     properties  editable schema, {key: {type, label, min, max, step, options}}
+   ==================================================================== */
+const REGISTRY = (() => {
+  const entries = {};
+  const order = [];
+
+  function register(def) {
+    if (!def || !def.id) throw new Error('REGISTRY: entry needs an id');
+    if (entries[def.id]) throw new Error('REGISTRY: duplicate id "' + def.id + '"');
+    const e = Object.assign({
+      name: def.id, category: 'Other', placeable: true, collides: false,
+      properties: {}, activate: null
+    }, def);
+    entries[e.id] = e;
+    order.push(e.id);
+    return e;
+  }
+  function get(id) { return entries[id] || null; }
+  function has(id) { return !!entries[id]; }
+  function all() { return order.map(id => entries[id]); }
+  function categories() {
+    const seen = [], byCat = {};
+    order.forEach(id => {
+      const e = entries[id];
+      if (!e.placeable) return;
+      if (!byCat[e.category]) { byCat[e.category] = []; seen.push(e.category); }
+      byCat[e.category].push(e);
+    });
+    return seen.map(c => ({ name: c, items: byCat[c] }));
+  }
+
+  /* --- editor marker -------------------------------------------------
+     Gameplay entities are represented in the editor by a coloured post with
+     a floating diamond. Deliberately not the real enemy: building a live
+     enemy would start its AI, its mixers and its hit proxies inside the
+     editor, and deleting one would mean unpicking all of that. The real one
+     is created on PLAY by `activate`. */
+  function marker(color, tall) {
+    const g = new THREE.Group();
+    const h = tall ? 1.7 : 0.9;
+    const post = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.07, 0.07, h, 7),
+      new THREE.MeshBasicMaterial({ color: color })
+    );
+    post.position.y = h / 2;
+    g.add(post);
+    const head = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.30, 0),
+      new THREE.MeshBasicMaterial({ color: color })
+    );
+    head.position.y = h + 0.24;
+    g.add(head);
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.34, 0.46, 18),
+      new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.55 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.02;
+    g.add(ring);
+    g.userData.editorMarker = true;
+    g.userData.spinHead = head;
+    return g;
+  }
+
+  /* --- props ---------------------------------------------------------
+     Every one of these calls the real PROPS builder. Colliders land in
+     WORLD through the capture scope SANDBOX opens around the call, so
+     deleting the object removes its collision too. */
+  function prop(id, name, fn, collides) {
+    register({
+      id: id, name: name, category: 'Props', collides: collides !== false,
+      build: (ctx, d) => { const g = new THREE.Group(); fn(g, d); return g; },
+      properties: {}
+    });
+  }
+  prop('prop_barrel',  'Barrel',    g => PROPS.barrel(g, 0, 0, {}));
+  prop('prop_crate',   'Crate',     g => PROPS.crate(g, 0, 0, 0, 0.85, 0));
+  prop('prop_haybale', 'Hay Bale',  g => PROPS.hayBale(g, 0, 0, 0, 0));
+  prop('prop_rock',    'Rock',      g => PROPS.rock(g, 0, 0, 0.8));
+  prop('prop_tree',    'Tree',      g => PROPS.tree(g, 0, 0, 1.0));
+  prop('prop_can',     'Tin Can',   g => PROPS.can(g, 0, 0, 0), false);
+  prop('prop_bottle',  'Bottle',    g => PROPS.bottle(g, 0, 0, 0), false);
+  prop('prop_lantern', 'Lantern',   g => PROPS.lantern(g, 0, 1.2, 0, 0), false);
+
+  register({
+    id: 'prop_sign', name: 'Sign Post', category: 'Props', collides: true,
+    build: (ctx, d) => {
+      const g = new THREE.Group();
+      const p = d.properties || {};
+      const lines = String(p.text === undefined ? 'NEW SIGN' : p.text)
+        .split('|').map(s => s.trim()).filter(Boolean).slice(0, 3);
+      PROPS.signPost(g, 0, 0, lines.length ? lines : ['NEW SIGN'], 0, {});
+      return g;
+    },
+    properties: {
+      text: { type: 'text', label: 'Text (| splits lines)', def: 'NEW SIGN' }
+    }
+  });
+
+  /* --- enemies -------------------------------------------------------
+     ENEMY.spawnGrunt(id, point) is the same call the dev console makes. */
+  const ENEMY_NAMES = { reaper: 'Reaper', howler: 'Howler', gaper: 'Gaper', grinner: 'Grinner' };
+  ['reaper', 'howler', 'gaper', 'grinner'].forEach(id => {
+    register({
+      id: 'enemy_' + id, name: ENEMY_NAMES[id], category: 'Enemies', collides: false,
+      build: () => marker(0xC4574B, true),
+      activate: (ctx, d) => {
+        if (typeof ENEMY === 'undefined' || !ENEMY.spawnGrunt) return null;
+        const t = d.transform;
+        return ENEMY.spawnGrunt(id, new THREE.Vector3(t.position.x, t.position.y, t.position.z));
+      },
+      properties: {}
+    });
+  });
+
+  /* --- pickups -------------------------------------------------------
+     Built from PICKUP.definitions rather than hand-listed, so a pickup added
+     to the game becomes placeable with no edit here. */
+  function pickupCategory(type) {
+    if (type === 'weapon') return 'Weapons';
+    if (type === 'ammo') return 'Ammo';
+    return 'Pickups';
+  }
+  function registerPickups() {
+    if (typeof PICKUP === 'undefined' || !PICKUP.definitions) return;
+    const defs = PICKUP.definitions;
+    Object.keys(defs).forEach(defId => {
+      const d = defs[defId];
+      register({
+        id: 'pickup_' + defId, name: d.label || defId,
+        category: pickupCategory(d.type), collides: false,
+        build: () => marker(d.type === 'weapon' ? 0xE8A33D : 0x8FB3CC, false),
+        activate: (ctx, dat) => {
+          const t = dat.transform;
+          return PICKUP.spawn(defId, new THREE.Vector3(t.position.x, t.position.y, t.position.z));
+        },
+        properties: {}
+      });
+    });
+  }
+
+  /* --- spawns --------------------------------------------------------- */
+  register({
+    id: 'spawn_player', name: 'Player Spawn', category: 'Spawns', collides: false,
+    build: () => marker(0x7FBF5F, true),
+    properties: {}
+  });
+
+  // PICKUP.definitions is populated inside PICKUP's own IIFE, which runs
+  // before this one, so this is safe to call at definition time. It is a
+  // function rather than inline so a later phase can re-run it if the game
+  // ever starts defining pickups lazily.
+  registerPickups();
+
+  return { register, get, has, all, categories, marker };
+})();
+
+/* ============================= [SANDBOX] =============================
+   [ENGINE] The editable world layer.
+
+   The campaign farm (LEVEL.build) is left completely untouched and becomes
+   the backdrop. Everything the editor authors lives here instead: its own
+   THREE.Group, its own instance list, its own WORLD capture handles.
+
+   That is what makes the first milestone safe. Nothing in this module can
+   corrupt campaign geometry, because it never touches it. A later phase can
+   migrate LEVEL content into map data once the format has proved itself --
+   and by then it migrates into a loader that already works.
+   ==================================================================== */
+const SANDBOX = (() => {
+  const FORMAT_VERSION = 1;
+  let group = null;
+  let instances = [];
+  let nextId = 1;
+  let metadata = { name: 'Untitled Farm' };
+  let activated = [];        // gameplay entities created by PLAY
+
+  function ensureGroup() {
+    if (group) return group;
+    group = new THREE.Group();
+    group.name = 'SANDBOX';
+    const scene = (typeof GAME !== 'undefined') ? GAME.scene : null;
+    if (scene) scene.add(group);
+    return group;
+  }
+
+  function freshId() { return 'obj_' + String(nextId++).padStart(3, '0'); }
+
+  /* Build one instance from map-data. The WORLD capture scope around
+     `build` is the whole reason delete works: whatever colliders the real
+     prop builder registers get recorded against this instance and released
+     when it goes. */
+  function instantiate(data) {
+    const entry = REGISTRY.get(data.type);
+    if (!entry) return null;
+    const handle = WORLD.beginCapture();
+    let object3D = null;
+    try {
+      object3D = entry.build({ sandbox: true }, data);
+    } finally {
+      WORLD.endCapture();
+    }
+    if (!object3D) { WORLD.release(handle); return null; }
+
+    const t = data.transform;
+    object3D.position.set(t.position.x, t.position.y, t.position.z);
+    object3D.rotation.y = t.rotation || 0;
+    const s = t.scale === undefined ? 1 : t.scale;
+    object3D.scale.setScalar(s);
+    // A collider captured at build time was computed in world space around
+    // the origin, so it has to be shifted to wherever the object actually
+    // landed. Yaw/scale are deliberately NOT applied to the box: the game's
+    // colliders are axis-aligned and rotating one is meaningless.
+    handle.solids.forEach(sol => {
+      sol.minX += t.position.x; sol.maxX += t.position.x;
+      sol.minY += t.position.y; sol.maxY += t.position.y;
+      sol.minZ += t.position.z; sol.maxZ += t.position.z;
+    });
+
+    ensureGroup().add(object3D);
+    const inst = {
+      id: data.id || freshId(),
+      type: data.type,
+      object3D: object3D,
+      handle: handle,
+      data: data,
+      entry: entry
+    };
+    object3D.userData.sandboxId = inst.id;
+    instances.push(inst);
+    return inst;
+  }
+
+  function add(typeId, position, rotation, properties) {
+    if (!REGISTRY.has(typeId)) return null;
+    return instantiate({
+      id: freshId(),
+      type: typeId,
+      transform: {
+        position: { x: position.x, y: position.y, z: position.z },
+        rotation: rotation || 0,
+        scale: 1
+      },
+      properties: properties || {}
+    });
+  }
+
+  function remove(inst) {
+    if (!inst) return false;
+    const at = instances.indexOf(inst);
+    if (at === -1) return false;
+    instances.splice(at, 1);
+    if (inst.object3D && inst.object3D.parent) inst.object3D.parent.remove(inst.object3D);
+    disposeTree(inst.object3D);
+    WORLD.release(inst.handle);
+    return true;
+  }
+
+  function disposeTree(obj) {
+    if (!obj || !obj.traverse) return;
+    obj.traverse(n => {
+      if (n.geometry && n.geometry.dispose) n.geometry.dispose();
+      // Materials are shared and cached by MAT/TEX -- disposing one here
+      // would blank it everywhere else it is used. Geometry is per-object
+      // and safe; materials are deliberately left alone.
+    });
+  }
+
+  function find(id) { return instances.filter(i => i.id === id)[0] || null; }
+  function findByObject(obj) {
+    let n = obj;
+    while (n) {
+      if (n.userData && n.userData.sandboxId) return find(n.userData.sandboxId);
+      n = n.parent;
+    }
+    return null;
+  }
+
+  function clear() {
+    instances.slice().forEach(remove);
+    instances = [];
+  }
+
+  /* Transform edits go through here so the collider follows the mesh. The
+     collider is rebuilt by delta rather than recomputed, because only the
+     builder knows the box's original extents. */
+  function setTransform(inst, position, rotation, scale) {
+    if (!inst) return;
+    const o = inst.object3D, t = inst.data.transform;
+    if (position) {
+      const dx = position.x - o.position.x, dy = position.y - o.position.y, dz = position.z - o.position.z;
+      o.position.set(position.x, position.y, position.z);
+      t.position = { x: position.x, y: position.y, z: position.z };
+      inst.handle.solids.forEach(s => {
+        s.minX += dx; s.maxX += dx; s.minY += dy; s.maxY += dy; s.minZ += dz; s.maxZ += dz;
+      });
+    }
+    if (rotation !== undefined && rotation !== null) {
+      o.rotation.y = rotation;
+      t.rotation = rotation;
+    }
+    if (scale !== undefined && scale !== null) {
+      o.scale.setScalar(scale);
+      t.scale = scale;
+    }
+  }
+
+  /* Rebuild one instance in place, for a property change that alters
+     geometry (sign text). Keeps the id so history and selection survive. */
+  function rebuild(inst) {
+    if (!inst) return null;
+    const data = JSON.parse(JSON.stringify(inst.data));
+    remove(inst);
+    return instantiate(data);
+  }
+
+  function serialize() {
+    return {
+      formatVersion: FORMAT_VERSION,
+      metadata: { name: metadata.name, savedAt: new Date().toISOString() },
+      environment: {},
+      objects: instances.map(i => JSON.parse(JSON.stringify(i.data)))
+    };
+  }
+
+  function load(mapData) {
+    const report = MAPIO.validate(mapData);
+    if (!report.ok) return report;
+    clear();
+    metadata.name = (mapData.metadata && mapData.metadata.name) || 'Untitled Farm';
+    nextId = 1;
+    let placed = 0;
+    mapData.objects.forEach(o => { if (instantiate(o)) placed++; });
+    // Keep generated ids from colliding with loaded ones.
+    instances.forEach(i => {
+      const m = /^obj_(\d+)$/.exec(i.id);
+      if (m) nextId = Math.max(nextId, parseInt(m[1], 10) + 1);
+    });
+    return { ok: true, errors: [], warnings: report.warnings, placed: placed };
+  }
+
+  /* --- play / edit transitions --------------------------------------- */
+  function activateGameplay() {
+    deactivateGameplay();
+    instances.forEach(inst => {
+      if (inst.object3D.userData.editorMarker) inst.object3D.visible = false;
+      if (!inst.entry.activate) return;
+      try {
+        const made = inst.entry.activate({ sandbox: true }, inst.data);
+        if (made) activated.push({ inst: inst, made: made });
+      } catch (err) {
+        if (typeof UI !== 'undefined' && UI.toast) {
+          UI.toast('Could not spawn ' + inst.type, 2);
+        }
+      }
+    });
+  }
+  function deactivateGameplay() {
+    activated = [];
+    instances.forEach(inst => {
+      if (inst.object3D.userData.editorMarker) inst.object3D.visible = true;
+    });
+  }
+
+  function playerSpawn() {
+    const s = instances.filter(i => i.type === 'spawn_player')[0];
+    if (!s) return null;
+    const p = s.data.transform.position;
+    return new THREE.Vector3(p.x, p.y, p.z);
+  }
+
+  return {
+    FORMAT_VERSION,
+    ensureGroup, add, remove, clear, find, findByObject, setTransform, rebuild,
+    serialize, load, instantiate, activateGameplay, deactivateGameplay, playerSpawn,
+    get instances() { return instances; },
+    get count() { return instances.length; },
+    get name() { return metadata.name; },
+    set name(v) { metadata.name = String(v || 'Untitled Farm'); }
+  };
+})();
+
+/* ============================== [MAPIO] ==============================
+   [ENGINE] Versioned map serialisation, validation and persistence.
+
+   Validation is not decoration. A map is a file a person can hand-edit, mail
+   to someone, or carry across a version of the game that renamed an object --
+   so the loader's job is to fail with something a human can act on rather
+   than to half-build a broken world. Every failure names the object.
+   ==================================================================== */
+const MAPIO = (() => {
+  const STORAGE_PREFIX = 'wf-map-';
+  const INDEX_KEY = 'wf-map-index';
+
+  function validate(mapData) {
+    const errors = [], warnings = [];
+    if (!mapData || typeof mapData !== 'object') {
+      return { ok: false, errors: ['Not a map: expected a JSON object.'], warnings: [] };
+    }
+    const v = mapData.formatVersion;
+    if (v === undefined) errors.push('Missing formatVersion.');
+    else if (!Number.isInteger(v)) errors.push('formatVersion must be a whole number, got ' + JSON.stringify(v) + '.');
+    else if (v > SANDBOX.FORMAT_VERSION) {
+      errors.push('Map is format version ' + v + '; this build reads up to ' +
+        SANDBOX.FORMAT_VERSION + '. Update the game.');
+    }
+    if (!Array.isArray(mapData.objects)) {
+      errors.push('objects must be an array.');
+      return { ok: false, errors: errors, warnings: warnings };
+    }
+
+    const seen = {};
+    mapData.objects.forEach((o, i) => {
+      const where = 'object[' + i + ']' + (o && o.id ? ' "' + o.id + '"' : '');
+      if (!o || typeof o !== 'object') { errors.push(where + ' is not an object.'); return; }
+      if (!o.type) errors.push(where + ' has no type.');
+      else if (!REGISTRY.has(o.type)) errors.push(where + ' has unknown type "' + o.type + '".');
+      if (o.id) {
+        if (seen[o.id]) errors.push('Duplicate object id "' + o.id + '".');
+        seen[o.id] = true;
+      } else warnings.push(where + ' has no id; one will be generated.');
+
+      const t = o.transform;
+      if (!t || typeof t !== 'object') { errors.push(where + ' has no transform.'); return; }
+      const p = t.position;
+      if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) {
+        errors.push(where + ' has a malformed position.');
+      }
+      if (t.rotation !== undefined && !Number.isFinite(t.rotation)) {
+        errors.push(where + ' has a malformed rotation.');
+      }
+      if (t.scale !== undefined && (!Number.isFinite(t.scale) || t.scale <= 0)) {
+        errors.push(where + ' has a malformed scale.');
+      }
+    });
+
+    if (!mapData.objects.some(o => o && o.type === 'spawn_player')) {
+      warnings.push('No player spawn placed; playtest will start from the campaign spawn.');
+    }
+    return { ok: errors.length === 0, errors: errors, warnings: warnings };
+  }
+
+  function listSaved() {
+    try {
+      const raw = localStorage.getItem(INDEX_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr.filter(n => typeof n === 'string') : [];
+    } catch (e) { return []; }
+  }
+  function saveLocal(name, mapData) {
+    try {
+      localStorage.setItem(STORAGE_PREFIX + name, JSON.stringify(mapData));
+      const idx = listSaved();
+      if (idx.indexOf(name) === -1) { idx.push(name); localStorage.setItem(INDEX_KEY, JSON.stringify(idx)); }
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, errors: ['Could not save: ' + (e && e.message ? e.message : e)] };
+    }
+  }
+  function loadLocal(name) {
+    try {
+      const raw = localStorage.getItem(STORAGE_PREFIX + name);
+      if (!raw) return { ok: false, errors: ['No saved map called "' + name + '".'] };
+      return { ok: true, map: JSON.parse(raw) };
+    } catch (e) {
+      return { ok: false, errors: ['Saved map "' + name + '" is corrupt: ' + (e && e.message ? e.message : e)] };
+    }
+  }
+  function deleteLocal(name) {
+    try {
+      localStorage.removeItem(STORAGE_PREFIX + name);
+      const idx = listSaved().filter(n => n !== name);
+      localStorage.setItem(INDEX_KEY, JSON.stringify(idx));
+    } catch (e) {}
+  }
+
+  function exportFile(mapData, filename) {
+    try {
+      const blob = new Blob([JSON.stringify(mapData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = (filename || mapData.metadata && mapData.metadata.name || 'map') + '.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, errors: ['Export failed: ' + (e && e.message ? e.message : e)] };
+    }
+  }
+
+  return { validate, listSaved, saveLocal, loadLocal, deleteLocal, exportFile };
+})();
+
+/* ============================= [EDITOR] ==============================
+   [ENGINE] The first consumer of the engine layer above.
+
+   Operates on the real world: the same THREE scene, the same WORLD collision
+   arrays, the same construction code. There is no duplicate editing world.
+
+   Pointer lock is released on entry -- the editor needs a real cursor for its
+   panels and for picking -- so gameplay input is untouched rather than
+   fought with. Camera is free-fly: WASD/QE to move, hold right-mouse to look.
+   ==================================================================== */
+const EDITOR = (() => {
+  let active = false;
+  let camera = null;
+  let raycaster = null;
+  let grid = null;
+  let selection = null;
+  let selectionBox = null;
+  let ghost = null;
+  let tool = 'select';
+  let placeType = null;
+  let yaw = 0, pitch = -0.35;
+  let looking = false, lastMX = 0, lastMY = 0;
+  const keys = {};
+  const history = [];
+  let historyAt = 0;
+  let playReturn = null;      // camera state to restore when PLAY -> EDITOR
+  const _ndc = { x: 0, y: 0 };
+  const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const _hit = new THREE.Vector3();
+
+  function canvasEl() { return document.querySelector('#app canvas'); }
+
+  /* ---------------------------- history ------------------------------
+     One centralised stack of {label, undo, redo} commands. Every mutating
+     editor action pushes one; nothing mutates the sandbox behind its back. */
+  function pushCommand(cmd) {
+    history.length = historyAt;
+    history.push(cmd);
+    historyAt = history.length;
+    if (history.length > 200) { history.shift(); historyAt--; }
+    refreshStatus();
+  }
+  function undo() {
+    if (historyAt <= 0) return;
+    historyAt--;
+    history[historyAt].undo();
+    refreshStatus();
+  }
+  function redo() {
+    if (historyAt >= history.length) return;
+    history[historyAt].redo();
+    historyAt++;
+    refreshStatus();
+  }
+
+  /* --------------------------- selection ----------------------------- */
+  function select(inst) {
+    selection = inst || null;
+    if (selectionBox) {
+      selectionBox.visible = !!selection;
+      if (selection) selectionBox.setFromObject(selection.object3D);
+    }
+    renderInspector();
+    refreshStatus();
+  }
+  function refreshSelectionBox() {
+    if (selectionBox && selection) selectionBox.setFromObject(selection.object3D);
+  }
+
+  /* --------------------------- commands ------------------------------ */
+  function doPlace(typeId, pos) {
+    const inst = SANDBOX.add(typeId, pos, 0, {});
+    if (!inst) return null;
+    const snapshot = JSON.parse(JSON.stringify(inst.data));
+    pushCommand({
+      label: 'place',
+      undo: () => { const i = SANDBOX.find(snapshot.id); if (i) { if (selection === i) select(null); SANDBOX.remove(i); } },
+      redo: () => { SANDBOX.instantiate(JSON.parse(JSON.stringify(snapshot))); }
+    });
+    select(inst);
+    return inst;
+  }
+  function doDelete(inst) {
+    if (!inst) return;
+    const snapshot = JSON.parse(JSON.stringify(inst.data));
+    SANDBOX.remove(inst);
+    if (selection === inst) select(null);
+    pushCommand({
+      label: 'delete',
+      undo: () => { SANDBOX.instantiate(JSON.parse(JSON.stringify(snapshot))); },
+      redo: () => { const i = SANDBOX.find(snapshot.id); if (i) { if (selection === i) select(null); SANDBOX.remove(i); } }
+    });
+  }
+  function doDuplicate(inst) {
+    if (!inst) return;
+    const t = inst.data.transform;
+    const copy = SANDBOX.add(inst.type,
+      { x: t.position.x + 1.2, y: t.position.y, z: t.position.z + 1.2 },
+      t.rotation, JSON.parse(JSON.stringify(inst.data.properties || {})));
+    if (!copy) return;
+    const snapshot = JSON.parse(JSON.stringify(copy.data));
+    pushCommand({
+      label: 'duplicate',
+      undo: () => { const i = SANDBOX.find(snapshot.id); if (i) { if (selection === i) select(null); SANDBOX.remove(i); } },
+      redo: () => { SANDBOX.instantiate(JSON.parse(JSON.stringify(snapshot))); }
+    });
+    select(copy);
+  }
+  /* Transform commands coalesce: a drag or a held rotate key produces one
+     history entry from where it started to where it stopped, not one per
+     frame. `before` is captured when the gesture begins. */
+  function commitTransform(inst, before) {
+    if (!inst) return;
+    const id = inst.id;
+    const after = JSON.parse(JSON.stringify(inst.data.transform));
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const apply = t => {
+      const i = SANDBOX.find(id);
+      if (i) { SANDBOX.setTransform(i, t.position, t.rotation, t.scale); refreshSelectionBox(); renderInspector(); }
+    };
+    pushCommand({ label: 'transform', undo: () => apply(before), redo: () => apply(after) });
+  }
+
+  /* ---------------------------- picking ------------------------------ */
+  function pointerNDC(e) {
+    const c = canvasEl();
+    if (!c) return null;
+    const r = c.getBoundingClientRect();
+    _ndc.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+    _ndc.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+    return _ndc;
+  }
+  function groundPointAt(e) {
+    if (!pointerNDC(e)) return null;
+    raycaster.setFromCamera(_ndc, camera);
+    // Prefer real geometry so objects land on the barn floor, a catwalk or a
+    // silo deck rather than always on y=0; fall back to the ground plane
+    // when the ray leaves the built world entirely.
+    const scene = GAME.scene;
+    const hits = raycaster.intersectObjects(scene.children, true).filter(h =>
+      h.object && h.object.visible &&
+      !(h.object.userData && h.object.userData.outline) &&
+      !isGhost(h.object) && !isEditorGizmo(h.object));
+    if (hits.length) return hits[0].point.clone();
+    return raycaster.ray.intersectPlane(_groundPlane, _hit) ? _hit.clone() : null;
+  }
+  function pickInstance(e) {
+    if (!pointerNDC(e)) return null;
+    raycaster.setFromCamera(_ndc, camera);
+    const g = SANDBOX.ensureGroup();
+    const hits = raycaster.intersectObjects(g.children, true).filter(h =>
+      h.object && h.object.visible && !(h.object.userData && h.object.userData.outline));
+    for (let i = 0; i < hits.length; i++) {
+      const inst = SANDBOX.findByObject(hits[i].object);
+      if (inst) return inst;
+    }
+    return null;
+  }
+  function isGhost(o) { let n = o; while (n) { if (n === ghost) return true; n = n.parent; } return false; }
+  function isEditorGizmo(o) { let n = o; while (n) { if (n === grid || n === selectionBox) return true; n = n.parent; } return false; }
+
+  /* ----------------------------- ghost ------------------------------- */
+  function setPlaceType(typeId) {
+    placeType = typeId;
+    tool = typeId ? 'place' : 'select';
+    clearGhost();
+    if (typeId) {
+      const entry = REGISTRY.get(typeId);
+      if (entry) {
+        const handle = WORLD.beginCapture();
+        let g = null;
+        try { g = entry.build({ ghost: true }, { transform: { position: { x: 0, y: 0, z: 0 }, rotation: 0, scale: 1 }, properties: {} }); }
+        finally { WORLD.endCapture(); }
+        // A ghost must never register collision -- it is a preview, and the
+        // player would otherwise walk into a barrel that does not exist yet.
+        WORLD.release(handle);
+        if (g) {
+          g.traverse(n => {
+            if (n.material) {
+              n.material = n.material.clone();
+              n.material.transparent = true;
+              n.material.opacity = 0.45;
+              n.material.depthWrite = false;
+            }
+          });
+          ghost = g;
+          GAME.scene.add(ghost);
+        }
+      }
+    }
+    renderToolbar();
+    refreshStatus();
+  }
+  function clearGhost() {
+    if (ghost) {
+      if (ghost.parent) ghost.parent.remove(ghost);
+      ghost.traverse(n => {
+        if (n.geometry && n.geometry.dispose) n.geometry.dispose();
+        // These materials were cloned for the ghost, so unlike SANDBOX's
+        // shared ones they are ours to dispose.
+        if (n.material && n.material.dispose) n.material.dispose();
+      });
+      ghost = null;
+    }
+  }
+
+  /* ------------------------------ mode ------------------------------- */
+  function enter() {
+    if (active) return;
+    if (typeof GAME === 'undefined' || !GAME.scene) return;
+    active = true;
+
+    if (!camera) {
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 900);
+      camera.rotation.order = 'YXZ';
+      raycaster = new THREE.Raycaster();
+      selectionBox = new THREE.BoxHelper(new THREE.Object3D(), 0xE8A33D);
+      selectionBox.visible = false;
+      GAME.scene.add(selectionBox);
+      grid = new THREE.GridHelper(200, 100, 0x5C7E99, 0x3E5670);
+      grid.material.opacity = 0.32;
+      grid.material.transparent = true;
+      grid.position.y = 0.02;
+      GAME.scene.add(grid);
+    }
+    grid.visible = true;
+    selectionBox.visible = !!selection;
+    SANDBOX.ensureGroup();
+    SANDBOX.deactivateGameplay();
+
+    if (playReturn) {
+      camera.position.copy(playReturn.position);
+      yaw = playReturn.yaw; pitch = playReturn.pitch;
+    } else if (typeof PLAYER !== 'undefined') {
+      const p = PLAYER.position;
+      camera.position.set(p.x, p.y + 6, p.z + 8);
+      yaw = 0; pitch = -0.5;
+    }
+    playReturn = null;
+
+    if (typeof INPUT !== 'undefined') { INPUT.releaseLock(); INPUT.clearActions(); }
+    if (typeof UI !== 'undefined') UI.showEditor(true);
+    renderBrowser();
+    renderToolbar();
+    renderInspector();
+    refreshStatus();
+  }
+
+  function exit() {
+    if (!active) return;
+    active = false;
+    playReturn = { position: camera.position.clone(), yaw: yaw, pitch: pitch };
+    clearGhost();
+    if (grid) grid.visible = false;
+    if (selectionBox) selectionBox.visible = false;
+    Object.keys(keys).forEach(k => delete keys[k]);
+    looking = false;
+    if (typeof UI !== 'undefined') UI.showEditor(false);
+  }
+
+  /* PLAY from the editor: instantiate the sandbox's gameplay entities, drop
+     the player at the authored spawn if there is one, and hand control back
+     to the real game. Deliberately the same game -- not a stripped test
+     harness -- so what is being tested is what ships. */
+  function play() {
+    if (!active) return;
+    const spawn = SANDBOX.playerSpawn();
+    exit();
+    SANDBOX.activateGameplay();
+    if (spawn && typeof PLAYER !== 'undefined' && PLAYER.setPosition) {
+      PLAYER.setPosition(spawn.x, spawn.y, spawn.z);
+    }
+    if (typeof INPUT !== 'undefined') INPUT.requestLock();
+    if (typeof UI !== 'undefined') UI.toast('Playtesting — press F2 to return to the editor', 2.6);
+  }
+  function toggle() { if (active) play(); else enter(); }
+
+  /* ----------------------------- update ------------------------------ */
+  function update(dt) {
+    if (!active || !camera) return;
+    const fast = keys.ShiftLeft || keys.ShiftRight ? 3.2 : 1;
+    const speed = 12 * fast * dt;
+    const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+    const rx = Math.cos(yaw), rz = -Math.sin(yaw);
+    if (keys.KeyW) { camera.position.x += fx * speed; camera.position.z += fz * speed; }
+    if (keys.KeyS) { camera.position.x -= fx * speed; camera.position.z -= fz * speed; }
+    if (keys.KeyD) { camera.position.x += rx * speed; camera.position.z += rz * speed; }
+    if (keys.KeyA) { camera.position.x -= rx * speed; camera.position.z -= rz * speed; }
+    if (keys.KeyE) camera.position.y += speed;
+    if (keys.KeyQ) camera.position.y -= speed;
+    camera.rotation.set(pitch, yaw, 0);
+
+    if (ghost && ghost.parent) {
+      const head = ghost.userData && ghost.userData.spinHead;
+      if (head) head.rotation.y += dt * 2;
+    }
+    SANDBOX.instances.forEach(i => {
+      const head = i.object3D.userData && i.object3D.userData.spinHead;
+      if (head) head.rotation.y += dt * 1.4;
+    });
+  }
+
+  function resize() {
+    if (!camera) return;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+  }
+
+  /* --------------------------- DOM wiring ---------------------------- */
+  function el(id) { return document.getElementById(id); }
+
+  function renderBrowser() {
+    const host = el('edBrowser');
+    if (!host) return;
+    host.innerHTML = REGISTRY.categories().map(cat =>
+      '<div class="ed-cat"><h4>' + cat.name + '</h4>' +
+      cat.items.map(it =>
+        '<button class="ed-item" data-place="' + it.id + '" title="' + it.id + '">' + it.name + '</button>'
+      ).join('') + '</div>'
+    ).join('');
+  }
+  function renderToolbar() {
+    const host = el('edTools');
+    if (!host) return;
+    host.querySelectorAll('[data-tool]').forEach(b => {
+      b.classList.toggle('on', b.getAttribute('data-tool') === tool);
+    });
+    const items = el('edBrowser');
+    if (items) items.querySelectorAll('[data-place]').forEach(b => {
+      b.classList.toggle('on', b.getAttribute('data-place') === placeType);
+    });
+  }
+  function renderInspector() {
+    const host = el('edInspector');
+    if (!host) return;
+    if (!selection) { host.innerHTML = '<p class="ed-empty">Nothing selected.</p>'; return; }
+    const t = selection.data.transform;
+    const entry = selection.entry;
+    let html = '<p class="ed-sel">' + entry.name + '<span>' + selection.id + '</span></p>';
+    html += row('X', 'px', t.position.x) + row('Y', 'py', t.position.y) + row('Z', 'pz', t.position.z);
+    html += row('Yaw°', 'rot', +(t.rotation * 180 / Math.PI).toFixed(1));
+    html += row('Scale', 'scl', t.scale === undefined ? 1 : t.scale);
+    const props = entry.properties || {};
+    Object.keys(props).forEach(key => {
+      const spec = props[key];
+      const val = (selection.data.properties && selection.data.properties[key] !== undefined)
+        ? selection.data.properties[key] : (spec.def === undefined ? '' : spec.def);
+      html += '<label class="ed-row"><span>' + (spec.label || key) + '</span>' +
+        '<input type="text" data-prop="' + key + '" value="' + String(val).replace(/"/g, '&quot;') + '" /></label>';
+    });
+    host.innerHTML = html;
+  }
+  function row(label, key, value) {
+    return '<label class="ed-row"><span>' + label + '</span>' +
+      '<input type="number" step="0.1" data-xf="' + key + '" value="' + value + '" /></label>';
+  }
+  function refreshStatus() {
+    const s = el('edStatus');
+    if (!s) return;
+    s.textContent = SANDBOX.count + ' object' + (SANDBOX.count === 1 ? '' : 's') +
+      ' · ' + SANDBOX.name +
+      (selection ? ' · selected ' + selection.entry.name : '') +
+      ' · undo ' + historyAt + '/' + history.length;
+  }
+  function notify(msg, bad) {
+    const n = el('edNotice');
+    if (!n) return;
+    n.textContent = msg || '';
+    n.classList.toggle('bad', !!bad);
+  }
+
+  /* ------------------------- save / load ----------------------------- */
+  function save() {
+    const name = SANDBOX.name;
+    const map = SANDBOX.serialize();
+    const report = MAPIO.validate(map);
+    if (!report.ok) { notify('Cannot save: ' + report.errors[0], true); return; }
+    const res = MAPIO.saveLocal(name, map);
+    if (!res.ok) { notify(res.errors[0], true); return; }
+    notify('Saved "' + name + '"' + (report.warnings.length ? ' — ' + report.warnings[0] : ''));
+    renderMapList();
+  }
+  function loadNamed(name) {
+    const res = MAPIO.loadLocal(name);
+    if (!res.ok) { notify(res.errors[0], true); return; }
+    const out = SANDBOX.load(res.map);
+    if (!out.ok) { notify('Map rejected: ' + out.errors[0], true); return; }
+    SANDBOX.name = name;
+    select(null);
+    history.length = 0; historyAt = 0;
+    notify('Loaded "' + name + '" — ' + out.placed + ' objects' +
+      (out.warnings.length ? ' (' + out.warnings[0] + ')' : ''));
+    refreshStatus();
+  }
+  function newMap() {
+    SANDBOX.clear();
+    select(null);
+    history.length = 0; historyAt = 0;
+    SANDBOX.name = 'Untitled Farm';
+    notify('New map.');
+    refreshStatus();
+  }
+  function renderMapList() {
+    const host = el('edMaps');
+    if (!host) return;
+    const names = MAPIO.listSaved();
+    host.innerHTML = names.length
+      ? names.map(n => '<button class="ed-map" data-load="' + n + '">' + n + '</button>').join('')
+      : '<p class="ed-empty">No saved maps yet.</p>';
+  }
+
+  /* ------------------------------ init ------------------------------- */
+  function init() {
+    const canvas = canvasEl();
+
+    window.addEventListener('keydown', e => {
+      if (e.code === 'F2') { e.preventDefault(); toggle(); return; }
+      if (!active) return;
+      if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      keys[e.code] = true;
+      if (e.code === 'Escape') { if (placeType) setPlaceType(null); else select(null); e.preventDefault(); }
+      if (e.code === 'Delete' || e.code === 'Backspace') { doDelete(selection); e.preventDefault(); }
+      if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
+      if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { redo(); e.preventDefault(); }
+      if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { doDuplicate(selection); e.preventDefault(); }
+    });
+    window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+    if (canvas) {
+      canvas.addEventListener('mousedown', e => {
+        if (!active) return;
+        if (e.button === 2) { looking = true; lastMX = e.clientX; lastMY = e.clientY; e.preventDefault(); return; }
+        if (e.button !== 0) return;
+        if (tool === 'place' && placeType) {
+          const p = groundPointAt(e);
+          if (p) doPlace(placeType, p);
+          return;
+        }
+        const inst = pickInstance(e);
+        select(inst);
+        if (inst) {
+          dragging = { inst: inst, before: JSON.parse(JSON.stringify(inst.data.transform)) };
+        }
+      });
+      canvas.addEventListener('contextmenu', e => { if (active) e.preventDefault(); });
+      window.addEventListener('mousemove', e => {
+        if (!active) return;
+        if (looking) {
+          yaw -= (e.clientX - lastMX) * 0.0024;
+          pitch = Math.max(-1.5, Math.min(1.5, pitch - (e.clientY - lastMY) * 0.0024));
+          lastMX = e.clientX; lastMY = e.clientY;
+          return;
+        }
+        if (ghost && tool === 'place') {
+          const p = groundPointAt(e);
+          if (p) ghost.position.copy(p);
+        }
+        if (dragging && tool === 'move') {
+          const p = groundPointAt(e);
+          if (p) { SANDBOX.setTransform(dragging.inst, p, null, null); refreshSelectionBox(); renderInspector(); }
+        }
+      });
+      window.addEventListener('mouseup', e => {
+        if (e.button === 2) looking = false;
+        if (e.button === 0 && dragging) { commitTransform(dragging.inst, dragging.before); dragging = null; }
+      });
+      canvas.addEventListener('wheel', e => {
+        if (!active || !selection || tool !== 'rotate') return;
+        e.preventDefault();
+        const before = JSON.parse(JSON.stringify(selection.data.transform));
+        const step = (e.deltaY > 0 ? 1 : -1) * Math.PI / 12;
+        SANDBOX.setTransform(selection, null, (selection.data.transform.rotation || 0) + step, null);
+        refreshSelectionBox(); renderInspector();
+        commitTransform(selection, before);
+      }, { passive: false });
+    }
+
+    const tools = el('edTools');
+    if (tools) tools.addEventListener('click', e => {
+      const b = e.target.closest('[data-tool]');
+      if (!b) return;
+      const t = b.getAttribute('data-tool');
+      if (t === 'undo') return undo();
+      if (t === 'redo') return redo();
+      if (t === 'delete') return doDelete(selection);
+      if (t === 'duplicate') return doDuplicate(selection);
+      if (t === 'save') return save();
+      if (t === 'new') return newMap();
+      if (t === 'export') {
+        const map = SANDBOX.serialize();
+        const rep = MAPIO.validate(map);
+        if (!rep.ok) return notify('Cannot export: ' + rep.errors[0], true);
+        MAPIO.exportFile(map, SANDBOX.name);
+        return notify('Exported ' + SANDBOX.name + '.json');
+      }
+      if (t === 'play') return play();
+      tool = t;
+      if (t !== 'place') setPlaceType(null);
+      renderToolbar(); refreshStatus();
+    });
+
+    const browser = el('edBrowser');
+    if (browser) browser.addEventListener('click', e => {
+      const b = e.target.closest('[data-place]');
+      if (b) setPlaceType(b.getAttribute('data-place'));
+    });
+
+    const maps = el('edMaps');
+    if (maps) maps.addEventListener('click', e => {
+      const b = e.target.closest('[data-load]');
+      if (b) loadNamed(b.getAttribute('data-load'));
+    });
+
+    const nameInput = el('edMapName');
+    if (nameInput) nameInput.addEventListener('change', e => {
+      SANDBOX.name = e.target.value || 'Untitled Farm';
+      refreshStatus();
+    });
+
+    const insp = el('edInspector');
+    if (insp) insp.addEventListener('change', e => {
+      if (!selection) return;
+      const xf = e.target.getAttribute('data-xf');
+      const prop = e.target.getAttribute('data-prop');
+      const before = JSON.parse(JSON.stringify(selection.data.transform));
+      if (xf) {
+        const v = parseFloat(e.target.value);
+        if (!Number.isFinite(v)) { renderInspector(); return; }
+        const t = selection.data.transform;
+        const pos = { x: t.position.x, y: t.position.y, z: t.position.z };
+        if (xf === 'px') pos.x = v;
+        if (xf === 'py') pos.y = v;
+        if (xf === 'pz') pos.z = v;
+        SANDBOX.setTransform(selection,
+          (xf[0] === 'p') ? pos : null,
+          xf === 'rot' ? v * Math.PI / 180 : null,
+          xf === 'scl' ? Math.max(0.05, v) : null);
+        refreshSelectionBox();
+        commitTransform(selection, before);
+        renderInspector();
+      } else if (prop) {
+        const id = selection.id;
+        selection.data.properties = selection.data.properties || {};
+        selection.data.properties[prop] = e.target.value;
+        const rebuilt = SANDBOX.rebuild(selection);
+        select(rebuilt || SANDBOX.find(id));
+      }
+    });
+
+    const fileInput = el('edImportFile');
+    if (fileInput) fileInput.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let parsed = null;
+        try { parsed = JSON.parse(reader.result); }
+        catch (err) { notify('That file is not valid JSON.', true); return; }
+        const out = SANDBOX.load(parsed);
+        if (!out.ok) { notify('Map rejected: ' + out.errors[0], true); return; }
+        SANDBOX.name = (parsed.metadata && parsed.metadata.name) || f.name.replace(/\.json$/i, '');
+        const ni = el('edMapName'); if (ni) ni.value = SANDBOX.name;
+        select(null);
+        history.length = 0; historyAt = 0;
+        notify('Imported ' + out.placed + ' objects.');
+        refreshStatus();
+      };
+      reader.readAsText(f);
+      e.target.value = '';
+    });
+
+    renderMapList();
+  }
+  let dragging = null;
+
+  return {
+    init, enter, exit, toggle, play, update, resize,
+    undo, redo,
+    get active() { return active; },
+    get camera() { return camera; },
+    get selection() { return selection; },
+    // Test/automation surface: the harness drives the same commands the UI
+    // does rather than reaching into internals.
+    _place: doPlace, _delete: doDelete, _duplicate: doDuplicate,
+    _select: select, _setPlaceType: setPlaceType,
+    _save: save, _load: loadNamed, _new: newMap,
+    _setTool: t => { tool = t; renderToolbar(); },
+    get _tool() { return tool; }
+  };
+})();
+
 const DEVCONSOLE = (() => {
   let openFlag = false, buffer = '';
 
