@@ -1830,6 +1830,36 @@
     .ed-panel{width:168px;}
     #edHelp{display:none;}
   }
+  /* The gameplay HUD has no single root -- its pieces are body-level
+     siblings -- so it is hidden by rule while authoring rather than by
+     toggling each element's own `on` class. That matters for correctness,
+     not just tidiness: an element hidden by removing `on` cannot be
+     restored by re-adding it blindly (some are only meant to be on in
+     certain states), and the first attempt at this left the HUD dead for
+     the rest of the session. A body class is reversible by construction. */
+  body.editor-open #crosshair,
+  body.editor-open #radar,
+  body.editor-open #weaponInventory,
+  body.editor-open #questBoard,
+  body.editor-open #componentHud,
+  body.editor-open #shieldHud,
+  body.editor-open #downedHud,
+  body.editor-open #vitals,
+  body.editor-open #buffHud,
+  body.editor-open #voiceChip,
+  body.editor-open #jaysHud,
+  body.editor-open #tally,
+  body.editor-open #killFeed,
+  body.editor-open #announcerBanner,
+  body.editor-open #bossStack,
+  body.editor-open #runClock,
+  body.editor-open #throwableHud,
+  body.editor-open #reloadTag,
+  body.editor-open #interactHint,
+  body.editor-open #pickupToast,
+  body.editor-open .hud-tag,
+  body.editor-open .hud-ticket,
+  body.editor-open .hud-ribbon{display:none !important;}
 
   /* ---------- Farm map (see MAPVIEW) ---------- */
   #mapView{z-index:42;touch-action:pan-y;}
@@ -20251,10 +20281,11 @@ const UI = (() => {
   function showEditor(on) {
     const ed = document.getElementById('editor');
     if (ed) ed.classList.toggle('hidden', !on);
-    ['crosshair', 'radar', 'weaponInventory'].forEach(k => {
-      if (el[k]) el[k].classList.toggle('on', !on && el[k].classList.contains('on'));
-    });
-    if (el.hud) el.hud.classList.toggle('editing', !!on);
+    // One body class; the CSS above does the hiding. The first version of
+    // this stripped each HUD element's `on` class instead, which hid them
+    // going in and could never put them back -- `toggle(k, !on && has('on'))`
+    // is always false on the way out, because the class it tests for was
+    // removed on the way in.
     document.body.classList.toggle('editor-open', !!on);
   }
 
@@ -21936,6 +21967,14 @@ const GAME = (() => {
     INPUT.on('unlock', () => {
       running = false;
       RUNSTATS.pause();
+      /* [ENGINE] The editor releases pointer lock on purpose -- it needs a
+         real cursor for its panels and for picking. Without this the unlock
+         popped the pause veil over the whole viewport, and since a .veil is
+         full-screen with pointer-events:auto it silently swallowed every
+         editor click. Mouse LOOK still worked (that listener is on window),
+         so the editor appeared alive while being completely unclickable:
+         the worst possible symptom to debug from. */
+      if (typeof EDITOR !== 'undefined' && EDITOR.active) { UI.hidePause(); return; }
       if (typeof QUEST !== 'undefined' && QUEST.cutsceneActive) { UI.hidePause(); return; }
       if (!entered) return;
       // A downed player must still get a clickable way back in. Showing only
@@ -32377,7 +32416,10 @@ const EDITOR = (() => {
     playReturn = null;
 
     if (typeof INPUT !== 'undefined') { INPUT.releaseLock(); INPUT.clearActions(); }
-    if (typeof UI !== 'undefined') UI.showEditor(true);
+    // Belt and braces with GAME's unlock guard: F2 pressed while ALREADY
+    // paused has no unlock event to suppress, so the veil would still be up
+    // and would still eat every click.
+    if (typeof UI !== 'undefined') { UI.hidePause(); UI.showEditor(true); }
     renderBrowser();
     renderToolbar();
     renderInspector();
@@ -32475,9 +32517,14 @@ const EDITOR = (() => {
     const t = selection.data.transform;
     const entry = selection.entry;
     let html = '<p class="ed-sel">' + entry.name + '<span>' + selection.id + '</span></p>';
-    html += row('X', 'px', t.position.x) + row('Y', 'py', t.position.y) + row('Z', 'pz', t.position.z);
-    html += row('Yaw°', 'rot', +(t.rotation * 180 / Math.PI).toFixed(1));
-    html += row('Scale', 'scl', t.scale === undefined ? 1 : t.scale);
+    // Displayed to 3 decimals, never rounded in the DATA. A raycast lands on
+    // a value like 3.1417579694929253 and showing that in a text box is
+    // unreadable and unusable; rounding what gets stored would instead drift
+    // the object every time the inspector is re-rendered.
+    html += row('X', 'px', trim(t.position.x)) + row('Y', 'py', trim(t.position.y)) +
+            row('Z', 'pz', trim(t.position.z));
+    html += row('Yaw°', 'rot', trim(t.rotation * 180 / Math.PI));
+    html += row('Scale', 'scl', trim(t.scale === undefined ? 1 : t.scale));
     const props = entry.properties || {};
     Object.keys(props).forEach(key => {
       const spec = props[key];
@@ -32488,6 +32535,9 @@ const EDITOR = (() => {
     });
     host.innerHTML = html;
   }
+  // parseFloat strips the trailing zeros toFixed leaves behind, so 6 shows as
+  // "6" rather than "6.000" while 6.5851 still shows as "6.585".
+  function trim(v) { return Number.isFinite(v) ? parseFloat(v.toFixed(3)) : 0; }
   function row(label, key, value) {
     return '<label class="ed-row"><span>' + label + '</span>' +
       '<input type="number" step="0.1" data-xf="' + key + '" value="' + value + '" /></label>';
