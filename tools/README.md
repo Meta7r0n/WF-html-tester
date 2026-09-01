@@ -36,6 +36,7 @@ shared harness as `./render-audit/harness`.
 | `gamepad-stability-test.js` | Gamepad settings resilience: what a corrupt, hand-edited or stale `localStorage` blob does to the pad. |
 | `editor-test.js` | Editor and engine layer: registry, capture scope, place/move/delete/undo, save/load, playtest, collider leak checks. Takes a full URL. |
 | `editor-mouse-test.js` | The editor as a *person* drives it: real clicks, drags, wheel, hit-testing. Exists because the editor once passed every programmatic check while being completely unclickable. Takes a full URL. |
+| `editor-mode-test.js` | The editor as a *mode*: can it be found from the menu, and can you get back out? Covers menu/pause entry, grid snap, framing, Exit, and a playtest that has to start a run first. Exists because for two commits the editor was reachable only by an undocumented F2. |
 | `campaign-migration-test.js` | Campaign content migration: proves a cluster moved into map data without changing what the farm is. See below. |
 | `render-audit/` | Exposure/tonal capture harness and the quality gate. Has its own README covering three silent measurement failures worth reading before trusting any number it prints. |
 | `viewmodel/` | Weapon viewmodel capture. |

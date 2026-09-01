@@ -1786,7 +1786,20 @@
   #edTools button:hover,.ed-file:hover{background:var(--cream);}
   #edTools button.on{background:var(--mustard);}
   #edTools button.ed-play{background:var(--jays);}
+  /* Exit is the one control that leaves the mode entirely, so it reads as a
+     way out rather than another tool. */
+  #edTools button.ed-close{background:var(--rust);color:var(--cream);}
+  #edTools button.ed-close:hover{background:var(--rust-deep);}
   #edImportFile{display:none;}
+  .ed-snap{
+    display:flex;align-items:center;gap:4px;cursor:pointer;
+    font:700 11px/1 "Rockwell",Georgia,serif;color:var(--ink);
+  }
+  .ed-snap input{cursor:pointer;}
+  #edSnapSize{
+    padding:4px 6px;cursor:pointer;background:var(--peach);border:2px solid var(--ink);
+    border-radius:6px;font:700 11px/1 "Rockwell",Georgia,serif;color:var(--ink);
+  }
   .ed-sep{width:1px;height:18px;background:var(--ink);opacity:.35;}
   .ed-panel{
     position:absolute;top:56px;bottom:44px;width:212px;overflow-y:auto;
@@ -2094,7 +2107,10 @@
 
   <div id="start" class="veil hidden">
     <div class="card">
-      <p class="eyebrow">Lobster Labz &nbsp;·&nbsp; WC v0.38</p>
+      <!-- Version text is stamped from BUILD at boot, not typed here: this
+           line read "WC v0.38" for four releases while the corner badge on
+           the same card read the real number. -->
+      <p class="eyebrow" id="startEyebrow">Lobster Labz</p>
       <h1>The Withered<br/>Farm<span>Choose your run</span></h1>
       <p class="sub">The farm is ready for one player or a crew of up to four farmhands. Single-player keeps the full current run; online multiplayer opens co-op, free-for-all, and team deathmatch rooms.</p>
       <ul class="keys">
@@ -2126,6 +2142,7 @@
       </div>
       <button class="alt" id="startOptionsBtn">Options</button>
       <button class="alt" id="startMapBtn">Farm Map</button>
+      <button class="alt" id="startEditorBtn">Map Editor</button>
       <p class="foot">Choose a mode to begin</p>
     </div>
   </div>
@@ -2419,7 +2436,16 @@
         <label class="ed-file" for="edImportFile">Import</label>
         <input id="edImportFile" type="file" accept="application/json,.json" />
         <span class="ed-sep"></span>
+        <label class="ed-snap"><input type="checkbox" id="edSnapOn" checked /> Snap</label>
+        <select id="edSnapSize" title="Grid snap size">
+          <option value="0.25">0.25 m</option>
+          <option value="0.5" selected>0.5 m</option>
+          <option value="1">1 m</option>
+          <option value="2">2 m</option>
+        </select>
+        <span class="ed-sep"></span>
         <button data-tool="play" class="ed-play">▶ Play</button>
+        <button data-tool="close" class="ed-close">Exit</button>
       </div>
     </div>
 
@@ -2439,7 +2465,7 @@
     <div id="edFooter">
       <span id="edStatus"></span>
       <span id="edNotice"></span>
-      <span id="edHelp">WASD/QE fly · hold RMB look · LMB select or place · Rotate tool + wheel · Del remove · Ctrl+Z/Y · Ctrl+D duplicate · F2 play</span>
+      <span id="edHelp">WASD/QE fly · hold RMB look · LMB select or place · wheel rotates · F frames selection · Del remove · Ctrl+Z/Y · Ctrl+D duplicate · F2 playtest · Exit leaves</span>
     </div>
   </div>
 
@@ -2451,6 +2477,7 @@
       <button class="go" id="resumeBtn">Back to it →</button>
       <button class="alt" id="pauseOptionsBtn">Options</button>
       <button class="alt" id="pauseMapBtn">Farm Map</button>
+      <button class="alt" id="pauseEditorBtn">Map Editor</button>
       <button class="alt" id="pauseRestartBtn">Restart Run</button>
       <button class="go compact" id="pauseMenuBtn">Return to Main Menu</button>
     </div>
@@ -2530,6 +2557,12 @@ document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
   card.setAttribute('data-build-version', BUILD.version);
 });
+// The start card's eyebrow carries the version in prose as well as in the
+// corner badge. One source, so the two can never disagree again.
+(() => {
+  const eyebrow = document.getElementById('startEyebrow');
+  if (eyebrow) eyebrow.innerHTML = 'Lobster Labz &nbsp;·&nbsp; ' + BUILD.version;
+})();
 
 /* =====================================================================
    THE WITHERED FARM — Phase 1
@@ -22081,6 +22114,11 @@ const GAME = (() => {
     // Options above -- it can be opened from the start screen or pause.
     document.getElementById('startMapBtn').addEventListener('click', e => { e.stopPropagation(); UI.showMap(); });
     document.getElementById('mapBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.hideMap(); });
+
+    // [ENGINE] Map editor: reachable from the main menu and from pause, so it
+    // is a mode a player can find rather than an undocumented F2.
+    document.getElementById('startEditorBtn').addEventListener('click', e => { e.stopPropagation(); openEditor(); });
+    document.getElementById('pauseEditorBtn').addEventListener('click', e => { e.stopPropagation(); openEditor(); });
     document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optMusic').addEventListener('input', e => { SETTINGS.setMusic(e.target.value / 100); UI.syncOptionsUI(); });
@@ -22451,11 +22489,46 @@ const GAME = (() => {
     });
   }
 
-  function startSingleHero(id) {
+  function startSingleHero(id, skipIntro) {
     mode = 'single';
     COOP.stop();
     HERO.select(id);
-    restart();
+    restart(skipIntro);
+  }
+
+  /* ---------------------- [ENGINE] editor mode -------------------------
+     The editor is reachable from the main menu and from pause, so these
+     three functions are the whole contract between GAME and EDITOR: open it,
+     start a run for it to playtest into, and put the player back where they
+     came from when they leave.
+
+     Opening from the menu works because LEVEL.build(scene) already ran at
+     boot -- the farm exists before a match does, so there is a world to fly
+     around and edit without starting one. */
+  function openEditor() {
+    if (typeof EDITOR === 'undefined') return;
+    UI.hideMenus();
+    EDITOR.enter(entered ? 'game' : 'menu');
+  }
+
+  /* Playtest from an editor opened at the main menu: there is no run yet, so
+     one has to start before PLAY can hand control to the real game. Goes
+     through startSingleHero -- the same path the menu uses -- rather than a
+     bespoke reset, because a playtest that begins from a different state than
+     a real run is testing the wrong game. HERO.id is whatever was last
+     chosen and always has a valid default. */
+  function startPlaytest() {
+    if (entered) return false;
+    startSingleHero(HERO.id, true);
+    return true;
+  }
+
+  /* Leaving the editor. Mid-run this lands on the pause card, which is where
+     the player was when they opened it and is the only screen that can hand
+     the pointer lock back. From the menu it goes back to the menu. */
+  function closeEditor() {
+    if (entered) { UI.showPause(); return; }
+    UI.showStart();
   }
 
   function setLobbyMode(m) {
@@ -22667,7 +22740,12 @@ const GAME = (() => {
   }
 
   /* Back on your feet: heal up, put the farm back the way it was. */
-  function restart() {
+  /* skipIntro is passed only by the editor's playtest. Everything else calls
+     restart() with no argument and still gets the insertion cutscene, which
+     is what a real run starts with; a playtest is not testing the cutscene,
+     and sitting through six seconds of helicopter on every F2 would make the
+     editor unusable. */
+  function restart(skipIntro) {
     RUNSTATS.begin(mode, mode === 'coop' && COOP.localId ? COOP.localId : 'local');
     PLAYER.revive();
     WEAPON.reset();
@@ -22682,7 +22760,7 @@ const GAME = (() => {
     UI.hideEndGame();
     deathPending = false;
     endShown = false;
-    enter();
+    enter(skipIntro ? false : undefined);
   }
 
   function complete(killsOverride) {
@@ -22945,8 +23023,13 @@ const GAME = (() => {
   function resumeAfterQuestCutscene() { if (entered && !PLAYER.isDead) enter(false); }
   return {
     init, complete, resumeAfterQuestCutscene,
+    // [ENGINE] The editor's side of the contract; see openEditor above.
+    openEditor, startPlaytest, closeEditor,
     get mode() { return mode; },
     get isCoop() { return mode === 'coop'; },
+    // True once a run is actually live. The editor reads it to tell a
+    // playtest that needs a match started from one that can just resume.
+    get entered() { return entered; },
     get scene() { return scene; },
     get camera() { return camera; }
   };
@@ -32361,6 +32444,12 @@ const EDITOR = (() => {
   const history = [];
   let historyAt = 0;
   let playReturn = null;      // camera state to restore when PLAY -> EDITOR
+  let openedFrom = 'menu';    // 'menu' | 'game' -- where Exit returns to
+  // Grid snap. On by default: a placement editor without it produces
+  // coordinates like 6.5851 for things a person meant to line up, and the
+  // inspector then shows a number nobody typed.
+  let snapOn = true;
+  let snapSize = 0.5;
   const _ndc = { x: 0, y: 0 };
   const _groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   const _hit = new THREE.Vector3();
@@ -32478,8 +32567,19 @@ const EDITOR = (() => {
       h.object && h.object.visible &&
       !(h.object.userData && h.object.userData.outline) &&
       !isGhost(h.object) && !isEditorGizmo(h.object));
-    if (hits.length) return hits[0].point.clone();
-    return raycaster.ray.intersectPlane(_groundPlane, _hit) ? _hit.clone() : null;
+    if (hits.length) return snap(hits[0].point.clone());
+    return raycaster.ray.intersectPlane(_groundPlane, _hit) ? snap(_hit.clone()) : null;
+  }
+
+  /* Snap X and Z, never Y. A raycast lands the object ON something -- the
+     barn floor, a catwalk, a silo deck -- and quantising that height would
+     lift it off the surface or sink it into one. Horizontal alignment is
+     what a person is actually trying to achieve when they line props up. */
+  function snap(p) {
+    if (!p || !snapOn || !(snapSize > 0)) return p;
+    p.x = Math.round(p.x / snapSize) * snapSize;
+    p.z = Math.round(p.z / snapSize) * snapSize;
+    return p;
   }
   function pickInstance(e) {
     if (!pointerNDC(e)) return null;
@@ -32541,10 +32641,15 @@ const EDITOR = (() => {
     }
   }
 
-  /* ------------------------------ mode ------------------------------- */
-  function enter() {
+  /* ------------------------------ mode -------------------------------
+     `origin` records where the editor was opened from, because leaving it
+     has to put the player back there: 'menu' returns to the start screen,
+     'game' to the pause card they opened it on. F2 with no argument fills it
+     in from whether a run is live. */
+  function enter(origin) {
     if (active) return;
     if (typeof GAME === 'undefined' || !GAME.scene) return;
+    openedFrom = origin || ((typeof GAME !== 'undefined' && GAME.entered) ? 'game' : 'menu');
     active = true;
 
     if (!camera) {
@@ -32607,11 +32712,50 @@ const EDITOR = (() => {
     const spawn = SANDBOX.playerSpawn();
     exit();
     SANDBOX.activateGameplay();
+    /* Opened from the main menu there is no run to play into -- the farm is
+       built at boot but nothing has started it. Ask GAME to start one (the
+       same single-player path the menu uses, minus the insertion cutscene)
+       before handing over control, or PLAY would drop the player into a
+       world with no HUD, no quest and no pointer lock. */
+    let started = false;
+    if (typeof GAME !== 'undefined' && !GAME.entered && GAME.startPlaytest) {
+      started = GAME.startPlaytest();
+    }
     if (spawn && typeof PLAYER !== 'undefined' && PLAYER.setPosition) {
       PLAYER.setPosition(spawn.x, spawn.y, spawn.z);
     }
-    if (typeof INPUT !== 'undefined') INPUT.requestLock();
+    // startPlaytest -> enter(false) already requests the lock; asking twice
+    // in the same gesture is harmless but pointless.
+    if (!started && typeof INPUT !== 'undefined') INPUT.requestLock();
     if (typeof UI !== 'undefined') UI.toast('Playtesting — press F2 to return to the editor', 2.6);
+  }
+
+  /* Fly the camera to frame the selection. Distance comes from the object's
+     own bounding box so a stump and a barn both fill roughly the same amount
+     of screen, and the approach angle is kept rather than reset -- being
+     snapped to a fixed viewpoint every time you press F is disorienting. */
+  function focusSelection() {
+    if (!active || !selection || !camera) return;
+    const box = new THREE.Box3().setFromObject(selection.object3D);
+    if (box.isEmpty()) return;
+    const centre = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(0.8, box.getSize(new THREE.Vector3()).length() * 0.5);
+    const dist = radius * 3.2;
+    const dir = new THREE.Vector3(
+      -Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)
+    );
+    camera.position.copy(centre).addScaledVector(dir, -dist);
+    refreshSelectionBox();
+    notify('Framed ' + selection.entry.name);
+  }
+
+  /* Leave the editor entirely, as opposed to PLAY which hands off to the
+     game. GAME.closeEditor decides where "back" is from the state it owns. */
+  function close() {
+    if (!active) return;
+    exit();
+    setPlaceType(null);
+    if (typeof GAME !== 'undefined' && GAME.closeEditor) GAME.closeEditor();
   }
   function toggle() { if (active) play(); else enter(); }
 
@@ -32796,6 +32940,10 @@ const EDITOR = (() => {
       if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) { e.shiftKey ? redo() : undo(); e.preventDefault(); }
       if (e.code === 'KeyY' && (e.ctrlKey || e.metaKey)) { redo(); e.preventDefault(); }
       if (e.code === 'KeyD' && (e.ctrlKey || e.metaKey)) { doDuplicate(selection); e.preventDefault(); }
+      // F frames the selection. Without it, placing something and then losing
+      // it behind the barn means flying around hunting for your own object.
+      // Guarded on the modifiers so it does not steal Ctrl+F.
+      if (e.code === 'KeyF' && !e.ctrlKey && !e.metaKey && !e.altKey) { focusSelection(); e.preventDefault(); }
     });
     window.addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -32867,9 +33015,22 @@ const EDITOR = (() => {
         return notify('Exported ' + SANDBOX.name + '.json');
       }
       if (t === 'play') return play();
+      if (t === 'close') return close();
       tool = t;
       if (t !== 'place') setPlaceType(null);
       renderToolbar(); refreshStatus();
+    });
+
+    const snapBox = el('edSnapOn');
+    if (snapBox) snapBox.addEventListener('change', e => {
+      snapOn = !!e.target.checked;
+      notify(snapOn ? 'Snap on — ' + snapSize + ' m grid' : 'Snap off — free placement');
+    });
+    const snapSel = el('edSnapSize');
+    if (snapSel) snapSel.addEventListener('change', e => {
+      const v = parseFloat(e.target.value);
+      if (Number.isFinite(v) && v > 0) snapSize = v;
+      notify('Snap grid ' + snapSize + ' m');
     });
 
     const browser = el('edBrowser');
@@ -32949,11 +33110,13 @@ const EDITOR = (() => {
   let dragging = null;
 
   return {
-    init, enter, exit, toggle, play, update, resize,
-    undo, redo,
+    init, enter, exit, close, toggle, play, update, resize,
+    undo, redo, focusSelection,
     get active() { return active; },
     get camera() { return camera; },
     get selection() { return selection; },
+    get openedFrom() { return openedFrom; },
+    get snapSize() { return snapOn ? snapSize : 0; },
     // Test/automation surface: the harness drives the same commands the UI
     // does rather than reaching into internals.
     _place: doPlace, _delete: doDelete, _duplicate: doDuplicate,

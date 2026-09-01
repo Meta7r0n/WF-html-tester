@@ -201,3 +201,62 @@ scale), compared as a multiset over `LEVEL.root`.
 
 Run the control before trusting the result, and a negative control after:
 perturbing one tree by 0.5 m must fail the comparison and name the collider.
+
+---
+
+## 12. Phase 3: the editor becomes a mode you can find
+
+The first two phases built the editor and proved the map format on real
+campaign content, but left it reachable only by pressing F2 — undocumented,
+and only from inside a running match. A feature nobody can find is not
+shipped. This phase closed that.
+
+### Entry and exit are now a contract, not a keystroke
+
+`GAME` exposes exactly three functions to `EDITOR`, and they are the whole
+relationship:
+
+- **`openEditor()`** — hides the menus and enters. Reachable from a **Map
+  Editor** button on the start screen and another on the pause card. Opening
+  from the main menu works at all because `LEVEL.build(scene)` already runs at
+  boot: the farm exists before a match does, so there is a world to fly
+  around without starting one.
+- **`startPlaytest()`** — the piece that was missing. PLAY from a
+  menu-opened editor had nothing to play into: no HUD, no quest, no pointer
+  lock, because `entered` was still false. It now starts a real single-player
+  run through `startSingleHero`, the same path the menu uses, with only the
+  insertion cutscene skipped (`restart(skipIntro)`). Deliberately not a
+  bespoke reset — a playtest that begins from a different state than a real
+  run is testing the wrong game.
+- **`closeEditor()`** — decides where "back" is from state it owns: the pause
+  card mid-run, the start screen otherwise.
+
+`EDITOR` records `openedFrom` on entry so this stays correct when F2 is used
+instead of a button. The new **Exit** button leaves the mode entirely, which
+is distinct from PLAY handing off to the game — before this, the only way out
+of a menu-opened editor was into a match.
+
+### Editing additions
+
+- **Grid snap**, on by default at 0.5 m, with 0.25/0.5/1/2 in the toolbar.
+  Snaps X and Z only: a raycast lands an object *on* something — a catwalk, a
+  silo deck — and quantising that height would lift it off or sink it in.
+  Without snap, lining two props up produces coordinates like 6.5851 and the
+  inspector shows a number nobody typed.
+- **F frames the selection**, distance from the object's own bounding box so
+  a stump and a barn fill about the same screen area. The approach angle is
+  kept rather than reset; being snapped to a fixed viewpoint every time is
+  disorienting.
+
+### A version label that cannot go stale again
+
+The start card's eyebrow read `WC v0.38` for four releases while the corner
+badge on the *same card* read the real number, because the eyebrow was typed
+into the HTML. It is now stamped from `BUILD` at boot alongside the badge.
+This is the third time a hand-maintained copy of the version has drifted on
+this project; the fix is always the same one.
+
+`tools/editor-mode-test.js` covers this phase — entry from both places, snap,
+framing, Exit landing in the right place, and a playtest that starts a run
+and drops the player at the authored spawn. Like the mouse suite it asserts
+hit-testability rather than trusting that a click landed.
