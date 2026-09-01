@@ -37,7 +37,7 @@ shared harness as `./render-audit/harness`.
 | `editor-test.js` | Editor and engine layer: registry, capture scope, place/move/delete/undo, save/load, playtest, collider leak checks. Takes a full URL. |
 | `editor-mouse-test.js` | The editor as a *person* drives it: real clicks, drags, wheel, hit-testing. Exists because the editor once passed every programmatic check while being completely unclickable. Takes a full URL. |
 | `editor-mode-test.js` | The editor as a *mode*: can it be found from the menu, and can you get back out? Covers menu/pause entry, grid snap, framing, Exit, and a playtest that has to start a run first. Exists because for two commits the editor was reachable only by an undocumented F2. |
-| `campaign-migration-test.js` | Campaign content migration: proves a cluster moved into map data without changing what the farm is. See below. |
+| `campaign-migration-test.js` | Campaign content migration and ownership: proves a cluster moved into map data without changing what the farm is, and that the map layer now *owns* it — moving a farm tree moves the farm's collider, "New map" spares the farm, revert restores it. See below. |
 | `render-audit/` | Exposure/tonal capture harness and the quality gate. Has its own README covering three silent measurement failures worth reading before trusting any number it prints. |
 | `viewmodel/` | Weapon viewmodel capture. |
 | `make-preview.js` | Builds the served, CDN-free copy the harnesses need. |
@@ -74,9 +74,11 @@ The shared harness exposes `window.__waitFrames(n)` for exactly this.
 
 `campaign-migration-test.js` has two jobs. Run without a compare argument it
 asserts the migration's own properties — the fragment is real map data, it
-passes `MAPIO.validate`, every type it names is in the registry, it survives a
-JSON round trip, the editor lists and loads it, and editing it there cannot
-write back into the campaign.
+passes `MAPIO.validate`, every type it names is in the registry, and it
+survives a JSON round trip — plus the ownership properties: its objects are
+live map-layer instances under `LEVEL.root`, moving one moves the farm's own
+collider, a snapshot carries the edit while the authored rows stay clean, and
+neither "New map" nor a save of the player's map disturbs the farm.
 
 The other job is proving the farm did not move. Build a preview of the
 previous commit and one of the working tree, serve them on **different ports**
@@ -110,3 +112,14 @@ local bounding-box size + scale), compared as a multiset over `LEVEL.root`.
 **And run a negative control after.** Move one tree half a metre in a throwaway
 build; the comparison must fail and name the collider. A migration test that
 cannot fail is not evidence.
+
+### A trap the suites now guard
+
+`SANDBOX.instances` holds **both** the player's objects and the farm's — the
+campaign clusters `LEVEL` builds through the map layer. `SANDBOX.owned` and
+`SANDBOX.count` are the player's alone.
+
+Two checks in `editor-test.js` used to read `SANDBOX.instances[0]` meaning
+"the first thing I placed" and started getting a tree at (-27, 26) the moment
+the scatter became map-layer owned. If you are asserting about objects a test
+placed, use `owned`. If you are asserting about the world, use `instances`.

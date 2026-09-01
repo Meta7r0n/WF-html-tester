@@ -308,64 +308,160 @@ if (compareArg !== -1) {
   });
   check('LEVEL.build still runs', levelClean.usesCampaign);
 
-  /* --- the round trip that makes it a migration: editor opens it ------ */
-  const edit = await page.evaluate(async () => {
+  /* ---- ownership: the map layer BUILDS the farm's scatter --------------
+     Everything below is the difference between "the editor can show you the
+     data" and "the editor owns the object". A tree in the world has to BE a
+     map-layer instance, moving it has to move the farm's collider, and none
+     of that may leak into the player's own map. */
+  const own = await page.evaluate(async () => {
+    const out = {};
+    out.isLive = CAMPAIGN.isLive('scatter');
+    const campaign = SANDBOX.instances.filter(i => i.layer === 'campaign');
+    out.campaignCount = campaign.length;
+    out.campaignTypes = {};
+    campaign.forEach(i => { out.campaignTypes[i.type] = (out.campaignTypes[i.type] || 0) + 1; });
+    out.allTaggedToFragment = campaign.every(i => i.fragment === 'scatter');
+    out.sandboxCount = SANDBOX.count;
+
+    // The farm's objects live under LEVEL's root, not the sandbox group, so
+    // anything walking the authored world still sees a complete farm.
+    let underLevel = 0;
+    campaign.forEach(i => {
+      let n = i.object3D;
+      while (n) { if (n === LEVEL.root) { underLevel++; break; } n = n.parent; }
+    });
+    out.underLevelRoot = underLevel;
+
+    // Pick a tree and prove the collider is the farm's, not a copy.
+    const tree = campaign.filter(i => i.type === 'prop_tree')[0];
+    out.treeId = tree && tree.id;
+    const solid = tree && tree.handle.solids[0];
+    out.beforeMinX = solid && +solid.minX.toFixed(3);
+    out.beforePos = tree && { x: tree.data.transform.position.x, z: tree.data.transform.position.z };
+    out.colliderIsInWorld = !!(solid && WORLD.solids.indexOf(solid) !== -1);
+
+    // Move it 5 m east, the way a drag does.
+    SANDBOX.setTransform(tree, { x: out.beforePos.x + 5, y: 0, z: out.beforePos.z }, null, null);
+    out.afterMinX = +tree.handle.solids[0].minX.toFixed(3);
+    out.meshMoved = +tree.object3D.position.x.toFixed(3);
+
+    // The snapshot has to reflect the edit -- that is how an edited farm
+    // leaves the machine.
+    const snap = CAMPAIGN.snapshot('scatter');
+    out.snapValidates = MAPIO.validate(snap).ok;
+    out.snapCount = snap.objects.length;
+    const moved = snap.objects.filter(o => o.id === out.treeId)[0];
+    out.snapSeesEdit = moved && Math.abs(moved.transform.position.x - (out.beforePos.x + 5)) < 0.001;
+
+    // ...while the AUTHORED fragment is untouched, so revert has something
+    // to go back to.
+    const authored = CAMPAIGN.fragment('scatter').objects.filter(o => o.id === out.treeId)[0];
+    out.authoredUntouched = authored &&
+      Math.abs(authored.transform.position.x - out.beforePos.x) < 0.001;
+    return out;
+  });
+
+  check('the scatter is live in the map layer', own.isLive);
+  check('all 29 objects are campaign-layer instances', own.campaignCount === 29,
+    JSON.stringify(own.campaignTypes));
+  check('each one knows which fragment it came from', own.allTaggedToFragment);
+  check('they sit under LEVEL.root, not the sandbox group', own.underLevelRoot === 29,
+    own.underLevelRoot + '/29');
+  check("the player's map starts empty", own.sandboxCount === 0, String(own.sandboxCount));
+  check("a farm tree's collider is the world's, not a copy", own.colliderIsInWorld);
+  check('moving a farm tree moves the farm collider',
+    Math.abs((own.afterMinX - own.beforeMinX) - 5) < 0.001,
+    own.beforeMinX + ' -> ' + own.afterMinX);
+  check('and the mesh went with it',
+    Math.abs(own.meshMoved - (own.beforePos.x + 5)) < 0.001, String(own.meshMoved));
+  check('the snapshot is valid map data', own.snapValidates && own.snapCount === 29,
+    own.snapCount + ' objects');
+  check('the snapshot carries the edit', own.snapSeesEdit);
+  check('the authored fragment is left alone, so revert can work', own.authoredUntouched);
+
+  /* ---- the farm must survive the player's map operations -------------- */
+  const isolation = await page.evaluate(async () => {
     const out = {};
     EDITOR.enter();
     await new Promise(r => requestAnimationFrame(r));
-    const host = document.getElementById('edMaps');
-    out.hasFragmentButton = !!(host && host.querySelector('[data-fragment="scatter"]'));
-    const btn = host && host.querySelector('[data-fragment="scatter"]');
-    out.buttonLabel = btn ? btn.textContent : '';
-    // Click it the way a person would, through the delegated handler.
-    if (btn) btn.click();
-    await new Promise(r => requestAnimationFrame(r));
-    out.placed = SANDBOX.count;
-    out.sandboxName = SANDBOX.name;
-    out.types = {};
-    SANDBOX.instances.forEach(i => { out.types[i.type] = (out.types[i.type] || 0) + 1; });
 
-    // Positions must survive the trip into the editor unchanged.
-    const first = SANDBOX.instances[0];
-    out.firstType = first && first.type;
-    out.firstPos = first && { x: first.object3D.position.x, z: first.object3D.position.z };
-    out.firstScale = first && first.object3D.scale.x;
-
-    // And out again: what the editor serialises must still validate.
+    // Place one of the player's own objects, then press New.
+    EDITOR._place('prop_barrel', new THREE.Vector3(2, 0, 2));
+    out.afterPlace = { mine: SANDBOX.count, farm: SANDBOX.campaignCount };
+    // A save of the player's map must not contain the farm.
     const saved = SANDBOX.serialize();
-    out.reserialises = MAPIO.validate(saved).ok && saved.objects.length === out.placed;
+    out.savedCount = saved.objects.length;
+    out.savedHasFarm = saved.objects.some(o => /^scatter_/.test(o.id || ''));
 
-    // Editing in the editor must not write back into the campaign.
-    if (first) SANDBOX.setTransform(first, { x: -999, y: 0, z: -999 }, null, null);
-    out.campaignUntouched = CAMPAIGN.fragment('scatter').objects[0].transform.position.x !== -999;
+    EDITOR._new();
+    out.afterNew = { mine: SANDBOX.count, farm: SANDBOX.campaignCount };
 
-    SANDBOX.clear();
+    // Reverting puts the moved tree back.
+    const before = WORLD.solids.length;
+    EDITOR._revert('scatter');
+    await new Promise(r => requestAnimationFrame(r));
+    out.afterRevert = { farm: SANDBOX.campaignCount, solids: WORLD.solids.length, was: before };
+    const tree = SANDBOX.instances.filter(i => i.type === 'prop_tree')[0];
+    out.revertedX = tree && +tree.data.transform.position.x.toFixed(3);
+
     EDITOR.exit();
     await new Promise(r => requestAnimationFrame(r));
     return out;
   });
 
-  check('editor lists the campaign fragment', edit.hasFragmentButton, edit.buttonLabel);
-  check('clicking it loads the whole scatter', edit.placed === 29,
-    edit.placed + ' objects · ' + JSON.stringify(edit.types));
-  check('loaded objects keep their authored position', edit.firstType === 'prop_tree' &&
-    Math.abs(edit.firstPos.x - -27) < 0.001 && Math.abs(edit.firstPos.z - 26) < 0.001,
-    JSON.stringify(edit.firstPos));
-  check('loaded objects keep their authored scale',
-    Math.abs(edit.firstScale - 1.1) < 0.001, edit.firstScale);
-  check('what the editor saves is valid map data', edit.reserialises);
-  check('editing in the editor cannot rewrite the campaign', edit.campaignUntouched);
+  check("placing an object does not disturb the farm",
+    isolation.afterPlace.mine === 1 && isolation.afterPlace.farm === 29,
+    JSON.stringify(isolation.afterPlace));
+  check("a saved map contains only the player's objects",
+    isolation.savedCount === 1 && !isolation.savedHasFarm, isolation.savedCount + ' objects');
+  check('"New map" clears the player\'s map and spares the farm',
+    isolation.afterNew.mine === 0 && isolation.afterNew.farm === 29,
+    JSON.stringify(isolation.afterNew));
+  check('revert rebuilds the whole cluster', isolation.afterRevert.farm === 29,
+    JSON.stringify(isolation.afterRevert));
+  check('revert puts the moved tree back', Math.abs(isolation.revertedX - -27) < 0.001,
+    String(isolation.revertedX));
+  check('revert leaks no colliders',
+    isolation.afterRevert.solids === isolation.afterRevert.was,
+    isolation.afterRevert.solids + ' vs ' + isolation.afterRevert.was);
+
+  /* ---- scale is the builder's now, so it has to move the collider ----- */
+  const scaling = await page.evaluate(() => {
+    const out = {};
+    const tree = SANDBOX.instances.filter(i => i.type === 'prop_tree')[0];
+    const box = s => ({ w: +(s.maxX - s.minX).toFixed(3), h: +(s.maxY - s.minY).toFixed(3) });
+    out.before = box(tree.handle.solids[0]);
+    out.beforeScale = tree.data.transform.scale;
+    const live = SANDBOX.setTransform(tree, null, null, out.beforeScale * 2);
+    out.rebuilt = !!live && live !== tree;
+    out.sameId = live && live.id === tree.id;
+    out.stillCampaign = live && live.layer === 'campaign' && live.fragment === 'scatter';
+    out.after = box(live.handle.solids[0]);
+    out.groupScale = live.object3D.scale.x;
+    // Put it back so the world is left as we found it.
+    SANDBOX.setTransform(SANDBOX.find(live.id), null, null, out.beforeScale);
+    return out;
+  });
+
+  check('scaling a sized prop rebuilds it', scaling.rebuilt && scaling.sameId);
+  check('the rebuild stays a farm object', scaling.stillCampaign);
+  check('doubling the scale doubles the collider',
+    Math.abs(scaling.after.w / scaling.before.w - 2) < 0.02,
+    scaling.before.w + ' -> ' + scaling.after.w);
+  check('the group is not scaled as well (no double-scaling)',
+    Math.abs(scaling.groupScale - 1) < 1e-6, String(scaling.groupScale));
 
   // Leaving the editor must put the game back the way it was -- if it did
   // not, every digest comparison above would be measuring a different world.
   const after = await page.evaluate(() => ({
     editorActive: EDITOR.active,
     sandboxCount: SANDBOX.count,
+    campaignCount: SANDBOX.campaignCount,
     solids: WORLD.solids.length
   }));
   check('editor released everything it added', !after.editorActive && after.sandboxCount === 0,
     'solids now ' + after.solids);
-  check('sandbox colliders released back to the campaign count',
+  check('the farm still stands', after.campaignCount === 29 &&
     after.solids === world.counts.solids, after.solids + ' vs ' + world.counts.solids);
 
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));

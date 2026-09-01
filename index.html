@@ -1821,11 +1821,24 @@
   }
   .ed-item:hover,.ed-map:hover{background:var(--peach);}
   .ed-item.on{background:var(--mustard);}
-  /* Campaign fragments sit above the player's own saves and are marked as
-     read-through-only: loading one copies the farm's data in, editing it
-     writes a new map rather than the farm. */
-  .ed-map-campaign{background:var(--olive);color:var(--cream);}
-  .ed-map-campaign:hover{background:var(--olive-deep);}
+  /* A campaign cluster the farm is built from. Its objects are already in the
+     world and edited by dragging them, so this row is not a load button --
+     it is the two things dragging cannot do: put the cluster back, and get
+     the edited version out. */
+  .ed-frag{
+    display:flex;align-items:center;gap:4px;margin:0 0 4px;padding:4px 5px;
+    background:var(--olive);border:2px solid var(--ink);border-radius:5px;
+  }
+  .ed-frag span{
+    flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font:700 10px/1.1 "Rockwell",Georgia,serif;color:var(--cream);
+  }
+  .ed-frag button{
+    flex:0 0 auto;padding:3px 6px;cursor:pointer;background:var(--cream);
+    border:2px solid var(--ink);border-radius:4px;
+    font:700 9px/1 "Rockwell",Georgia,serif;color:var(--ink);
+  }
+  .ed-frag button:hover{background:var(--peach);}
   .ed-row{display:flex;align-items:center;gap:6px;margin:0 0 4px;}
   .ed-row span{flex:0 0 54px;font:700 10px/1 "Rockwell",Georgia,serif;color:var(--ink-soft);}
   .ed-row input{
@@ -10581,13 +10594,12 @@ const LEVEL = (() => {
      build()) and everything constructed after buildScatter depends on how
      many numbers come out of it. See the CAMPAIGN header. */
   function buildScatter(parent) {
-    const scatter = {
-      prop_tree:  (p, s) => PROPS.tree(parent, p.x, p.z, s),
-      prop_rock:  (p, s) => PROPS.rock(parent, p.x, p.z, s),
-      prop_stump: (p, s) => PROPS.stump(parent, p.x, p.z, s)
-    };
+    // The map layer builds this cluster, LEVEL does not. Every tree, rock and
+    // stump comes back as a live instance the editor can pick up and move,
+    // and moving one moves the farm.
+    const scatter = CAMPAIGN.open('scatter', parent);
     // trees + rocks masking the boundary and framing views
-    CAMPAIGN.replay('scatter', scatter, ['prop_tree', 'prop_rock']);
+    scatter.build(['prop_tree', 'prop_rock']);
 
     // a collapsed outbuilding — hides the north-west corner
     const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.045);
@@ -10605,10 +10617,10 @@ const LEVEL = (() => {
     PROPS.signPost(parent, -21.4, -20.4, ['CONDEMNED'], 0.6, { w: 1.9, h: 0.7, bg: PAL.rust, fg: PAL.cream, postH: 1.6 });
     WORLD.addSpawn(-19, 0, -22, 'ruins');
 
-    // a couple of stumps to sit the eye on -- replayed here rather than with
-    // the trees and rocks above so the ruin's wood texture is still generated
+    // a couple of stumps to sit the eye on -- built here rather than with the
+    // trees and rocks above so the ruin's wood texture is still generated
     // before the stumps', which is where the original loop left it.
-    CAMPAIGN.replay('scatter', scatter, ['prop_stump']);
+    scatter.build(['prop_stump']);
   }
 
   /* ---------------- the land beyond the fence ----------------
@@ -31868,14 +31880,39 @@ const REGISTRY = (() => {
   prop('prop_barrel',  'Barrel',    g => PROPS.barrel(g, 0, 0, {}));
   prop('prop_crate',   'Crate',     g => PROPS.crate(g, 0, 0, 0, 0.85, 0));
   prop('prop_haybale', 'Hay Bale',  g => PROPS.hayBale(g, 0, 0, 0, 0));
-  /* Built at UNIT size, deliberately. SANDBOX applies transform.scale to the
-     returned group, so a builder that starts at 0.8 makes "scale 1" mean 0.8
-     and a campaign fragment authored at 1.1 comes back as 0.88. At unit size
-     the editor and LEVEL agree on what a number means -- which they have to,
-     now that they read the same fragment. */
-  prop('prop_rock',    'Rock',      g => PROPS.rock(g, 0, 0, 1.0));
-  prop('prop_tree',    'Tree',      g => PROPS.tree(g, 0, 0, 1.0));
-  prop('prop_stump',   'Stump',     g => PROPS.stump(g, 0, 0, 1.0));
+  /* --- props whose builder takes a size ------------------------------
+     transform.scale is passed INTO the builder rather than applied to the
+     returned group afterwards, and SANDBOX is told so with scaleInBuilder.
+
+     This is not a refinement. It is the thing that lets the map layer own
+     campaign content at all, for two reasons:
+
+       PROPS.tree scales its trunk and canopy by the argument but NOT its
+       lean or its sag, so a unit tree group-scaled to 1.1 is a visibly
+       different tree from one built at 1.1.
+
+       WORLD.addFloor is called by the builder with the size it was handed,
+       so a group-scaled prop gets a collider that never grew -- a 1.1 tree
+       with a 1.0 hitbox.
+
+     Both were survivable while the editor only authored new objects. Neither
+     is survivable once LEVEL builds the farm through this path. */
+  function sized(id, name, fn, collides) {
+    register({
+      id: id, name: name, category: 'Props', collides: collides !== false,
+      scaleInBuilder: true,
+      build: (ctx, d) => {
+        const g = new THREE.Group();
+        const t = (d && d.transform) || {};
+        fn(g, t.scale === undefined ? 1 : t.scale, d);
+        return g;
+      },
+      properties: {}
+    });
+  }
+  sized('prop_rock',   'Rock',      (g, s) => PROPS.rock(g, 0, 0, s));
+  sized('prop_tree',   'Tree',      (g, s) => PROPS.tree(g, 0, 0, s));
+  sized('prop_stump',  'Stump',     (g, s) => PROPS.stump(g, 0, 0, s));
   prop('prop_can',     'Tin Can',   g => PROPS.can(g, 0, 0, 0), false);
   prop('prop_bottle',  'Bottle',    g => PROPS.bottle(g, 0, 0, 0), false);
   prop('prop_lantern', 'Lantern',   g => PROPS.lantern(g, 0, 1.2, 0, 0), false);
@@ -31988,7 +32025,14 @@ const SANDBOX = (() => {
      `build` is the whole reason delete works: whatever colliders the real
      prop builder registers get recorded against this instance and released
      when it goes. */
-  function instantiate(data) {
+  /* `opts.layer` is 'sandbox' (the player's map, the default) or 'campaign'
+     (a CAMPAIGN fragment the game itself builds). The distinction matters in
+     exactly three places -- clear(), serialize() and the status line -- and
+     it is what keeps pressing "New" from deleting the farm's own trees.
+     `opts.parent` lets CAMPAIGN put its objects under LEVEL's root instead of
+     the sandbox group, so the farm's scene graph stays the farm's. */
+  function instantiate(data, opts) {
+    opts = opts || {};
     const entry = REGISTRY.get(data.type);
     if (!entry) return null;
     const handle = WORLD.beginCapture();
@@ -32004,10 +32048,12 @@ const SANDBOX = (() => {
     object3D.position.set(t.position.x, t.position.y, t.position.z);
     object3D.rotation.y = t.rotation || 0;
     const s = t.scale === undefined ? 1 : t.scale;
-    object3D.scale.setScalar(s);
+    // A scaleInBuilder entry already sized its geometry AND its collider from
+    // transform.scale, so scaling the group as well would double it.
+    object3D.scale.setScalar(entry.scaleInBuilder ? 1 : s);
     // A collider captured at build time was computed in world space around
     // the origin, so it has to be shifted to wherever the object actually
-    // landed. Yaw/scale are deliberately NOT applied to the box: the game's
+    // landed. Yaw is deliberately NOT applied to the box: the game's
     // colliders are axis-aligned and rotating one is meaningless.
     handle.solids.forEach(sol => {
       sol.minX += t.position.x; sol.maxX += t.position.x;
@@ -32015,14 +32061,16 @@ const SANDBOX = (() => {
       sol.minZ += t.position.z; sol.maxZ += t.position.z;
     });
 
-    ensureGroup().add(object3D);
+    (opts.parent || ensureGroup()).add(object3D);
     const inst = {
       id: data.id || freshId(),
       type: data.type,
       object3D: object3D,
       handle: handle,
       data: data,
-      entry: entry
+      entry: entry,
+      layer: opts.layer || 'sandbox',
+      fragment: opts.fragment || null
     };
     object3D.userData.sandboxId = inst.id;
     instances.push(inst);
@@ -32074,16 +32122,26 @@ const SANDBOX = (() => {
     return null;
   }
 
+  /* Clears the player's map only. Campaign-layer objects are the farm -- the
+     trees LEVEL built through this same machinery -- and "New map" must not
+     bulldoze them. Use CAMPAIGN.revert to put a fragment back. */
   function clear() {
-    instances.slice().forEach(remove);
-    instances = [];
+    instances.filter(i => i.layer !== 'campaign').forEach(remove);
+  }
+  function clearLayer(layer) {
+    instances.filter(i => i.layer === layer).forEach(remove);
   }
 
   /* Transform edits go through here so the collider follows the mesh. The
      collider is rebuilt by delta rather than recomputed, because only the
      builder knows the box's original extents. */
+  /* Returns the live instance, which is USUALLY the one passed in -- but a
+     scale change on a scaleInBuilder entry has to rebuild the object (its
+     geometry and its collider were both computed from the old size), and a
+     rebuild produces a new instance object. Callers holding a selection must
+     take the return value rather than assume their reference survived. */
   function setTransform(inst, position, rotation, scale) {
-    if (!inst) return;
+    if (!inst) return inst;
     const o = inst.object3D, t = inst.data.transform;
     if (position) {
       const dx = position.x - o.position.x, dy = position.y - o.position.y, dz = position.z - o.position.z;
@@ -32098,26 +32156,43 @@ const SANDBOX = (() => {
       t.rotation = rotation;
     }
     if (scale !== undefined && scale !== null) {
-      o.scale.setScalar(scale);
+      const was = t.scale === undefined ? 1 : t.scale;
       t.scale = scale;
+      if (inst.entry.scaleInBuilder) {
+        if (scale !== was) return rebuild(inst);
+      } else {
+        o.scale.setScalar(scale);
+      }
     }
+    return inst;
   }
 
-  /* Rebuild one instance in place, for a property change that alters
-     geometry (sign text). Keeps the id so history and selection survive. */
+  /* Rebuild one instance in place, for a change that alters geometry (sign
+     text, or the size of a scaleInBuilder prop). Keeps the id so history and
+     selection survive, and keeps the layer and parent so a campaign object
+     stays a campaign object under LEVEL's root. */
   function rebuild(inst) {
     if (!inst) return null;
     const data = JSON.parse(JSON.stringify(inst.data));
+    const opts = {
+      layer: inst.layer,
+      fragment: inst.fragment,
+      parent: inst.object3D ? inst.object3D.parent : null
+    };
     remove(inst);
-    return instantiate(data);
+    return instantiate(data, opts);
   }
 
+  /* The player's map is theirs: campaign objects are excluded, or every save
+     would swallow a copy of the farm and reloading it would double every
+     tree. CAMPAIGN.snapshot is the way to get an edited fragment out. */
   function serialize() {
     return {
       formatVersion: FORMAT_VERSION,
       metadata: { name: metadata.name, savedAt: new Date().toISOString() },
       environment: {},
-      objects: instances.map(i => JSON.parse(JSON.stringify(i.data)))
+      objects: instances.filter(i => i.layer !== 'campaign')
+        .map(i => JSON.parse(JSON.stringify(i.data)))
     };
   }
 
@@ -32169,10 +32244,22 @@ const SANDBOX = (() => {
 
   return {
     FORMAT_VERSION,
-    ensureGroup, add, remove, clear, find, findByObject, setTransform, rebuild,
+    ensureGroup, add, remove, clear, clearLayer, find, findByObject, setTransform, rebuild,
     serialize, load, instantiate, activateGameplay, deactivateGameplay, playerSpawn,
+    /* THREE VIEWS, and the difference matters.
+
+       `instances` is everything the map layer holds -- the player's objects
+       AND the farm's. Picking and CAMPAIGN.snapshot want this.
+
+       `owned` is the player's objects alone, and `count` is its length. The
+       editor's status line, "New map" and save all mean this one; counting
+       the farm's trees among the things an author placed is meaningless to
+       them. The invariant is count === owned.length -- do not reach for
+       instances.length when you mean "how many did I place". */
     get instances() { return instances; },
-    get count() { return instances.length; },
+    get owned() { return instances.filter(i => i.layer !== 'campaign'); },
+    get count() { return instances.filter(i => i.layer !== 'campaign').length; },
+    get campaignCount() { return instances.filter(i => i.layer === 'campaign').length; },
     get name() { return metadata.name; },
     set name(v) { metadata.name = String(v || 'Untitled Farm'); }
   };
@@ -32415,7 +32502,100 @@ const CAMPAIGN = (() => {
     return built;
   }
 
-  return { define, expand, fragment, replay, has, ids, name };
+  /* ---- ownership -----------------------------------------------------
+     replay() above hands each object to a builder and forgets it: the farm
+     gets trees, and nothing afterwards knows which tree came from which row.
+     That was enough to prove the format on real content, but it is not
+     ownership -- an editor could show you the data and could not change what
+     the game draws.
+
+     open() is the other half. It builds the fragment through SANDBOX, so
+     every prop comes back as a live instance with a WORLD capture handle:
+     selectable, movable, deletable, and releasing its collider when it goes.
+     LEVEL keeps calling it from the same place in build() with the same
+     authored order, so the seeded RNG stream is untouched and the farm comes
+     out identical -- the migration changes who owns the trees, not where
+     they stand.
+
+     Objects are parented under a group inside LEVEL's own root rather than
+     the sandbox group. The farm's scene graph stays the farm's, and anything
+     that walks it (the render audit, the migration digest) still sees a
+     complete world. */
+  const live = {};
+
+  function open(id, parent) {
+    const f = fragments[id];
+    if (!f) throw new Error('CAMPAIGN: no fragment "' + id + '"');
+    release(id);
+    const group = new THREE.Group();
+    group.name = 'campaign:' + id;
+    parent.add(group);
+    live[id] = { group: group, parent: parent };
+    // Returned rather than exposed as more module functions because the
+    // caller is mid-build and interleaving matters: buildScatter puts its
+    // collapsed outbuilding between two of these calls, and that ruin's
+    // wood texture has always been generated in that gap.
+    return {
+      build(types) {
+        const only = types ? (Array.isArray(types) ? types : [types]) : null;
+        let n = 0;
+        f.objects.forEach(o => {
+          if (only && only.indexOf(o.type) === -1) return;
+          const made = SANDBOX.instantiate(JSON.parse(JSON.stringify(o)), {
+            layer: 'campaign', fragment: id, parent: group
+          });
+          if (made) n++;
+        });
+        return n;
+      }
+    };
+  }
+
+  /* Remove a fragment's live objects, colliders included. */
+  function release(id) {
+    const l = live[id];
+    if (!l) return 0;
+    const n = SANDBOX.instances.filter(i => i.fragment === id).length;
+    SANDBOX.instances.filter(i => i.fragment === id).forEach(i => SANDBOX.remove(i));
+    if (l.group && l.group.parent) l.group.parent.remove(l.group);
+    delete live[id];
+    return n;
+  }
+
+  /* What the fragment looks like NOW, edits included, as map JSON. This is
+     how an edited farm gets off the machine: export it, or hand it back to
+     define() to make the change the new authored state. */
+  function snapshot(id) {
+    const f = fragments[id];
+    if (!f) return null;
+    const objects = SANDBOX.instances
+      .filter(i => i.fragment === id)
+      .map(i => JSON.parse(JSON.stringify(i.data)));
+    return {
+      formatVersion: SANDBOX.FORMAT_VERSION,
+      metadata: { name: f.name, fragment: id, savedAt: new Date().toISOString() },
+      environment: {},
+      objects: objects
+    };
+  }
+
+  /* Put a fragment back to what LEVEL authored. Rebuilds rather than nudging
+     transforms back, so it also restores anything deleted -- at the cost of
+     re-rolling the procedural variation (a tree's lean is drawn from the RNG
+     at build time), so reverted trees stand in the right places but do not
+     lean the way they did before. */
+  function revert(id) {
+    const l = live[id];
+    if (!l) return 0;
+    const parent = l.parent;
+    const handle = open(id, parent);
+    return handle.build();
+  }
+
+  function isLive(id) { return !!live[id]; }
+
+  return { define, expand, fragment, replay, has, ids, name,
+           open, release, snapshot, revert, isLive };
 })();
 
 /* ============================= [EDITOR] ==============================
@@ -32542,7 +32722,13 @@ const EDITOR = (() => {
     if (JSON.stringify(before) === JSON.stringify(after)) return;
     const apply = t => {
       const i = SANDBOX.find(id);
-      if (i) { SANDBOX.setTransform(i, t.position, t.rotation, t.scale); refreshSelectionBox(); renderInspector(); }
+      if (!i) return;
+      // Re-find by id rather than trusting the reference: a scale undo on a
+      // scaleInBuilder prop rebuilds the object under the same id.
+      const live = SANDBOX.setTransform(i, t.position, t.rotation, t.scale);
+      if (selection && selection.id === id) select(live || SANDBOX.find(id));
+      refreshSelectionBox();
+      renderInspector();
     };
     pushCommand({ label: 'transform', undo: () => apply(before), redo: () => apply(after) });
   }
@@ -32820,7 +33006,9 @@ const EDITOR = (() => {
     if (!selection) { host.innerHTML = '<p class="ed-empty">Nothing selected.</p>'; return; }
     const t = selection.data.transform;
     const entry = selection.entry;
-    let html = '<p class="ed-sel">' + entry.name + '<span>' + selection.id + '</span></p>';
+    let html = '<p class="ed-sel">' + entry.name +
+      (selection.layer === 'campaign' ? ' <em>· farm</em>' : '') +
+      '<span>' + selection.id + '</span></p>';
     // Displayed to 3 decimals, never rounded in the DATA. A raycast lands on
     // a value like 3.1417579694929253 and showing that in a text box is
     // unreadable and unusable; rounding what gets stored would instead drift
@@ -32849,9 +33037,13 @@ const EDITOR = (() => {
   function refreshStatus() {
     const s = el('edStatus');
     if (!s) return;
+    // Campaign objects are counted separately: they are the farm, not the
+    // player's map, and mixing the two makes the number meaningless.
     s.textContent = SANDBOX.count + ' object' + (SANDBOX.count === 1 ? '' : 's') +
       ' · ' + SANDBOX.name +
-      (selection ? ' · selected ' + selection.entry.name : '') +
+      ' · farm ' + SANDBOX.campaignCount +
+      (selection ? ' · selected ' + selection.entry.name +
+        (selection.layer === 'campaign' ? ' (farm)' : '') : '') +
       ' · undo ' + historyAt + '/' + history.length;
   }
   function notify(msg, bad) {
@@ -32892,34 +33084,41 @@ const EDITOR = (() => {
     notify('New map.');
     refreshStatus();
   }
-  /* Campaign fragments open like saved maps because they ARE saved maps --
-     same formatVersion, same objects, straight through MAPIO.validate. That
-     is the whole return on the migration: no importer, no conversion step.
+  /* Campaign fragments are not loaded here any more, and that is the point of
+     the ownership slice. LEVEL builds them through the map layer at level
+     load, so their objects are already in the world and already selectable --
+     click a tree, drag it, and the farm has moved. There is nothing to import
+     because there is no second copy.
 
-     Note what loading one does NOT do. LEVEL still builds the campaign copy of
-     this cluster at level load, so the fragment's trees land on top of the
-     ones already standing there, and saving writes a new map rather than
-     rewriting the farm. Both are true of a partial migration and the notice
-     says so; handing the map layer ownership of construction is the next
-     slice, not this one. */
-  function loadFragment(id) {
-    const map = CAMPAIGN.fragment(id);
-    if (!map) { notify('No campaign fragment "' + id + '".', true); return; }
-    const out = SANDBOX.load(map);
-    if (!out.ok) { notify('Fragment rejected: ' + out.errors[0], true); return; }
-    SANDBOX.name = CAMPAIGN.name(id);
-    select(null);
+     What is left is the two things you cannot do by dragging: undo the whole
+     cluster, and get the edited version off the machine. */
+  function revertFragment(id) {
+    if (!CAMPAIGN.isLive(id)) { notify('"' + id + '" is not built into this farm.', true); return; }
+    if (selection && selection.fragment === id) select(null);
+    const n = CAMPAIGN.revert(id);
+    // Those objects no longer exist, so any history entry naming them would
+    // resolve to nothing on undo.
     history.length = 0; historyAt = 0;
-    notify(out.placed + ' objects from the campaign — the farm still draws its own copy.');
+    notify('Reverted ' + CAMPAIGN.name(id) + ' — ' + n + ' objects back to authored.');
     refreshStatus();
+  }
+  function exportFragment(id) {
+    const map = CAMPAIGN.snapshot(id);
+    if (!map) { notify('No campaign fragment "' + id + '".', true); return; }
+    const rep = MAPIO.validate(map);
+    if (!rep.ok) { notify('Cannot export: ' + rep.errors[0], true); return; }
+    MAPIO.exportFile(map, id);
+    notify('Exported ' + id + '.json — ' + map.objects.length + ' objects.');
   }
   function renderMapList() {
     const host = el('edMaps');
     if (!host) return;
     const names = MAPIO.listSaved();
     let html = CAMPAIGN.ids().map(id =>
-      '<button class="ed-map ed-map-campaign" data-fragment="' + id + '">' +
-      CAMPAIGN.name(id) + '</button>').join('');
+      '<div class="ed-frag"><span>' + CAMPAIGN.name(id) + '</span>' +
+      '<button data-revert="' + id + '" title="Put this cluster back to what the farm ships with">Revert</button>' +
+      '<button data-export-frag="' + id + '" title="Download this cluster as map JSON, edits included">Export</button>' +
+      '</div>').join('');
     html += names.length
       ? names.map(n => '<button class="ed-map" data-load="' + n + '">' + n + '</button>').join('')
       : '<p class="ed-empty">No saved maps yet.</p>';
@@ -33041,8 +33240,10 @@ const EDITOR = (() => {
 
     const maps = el('edMaps');
     if (maps) maps.addEventListener('click', e => {
-      const f = e.target.closest('[data-fragment]');
-      if (f) { loadFragment(f.getAttribute('data-fragment')); return; }
+      const rev = e.target.closest('[data-revert]');
+      if (rev) { revertFragment(rev.getAttribute('data-revert')); return; }
+      const exp = e.target.closest('[data-export-frag]');
+      if (exp) { exportFragment(exp.getAttribute('data-export-frag')); return; }
       const b = e.target.closest('[data-load]');
       if (b) loadNamed(b.getAttribute('data-load'));
     });
@@ -33067,10 +33268,13 @@ const EDITOR = (() => {
         if (xf === 'px') pos.x = v;
         if (xf === 'py') pos.y = v;
         if (xf === 'pz') pos.z = v;
-        SANDBOX.setTransform(selection,
+        // Take the return value: a scale change on a prop whose builder owns
+        // its size rebuilds the object, and the old instance is gone.
+        const live = SANDBOX.setTransform(selection,
           (xf[0] === 'p') ? pos : null,
           xf === 'rot' ? v * Math.PI / 180 : null,
           xf === 'scl' ? Math.max(0.05, v) : null);
+        if (live && live !== selection) select(live);
         refreshSelectionBox();
         commitTransform(selection, before);
         renderInspector();
@@ -33122,6 +33326,7 @@ const EDITOR = (() => {
     _place: doPlace, _delete: doDelete, _duplicate: doDuplicate,
     _select: select, _setPlaceType: setPlaceType,
     _save: save, _load: loadNamed, _new: newMap,
+    _revert: revertFragment, _exportFragment: exportFragment,
     _setTool: t => { tool = t; renderToolbar(); },
     get _tool() { return tool; }
   };

@@ -260,3 +260,87 @@ this project; the fix is always the same one.
 framing, Exit landing in the right place, and a playtest that starts a run
 and drops the player at the authored spawn. Like the mouse suite it asserts
 hit-testability rather than trusting that a click landed.
+
+---
+
+## 13. Phase 4: the map layer owns the scatter
+
+Phase 2 moved the scatter's coordinates into map data, but `replay()` handed
+each row to a builder and forgot it — the farm got trees, and nothing
+afterwards knew which tree came from which row. The editor could *show* you
+the data and could not change what the game drew. This phase closes that.
+
+### What changed
+
+`LEVEL.buildScatter` no longer calls `PROPS.*` at all. It calls
+`CAMPAIGN.open('scatter', root)` and builds through **SANDBOX**, so every
+tree, rock and stump comes back as a live instance with a `WORLD` capture
+handle: selectable, movable, deletable, releasing its collider when it goes.
+Click a tree in the editor, drag it, and the farm's collider moves with it.
+
+Objects are parented under a `campaign:scatter` group inside `LEVEL.root`
+rather than the sandbox group. The farm's scene graph stays the farm's, and
+anything that walks it — the render audit, the migration digest — still sees
+a complete world.
+
+### The blocker that had to be cleared first: scale
+
+`SANDBOX` applied `transform.scale` to the returned *group*. That was
+tolerable while the editor only authored new objects and fatal the moment
+`LEVEL` built the farm through the same path, for two reasons:
+
+- **Geometry.** `PROPS.tree` scales its trunk and canopy by the argument but
+  **not** its lean (`rng(-0.7, 0.7)`) or its sag. A unit tree group-scaled to
+  1.1 is a visibly different tree from one built at 1.1.
+- **Collision.** The builder calls `WORLD.addFloor` with the size it was
+  handed, so a group-scaled prop got a collider that never grew — a 1.1 tree
+  with a 1.0 hitbox.
+
+So registry entries gained `scaleInBuilder`. Those props take
+`transform.scale` as a builder argument, `SANDBOX` leaves the group at scale
+1, and a scale change rebuilds the object because its geometry and its
+collider both depend on it. `setTransform` therefore returns the live
+instance — usually the same one, but a new one after a rebuild — and callers
+holding a selection must take the return value.
+
+### Layers, and the thing that would otherwise be a disaster
+
+Instances now carry `layer` ('sandbox' or 'campaign') and a `fragment` id.
+Three places care:
+
+- `clear()` spares campaign objects, so **"New map" no longer bulldozes the
+  farm's trees**.
+- `serialize()` excludes them, so a saved map does not swallow a copy of the
+  farm and double every tree on reload.
+- The status line counts them separately, because counting the farm's trees
+  among the things an author placed is meaningless to them.
+
+This introduced a trap worth naming: `count` is no longer `instances.length`.
+`instances` is everything the map layer holds; `owned` is the player's alone
+and `count` is its length. Two checks in `editor-test.js` were reaching for
+`instances[0]` meaning "the first thing I placed" and got a tree at (-27, 26).
+
+### Editing the farm, and getting the result out
+
+The map panel's fragment row is no longer a load button — there is nothing to
+load, because the objects are already in the world. It offers the two things
+dragging cannot do:
+
+- **Revert** rebuilds the cluster from the authored rows, restoring anything
+  deleted. It re-rolls procedural variation (a tree's lean is drawn at build
+  time), so reverted trees stand in the right places but do not lean the way
+  they did.
+- **Export** writes `CAMPAIGN.snapshot(id)` — the fragment as it stands now,
+  edits included — as map JSON.
+
+`CAMPAIGN.fragment()` still returns the *authored* rows, untouched by
+editing, which is what gives Revert something to go back to.
+
+### Verified
+
+The farm is byte-identical to the previous commit: same collision hash
+`f195dbadd6f09853` (1335 solids, 15 ladders, 58 spawn markers) and the same
+mesh multiset over `LEVEL.root`. That is the whole safety argument — the
+migration changed who owns the trees, not where they stand — and it holds
+because the objects are built by the same builders, with the same arguments,
+in the same authored order, at the same point in `LEVEL.build`.
