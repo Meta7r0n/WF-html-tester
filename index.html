@@ -32246,18 +32246,27 @@ const SANDBOX = (() => {
     FORMAT_VERSION,
     ensureGroup, add, remove, clear, clearLayer, find, findByObject, setTransform, rebuild,
     serialize, load, instantiate, activateGameplay, deactivateGameplay, playerSpawn,
-    /* THREE VIEWS, and the difference matters.
+    /* TWO VIEWS, and the short name is the safe one on purpose.
 
-       `instances` is everything the map layer holds -- the player's objects
-       AND the farm's. Picking and CAMPAIGN.snapshot want this.
+       `instances` is the PLAYER'S objects, and `count` is its length --
+       count === instances.length, always. Almost everything means this: the
+       status line, "New map", save, and every test that places something and
+       then asks about it.
 
-       `owned` is the player's objects alone, and `count` is its length. The
-       editor's status line, "New map" and save all mean this one; counting
-       the farm's trees among the things an author placed is meaningless to
-       them. The invariant is count === owned.length -- do not reach for
-       instances.length when you mean "how many did I place". */
-    get instances() { return instances; },
-    get owned() { return instances.filter(i => i.layer !== 'campaign'); },
+       `all` additionally includes the farm's own objects, the campaign
+       clusters LEVEL builds through this layer. Only three things want it:
+       picking (you can select a farm tree), CAMPAIGN.snapshot, and
+       CAMPAIGN.release.
+
+       This naming is deliberate and was earned. `instances` first meant
+       everything, and three separate places broke on it -- two editor-test
+       checks and five editor-mouse-test ones -- all reading instances[0] to
+       mean "the thing I just placed" and silently getting a tree at
+       (-27, 26). One of them deleted a farm tree instead of the test's own
+       object and still reported a pass. The dangerous reading should not be
+       the one you get by default. */
+    get instances() { return instances.filter(i => i.layer !== 'campaign'); },
+    get all() { return instances; },
     get count() { return instances.filter(i => i.layer !== 'campaign').length; },
     get campaignCount() { return instances.filter(i => i.layer === 'campaign').length; },
     get name() { return metadata.name; },
@@ -32555,8 +32564,8 @@ const CAMPAIGN = (() => {
   function release(id) {
     const l = live[id];
     if (!l) return 0;
-    const n = SANDBOX.instances.filter(i => i.fragment === id).length;
-    SANDBOX.instances.filter(i => i.fragment === id).forEach(i => SANDBOX.remove(i));
+    const n = SANDBOX.all.filter(i => i.fragment === id).length;
+    SANDBOX.all.filter(i => i.fragment === id).forEach(i => SANDBOX.remove(i));
     if (l.group && l.group.parent) l.group.parent.remove(l.group);
     delete live[id];
     return n;
@@ -32568,7 +32577,7 @@ const CAMPAIGN = (() => {
   function snapshot(id) {
     const f = fragments[id];
     if (!f) return null;
-    const objects = SANDBOX.instances
+    const objects = SANDBOX.all
       .filter(i => i.fragment === id)
       .map(i => JSON.parse(JSON.stringify(i.data)));
     return {

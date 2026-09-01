@@ -315,10 +315,15 @@ Three places care:
 - The status line counts them separately, because counting the farm's trees
   among the things an author placed is meaningless to them.
 
-This introduced a trap worth naming: `count` is no longer `instances.length`.
-`instances` is everything the map layer holds; `owned` is the player's alone
-and `count` is its length. Two checks in `editor-test.js` were reaching for
-`instances[0]` meaning "the first thing I placed" and got a tree at (-27, 26).
+This introduced a trap worth naming, and the first fix for it was wrong.
+`instances` initially meant *everything*, with `owned` as the player's subset
+— which left the dangerous reading as the default one. Seven call sites
+across two suites read `instances[0]` meaning "the thing I just placed" and
+silently got a tree at (-27, 26); one deleted a farm tree instead of its own
+object **and still reported a pass**. So the names were inverted:
+`instances` is the player's objects (`count === instances.length`, always)
+and `all` is everything. Only picking and CAMPAIGN's snapshot/release want
+`all`.
 
 ### Editing the farm, and getting the result out
 

@@ -316,7 +316,7 @@ if (compareArg !== -1) {
   const own = await page.evaluate(async () => {
     const out = {};
     out.isLive = CAMPAIGN.isLive('scatter');
-    const campaign = SANDBOX.instances.filter(i => i.layer === 'campaign');
+    const campaign = SANDBOX.all.filter(i => i.layer === 'campaign');
     out.campaignCount = campaign.length;
     out.campaignTypes = {};
     campaign.forEach(i => { out.campaignTypes[i.type] = (out.campaignTypes[i.type] || 0) + 1; });
@@ -401,7 +401,7 @@ if (compareArg !== -1) {
     EDITOR._revert('scatter');
     await new Promise(r => requestAnimationFrame(r));
     out.afterRevert = { farm: SANDBOX.campaignCount, solids: WORLD.solids.length, was: before };
-    const tree = SANDBOX.instances.filter(i => i.type === 'prop_tree')[0];
+    const tree = SANDBOX.all.filter(i => i.type === 'prop_tree')[0];
     out.revertedX = tree && +tree.data.transform.position.x.toFixed(3);
 
     EDITOR.exit();
@@ -428,7 +428,7 @@ if (compareArg !== -1) {
   /* ---- scale is the builder's now, so it has to move the collider ----- */
   const scaling = await page.evaluate(() => {
     const out = {};
-    const tree = SANDBOX.instances.filter(i => i.type === 'prop_tree')[0];
+    const tree = SANDBOX.all.filter(i => i.type === 'prop_tree')[0];
     const box = s => ({ w: +(s.maxX - s.minX).toFixed(3), h: +(s.maxY - s.minY).toFixed(3) });
     out.before = box(tree.handle.solids[0]);
     out.beforeScale = tree.data.transform.scale;

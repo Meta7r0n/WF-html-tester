@@ -113,13 +113,16 @@ local bounding-box size + scale), compared as a multiset over `LEVEL.root`.
 build; the comparison must fail and name the collider. A migration test that
 cannot fail is not evidence.
 
-### A trap the suites now guard
+### A trap, and the rename that closed it
 
-`SANDBOX.instances` holds **both** the player's objects and the farm's — the
-campaign clusters `LEVEL` builds through the map layer. `SANDBOX.owned` and
-`SANDBOX.count` are the player's alone.
+`SANDBOX.instances` is the **player's** objects, and `count` is its length —
+`count === instances.length`, always. `SANDBOX.all` additionally includes the
+farm's own objects, the campaign clusters `LEVEL` builds through the map
+layer. Only picking and `CAMPAIGN`'s snapshot/release want `all`.
 
-Two checks in `editor-test.js` used to read `SANDBOX.instances[0]` meaning
-"the first thing I placed" and started getting a tree at (-27, 26) the moment
-the scatter became map-layer owned. If you are asserting about objects a test
-placed, use `owned`. If you are asserting about the world, use `instances`.
+It was briefly the other way round, and that is why the names are what they
+are. When `instances` meant everything, seven call sites across two suites
+read `instances[0]` to mean "the thing I just placed" and silently got a tree
+at (-27, 26). One of them deleted a farm tree instead of its own object and
+still reported a pass. The dangerous reading should not be the one you get by
+default.

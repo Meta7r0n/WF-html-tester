@@ -137,7 +137,7 @@ function check(name, pass, detail) {
   });
   const mixed = await read(() => ({
     count: SANDBOX.count,
-    types: SANDBOX.owned.map(i => i.type)
+    types: SANDBOX.instances.map(i => i.type)
   }));
   check('enemy and spawn placed', mixed.count === 3, mixed.types.join(', '));
 
@@ -165,7 +165,7 @@ function check(name, pass, detail) {
     EDITOR._load('HarnessMap');
     return {
       empty: empty, count: SANDBOX.count,
-      pos: SANDBOX.owned[0].data.transform.position,
+      pos: SANDBOX.instances[0].data.transform.position,
       name: SANDBOX.name
     };
   });
@@ -221,8 +221,8 @@ function check(name, pass, detail) {
   const back = await read(() => ({
     active: EDITOR.active,
     count: SANDBOX.count,
-    pos: SANDBOX.owned[0].data.transform.position,
-    types: SANDBOX.owned.map(i => i.type).sort().join(',')
+    pos: SANDBOX.instances[0].data.transform.position,
+    types: SANDBOX.instances.map(i => i.type).sort().join(',')
   }));
   check('returned to editor', back.active);
   check('edited world preserved across play', back.count === 3 &&
