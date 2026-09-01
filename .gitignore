@@ -8,3 +8,5 @@ vendor
 preview.html
 _extract.js
 tools/render-audit/shots
+# Screenshots the editor suites drop at the repo root when they run.
+editor-shots

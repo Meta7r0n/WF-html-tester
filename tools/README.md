@@ -34,6 +34,9 @@ shared harness as `./render-audit/harness`.
 |---|---|
 | `gamepad-test.js` | Gamepad behaviour: stick mapping, dead zone, look curve, buttons, analog triggers, rebinding, capture, rumble, hot-unplug. |
 | `gamepad-stability-test.js` | Gamepad settings resilience: what a corrupt, hand-edited or stale `localStorage` blob does to the pad. |
+| `editor-test.js` | Editor and engine layer: registry, capture scope, place/move/delete/undo, save/load, playtest, collider leak checks. Takes a full URL. |
+| `editor-mouse-test.js` | The editor as a *person* drives it: real clicks, drags, wheel, hit-testing. Exists because the editor once passed every programmatic check while being completely unclickable. Takes a full URL. |
+| `campaign-migration-test.js` | Campaign content migration: proves a cluster moved into map data without changing what the farm is. See below. |
 | `render-audit/` | Exposure/tonal capture harness and the quality gate. Has its own README covering three silent measurement failures worth reading before trusting any number it prints. |
 | `viewmodel/` | Weapon viewmodel capture. |
 | `make-preview.js` | Builds the served, CDN-free copy the harnesses need. |
@@ -65,3 +68,44 @@ brightness and graphics settings. A corrupt `master` still reaches
 Under software rasterisation (`--use-angle=swiftshader`) the renderer runs at
 roughly 1 fps. Wall-clock waits mean nothing; count rendered frames instead.
 The shared harness exposes `window.__waitFrames(n)` for exactly this.
+
+## Verifying a campaign migration
+
+`campaign-migration-test.js` has two jobs. Run without a compare argument it
+asserts the migration's own properties — the fragment is real map data, it
+passes `MAPIO.validate`, every type it names is in the registry, it survives a
+JSON round trip, the editor lists and loads it, and editing it there cannot
+write back into the campaign.
+
+The other job is proving the farm did not move. Build a preview of the
+previous commit and one of the working tree, serve them on **different ports**
+(the game runs at about 1 fps under swiftshader — two headless browsers on one
+server just starve each other), then:
+
+```sh
+node tools/campaign-migration-test.js 8971 --digest base.json
+node tools/campaign-migration-test.js 8972 --digest new.json
+node tools/campaign-migration-test.js --compare base.json new.json
+```
+
+**Run the control first.** Digest the same build twice and compare it against
+itself; if that does not pass, nothing the tool says about your change means
+anything. Two earlier versions of this file failed exactly there:
+
+- Hashing one frame of `GAME.scene` reported a confident difference that
+  survived a same-build control. `PROPS.registerBoil` and `registerWobble`
+  perturb position and rotation every frame, so it was hashing the clock.
+- Trying to identify the animated meshes by sampling twice and keeping what
+  held still failed its control too — a slowly-boiling mesh can land on the
+  same 5-decimal value eight frames apart.
+
+What survives the control is splitting the question. *Where* everything is
+comes from `WORLD`'s arrays, written once at build time and never animated, so
+they compare exactly — and they are sensitive to a shifted RNG stream, because
+`PROPS.tree` feeds its random trunk height straight into `WORLD.addFloor`.
+*What* was built comes from a key no rigid animation can touch (vertex count +
+local bounding-box size + scale), compared as a multiset over `LEVEL.root`.
+
+**And run a negative control after.** Move one tree half a metre in a throwaway
+build; the comparison must fail and name the collider. A migration test that
+cannot fail is not evidence.

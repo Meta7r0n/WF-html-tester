@@ -116,3 +116,88 @@ map format and a proven loader to migrate *into*.
 Coordinate system: metres, Y-up, right-handed, ground at y=0, `rotation` a
 single Y-axis yaw in radians (everything in the game is yaw-only), plus a
 `layerId` because this world has a real basement.
+
+---
+
+## 11. Phase 2: migrating campaign content (first cluster landed)
+
+The slice in section 10 shipped and the format held, so the campaign started
+moving into it. First cluster: `buildScatter`'s trees, rocks and stumps —
+picked because it is self-contained, with no quest, door, portal or
+multiplayer dependency to reason about.
+
+### The constraint that shapes everything here: RNG order
+
+`LEVEL.build()` opens with `UTIL.setSeed(90210)` and every builder after it
+draws from that one stream. `PROPS.tree` alone takes eight numbers (trunk
+height, lean, canopy colour, five lobe radii), and its random trunk height
+goes straight into `WORLD.addFloor`, so it is baked into collision as well as
+into the art.
+
+The consequence is easy to miss and expensive to get wrong: **moving a
+builder, or replaying its contents in a different order, redraws everything
+constructed after it.** Not just the cluster being migrated — the corn maze,
+the silos, the basement. So:
+
+- fragments store authored order and `CAMPAIGN.replay` walks them in it;
+- each call site stays exactly where it was in `build()`;
+- `replay(id, handlers, types)` takes a type filter *specifically* so a
+  partially-migrated builder can interleave migrated and inline content
+  without reordering either. `buildScatter` replays trees+rocks, builds its
+  collapsed outbuilding inline as before, then replays stumps — because the
+  ruin generates a wood texture whose RNG draw sat between them.
+
+That filter argument is scaffolding. It comes out when nothing inline is left.
+
+### What is now true
+
+- `CAMPAIGN` holds fragments in the *same* format MAPIO validates and SANDBOX
+  loads. Not a similar format — the same one, so the editor opens a fragment
+  with no importer.
+- `buildScatter` holds no coordinates. There is deliberately no fallback copy
+  inside LEVEL: a second list is a second source of truth, and it would
+  diverge on the first edit.
+- `PROPS.stump` was extracted from three inline `PRIM` calls so the cluster
+  could name a type; `prop_stump` is registered and placeable.
+- `prop_rock` and `prop_tree` build at **unit size** in the registry. They
+  used to start at 0.8, which made editor "scale 1" mean 0.8 and would have
+  shown a fragment authored at 1.1 as 0.88.
+- `LEVEL.root` is exposed (getter only) — the handle the map layer needs to
+  take a cluster over, and the scope a harness needs to measure the authored
+  farm without entities walking through it.
+
+### Known gaps, deliberately left
+
+1. **Both copies are in the scene.** Loading the scatter fragment in the
+   editor puts its trees on top of the ones `LEVEL` already built. LEVEL
+   still owns construction; the fragment is still only the data it reads.
+   Giving the map layer ownership — LEVEL skipping a cluster the map supplies
+   — is the next slice, and it is what makes editing the campaign real.
+2. **Editor scale is approximate for collision.** SANDBOX scales an
+   instance's group but not its collider (documented in SANDBOX itself). The
+   campaign path is exact, because it passes scale into the builder. Fixing
+   the editor properly needs a selection-preserving rebuild on scale change.
+
+### Verifying a migration: what a digest has to survive
+
+`tools/campaign-migration-test.js` compares a build of the previous commit
+against a build of the working tree. Two earlier versions of it were wrong in
+ways worth recording, because both *looked* like they had caught a real bug:
+
+1. Hashing one frame of `GAME.scene` reported a difference — which survived a
+   control run of the same build against itself. `registerBoil` and
+   `registerWobble` perturb position and rotation every frame, so it was
+   hashing the clock.
+2. Identifying the animated meshes empirically (sample twice, keep what held
+   still) failed its control too: a slowly-boiling mesh can land on the same
+   5-decimal value eight frames apart, so the "stable" set was itself random.
+
+What works is splitting the question in two. **Where** everything is comes
+from `WORLD`'s arrays, which are written once at build time and never
+animated — compared exactly, and sensitive to a shifted RNG stream because
+tree collider heights are drawn from it. **What** was built comes from an
+animation-invariant key per mesh (vertex count + local bounding-box size +
+scale), compared as a multiset over `LEVEL.root`.
+
+Run the control before trusting the result, and a negative control after:
+perturbing one tree by 0.5 m must fail the comparison and name the collider.

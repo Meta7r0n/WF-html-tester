@@ -1808,6 +1808,11 @@
   }
   .ed-item:hover,.ed-map:hover{background:var(--peach);}
   .ed-item.on{background:var(--mustard);}
+  /* Campaign fragments sit above the player's own saves and are marked as
+     read-through-only: loading one copies the farm's data in, editing it
+     writes a new map rather than the farm. */
+  .ed-map-campaign{background:var(--olive);color:var(--cream);}
+  .ed-map-campaign:hover{background:var(--olive-deep);}
   .ed-row{display:flex;align-items:center;gap:6px;margin:0 0 4px;}
   .ed-row span{flex:0 0 54px;font:700 10px/1 "Rockwell",Georgia,serif;color:var(--ink-soft);}
   .ed-row input{
@@ -2518,8 +2523,8 @@
 
 /* One source of truth for every menu card and runtime version label. */
 const BUILD = Object.freeze({
-  version: 'v0.39.06',
-  branch: 'A-test-v0.39.06-GAMEPAD-SIGNAGE'
+  version: 'v0.40.01',
+  branch: 'V0.40.0-SANDBOX'
 });
 document.title = 'The Withered Farm — ' + BUILD.version;
 document.querySelectorAll('.veil .card').forEach(card => {
@@ -7083,7 +7088,24 @@ const PROPS = (() => {
     return g;
   }
 
-  return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, blobShadow, registerBoil, registerWobble };
+  /* A cut trunk to sit the eye on. Lifted verbatim out of LEVEL.buildScatter,
+     where it was three inline PRIM calls in a forEach, so that the scatter
+     could become map data: CAMPAIGN's fragment names a type, and a type has
+     to resolve to a builder. At scale 1 this is exactly what that loop drew.
+
+     Consumes no RNG, unlike rock() and tree() -- the only randomness in the
+     original was in TEX.wood, which caches per colour pair. */
+  function stump(parent, x, z, s) {
+    s = s || 1;
+    const m = PRIM.cyl(0.55 * s, 0.62 * s, 0.7 * s, 10,
+      MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }),
+      { pos: [x, 0.35 * s, z], parent: parent, outline: 0.045 });
+    blobShadow(parent, x, z, 0.9 * s, 0.9 * s);
+    WORLD.addFloor(x, 0, z, 1.3 * s, 0.7 * s, 1.3 * s, 'stump');
+    return m;
+  }
+
+  return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, stump, blobShadow, registerBoil, registerWobble };
 })();
 
 /* ============================== [LEVEL] ============================== */
@@ -10517,24 +10539,22 @@ const LEVEL = (() => {
     });
   }
 
-  function buildScatter(parent) {
-    // trees + rocks masking the boundary and framing views
-    const treeSpots = [
-      [-27, 26, 1.1], [-24, 30, 0.9], [26, 27, 1.0], [29, 20, 0.85],
-      [-28, -20, 1.15], [-24, -29, 1.0], [22, -28, 1.05], [28, -12, 0.9],
-      [-12, 28, 0.95], [13, 27, 0.9], [-29, 2, 1.1], [30, 1, 1.0],
-      [-2, -30, 0.95], [5.5, -29, 0.9]
-    ];
-    treeSpots.forEach(t => PROPS.tree(parent, t[0], t[1], t[2]));
+  /* [ENGINE] The first cluster migrated to map data. The coordinates live in
+     CAMPAIGN's 'scatter' fragment, not here, and the editor loads that exact
+     fragment -- there is one list of trees and rocks in this build, not two.
 
-    const rockSpots = [
-      [-20, 24, 1.0], [-16, 27, 0.7], [20, 23, 0.9], [24, 12, 0.8],
-      // v0.39.01: was [-25, -8, 1.1], sitting almost dead-center in the new
-      // westGate1 opening (CONFIG.map.westGate1Z = -8) -- moved clear of it.
-      [-25, 3, 1.1], [-21, -14, 0.8], [16, -22, 0.9], [6, -25, 0.7],
-      [-9, 20, 0.6], [12, 4, 0.55], [-13, -18, 0.85], [27, -20, 1.0]
-    ];
-    rockSpots.forEach(r => PROPS.rock(parent, r[0], r[1], r[2]));
+     Replay order matches the code this replaced call for call, because these
+     builders draw from the seeded RNG stream (UTIL.setSeed at the top of
+     build()) and everything constructed after buildScatter depends on how
+     many numbers come out of it. See the CAMPAIGN header. */
+  function buildScatter(parent) {
+    const scatter = {
+      prop_tree:  (p, s) => PROPS.tree(parent, p.x, p.z, s),
+      prop_rock:  (p, s) => PROPS.rock(parent, p.x, p.z, s),
+      prop_stump: (p, s) => PROPS.stump(parent, p.x, p.z, s)
+    };
+    // trees + rocks masking the boundary and framing views
+    CAMPAIGN.replay('scatter', scatter, ['prop_tree', 'prop_rock']);
 
     // a collapsed outbuilding — hides the north-west corner
     const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.045);
@@ -10552,13 +10572,10 @@ const LEVEL = (() => {
     PROPS.signPost(parent, -21.4, -20.4, ['CONDEMNED'], 0.6, { w: 1.9, h: 0.7, bg: PAL.rust, fg: PAL.cream, postH: 1.6 });
     WORLD.addSpawn(-19, 0, -22, 'ruins');
 
-    // a couple of stumps to sit the eye on
-    [[-11, 9], [8, 20], [-16, -16]].forEach(p => {
-      PRIM.cyl(0.55, 0.62, 0.7, 10, MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 1), finish: 'wood' }),
-        { pos: [p[0], 0.35, p[1]], parent: parent, outline: 0.045 });
-      PROPS.blobShadow(parent, p[0], p[1], 0.9, 0.9);
-      WORLD.addFloor(p[0], 0, p[1], 1.3, 0.7, 1.3, 'stump');
-    });
+    // a couple of stumps to sit the eye on -- replayed here rather than with
+    // the trees and rocks above so the ruin's wood texture is still generated
+    // before the stumps', which is where the original loop left it.
+    CAMPAIGN.replay('scatter', scatter, ['prop_stump']);
   }
 
   /* ---------------- the land beyond the fence ----------------
@@ -12522,7 +12539,18 @@ const LEVEL = (() => {
     // Exposed for the walkability audit: set dressing is what silently
     // pinches a lane, so the probe checks the authored desire lines against
     // the finished collider list rather than against a copy that can drift.
-    debugPathRoutes: () => PATH_ROUTES
+    debugPathRoutes: () => PATH_ROUTES,
+    /* [ENGINE] The group every authored builder parents into. Enemies,
+       pickups, FX, lights and the viewmodel all add themselves to the scene
+       rather than to this, so it is exactly "the farm as built" and nothing
+       else.
+
+       Wanted in two directions by the migration: a harness can measure the
+       authored world without entities walking through the measurement, and
+       the next slice needs a handle on what LEVEL constructs before the map
+       layer can take a cluster over. Getter only -- nothing outside LEVEL
+       should be reparenting it. */
+    get root() { return root; }
   };
 })();
 
@@ -31757,8 +31785,14 @@ const REGISTRY = (() => {
   prop('prop_barrel',  'Barrel',    g => PROPS.barrel(g, 0, 0, {}));
   prop('prop_crate',   'Crate',     g => PROPS.crate(g, 0, 0, 0, 0.85, 0));
   prop('prop_haybale', 'Hay Bale',  g => PROPS.hayBale(g, 0, 0, 0, 0));
-  prop('prop_rock',    'Rock',      g => PROPS.rock(g, 0, 0, 0.8));
+  /* Built at UNIT size, deliberately. SANDBOX applies transform.scale to the
+     returned group, so a builder that starts at 0.8 makes "scale 1" mean 0.8
+     and a campaign fragment authored at 1.1 comes back as 0.88. At unit size
+     the editor and LEVEL agree on what a number means -- which they have to,
+     now that they read the same fragment. */
+  prop('prop_rock',    'Rock',      g => PROPS.rock(g, 0, 0, 1.0));
   prop('prop_tree',    'Tree',      g => PROPS.tree(g, 0, 0, 1.0));
+  prop('prop_stump',   'Stump',     g => PROPS.stump(g, 0, 0, 1.0));
   prop('prop_can',     'Tin Can',   g => PROPS.can(g, 0, 0, 0), false);
   prop('prop_bottle',  'Bottle',    g => PROPS.bottle(g, 0, 0, 0), false);
   prop('prop_lantern', 'Lantern',   g => PROPS.lantern(g, 0, 1.2, 0, 0), false);
@@ -32175,6 +32209,132 @@ const MAPIO = (() => {
   return { validate, listSaved, saveLocal, loadLocal, deleteLocal, exportFile };
 })();
 
+/* ============================ [CAMPAIGN] =============================
+   [ENGINE] The farm's own content, as map data.
+
+   Phase 2 of the engine conversion. Phase 1 gave the editor a world layer of
+   its own so it could not damage the campaign; this is where the campaign
+   starts moving INTO that layer, one self-contained cluster at a time.
+
+   A fragment is a piece of the farm in exactly the format MAPIO validates and
+   SANDBOX loads -- same formatVersion, same objects[], same transforms. Not a
+   parallel format that happens to look similar. That is the entire point: the
+   editor can open a fragment because there is nothing to convert.
+
+   TWO RULES THIS MODULE EXISTS TO KEEP.
+
+   1. ORDER IS LOAD-BEARING. LEVEL.build() opens with UTIL.setSeed(90210) and
+      every builder after it draws from that one stream -- PROPS.tree alone
+      takes eight numbers for its trunk and canopy. Replaying a fragment in a
+      different order, or from a different point in build(), reshuffles every
+      random decision downstream of it and redraws half the farm. So fragments
+      store authored order, replay() walks them in that order, and each call
+      site stays exactly where it was in build().
+
+   2. ONE SOURCE OF TRUTH. buildScatter no longer holds any coordinates. It
+      asks for them. A fallback copy of the numbers inside LEVEL would defeat
+      the migration on the first divergence, so there isn't one.
+
+   The compact [x, z, scale] rows below are authoring shorthand, not the
+   format -- expand() turns each row into a real map object, and fragment()
+   hands back map JSON you could save to disk and reload. Keeping the rows
+   compact is what makes a 29-object diff reviewable.
+   ==================================================================== */
+const CAMPAIGN = (() => {
+  const fragments = {};
+
+  /* [x, z, scale] rows -> map objects. y is 0 because everything in this
+     first cluster sits on the dirt; the field is explicit anyway so a future
+     fragment can place something on a catwalk without a format change. */
+  function expand(type, prefix, rows) {
+    return rows.map((r, i) => ({
+      id: prefix + '_' + String(i + 1).padStart(2, '0'),
+      type: type,
+      transform: {
+        position: { x: r[0], y: 0, z: r[1] },
+        rotation: 0,
+        scale: r[2] === undefined ? 1 : r[2]
+      },
+      properties: {}
+    }));
+  }
+
+  function define(id, name, objects) {
+    fragments[id] = { id: id, name: name, objects: objects };
+    return fragments[id];
+  }
+
+  /* ---- scatter: the trees, rocks and stumps that mask the boundary ----
+     Migrated out of LEVEL.buildScatter. Authored order preserved exactly:
+     trees, then rocks, then stumps. */
+  define('scatter', 'Campaign — Scatter', [].concat(
+    expand('prop_tree', 'scatter_tree', [
+      [-27, 26, 1.1], [-24, 30, 0.9], [26, 27, 1.0], [29, 20, 0.85],
+      [-28, -20, 1.15], [-24, -29, 1.0], [22, -28, 1.05], [28, -12, 0.9],
+      [-12, 28, 0.95], [13, 27, 0.9], [-29, 2, 1.1], [30, 1, 1.0],
+      [-2, -30, 0.95], [5.5, -29, 0.9]
+    ]),
+    expand('prop_rock', 'scatter_rock', [
+      [-20, 24, 1.0], [-16, 27, 0.7], [20, 23, 0.9], [24, 12, 0.8],
+      // v0.39.01: was [-25, -8, 1.1], sitting almost dead-center in the new
+      // westGate1 opening (CONFIG.map.westGate1Z = -8) -- moved clear of it.
+      [-25, 3, 1.1], [-21, -14, 0.8], [16, -22, 0.9], [6, -25, 0.7],
+      [-9, 20, 0.6], [12, 4, 0.55], [-13, -18, 0.85], [27, -20, 1.0]
+    ]),
+    expand('prop_stump', 'scatter_stump', [
+      [-11, 9], [8, 20], [-16, -16]
+    ])
+  ));
+
+  function has(id) { return !!fragments[id]; }
+  function ids() { return Object.keys(fragments); }
+  function name(id) { return fragments[id] ? fragments[id].name : null; }
+
+  /* A fragment as standalone map data, deep-copied. The copy is not politeness:
+     SANDBOX.load hands every object straight to instantiate, which keeps a live
+     reference in inst.data and lets the editor mutate it on the first drag. A
+     shared reference would let an editor session quietly rewrite what the
+     campaign builds on the next level load. */
+  function fragment(id) {
+    const f = fragments[id];
+    if (!f) return null;
+    return {
+      formatVersion: SANDBOX.FORMAT_VERSION,
+      metadata: { name: f.name, fragment: f.id, savedAt: new Date().toISOString() },
+      environment: {},
+      objects: JSON.parse(JSON.stringify(f.objects))
+    };
+  }
+
+  /* Walk a fragment in authored order, handing each object to the builder
+     registered for its type.
+
+     `types` narrows the walk to some of them, which is what makes a PARTIAL
+     migration possible: buildScatter still has one inline cluster (the
+     collapsed outbuilding) sitting between its rocks and its stumps, and that
+     cluster consumes RNG. Replaying stumps before it rather than after would
+     move the farm. So the call site replays trees+rocks, builds the ruin as
+     it always did, then replays stumps -- same order as the code it replaced,
+     down to the number. Drop the argument once nothing inline is left. */
+  function replay(id, handlers, types) {
+    const f = fragments[id];
+    if (!f) throw new Error('CAMPAIGN: no fragment "' + id + '"');
+    const only = types ? (Array.isArray(types) ? types : [types]) : null;
+    let built = 0;
+    f.objects.forEach(o => {
+      if (only && only.indexOf(o.type) === -1) return;
+      const fn = handlers[o.type];
+      if (!fn) return;
+      const t = o.transform;
+      fn(t.position, t.scale === undefined ? 1 : t.scale, t.rotation || 0, o);
+      built++;
+    });
+    return built;
+  }
+
+  return { define, expand, fragment, replay, has, ids, name };
+})();
+
 /* ============================= [EDITOR] ==============================
    [ENGINE] The first consumer of the engine layer above.
 
@@ -32588,13 +32748,38 @@ const EDITOR = (() => {
     notify('New map.');
     refreshStatus();
   }
+  /* Campaign fragments open like saved maps because they ARE saved maps --
+     same formatVersion, same objects, straight through MAPIO.validate. That
+     is the whole return on the migration: no importer, no conversion step.
+
+     Note what loading one does NOT do. LEVEL still builds the campaign copy of
+     this cluster at level load, so the fragment's trees land on top of the
+     ones already standing there, and saving writes a new map rather than
+     rewriting the farm. Both are true of a partial migration and the notice
+     says so; handing the map layer ownership of construction is the next
+     slice, not this one. */
+  function loadFragment(id) {
+    const map = CAMPAIGN.fragment(id);
+    if (!map) { notify('No campaign fragment "' + id + '".', true); return; }
+    const out = SANDBOX.load(map);
+    if (!out.ok) { notify('Fragment rejected: ' + out.errors[0], true); return; }
+    SANDBOX.name = CAMPAIGN.name(id);
+    select(null);
+    history.length = 0; historyAt = 0;
+    notify(out.placed + ' objects from the campaign — the farm still draws its own copy.');
+    refreshStatus();
+  }
   function renderMapList() {
     const host = el('edMaps');
     if (!host) return;
     const names = MAPIO.listSaved();
-    host.innerHTML = names.length
+    let html = CAMPAIGN.ids().map(id =>
+      '<button class="ed-map ed-map-campaign" data-fragment="' + id + '">' +
+      CAMPAIGN.name(id) + '</button>').join('');
+    html += names.length
       ? names.map(n => '<button class="ed-map" data-load="' + n + '">' + n + '</button>').join('')
       : '<p class="ed-empty">No saved maps yet.</p>';
+    host.innerHTML = html;
   }
 
   /* ------------------------------ init ------------------------------- */
@@ -32695,6 +32880,8 @@ const EDITOR = (() => {
 
     const maps = el('edMaps');
     if (maps) maps.addEventListener('click', e => {
+      const f = e.target.closest('[data-fragment]');
+      if (f) { loadFragment(f.getAttribute('data-fragment')); return; }
       const b = e.target.closest('[data-load]');
       if (b) loadNamed(b.getAttribute('data-load'));
     });
