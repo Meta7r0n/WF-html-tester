@@ -182,8 +182,25 @@ if (compareArg !== -1) {
       const n = v => (typeof v === 'number' && isFinite(v)) ? v.toFixed(4) : String(v);
       const meshes = [];
       const size = new THREE.Vector3();
+      /* Editor gizmos are excluded. A marker (spawn_enemy's coloured post,
+         head and ring) is authoring furniture, not farm geometry -- it is
+         hidden during play and carries no collider. Counting it would make
+         "the farm is unchanged" fail the moment a cluster gains a spawn
+         point, which is a migration succeeding, not a regression.
+
+         Tested by ancestry rather than by `visible`, deliberately: a filter
+         on visibility would also swallow a real mesh that had wrongly been
+         hidden, which is exactly the kind of breakage this digest exists to
+         catch. */
+      const isGizmo = o => {
+        for (let n = o; n; n = n.parent) {
+          if (n.userData && n.userData.editorMarker) return true;
+        }
+        return false;
+      };
       LEVEL.root.traverse(o => {
         if (!o.isMesh || !o.geometry) return;
+        if (isGizmo(o)) return;
         const g = o.geometry;
         if (!g.boundingBox) g.computeBoundingBox();
         g.boundingBox.getSize(size);
@@ -291,11 +308,17 @@ if (compareArg !== -1) {
     fragChecks.validationErrors.join('; ') || 'no errors');
   check('every fragment type is in the registry', fragChecks.unknownTypes.length === 0,
     fragChecks.unknownTypes.join(',') || 'all known');
-  check('fragment carries the full scatter', fragChecks.objectCount === 29,
+  check('fragment carries the full scatter', fragChecks.objectCount === 34,
     JSON.stringify(fragChecks.byType));
   check('trees, rocks and stumps all migrated',
     fragChecks.byType.prop_tree === 14 && fragChecks.byType.prop_rock === 12 &&
     fragChecks.byType.prop_stump === 3);
+  // The cluster is finished: the ruin and its dressing are data too, which is
+  // what let buildScatter drop its type filter.
+  check('the ruin and its dressing migrated too',
+    fragChecks.byType.prop_ruin === 1 && fragChecks.byType.prop_barrel === 1 &&
+    fragChecks.byType.prop_can === 1 && fragChecks.byType.prop_sign === 1 &&
+    fragChecks.byType.spawn_enemy === 1, JSON.stringify(fragChecks.byType));
   check('fragment() hands back a copy, not the source', fragChecks.sourceUnchanged);
   check('fragment survives a JSON round trip', fragChecks.jsonRoundTrip);
   check('authored scales survived the move', fragChecks.distinctScales > 5,
@@ -362,11 +385,11 @@ if (compareArg !== -1) {
   });
 
   check('the scatter is live in the map layer', own.isLive);
-  check('all 29 objects are campaign-layer instances', own.campaignCount === 29,
+  check('all 34 objects are campaign-layer instances', own.campaignCount === 34,
     JSON.stringify(own.campaignTypes));
   check('each one knows which fragment it came from', own.allTaggedToFragment);
-  check('they sit under LEVEL.root, not the sandbox group', own.underLevelRoot === 29,
-    own.underLevelRoot + '/29');
+  check('they sit under LEVEL.root, not the sandbox group', own.underLevelRoot === 34,
+    own.underLevelRoot + '/34');
   check("the player's map starts empty", own.sandboxCount === 0, String(own.sandboxCount));
   check("a farm tree's collider is the world's, not a copy", own.colliderIsInWorld);
   check('moving a farm tree moves the farm collider',
@@ -374,7 +397,7 @@ if (compareArg !== -1) {
     own.beforeMinX + ' -> ' + own.afterMinX);
   check('and the mesh went with it',
     Math.abs(own.meshMoved - (own.beforePos.x + 5)) < 0.001, String(own.meshMoved));
-  check('the snapshot is valid map data', own.snapValidates && own.snapCount === 29,
+  check('the snapshot is valid map data', own.snapValidates && own.snapCount === 34,
     own.snapCount + ' objects');
   check('the snapshot carries the edit', own.snapSeesEdit);
   check('the authored fragment is left alone, so revert can work', own.authoredUntouched);
@@ -410,14 +433,14 @@ if (compareArg !== -1) {
   });
 
   check("placing an object does not disturb the farm",
-    isolation.afterPlace.mine === 1 && isolation.afterPlace.farm === 29,
+    isolation.afterPlace.mine === 1 && isolation.afterPlace.farm === 34,
     JSON.stringify(isolation.afterPlace));
   check("a saved map contains only the player's objects",
     isolation.savedCount === 1 && !isolation.savedHasFarm, isolation.savedCount + ' objects');
   check('"New map" clears the player\'s map and spares the farm',
-    isolation.afterNew.mine === 0 && isolation.afterNew.farm === 29,
+    isolation.afterNew.mine === 0 && isolation.afterNew.farm === 34,
     JSON.stringify(isolation.afterNew));
-  check('revert rebuilds the whole cluster', isolation.afterRevert.farm === 29,
+  check('revert rebuilds the whole cluster', isolation.afterRevert.farm === 34,
     JSON.stringify(isolation.afterRevert));
   check('revert puts the moved tree back', Math.abs(isolation.revertedX - -27) < 0.001,
     String(isolation.revertedX));
@@ -461,7 +484,7 @@ if (compareArg !== -1) {
   }));
   check('editor released everything it added', !after.editorActive && after.sandboxCount === 0,
     'solids now ' + after.solids);
-  check('the farm still stands', after.campaignCount === 29 &&
+  check('the farm still stands', after.campaignCount === 34 &&
     after.solids === world.counts.solids, after.solids + ' vs ' + world.counts.solids);
 
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));

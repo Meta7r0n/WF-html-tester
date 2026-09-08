@@ -7151,7 +7151,33 @@ const PROPS = (() => {
     return m;
   }
 
-  return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, stump, blobShadow, registerBoil, registerWobble };
+  /* A collapsed outbuilding: fourteen fallen planks in a heap, plus one
+     board still leaning where a wall used to be. Lifted out of
+     LEVEL.buildScatter so the last inline piece of that cluster could become
+     map data like the rest of it.
+
+     Built around the ORIGIN and positioned by the caller, where the original
+     added -25 to every x and z inline. Same RNG draws in the same order, so
+     at scale 1 this is the same heap of rubble the farm has always had -- the
+     numbers just come out relative now. */
+  function ruin(parent, x, z, s) {
+    s = s || 1;
+    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.045 * s);
+    for (let i = 0; i < 14; i++) {
+      cb.box(UTIL.rng(2.2, 4.2) * s, 0.16 * s, UTIL.rng(0.4, 0.7) * s,
+        UTIL.rng(-2.2, 2.2) * s, UTIL.rng(0.1, 1.3) * s, UTIL.rng(-2.2, 2.2) * s,
+        UTIL.rng(-.5, .5), UTIL.rng(0, 3.14), UTIL.rng(-.6, .6), 0.03 * s);
+    }
+    cb.box(3.4 * s, 1.9 * s, 0.3 * s, -1.4 * s, 0.95 * s, 1.4 * s, 0, 0.4, 0.18, 0.05 * s);
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    cb.build(g);
+    parent.add(g);
+    WORLD.addFloor(x, 0, z, 6.5 * s, 1.5 * s, 6.5 * s, 'ruin');
+    return g;
+  }
+
+  return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, stump, ruin, blobShadow, registerBoil, registerWobble };
 })();
 
 /* ============================== [LEVEL] ============================== */
@@ -10593,34 +10619,18 @@ const LEVEL = (() => {
      builders draw from the seeded RNG stream (UTIL.setSeed at the top of
      build()) and everything constructed after buildScatter depends on how
      many numbers come out of it. See the CAMPAIGN header. */
+  /* The map layer builds this cluster and LEVEL holds none of it -- not a
+     coordinate, not a colour, not the rubble heap. Every tree, rock, stump,
+     the collapsed outbuilding, its barrel, can and CONDEMNED sign, and the
+     enemy spawn beside it come back as live instances the editor can pick up
+     and move, and moving one moves the farm.
+
+     One unfiltered build() call, because there is no longer anything inline
+     to interleave with. The type filter that used to sit here was scaffolding
+     for a half-migrated function; the fragment's own authored order now does
+     the whole job, which is what keeps the seeded RNG stream identical. */
   function buildScatter(parent) {
-    // The map layer builds this cluster, LEVEL does not. Every tree, rock and
-    // stump comes back as a live instance the editor can pick up and move,
-    // and moving one moves the farm.
-    const scatter = CAMPAIGN.open('scatter', parent);
-    // trees + rocks masking the boundary and framing views
-    scatter.build(['prop_tree', 'prop_rock']);
-
-    // a collapsed outbuilding — hides the north-west corner
-    const cb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.045);
-    for (let i = 0; i < 14; i++) {
-      cb.box(UTIL.rng(2.2, 4.2), 0.16, UTIL.rng(0.4, 0.7),
-        -25 + UTIL.rng(-2.2, 2.2), UTIL.rng(0.1, 1.3), -25 + UTIL.rng(-2.2, 2.2),
-        UTIL.rng(-.5, .5), UTIL.rng(0, 3.14), UTIL.rng(-.6, .6), 0.03);
-    }
-    cb.box(3.4, 1.9, 0.3, -26.4, 0.95, -23.6, 0, 0.4, 0.18, 0.05);
-    cb.build(parent);
-    WORLD.addFloor(-25, 0, -25, 6.5, 1.5, 6.5, 'ruin');
-
-    PROPS.barrel(parent, -22.4, -23.2, { color: PAL.blueDeep });
-    PROPS.can(parent, -22.4, 1.28, -23.2);
-    PROPS.signPost(parent, -21.4, -20.4, ['CONDEMNED'], 0.6, { w: 1.9, h: 0.7, bg: PAL.rust, fg: PAL.cream, postH: 1.6 });
-    WORLD.addSpawn(-19, 0, -22, 'ruins');
-
-    // a couple of stumps to sit the eye on -- built here rather than with the
-    // trees and rocks above so the ruin's wood texture is still generated
-    // before the stumps', which is where the original loop left it.
-    scatter.build(['prop_stump']);
+    CAMPAIGN.open('scatter', parent).build();
   }
 
   /* ---------------- the land beyond the fence ----------------
@@ -31877,7 +31887,30 @@ const REGISTRY = (() => {
       properties: {}
     });
   }
-  prop('prop_barrel',  'Barrel',    g => PROPS.barrel(g, 0, 0, {}));
+  /* Colour is a property because the campaign uses it: the barrel by the
+     ruin is deliberately blueDeep, where an unspecified one picks at random.
+     Given as a hex string so it survives a JSON round trip and can be typed
+     into the inspector; a blank or unparseable value falls back to the
+     random pick rather than to black. */
+  function hexProp(v, fallback) {
+    if (v === undefined || v === null || v === '') return fallback;
+    if (typeof v === 'number') return v;
+    const n = parseInt(String(v).replace(/^#/, ''), 16);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  register({
+    id: 'prop_barrel', name: 'Barrel', category: 'Props', collides: true,
+    build: (ctx, d) => {
+      const g = new THREE.Group();
+      const p = (d && d.properties) || {};
+      const col = hexProp(p.color, null);
+      PROPS.barrel(g, 0, 0, col === null ? {} : { color: col });
+      return g;
+    },
+    properties: {
+      color: { type: 'text', label: 'Colour (hex, blank = random)', def: '' }
+    }
+  });
   prop('prop_crate',   'Crate',     g => PROPS.crate(g, 0, 0, 0, 0.85, 0));
   prop('prop_haybale', 'Hay Bale',  g => PROPS.hayBale(g, 0, 0, 0, 0));
   /* --- props whose builder takes a size ------------------------------
@@ -31913,22 +31946,40 @@ const REGISTRY = (() => {
   sized('prop_rock',   'Rock',      (g, s) => PROPS.rock(g, 0, 0, s));
   sized('prop_tree',   'Tree',      (g, s) => PROPS.tree(g, 0, 0, s));
   sized('prop_stump',  'Stump',     (g, s) => PROPS.stump(g, 0, 0, s));
+  sized('prop_ruin',   'Ruin',      (g, s) => PROPS.ruin(g, 0, 0, s));
   prop('prop_can',     'Tin Can',   g => PROPS.can(g, 0, 0, 0), false);
   prop('prop_bottle',  'Bottle',    g => PROPS.bottle(g, 0, 0, 0), false);
   prop('prop_lantern', 'Lantern',   g => PROPS.lantern(g, 0, 1.2, 0, 0), false);
 
   register({
     id: 'prop_sign', name: 'Sign Post', category: 'Props', collides: true,
+    /* Board size and colours are properties because the farm's own signs use
+       them -- CONDEMNED by the ruin is a small rust-on-cream board on a short
+       post, not the default. Each one is optional and falls through to
+       signPost's own default when blank, so a sign placed in the editor still
+       needs nothing but its text. */
     build: (ctx, d) => {
       const g = new THREE.Group();
-      const p = d.properties || {};
+      const p = (d && d.properties) || {};
       const lines = String(p.text === undefined ? 'NEW SIGN' : p.text)
         .split('|').map(s => s.trim()).filter(Boolean).slice(0, 3);
-      PROPS.signPost(g, 0, 0, lines.length ? lines : ['NEW SIGN'], 0, {});
+      const num = v => {
+        const n = parseFloat(v);
+        return Number.isFinite(n) && n > 0 ? n : undefined;
+      };
+      PROPS.signPost(g, 0, 0, lines.length ? lines : ['NEW SIGN'], 0, {
+        w: num(p.w), h: num(p.h), postH: num(p.postH),
+        bg: hexProp(p.bg, undefined), fg: hexProp(p.fg, undefined)
+      });
       return g;
     },
     properties: {
-      text: { type: 'text', label: 'Text (| splits lines)', def: 'NEW SIGN' }
+      text:  { type: 'text', label: 'Text (| splits lines)', def: 'NEW SIGN' },
+      w:     { type: 'text', label: 'Board width',  def: '' },
+      h:     { type: 'text', label: 'Board height', def: '' },
+      postH: { type: 'text', label: 'Post height',  def: '' },
+      bg:    { type: 'text', label: 'Board colour', def: '' },
+      fg:    { type: 'text', label: 'Text colour',  def: '' }
     }
   });
 
@@ -31981,6 +32032,30 @@ const REGISTRY = (() => {
     properties: {}
   });
 
+  /* An enemy spawn point. Unlike the enemy markers above, this does not
+     create an enemy -- it registers the WORLD.spawnMarkers entry that ENEMY
+     picks its spawn positions from, which is what the farm's own
+     WORLD.addSpawn calls do.
+
+     Registering inside build() rather than activate() is deliberate: the
+     marker is world data, not a gameplay entity, so it wants the capture
+     scope that makes delete and move work. It is also why SANDBOX.translate
+     had to learn about spawnMarkers -- this is the first placeable object
+     that registers one. */
+  register({
+    id: 'spawn_enemy', name: 'Enemy Spawn', category: 'Spawns', collides: false,
+    build: (ctx, d) => {
+      const g = marker(0xC4574B, false);
+      const p = (d && d.properties) || {};
+      const kind = String(p.kind || 'editor').trim() || 'editor';
+      WORLD.addSpawn(0, 0, 0, kind);
+      return g;
+    },
+    properties: {
+      kind: { type: 'text', label: 'Kind tag', def: 'editor' }
+    }
+  });
+
   // PICKUP.definitions is populated inside PICKUP's own IIFE, which runs
   // before this one, so this is safe to call at definition time. It is a
   // function rather than inline so a later phase can re-run it if the game
@@ -32021,6 +32096,31 @@ const SANDBOX = (() => {
 
   function freshId() { return 'obj_' + String(nextId++).padStart(3, '0'); }
 
+  /* Shift everything a capture handle recorded by (dx, dy, dz).
+     Solids, ladders and portals are axis-aligned boxes with min/max pairs;
+     a spawn marker is a single THREE.Vector3. Shared by instantiate (origin
+     -> placed) and setTransform (moved). */
+  function translate(handle, dx, dy, dz) {
+    if (!handle) return;
+    ['solids', 'ladders', 'portals'].forEach(kind => {
+      (handle[kind] || []).forEach(b => {
+        b.minX += dx; b.maxX += dx;
+        b.minY += dy; b.maxY += dy;
+        b.minZ += dz; b.maxZ += dz;
+        // A ladder also carries snap/exit points that have to travel with it,
+        // or climbing one would teleport the player back to where it was
+        // authored.
+        if (b.snapX !== undefined) { b.snapX += dx; b.snapZ += dz; }
+        if (b.bottomY !== undefined) { b.bottomY += dy; b.topY += dy; }
+        if (b.topExitX !== undefined) { b.topExitX += dx; b.topExitZ += dz; }
+        if (b.bottomExitX !== undefined) { b.bottomExitX += dx; b.bottomExitZ += dz; }
+      });
+    });
+    (handle.spawnMarkers || []).forEach(m => {
+      if (m.position) { m.position.x += dx; m.position.y += dy; m.position.z += dz; }
+    });
+  }
+
   /* Build one instance from map-data. The WORLD capture scope around
      `build` is the whole reason delete works: whatever colliders the real
      prop builder registers get recorded against this instance and released
@@ -32051,16 +32151,23 @@ const SANDBOX = (() => {
     // A scaleInBuilder entry already sized its geometry AND its collider from
     // transform.scale, so scaling the group as well would double it.
     object3D.scale.setScalar(entry.scaleInBuilder ? 1 : s);
-    // A collider captured at build time was computed in world space around
-    // the origin, so it has to be shifted to wherever the object actually
-    // landed. Yaw is deliberately NOT applied to the box: the game's
-    // colliders are axis-aligned and rotating one is meaningless.
-    handle.solids.forEach(sol => {
-      sol.minX += t.position.x; sol.maxX += t.position.x;
-      sol.minY += t.position.y; sol.maxY += t.position.y;
-      sol.minZ += t.position.z; sol.maxZ += t.position.z;
-    });
+    // Everything the builder registered was computed in world space around
+    // the origin, so it all has to be shifted to wherever the object landed.
+    // Yaw is deliberately NOT applied: the game's colliders are axis-aligned
+    // and rotating one is meaningless.
+    //
+    // All four captured kinds are translated, not just solids. A builder that
+    // registers a spawn marker or a ladder is rarer than one registering a
+    // collider, but "rarer" meant this was silently a no-op for them -- an
+    // enemy spawn placed at (-19, -22) would have stayed at the origin, and
+    // the bug would have surfaced as enemies appearing in the wrong field.
+    translate(handle, t.position.x, t.position.y, t.position.z);
 
+    // A marker created while the editor is closed -- which is every marker
+    // the farm itself places, since LEVEL builds at boot -- starts hidden.
+    if (object3D.userData.editorMarker) {
+      object3D.visible = !!(typeof EDITOR !== 'undefined' && EDITOR.active);
+    }
     (opts.parent || ensureGroup()).add(object3D);
     const inst = {
       id: data.id || freshId(),
@@ -32147,9 +32254,9 @@ const SANDBOX = (() => {
       const dx = position.x - o.position.x, dy = position.y - o.position.y, dz = position.z - o.position.z;
       o.position.set(position.x, position.y, position.z);
       t.position = { x: position.x, y: position.y, z: position.z };
-      inst.handle.solids.forEach(s => {
-        s.minX += dx; s.maxX += dx; s.minY += dy; s.maxY += dy; s.minZ += dz; s.maxZ += dz;
-      });
+      // Same helper instantiate uses, so a dragged spawn marker or ladder
+      // moves with its mesh instead of only its collider doing so.
+      translate(inst.handle, dx, dy, dz);
     }
     if (rotation !== undefined && rotation !== null) {
       o.rotation.y = rotation;
@@ -32213,10 +32320,26 @@ const SANDBOX = (() => {
   }
 
   /* --- play / edit transitions --------------------------------------- */
-  function activateGameplay() {
-    deactivateGameplay();
+  /* Markers are visible if and only if the editor is on screen. They are
+     authoring gizmos -- a coloured post with a floating diamond -- and a
+     player should never see one.
+
+     This became load-bearing when spawn_enemy shipped: the farm itself now
+     places one, so an always-visible marker is not "a stray object in a test
+     map", it is a red post standing in the field by the ruin during a real
+     run. It showed up as three extra meshes in the migration digest. */
+  function setMarkersVisible(on) {
     instances.forEach(inst => {
-      if (inst.object3D.userData.editorMarker) inst.object3D.visible = false;
+      if (inst.object3D && inst.object3D.userData.editorMarker) {
+        inst.object3D.visible = !!on;
+      }
+    });
+  }
+
+  function activateGameplay() {
+    activated = [];
+    setMarkersVisible(false);
+    instances.forEach(inst => {
       if (!inst.entry.activate) return;
       try {
         const made = inst.entry.activate({ sandbox: true }, inst.data);
@@ -32230,9 +32353,7 @@ const SANDBOX = (() => {
   }
   function deactivateGameplay() {
     activated = [];
-    instances.forEach(inst => {
-      if (inst.object3D.userData.editorMarker) inst.object3D.visible = true;
-    });
+    setMarkersVisible(true);
   }
 
   function playerSpawn() {
@@ -32245,7 +32366,7 @@ const SANDBOX = (() => {
   return {
     FORMAT_VERSION,
     ensureGroup, add, remove, clear, clearLayer, find, findByObject, setTransform, rebuild,
-    serialize, load, instantiate, activateGameplay, deactivateGameplay, playerSpawn,
+    serialize, load, instantiate, activateGameplay, deactivateGameplay, setMarkersVisible, playerSpawn,
     /* TWO VIEWS, and the short name is the safe one on purpose.
 
        `instances` is the PLAYER'S objects, and `count` is its length --
@@ -32438,6 +32559,22 @@ const CAMPAIGN = (() => {
     }));
   }
 
+  /* One authored object, for the pieces that are not a repeated row of the
+     same type. `y` and `rotation` are last because most objects sit on the
+     dirt facing north and never pass them. */
+  function obj(id, type, x, z, properties, y, rotation) {
+    return {
+      id: 'scatter_' + id,
+      type: type,
+      transform: {
+        position: { x: x, y: y || 0, z: z },
+        rotation: rotation || 0,
+        scale: 1
+      },
+      properties: properties || {}
+    };
+  }
+
   function define(id, name, objects) {
     fragments[id] = { id: id, name: name, objects: objects };
     return fragments[id];
@@ -32460,6 +32597,23 @@ const CAMPAIGN = (() => {
       [-25, 3, 1.1], [-21, -14, 0.8], [16, -22, 0.9], [6, -25, 0.7],
       [-9, 20, 0.6], [12, 4, 0.55], [-13, -18, 0.85], [27, -20, 1.0]
     ]),
+    /* The collapsed outbuilding and its dressing. Authored between the rocks
+       and the stumps because that is where buildScatter drew them, and the
+       ruin's wood texture is generated on its first draw -- moving it would
+       shift the RNG stream for everything built after this function.
+
+       These five are why the cluster is finished: with them in the fragment
+       there is nothing left inline, and CAMPAIGN.open().build() no longer
+       needs a type filter to interleave with LEVEL's own code. */
+    [
+      obj('ruin_01',   'prop_ruin',  -25,   -25),
+      obj('barrel_01', 'prop_barrel', -22.4, -23.2, { color: '5C7E99' }),
+      obj('can_01',    'prop_can',    -22.4, -23.2, {}, 1.28),
+      obj('sign_01',   'prop_sign',   -21.4, -20.4,
+        { text: 'CONDEMNED', w: '1.9', h: '0.7', postH: '1.6', bg: 'A85A3C', fg: 'F6E9D2' },
+        0, 0.6),
+      obj('spawn_01',  'spawn_enemy', -19,   -22,   { kind: 'ruins' })
+    ],
     expand('prop_stump', 'scatter_stump', [
       [-11, 9], [8, 20], [-16, -16]
     ])
@@ -32603,7 +32757,7 @@ const CAMPAIGN = (() => {
 
   function isLive(id) { return !!live[id]; }
 
-  return { define, expand, fragment, replay, has, ids, name,
+  return { define, expand, obj, fragment, replay, has, ids, name,
            open, release, snapshot, revert, isLive };
 })();
 
@@ -32895,6 +33049,10 @@ const EDITOR = (() => {
     if (selectionBox) selectionBox.visible = false;
     Object.keys(keys).forEach(k => delete keys[k]);
     looking = false;
+    // Gizmos are for the editor. PLAY hides them via activateGameplay, but
+    // Exit has to as well or leaving by the front door leaves marker posts
+    // standing in the farm.
+    SANDBOX.setMarkersVisible(false);
     if (typeof UI !== 'undefined') UI.showEditor(false);
   }
 

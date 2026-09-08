@@ -349,3 +349,68 @@ mesh multiset over `LEVEL.root`. That is the whole safety argument — the
 migration changed who owns the trees, not where they stand — and it holds
 because the objects are built by the same builders, with the same arguments,
 in the same authored order, at the same point in `LEVEL.build`.
+
+---
+
+## 14. Phase 5: the scatter cluster is finished
+
+Phase 4 gave the map layer ownership of the scatter's trees, rocks and
+stumps, but left the collapsed outbuilding and its dressing inline — which is
+why `CAMPAIGN.open().build()` still took a type filter, to interleave with
+`LEVEL`'s own code either side of the ruin. That is now gone. `buildScatter`
+is one line:
+
+```js
+CAMPAIGN.open('scatter', parent).build();
+```
+
+`LEVEL` holds none of that cluster: not a coordinate, not a colour, not the
+rubble heap. Thirty-four objects, all data.
+
+### What it took
+
+- **`PROPS.ruin`** extracted, built around the origin where the original
+  added `-25` to every x and z inline. Same RNG draws in the same order, so
+  the heap is the same heap.
+- **`prop_barrel` gained a colour property**, because the farm's barrel by
+  the ruin is deliberately `blueDeep` where an unspecified one picks at
+  random. Hex string, so it survives a JSON round trip; blank falls back to
+  the random pick rather than to black.
+- **`prop_sign` gained board size and colours**, because CONDEMNED is a small
+  rust-on-cream board on a short post, not the default. All optional, so a
+  sign placed in the editor still needs nothing but its text.
+- **`spawn_enemy`**, a placeable `WORLD.addSpawn`. Registered in `build()`
+  rather than `activate()` on purpose: a spawn marker is world data, not a
+  gameplay entity, so it wants the capture scope that makes delete and move
+  work.
+
+### Two bugs this uncovered
+
+**`SANDBOX` only translated solids.** `instantiate` shifted `handle.solids`
+from origin to the placed position and silently ignored ladders, portals and
+spawn markers. Nothing had exercised that until `spawn_enemy` — the farm's
+enemy spawn would have stayed at (0, 0, 0) and enemies would have appeared in
+the wrong field. Now a shared `translate(handle, dx, dy, dz)` moves all four
+kinds, including a ladder's snap and exit points, and `setTransform` uses the
+same helper so dragging works too. The migration digest proves it: spawn
+marker positions are part of the collision hash, and the hash is unchanged.
+
+**Editor markers rendered during play.** Visibility was toggled only by
+`activateGameplay`/`deactivateGameplay`, which run on PLAY and on entering
+the editor — nothing hid a marker created while the editor was closed, which
+is every marker the farm itself places, since `LEVEL` builds at boot. A red
+post-and-diamond stood in the field by the ruin during a real run. Markers
+are now visible **iff the editor is on screen**: hidden at instantiate unless
+`EDITOR.active`, and `exit()` hides them too, so leaving by the front door
+does not leave gizmos standing in the farm.
+
+It surfaced as three extra meshes in the digest, which is the digest doing
+its job. The digest now excludes gizmo subtrees — tested by ancestry, not by
+`visible`, because a visibility filter would also swallow a real mesh that
+had wrongly been hidden, which is exactly what this is for.
+
+### Verified
+
+Farm byte-identical to the previous commit: collision hash
+`f195dbadd6f09853`, 1335 solids, 15 ladders, 58 spawn markers, 3169 meshes.
+Migration suite 35/35.
