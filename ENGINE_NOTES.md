@@ -414,3 +414,90 @@ had wrongly been hidden, which is exactly what this is for.
 Farm byte-identical to the previous commit: collision hash
 `f195dbadd6f09853`, 1335 solids, 15 ladders, 58 spawn markers, 3169 meshes.
 Migration suite 35/35.
+
+---
+
+## 15. Audit: what the harder clusters actually depend on
+
+The scatter went first because it had no quest, door or portal dependencies.
+The brief singles out the North Barn, cellar, doors and underground routes as
+places that "may contain assumptions about hardcoded world objects" and says
+not to break them without understanding them first. This is that
+understanding, done before touching anything.
+
+### Cluster sizes and shapes
+
+| builder | lines | solids | ladders | portals | spawns | animated |
+|---|---|---|---|---|---|---|
+| `buildBasement`  | 881 | 36 | 2 | 1 | 6 | 7 |
+| `buildNorthBarn` | 316 | 20 | 0 | 0 | 5 | 3 |
+| `buildBarn`      | 162 | 24 | 0 | 0 | 2 | 0 |
+| `buildSilo`      | 118 |  9 | 1 | 0 | 2 | 0 |
+
+`animated` is the column that matters. It counts objects the builder hands to
+`LEVEL.animated`, which other systems then drive.
+
+### Three real blockers, in order of severity
+
+**1. Interactive objects have no place in the registry contract.** A registry
+entry is `build(ctx, d) -> Object3D`: geometry, and nothing else. But
+`animated.northBarnDoor` is `{ west, east, collider, open, target, openness }`
+— it holds a **live reference to its own WORLD solid** and drives
+`collider.enabled` as the leaves swing (`poseNorthBarnDoor`). There is
+nowhere in the current contract to hang "this is a door, here is its
+collider, here is how to open it." Migrating any door, hatch or gate needs
+that contract extended first; migrating geometry alone would produce a barn
+whose doors are scenery.
+
+**2. Builders write ad-hoc properties onto `WORLD` that the capture scope
+cannot see.** Exactly two:
+
+```js
+WORLD.cornMaze       = { ... }   // buildCornMaze -> ENEMY navigation graph
+WORLD.northBarnStair = { ... }   // buildNorthBarn -> ENEMY stair pursuit AI
+```
+
+Neither is one of the four captured kinds, so neither is recorded, released
+or translated. Delete a migrated North Barn in the editor and
+`WORLD.northBarnStair` still points at coordinates for a barn that is gone,
+and `ENEMY.northBarnStairPursuitActive` keeps steering grunts up a staircase
+that no longer exists. Any migration of those two clusters has to make region
+data capturable first.
+
+**3. Spawn `kind` tags are load-bearing identity, not labels.**
+`ENEMY.spawnAdditional` filters with `!usedMarkerKinds.has(m.kind)` against a
+Set of kind strings, so **each distinct kind hosts exactly one enemy for the
+whole run**, and the reservation logic routes by regex on the tag
+(`/^north_barn_/`, `/^corn_maze_/`). Preserving marker positions through a
+migration is not enough; the tags have to survive exactly, and duplicates are
+silently ineligible rather than an error.
+
+This one bit immediately: `spawn_enemy` shipped in the previous commit
+defaulting every placed marker to kind `'editor'`, so placing five enemy
+spawns in the editor would have produced one enemy and no diagnostic. Fixed
+here — a blank tag now derives a unique one from the instance id, and a tag
+typed by hand is left alone, since deliberately sharing one to cap a region
+is legitimate.
+
+### One thing that is NOT a bug
+
+`worldState()` syncs only `barnStairGateOpen`, and `COOP.sendWorldInteraction`
+hard-rejects any id but `barn_stair_floor_gate` — so North Barn door state
+never reaches a joining player. That looks like a multiplayer desync until you
+follow `QUEST.interact`, which opens with `if (!isSinglePlayer()) return
+false;`. Every one of QUEST's eleven entry points is gated the same way, and
+`QUEST.start` deliberately opens all three barn entrances and drops the
+railing in co-op and PvP, with a comment saying why. The barn's door state is
+single-player-only by design. Worth recording, because the shape of the code
+invites exactly the wrong conclusion.
+
+### Recommended order
+
+**`buildSilo` next**, not the North Barn. It is the smallest cluster, has no
+animated objects, and — usefully — is the only near-term candidate with a
+**ladder**, which would be the first real exercise of the ladder branch of
+`SANDBOX.translate` (added in the previous commit with nothing yet using it).
+`buildBarn` after it: bigger, still no interactive objects.
+
+The North Barn and the basement come last, and only after blockers 1 and 2
+are cleared, because both are gated on engine work rather than on content.

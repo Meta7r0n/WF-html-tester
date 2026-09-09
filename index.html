@@ -32041,18 +32041,31 @@ const REGISTRY = (() => {
      marker is world data, not a gameplay entity, so it wants the capture
      scope that makes delete and move work. It is also why SANDBOX.translate
      had to learn about spawnMarkers -- this is the first placeable object
-     that registers one. */
+     that registers one.
+
+     THE KIND TAG IS NOT A LABEL. ENEMY.spawnAdditional filters markers with
+     `!usedMarkerKinds.has(m.kind)` against a Set of kind STRINGS, so each
+     distinct kind hosts exactly one enemy for the whole run -- markers that
+     share a kind are silently ineligible after the first. The default is
+     therefore derived from the instance id, not a constant: an earlier
+     version defaulted every marker to 'editor', which meant placing five
+     enemy spawns in the editor got you one enemy and no error.
+
+     A tag typed by hand is left alone. Reusing one deliberately (to cap a
+     region at one enemy) is a legitimate thing to want; doing it by accident
+     because the default collided is not. */
   register({
     id: 'spawn_enemy', name: 'Enemy Spawn', category: 'Spawns', collides: false,
     build: (ctx, d) => {
       const g = marker(0xC4574B, false);
       const p = (d && d.properties) || {};
-      const kind = String(p.kind || 'editor').trim() || 'editor';
+      const typed = String(p.kind === undefined ? '' : p.kind).trim();
+      const kind = typed || ('editor_' + ((d && d.id) || Math.random().toString(36).slice(2, 8)));
       WORLD.addSpawn(0, 0, 0, kind);
       return g;
     },
     properties: {
-      kind: { type: 'text', label: 'Kind tag', def: 'editor' }
+      kind: { type: 'text', label: 'Kind tag (blank = unique)', def: '' }
     }
   });
 

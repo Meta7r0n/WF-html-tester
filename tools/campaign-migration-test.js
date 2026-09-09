@@ -487,6 +487,52 @@ if (compareArg !== -1) {
   check('the farm still stands', after.campaignCount === 34 &&
     after.solids === world.counts.solids, after.solids + ' vs ' + world.counts.solids);
 
+  /* ---- spawn kind tags are identity, not labels ----------------------
+     ENEMY.spawnAdditional filters markers with !usedMarkerKinds.has(m.kind)
+     against a Set of kind STRINGS, so each distinct kind hosts exactly one
+     enemy for the whole run. Markers that share a kind are silently
+     ineligible after the first -- no error, just fewer enemies. spawn_enemy
+     shipped once defaulting every placed marker to 'editor'; five spawns
+     placed in the editor would have produced one enemy. */
+  const kinds = await page.evaluate(async () => {
+    const out = {};
+    const before = WORLD.spawnMarkers.length;
+    EDITOR.enter();
+    await new Promise(r => requestAnimationFrame(r));
+    const made = [];
+    for (let i = 0; i < 4; i++) {
+      made.push(EDITOR._place('spawn_enemy', new THREE.Vector3(10 + i * 2, 0, 40)));
+    }
+    const mine = WORLD.spawnMarkers.slice(before);
+    out.registered = mine.length;
+    out.kinds = mine.map(m => m.kind);
+    out.allDistinct = new Set(out.kinds).size === out.kinds.length;
+    // Not 'yard': ENEMY excludes that tag from eligibility outright.
+    out.noneExcluded = out.kinds.every(k => k !== 'yard');
+    // A hand-typed tag is honoured, because deliberately capping a region at
+    // one enemy is a legitimate thing to author.
+    const typed = EDITOR._place('spawn_enemy', new THREE.Vector3(18, 0, 40));
+    typed.data.properties = { kind: 'my_tag' };
+    const rebuilt = SANDBOX.rebuild(typed);
+    out.typedKind = WORLD.spawnMarkers[WORLD.spawnMarkers.length - 1].kind;
+    // And the markers go away again with the objects.
+    SANDBOX.clear();
+    out.after = WORLD.spawnMarkers.length;
+    out.releasedCleanly = out.after === before;
+    EDITOR.exit();
+    await new Promise(r => requestAnimationFrame(r));
+    return out;
+  });
+  check('placing enemy spawns registers a marker each', kinds.registered === 4,
+    String(kinds.registered));
+  check('each placed spawn gets a DISTINCT kind', kinds.allDistinct,
+    kinds.kinds.join(','));
+  check('no placed spawn lands on the excluded "yard" tag', kinds.noneExcluded);
+  check('a hand-typed kind tag is honoured', kinds.typedKind === 'my_tag',
+    kinds.typedKind);
+  check('deleting the spawns releases their markers', kinds.releasedCleanly,
+    kinds.after + ' vs ' + (kinds.after - (kinds.releasedCleanly ? 0 : 1)));
+
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
   await browser.close();
