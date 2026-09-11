@@ -165,3 +165,35 @@ read `instances[0]` to mean "the thing I just placed" and silently got a tree
 at (-27, 26). One of them deleted a farm tree instead of its own object and
 still reported a pass. The dangerous reading should not be the one you get by
 default.
+
+### Fixtures
+
+`WORLD.fixtures` is the sixth captured kind and shares regions' machinery: a
+named record that owns collision and has state a player can change. The four
+today are the North Barn's two door sets, its stair railing, and the barn
+stair gate. A door holds a live reference to its own `WORLD` solid and drives
+`collider.enabled` as its leaves swing, which is why it cannot just be
+geometry.
+
+They are deliberately **not** in the collision digest — the records hold
+`THREE.Group` references, and a fixture's position is already in its
+collider's box, which the digest compares exactly. The suite asserts the four
+**by name**, so a migration cannot silently drop or swap one; a count would
+not catch a swap.
+
+The checks to keep an eye on are the behavioural ones. The failure this
+refactor could produce is not a missing fixture, it is a door that still
+animates and no longer blocks — or one that blocks while standing open, which
+looks perfectly fine in a screenshot. So the suite drives the real doors
+through `LEVEL`'s public API and watches `collider.enabled` on each side of
+the swing, and checks that the stair gate's state still reaches
+`worldState()`, since that is the one piece of fixture state that crosses the
+network to a co-op peer.
+
+## A self-inflicted trap worth naming
+
+`pkill -f "http.server"` — or any `pkill -f` whose pattern matches the shell
+command you are typing it in — **kills your own shell**, which surfaces as
+exit code 144 and looks like the test crashed. It has happened four times in
+this project. Serve each build on its own port and let the servers be; do not
+try to tidy them up mid-run.

@@ -6634,11 +6634,47 @@ const WORLD = {
      fields. Anything not named stays put -- cell indices and the maze's
      opening grid are not positions. */
   regions: {},
-  addRegion(name, data, axes) {
-    this.regions[name] = data;
-    return this._capture('regions', { name: name, data: data, axes: axes || null });
-  },
+  addRegion(name, data, axes) { return this._addNamed('regions', name, data, axes); },
   region(name) { return this.regions[name] || null; },
+
+  /* --------------------------- fixtures ------------------------------
+     [ENGINE] The interactive half of the same problem. A fixture is a
+     named thing that owns collision and has state a player can change:
+     the North Barn's two door sets and its stair railing, the barn stair
+     gate. Each holds a live reference to its own captured entry and
+     drives it as the thing moves --
+
+         door.collider.enabled = door.target < 0.5 && door.openness < 0.06;
+         gate.portal.enabled   = gate.openness > 0.55;
+
+     -- which is precisely why they cannot just be geometry.
+
+     These lived on LEVEL's private `animated` object, reachable only by
+     the name a builder happened to use. The audit (section 15) read that
+     as "the registry contract build(ctx, d) -> Object3D cannot express an
+     interactive object, so the contract must be extended". That was the
+     wrong diagnosis. A door does not need the contract to carry it out;
+     it needs to *register* itself during build() the way a collider does,
+     into a kind the capture scope records. Then release and translate
+     work on it for free and the contract stays exactly as it is.
+
+     Same machinery as regions, different reader: LEVEL animates and poses
+     them, QUEST opens and closes them through LEVEL's exported functions.
+     Fixtures are singletons by name, as regions are -- a second North
+     Barn replaces the first one's record, and release() knows not to take
+     the replacement with it. */
+  fixtures: {},
+  addFixture(name, data, axes) { return this._addNamed('fixtures', name, data, axes); },
+  fixture(name) { return this.fixtures[name] || null; },
+
+  /* Returns the record itself, not the capture wrapper, so these read like
+     every other registration on WORLD (`const solid = WORLD.addFloor(...)`)
+     and a builder can keep the reference it just made. */
+  _addNamed(kind, name, data, axes) {
+    this[kind][name] = data;
+    this._capture(kind, { name: name, data: data, axes: axes || null });
+    return data;
+  },
 
   /* ---------------------- registration capture ----------------------
      [ENGINE] WORLD was append-only: four flat arrays, no ownership, no way
@@ -6660,7 +6696,9 @@ const WORLD = {
      opened one -- every existing caller is completely unaffected. */
   _captureStack: [],
   beginCapture() {
-    const handle = { solids: [], ladders: [], portals: [], spawnMarkers: [], regions: [] };
+    const handle = {
+      solids: [], ladders: [], portals: [], spawnMarkers: [], regions: [], fixtures: []
+    };
     this._captureStack.push(handle);
     return handle;
   },
@@ -6681,14 +6719,16 @@ const WORLD = {
       }
       owned.length = 0;
     });
-    // Regions are a map, not a list. Drop one only if it is still the
-    // record we registered -- a later builder may have replaced it, and
-    // that replacement belongs to whoever captured it.
-    const owned = handle.regions || [];
-    for (let i = 0; i < owned.length; i++) {
-      if (this.regions[owned[i].name] === owned[i].data) delete this.regions[owned[i].name];
-    }
-    owned.length = 0;
+    // Regions and fixtures are maps, not lists. Drop a name only if it is
+    // still the record we registered -- a later builder may have replaced
+    // it, and that replacement belongs to whoever captured it.
+    ['regions', 'fixtures'].forEach(kind => {
+      const owned = handle[kind] || [];
+      for (let i = 0; i < owned.length; i++) {
+        if (this[kind][owned[i].name] === owned[i].data) delete this[kind][owned[i].name];
+      }
+      owned.length = 0;
+    });
   },
 
   add(cx, cy, cz, w, h, d, tag) {
@@ -6834,6 +6874,7 @@ const WORLD = {
     this.portals.length = 0;
     this.spawnMarkers.length = 0;
     this.regions = {};
+    this.fixtures = {};
   },
 
   /* ---- shared actor collision ----
@@ -7474,10 +7515,16 @@ const PROPS = (() => {
    collision boxes and the art can never drift apart. */
 const LEVEL = (() => {
   let root = null;
+  /* Pure animation only. Anything that owns collision and has state a player
+     can change is a WORLD fixture instead -- the doors, the stair gate and
+     the railing moved there so the capture scope can release and translate
+     them. The hatches are still here: they are a *list* with two named
+     pointers into it rather than a singleton, and deciding how a list-valued
+     fixture should work belongs with the basement migration that needs it,
+     not to a refactor doing something else. */
   const animated = {
     windmillFan: null, vane: null, sails: [], hangers: [],
-    basementHatch: null, basementHatches: [], barnStairGate: null,
-    northBarnDoor: null, northBarnWestDoor: null, northBarnHatch: null
+    basementHatch: null, basementHatches: [], northBarnHatch: null
   };
   let craftingScreenMesh = null;
 
@@ -8751,11 +8798,11 @@ const LEVEL = (() => {
     });
     const westDoorSolid = WORLD.addFloor(X0 + 0.06, 0, -66.0, 0.52, westLeafH, 5.9,
       'north_barn_west_door');
-    animated.northBarnWestDoor = {
+    WORLD.addFixture('northBarnWestDoor', {
       id: 'north_barn_west_door', x: X0, z: -66.0,
       open: false, target: 0, openness: 0,
       north: northWestDoor, south: southWestDoor, collider: westDoorSolid
-    };
+    }, { x: ['x'], z: ['z'] });
 
     const leafW = 3.72, leafH = 4.72, hingeZ = Z1 - 0.12;
     function northBarnDoorLeaf(hingeX, inwardSign) {
@@ -8786,11 +8833,11 @@ const LEVEL = (() => {
     });
     const mainDoorSolid = WORLD.addFloor(CX, 0, Z1 - 0.06, 7.5, leafH, 0.52,
       'north_barn_main_door');
-    animated.northBarnDoor = {
+    WORLD.addFixture('northBarnDoor', {
       id: 'north_barn_main_door', x: CX, z: Z1,
       open: false, target: 0, openness: 0,
       west: westMainDoor, east: eastMainDoor, collider: mainDoorSolid
-    };
+    }, { x: ['x'], z: ['z'] });
 
     // Ground boards plus a nearly full second floor. The southeast cut-out is
     // once again the original north/south stairwell from v0.29.
@@ -8855,7 +8902,10 @@ const LEVEL = (() => {
     railingBatch.box(0.12, 0.12, 8.2, 55.8, UPPER_Y + 0.95, -60.6);
     railingBatch.build(railingGroup);
     const railingSolid = WORLD.addFloor(55.8, UPPER_Y, -60.6, 0.32, 1.0, 8.2, 'north_barn_railing');
-    animated.northBarnRailing = { group: railingGroup, collider: railingSolid, present: true };
+    // No axes: a railing has no numeric position of its own. Its group and
+    // its collider are both already captured and both already travel.
+    WORLD.addFixture('northBarnRailing',
+      { group: railingGroup, collider: railingSolid, present: true });
 
     // A chunky, deliberately old tractor. The stripped variant omits its hood
     // and front wheels, exposing an engine block and loose axle parts.
@@ -9992,12 +10042,12 @@ const LEVEL = (() => {
     const eastGateLeaf = stairGateLeaf(stairOpening.maxX, -1);
     const floorGateSolid = WORLD.addFloor(stairX, -0.18, -10.75,
       3.6, 0.18, 8.1, 'barn_stair_floor_gate');
-    animated.barnStairGate = {
+    WORLD.addFixture('barnStairGate', {
       id: 'barn_stair_floor_gate', x: stairX, z: -10.75,
       open: false, target: 0, openness: 0,
       west: westGateLeaf, east: eastGateLeaf,
       collider: floorGateSolid, portal: stairPortal
-    };
+    }, { x: ['x'], z: ['z'] });
 
     // Plate is 1.85 long by 0.72 tall, so the canvas has to be 2.57:1 to
     // match. The old 220x130 was 1.69:1 and the texture stretched every
@@ -12372,7 +12422,7 @@ const LEVEL = (() => {
   }
 
   function nearBarnStairGate(position, layerId) {
-    const gate = animated.barnStairGate;
+    const gate = WORLD.fixture('barnStairGate');
     if (!gate || !position) return false;
     if (layerId && layerId !== 'surface' && layerId !== 'basement') return false;
     // The switch is reachable from the barn floor and the upper stair run,
@@ -12383,7 +12433,7 @@ const LEVEL = (() => {
   }
 
   function setBarnStairGate(open) {
-    const gate = animated.barnStairGate;
+    const gate = WORLD.fixture('barnStairGate');
     if (!gate) return false;
     gate.open = !!open;
     gate.target = gate.open ? 1 : 0;
@@ -12391,7 +12441,7 @@ const LEVEL = (() => {
   }
 
   function nearNorthBarnDoor(position, layerId) {
-    const door = animated.northBarnDoor;
+    const door = WORLD.fixture('northBarnDoor');
     if (!door || !position || (layerId && layerId !== 'surface')) return false;
     if (position.y < -0.4 || position.y > 2.25) return false;
     return Math.abs(position.x - door.x) <= 4.7 && Math.abs(position.z - door.z) <= 3.2;
@@ -12409,7 +12459,7 @@ const LEVEL = (() => {
   }
 
   function setNorthBarnDoor(open, immediate) {
-    const door = animated.northBarnDoor;
+    const door = WORLD.fixture('northBarnDoor');
     if (!door) return false;
     door.open = !!open;
     door.target = door.open ? 1 : 0;
@@ -12419,11 +12469,12 @@ const LEVEL = (() => {
   }
 
   function isNorthBarnDoorOpen() {
-    return !!(animated.northBarnDoor && animated.northBarnDoor.open);
+    const door = WORLD.fixture('northBarnDoor');
+    return !!(door && door.open);
   }
 
   function nearNorthBarnWestDoor(position, layerId) {
-    const door = animated.northBarnWestDoor;
+    const door = WORLD.fixture('northBarnWestDoor');
     if (!door || !position || (layerId && layerId !== 'surface')) return false;
     if (position.y < -0.4 || position.y > 2.25) return false;
     return Math.abs(position.x - door.x) <= 3.2 && Math.abs(position.z - door.z) <= 4.1;
@@ -12439,7 +12490,7 @@ const LEVEL = (() => {
   }
 
   function setNorthBarnWestDoor(open, immediate) {
-    const door = animated.northBarnWestDoor;
+    const door = WORLD.fixture('northBarnWestDoor');
     if (!door) return false;
     door.open = !!open;
     door.target = door.open ? 1 : 0;
@@ -12449,7 +12500,8 @@ const LEVEL = (() => {
   }
 
   function isNorthBarnWestDoorOpen() {
-    return !!(animated.northBarnWestDoor && animated.northBarnWestDoor.open);
+    const door = WORLD.fixture('northBarnWestDoor');
+    return !!(door && door.open);
   }
 
   function nearNorthBarnHatch(position, layerId) {
@@ -12486,7 +12538,7 @@ const LEVEL = (() => {
   // animation, just an outright presence toggle for both the visual rail
   // and its collider.
   function setNorthBarnRailing(present) {
-    const railing = animated.northBarnRailing;
+    const railing = WORLD.fixture('northBarnRailing');
     if (!railing) return false;
     railing.present = !!present;
     railing.group.visible = railing.present;
@@ -12540,8 +12592,11 @@ const LEVEL = (() => {
   }
 
   function tryInteract(position, layerId) {
+    // nearBarnStairGate is false when there is no gate, so the lookup below
+    // is already guarded -- which matters more now that a fixture can be
+    // released, not merely overwritten.
     if (!nearBarnStairGate(position, layerId)) return null;
-    const open = !animated.barnStairGate.open;
+    const open = !WORLD.fixture('barnStairGate').open;
     setBarnStairGate(open);
     UI.toast('ORIGINAL BARN STAIR GATE — ' + (open ? 'OPENING' : 'CLOSING'), 1.15);
     return { id: 'barn_stair_floor_gate', open: open };
@@ -12557,11 +12612,13 @@ const LEVEL = (() => {
         key = INPUT.codeLabel(bindings.interact) || 'E';
       }
     }
-    return key + ' · ' + (animated.barnStairGate.open ? 'Close barn stair gate' : 'Open barn stair gate');
+    const gate = WORLD.fixture('barnStairGate');
+    return key + ' · ' + (gate.open ? 'Close barn stair gate' : 'Open barn stair gate');
   }
 
   function worldState() {
-    return { barnStairGateOpen: !!(animated.barnStairGate && animated.barnStairGate.open) };
+    const gate = WORLD.fixture('barnStairGate');
+    return { barnStairGateOpen: !!(gate && gate.open) };
   }
 
   function applyWorldState(state) {
@@ -12597,7 +12654,7 @@ const LEVEL = (() => {
       hatch.pivot.rotation.x = -hatch.openness * 1.42 * hatch.openSign;
       if (hatch.keyed) poseNorthBarnHatch(hatch);
     }
-    const gate = animated.barnStairGate;
+    const gate = WORLD.fixture('barnStairGate');
     if (gate) {
       gate.openness = UTIL.damp(gate.openness, gate.target, gate.target > 0.5 ? 7.5 : 6.2, dt);
       gate.west.rotation.z = gate.openness * Math.PI * 0.5;
@@ -12609,13 +12666,13 @@ const LEVEL = (() => {
       gate.collider.enabled = gate.target < 0.5 && gate.openness < 0.06;
       gate.portal.enabled = gate.openness > 0.55;
     }
-    const northDoor = animated.northBarnDoor;
+    const northDoor = WORLD.fixture('northBarnDoor');
     if (northDoor) {
       northDoor.openness = UTIL.damp(northDoor.openness, northDoor.target,
         northDoor.target > 0.5 ? 6.8 : 5.6, dt);
       poseNorthBarnDoor(northDoor);
     }
-    const westDoor = animated.northBarnWestDoor;
+    const westDoor = WORLD.fixture('northBarnWestDoor');
     if (westDoor) {
       westDoor.openness = UTIL.damp(westDoor.openness, westDoor.target,
         westDoor.target > 0.5 ? 6.8 : 5.6, dt);
@@ -32263,15 +32320,20 @@ const SANDBOX = (() => {
     (handle.spawnMarkers || []).forEach(m => {
       if (m.position) { m.position.x += dx; m.position.y += dy; m.position.z += dz; }
     });
-    // A region is a plain record of whatever shape its builder wanted, so it
-    // says which of its own fields are world coordinates. Everything it does
-    // not name -- cell indices, the maze's opening grid -- is not a position
-    // and must not be touched.
-    (handle.regions || []).forEach(r => {
-      if (!r.axes) return;
-      bumpFields(r.data, r.axes.x, dx);
-      bumpFields(r.data, r.axes.y, dy);
-      bumpFields(r.data, r.axes.z, dz);
+    /* Regions and fixtures are plain records of whatever shape their builder
+       wanted, so each says which of its own fields are world coordinates.
+       Everything unnamed is left alone -- a maze's cell indices are not
+       positions, and a fixture's pivots are THREE.Groups that already travel
+       with the object's own group. A door's numeric x/z do not: they are what
+       the "is the player near enough to open this" tests compare against, so
+       a door moved without them stays operable from where it used to be. */
+    ['regions', 'fixtures'].forEach(kind => {
+      (handle[kind] || []).forEach(r => {
+        if (!r.axes) return;
+        bumpFields(r.data, r.axes.x, dx);
+        bumpFields(r.data, r.axes.y, dy);
+        bumpFields(r.data, r.axes.z, dz);
+      });
     });
   }
 

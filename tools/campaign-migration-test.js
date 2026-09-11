@@ -680,6 +680,103 @@ if (compareArg !== -1) {
   check('releasing a replaced name spares the replacement', regions.replacementSurvives);
   check('releasing the replacement does remove it', regions.bothReleased);
 
+  /* ---- fixtures: interactive objects that own their collision ----------
+     The point of moving these off LEVEL's private `animated` object is that
+     release and translate reach them. The point of checking them here is the
+     opposite risk: that the move quietly broke a door. A North Barn door
+     drives `collider.enabled` as its leaves swing, so the regression to fear
+     is a door that still animates and no longer blocks -- or one that blocks
+     while standing open, which is worse and invisible in a screenshot. */
+  const fixtures = await page.evaluate(() => {
+    const out = {};
+    out.names = Object.keys(WORLD.fixtures).sort();
+
+    const door = WORLD.fixture('northBarnDoor');
+    // The collider must be the world's own, not a copy -- same identity
+    // question the farm's tree colliders answer.
+    out.colliderInWorld = WORLD.solids.indexOf(door.collider) !== -1;
+    // Shut it explicitly rather than assuming: by this point the suite has
+    // run the editor and a playtest, and QUEST opens every barn entrance in
+    // co-op. Asserting a starting state we did not set would make this check
+    // fail for a reason that has nothing to do with fixtures.
+    LEVEL.setNorthBarnDoor(false, true);
+    out.startsShut = !LEVEL.isNorthBarnDoorOpen() && door.collider.enabled === true;
+
+    LEVEL.setNorthBarnDoor(true, true);       // immediate: skip the damping
+    out.openReported = LEVEL.isNorthBarnDoorOpen();
+    out.openClearsCollider = door.collider.enabled === false;
+
+    LEVEL.setNorthBarnDoor(false, true);
+    out.shutReported = !LEVEL.isNorthBarnDoorOpen();
+    out.shutRestoresCollider = door.collider.enabled === true;
+
+    const west = WORLD.fixture('northBarnWestDoor');
+    LEVEL.setNorthBarnWestDoor(true, true);
+    out.westOpenClearsCollider = west.collider.enabled === false;
+    LEVEL.setNorthBarnWestDoor(false, true);
+    out.westShutRestoresCollider = west.collider.enabled === true;
+
+    // The railing is presence, not swing: QUEST drops it outright.
+    const rail = WORLD.fixture('northBarnRailing');
+    LEVEL.setNorthBarnRailing(false);
+    out.railingDropped = rail.group.visible === false && rail.collider.enabled === false;
+    LEVEL.setNorthBarnRailing(true);
+    out.railingRestored = rail.group.visible === true && rail.collider.enabled === true;
+
+    // The gate owns a portal as well as a solid, and is the one fixture whose
+    // state crosses the network, so worldState has to keep seeing it.
+    const gate = WORLD.fixture('barnStairGate');
+    out.gateOwnsPortal = WORLD.portals.indexOf(gate.portal) !== -1;
+    LEVEL.setBarnStairGate(true);
+    out.gateStateVisible = LEVEL.worldState().barnStairGateOpen === true;
+    LEVEL.setBarnStairGate(false);
+    out.gateStateCleared = LEVEL.worldState().barnStairGateOpen === false;
+
+    // Capture, translate and release, on the same machinery regions use.
+    const h = WORLD.beginCapture();
+    WORLD.addFixture('__probeDoor', { id: 'p', x: 3, z: 4, openness: 0.25 },
+      { x: ['x'], z: ['z'] });
+    WORLD.endCapture();
+    out.probeReturnsRecord = WORLD.fixture('__probeDoor').id === 'p';
+    SANDBOX._translate(h, 10, 0, -10);
+    const p = WORLD.fixture('__probeDoor');
+    // x and z are what the "near enough to open this" tests compare against.
+    out.probeMoved = p.x === 13 && p.z === -6;
+    // openness is state, not a position, and must not be swept along.
+    out.stateUntouched = p.openness === 0.25;
+    WORLD.release(h);
+    out.probeReleased = !WORLD.fixture('__probeDoor');
+    out.farmFixturesIntact = Object.keys(WORLD.fixtures).sort().join(',') === out.names.join(',');
+    return out;
+  });
+  /* By name, not by count. The digest deliberately does not record fixtures
+     -- their records hold THREE.Group references and a fixture's position is
+     already in its collider's box, which the digest compares exactly -- so
+     this line is the only thing standing between a future migration and
+     silently dropping one. A count of four would not notice a swap. */
+  check('the farm registers its four fixtures, by name',
+    fixtures.names.join(',') ===
+      'barnStairGate,northBarnDoor,northBarnRailing,northBarnWestDoor',
+    fixtures.names.join(','));
+  check("a door's collider is the world's, not a copy", fixtures.colliderInWorld);
+  check('a shut main door blocks', fixtures.startsShut);
+  check('opening the main door clears its collider',
+    fixtures.openReported && fixtures.openClearsCollider);
+  check('shutting it puts the collider back',
+    fixtures.shutReported && fixtures.shutRestoresCollider);
+  check('the west door does the same', fixtures.westOpenClearsCollider &&
+    fixtures.westShutRestoresCollider);
+  check('the railing drops and comes back', fixtures.railingDropped && fixtures.railingRestored);
+  check('the stair gate still owns a live portal', fixtures.gateOwnsPortal);
+  check('gate state still reaches worldState (multiplayer sync)',
+    fixtures.gateStateVisible && fixtures.gateStateCleared);
+  check('addFixture returns the record, not the capture wrapper',
+    fixtures.probeReturnsRecord);
+  check('translate moves a fixture by its declared axes', fixtures.probeMoved);
+  check('translate leaves fixture state alone', fixtures.stateUntouched);
+  check('release drops the fixture it captured', fixtures.probeReleased);
+  check("release spares the farm's own fixtures", fixtures.farmFixturesIntact);
+
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
   await browser.close();

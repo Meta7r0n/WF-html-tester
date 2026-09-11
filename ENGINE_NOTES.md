@@ -833,3 +833,109 @@ So the refactor is contained to one module.
 Nothing is migrated. `buildNorthBarn` is still 316 lines of authored
 construction. This phase only makes it possible for the region half not to
 break when that happens.
+
+---
+
+## 19. Phase 9: fixtures — interactive objects that own their collision
+
+The second engine blocker, and the one section 15 got wrong.
+
+### What section 15 said, and why it was wrong
+
+> A registry entry is `build(ctx, d) -> Object3D`: geometry, and nothing
+> else. [...] There is nowhere in the current contract to hang "this is a
+> door, here is its collider, here is how to open it." Migrating any door,
+> hatch or gate needs that contract extended first.
+
+The observation was right and the conclusion was not. `animated.northBarnDoor`
+really does hold a live reference to its own `WORLD` solid and really does
+drive it as the leaves swing:
+
+```js
+door.collider.enabled = door.target < 0.5 && door.openness < 0.06;
+gate.portal.enabled   = gate.openness > 0.55;
+```
+
+But a door does not need the *contract* to carry it out of the builder. It
+needs to **register itself during `build()`**, the way a collider does, into
+a kind the capture scope records. Then release and translate reach it for
+free and `build(ctx, d) -> Object3D` stays exactly as it is. What was
+missing was a kind, not a return type — which is the same answer phase 8
+found for regions, with a different consumer.
+
+Worth stating plainly because the wrong version was sitting in these notes
+as a plan: it would have meant redesigning a contract that four migrated
+clusters already depend on, to solve a problem the contract does not have.
+
+### The shape
+
+```js
+WORLD.addFixture(name, data, axes)   // register, and capture
+WORLD.fixture(name)                  // read
+```
+
+Identical machinery to regions — one `_addNamed` behind both — differing
+only in who reads it: `LEVEL` animates and poses fixtures, `QUEST` opens and
+closes them through `LEVEL`'s exported functions. Both now return the record
+itself rather than the capture wrapper, so they read like every other
+registration on `WORLD` (`const solid = WORLD.addFloor(...)`).
+
+Four moved off LEVEL's private `animated` object: `northBarnDoor`,
+`northBarnWestDoor`, `northBarnRailing`, `barnStairGate`. The axes are just
+`x` and `z`, and it is worth being clear about why a door needs them at all
+when its pivots are `THREE.Group`s that already travel with the object's own
+group: the numeric `x`/`z` are what `nearNorthBarnDoor` and
+`nearBarnStairGate` compare the player's position against. A door moved
+without them would swing correctly in its new place and still only open from
+where it used to be.
+
+The railing takes no axes at all. It has no numeric position — just a group
+and a collider, both already captured, both already travelling.
+
+### What stayed behind, and why
+
+The basement hatches. They are a *list* (`animated.basementHatches`) with two
+named pointers into it (`basementHatch`, `northBarnHatch`), not a singleton,
+and deciding what a list-valued fixture should look like belongs with the
+basement migration that actually needs one — not with a refactor doing
+something else. `animated` now holds only pure animation plus the hatches,
+and says so.
+
+### Two facts that made this cheap
+
+- All 30 call sites are inside `LEVEL`'s own IIFE. Everything outside goes
+  through exported functions (`LEVEL.setBarnStairGate`,
+  `LEVEL.setNorthBarnRailing`, `COOP` → `LEVEL.setBarnStairGate`).
+- `animated` is on LEVEL's export list, but nothing anywhere reads
+  `LEVEL.animated`.
+
+So this is a single-module change with no external surface.
+
+### The regression to fear is not the one the mechanism is about
+
+Capture and translate are the *point*, but they are also the part the phase-8
+assertions already cover. The risk unique to this change is a door that
+still animates and no longer blocks — or, worse and invisible in any
+screenshot, one that blocks while standing open. So the new checks drive the
+real doors through `LEVEL`'s public API and watch the collider:
+
+```
+a shut main door blocks
+opening the main door clears its collider
+shutting it puts the collider back
+the west door does the same
+the railing drops and comes back
+the stair gate still owns a live portal
+gate state still reaches worldState (multiplayer sync)
+```
+
+The gate check matters because its state is the one thing here that crosses
+the network: `worldState()` syncs `barnStairGateOpen`, and `COOP` rejects
+every id but `barn_stair_floor_gate`. Break that lookup and co-op desyncs
+silently.
+
+Fixtures are deliberately **not** in the collision digest — their records
+hold `THREE.Group` references, and a fixture's position is already in its
+collider's box, which the digest compares exactly. The suite asserts the four
+by name instead of by count, so a future migration cannot silently drop or
+swap one.
