@@ -588,3 +588,73 @@ fragment. That is the real invariant, and it does not need editing next time.
 
 Farm byte-identical: `e8f24fc989c41b3f`, 1335 solids, 15 ladders, 58 spawn
 markers, 3169 meshes. Migration suite 42/42 across both clusters.
+
+---
+
+## 17. Phase 7: the barn, and rotation as a build argument
+
+The last low-risk cluster on the audit's list. `buildBarn` went from 162
+lines to one call; 22 objects — the shell, five hay bales, a barrel, three
+crates, three cans, two bottles, three lanterns, the workbench, the pitchfork
+and both spawn markers.
+
+Three clusters are now map data: scatter (34), Silo Row (8), barn (22).
+
+### Rotation had to become a build argument
+
+The barn is the first cluster where an authored **rotation** changes how many
+numbers come out of the seeded stream:
+
+```js
+hayBale: rotY || UTIL.rng(-0.4, 0.4)          // 0 is falsy -> draws
+crate:   rotY === undefined ? UTIL.rng(...) : rotY   // 0 is fine -> no draw
+```
+
+All five barn hay bales carry a non-zero rotation, so none of them draws.
+The registry's hardcoded `0` would have drawn five times, shifting every prop
+built after the barn. So `rotationInBuilder` now exists alongside
+`scaleInBuilder`: the entry takes `transform.rotation` as an argument,
+SANDBOX leaves the group at rotation 0, and a rotation change rebuilds
+because geometry depends on it.
+
+Crate is the mirror image. It only draws when rotation is **undefined**, and
+`buildBarn` has exactly one crate authored that way. `spin: 'random'` is how
+that is said in data — the builder passes `undefined` and takes its draw.
+Authoring a fixed rotation there instead would have looked identical and
+consumed one number fewer.
+
+Worth stating plainly: I got this backwards at first and had to correct it.
+`crate` looked like the broken one because both builders read `rotY`; only
+reading the two conditions side by side shows `||` and `=== undefined` behave
+differently on zero.
+
+### Signatures that do not mean what the position implies
+
+`PROPS.lantern(parent, x, y, z, hang)` — the fourth argument is a **cable
+length** that draws a cylinder, not a rotation. The barn's three lanterns use
+0.9, 0.5 and 0, so `hang` is now a property. Crate size varies across the
+farm (0.85 on the silo deck, 1.0 and 0.9 in the barn), so it is
+`transform.scale` with `scaleInBuilder` — which meant going back and giving
+the already-migrated silo crate an explicit 0.85, since it had been relying
+on the registry's hardcoded value.
+
+`CAMPAIGN.obj()` gained an explicit scale argument for that, and stopped
+prefixing ids with `scatter_` — it was writing `scatter_silo_tower` for a
+silo object. Fragment ids are spelled out now.
+
+### Verified
+
+Farm byte-identical on the first run: `e8f24fc989c41b3f`, 1335 solids, 15
+ladders, 58 spawn markers, 3169 meshes. Migration suite 42/42 across three
+clusters, 64 objects — and because phase 6 made the suite derive its
+expectations from CAMPAIGN, adding a third cluster needed no test edits at
+all.
+
+### What is left
+
+`buildBasement` (881 lines, 7 animated) and `buildNorthBarn` (316 lines, 3
+animated) are what remain of the named systems, and both are gated on the two
+engine blockers from section 15 — the registry contract cannot express a door
+that owns its collider, and `WORLD.cornMaze`/`WORLD.northBarnStair` are
+ad-hoc properties the capture scope cannot see. Those are engine work, not
+content work.

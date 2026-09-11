@@ -455,7 +455,10 @@ if (compareArg !== -1) {
     // A save of the player's map must not contain the farm.
     const saved = SANDBOX.serialize();
     out.savedCount = saved.objects.length;
-    out.savedHasFarm = saved.objects.some(o => /^scatter_/.test(o.id || ''));
+    // By layer, not by id prefix: fragment ids are per-cluster now, so a
+    // regex on one cluster's naming would miss the others.
+    out.savedHasFarm = SANDBOX.all.some(i => i.layer === 'campaign' &&
+      saved.objects.some(o => o.id === i.id));
 
     EDITOR._new();
     out.afterNew = { mine: SANDBOX.count, farm: SANDBOX.campaignCount };

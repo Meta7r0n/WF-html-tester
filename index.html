@@ -7290,8 +7290,152 @@ const PROPS = (() => {
     return g;
   }
 
+  /* The main barn: walls, gables, roof, sliding doors, floor boards, and the
+     loft with its posts, beam, railing and stair flight. One object for the
+     same reason the silo tower is -- none of it is separately placeable, and
+     the stair treads are collision the loft depends on.
+
+     Built around the ORIGIN. buildBarn authored it against absolute X0=6,
+     X1=22, Z0=-15, Z1=-1, so the local frame here is that box's own corner
+     at (6, 0, -15): subtract 6 from every x and add 15 to every z. The RNG
+     draw (loft railing lean) stays in the same place in the same loop. */
+  function barnShell(parent, x, z) {
+    const WALL = 0.42, TOP = 6, RIDGE = 9.4;
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const red = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 3), finish: 'wood' });
+    const b = new PRIM.Batch(red, 0.05);
+    // Local helpers: `wx`/`wz` convert a local coord back to world for the
+    // collider calls, which WORLD records in world space.
+    const wx = lx => x + lx, wz = lz => z + lz;
+
+    b.box(WALL, TOP, 5.6, 0, TOP / 2, 2.8, 0, 0, 0, 0.03);
+    b.box(WALL, TOP, 4.4, 0, TOP / 2, 11.8, 0, 0, 0, 0.03);
+    b.box(WALL, 1.4, 4.0, 0, 5.3, 7.6, 0, 0, 0, 0.03);
+    WORLD.add(wx(0), TOP / 2, wz(2.8), WALL + .2, TOP, 5.6, 'barn');
+    WORLD.add(wx(0), TOP / 2, wz(11.8), WALL + .2, TOP, 4.4, 'barn');
+
+    b.box(WALL, TOP, 0.5, 16, TOP / 2, 0.25, 0, 0, 0, 0.03);
+    b.box(WALL, TOP, 10.5, 16, TOP / 2, 8.75, 0, 0, 0, 0.03);
+    WORLD.add(wx(16), TOP / 2, wz(0.25), WALL + .2, TOP, 0.5, 'barn');
+    WORLD.add(wx(16), TOP / 2, wz(8.75), WALL + .2, TOP, 10.5, 'barn');
+
+    b.box(WALL, TOP, 3.4 + WALL, 18.8, TOP / 2, 2.0, 0, 0, 0, 0.03);
+    b.box(2.8 + WALL, TOP, WALL, 17.4, TOP / 2, 0.3, 0, 0, 0, 0.03);
+    b.box(2.8 + WALL, TOP, WALL, 17.4, TOP / 2, 3.7, 0, 0, 0, 0.03);
+    WORLD.add(wx(18.8), TOP / 2, wz(2.0), WALL + .2, TOP, 3.4 + WALL, 'barn');
+    WORLD.add(wx(17.4), TOP / 2, wz(0.3), 2.8 + WALL, TOP, WALL + .2, 'barn');
+    WORLD.add(wx(17.4), TOP / 2, wz(3.7), 2.8 + WALL, TOP, WALL + .2, 'barn');
+
+    b.box(5.0, TOP, WALL, 2.5, TOP / 2, 0, 0, 0, 0, 0.03);
+    b.box(3.0, 3.0, WALL, 6.5, 4.5, 0, 0, 0, 0, 0.03);
+    b.box(2.0, TOP, WALL, 9.0, TOP / 2, 0, 0, 0, 0, 0.03);
+    b.box(3.0, 3.5, WALL, 11.5, 1.75, 0, 0, 0, 0, 0.03);
+    b.box(3.0, 0.3, WALL, 11.5, 5.85, 0, 0, 0, 0, 0.03);
+    b.box(3.0, TOP, WALL, 14.5, TOP / 2, 0, 0, 0, 0, 0.03);
+    WORLD.add(wx(2.5), TOP / 2, wz(0), 5.0, TOP, WALL + .2, 'barn');
+    WORLD.add(wx(9.0), TOP / 2, wz(0), 2.0, TOP, WALL + .2, 'barn');
+    WORLD.add(wx(11.5), 1.75, wz(0), 3.0, 3.5, WALL + .2, 'barn');
+    WORLD.add(wx(14.5), TOP / 2, wz(0), 3.0, TOP, WALL + .2, 'barn');
+    WORLD.add(wx(6.5), 4.5, wz(0), 3.0, 3.0, WALL + .2, 'barn');
+    WORLD.add(wx(11.5), 5.85, wz(0), 3.0, 0.3, WALL + .2, 'barn');
+
+    b.box(5.5, TOP, WALL, 2.75, TOP / 2, 14, 0, 0, 0, 0.03);
+    b.box(3.5, 2.2, WALL, 7.25, 1.1, 14, 0, 0, 0, 0.03);
+    b.box(3.5, 2.2, WALL, 7.25, 4.9, 14, 0, 0, 0, 0.03);
+    b.box(7.0, TOP, WALL, 12.5, TOP / 2, 14, 0, 0, 0, 0.03);
+    WORLD.add(wx(2.75), TOP / 2, wz(14), 5.5, TOP, WALL + .2, 'barn');
+    WORLD.add(wx(7.25), 1.1, wz(14), 3.5, 2.2, WALL + .2, 'barn');
+    WORLD.add(wx(12.5), TOP / 2, wz(14), 7.0, TOP, WALL + .2, 'barn');
+
+    const rise = RIDGE - TOP, steps = 6;
+    for (let i = 0; i < steps; i++) {
+      const w = 16 * (1 - (i + 0.4) / steps);
+      const y = TOP + (i + 0.5) * (rise / steps);
+      b.box(w, rise / steps + 0.02, WALL, 8, y, 0, 0, 0, 0, 0.02);
+      b.box(w, rise / steps + 0.02, WALL, 8, y, 14, 0, 0, 0, 0.02);
+    }
+    b.build(g);
+
+    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 4), finish: 'wood' });
+    const rb = new PRIM.Batch(roofMat, 0.055);
+    const ang = Math.atan2(rise, 8);
+    rb.box(9.4, 0.36, 15.4, 4, 7.72, 7, 0, 0, ang, 0.03);
+    rb.box(9.4, 0.36, 15.4, 12, 7.72, 7, 0, 0, -ang, 0.03);
+    rb.box(0.7, 0.5, 15.8, 8, 9.5, 7, 0, 0, 0, 0.03);
+    rb.box(3.4, 0.36, 3.8, 17.6, TOP + 0.18, 2.0, 0, 0, 0, 0.02);
+    rb.build(g);
+
+    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2), finish: 'wood' });
+    const db = new PRIM.Batch(doorMat, 0.045);
+    db.box(0.16, 4.4, 1.5, -0.16, 2.25, 5.1, 0, 0, 0.02, 0.03);
+    db.box(0.16, 4.4, 1.1, -0.16, 2.2, 9.8, 0, 0, -0.03, 0.03);
+    db.box(0.1, 0.22, 1.9, -0.3, 2.25, 5.1, 0.62, 0, 0);
+    db.box(0.1, 0.22, 1.9, -0.3, 2.25, 5.1, -0.62, 0, 0);
+    db.box(0.16, 0.2, 4.6, -0.2, 4.62, 7.4, 0, 0, 0);
+    db.build(g);
+    WORLD.add(wx(-0.16), 2.25, wz(5.1), 0.5, 4.4, 1.5, 'door');
+    WORLD.add(wx(-0.16), 2.2, wz(9.8), 0.5, 4.4, 1.1, 'door');
+
+    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 5), finish: 'wood' });
+    const fb = new PRIM.Batch(floorMat, 0);
+    fb.plane(15.6, 13.6, 8, 0.03, 7, -Math.PI / 2, 0, 0);
+    fb.build(g, { ray: false });
+
+    const loftMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 4), finish: 'wood' });
+    const lb = new PRIM.Batch(loftMat, 0.045);
+    lb.box(15.6, 0.32, 5.9, 8, 3.24, 3.1, 0, 0, 0, 0.02);
+    lb.box(0.3, 3.1, 0.3, 3.5, 1.55, 5.8);
+    lb.box(0.3, 3.1, 0.3, 12.5, 1.55, 5.8);
+    lb.box(12.4, 0.3, 0.34, 6.4, 3.0, 5.85);
+    for (let lx = 0.6; lx < 12.7; lx += 1.6) lb.box(0.14, 0.9, 0.14, lx, 3.85, 5.8, 0, 0, UTIL.rng(-.05, .05));
+    lb.box(12.2, 0.12, 0.12, 6.5, 4.28, 5.8);
+    for (let i = 0; i < 9; i++) {
+      const top = (i + 1) * 0.34;
+      lb.box(2.3, top, 0.72, 14.4, top / 2, 12.0 - i * 0.72, 0, 0, 0, 0.012);
+      WORLD.addFloor(wx(14.4), 0, wz(12.0 - i * 0.72), 2.3, top, 0.72, 'stair');
+    }
+    lb.build(g);
+    WORLD.addFloor(wx(8), 3.08, wz(3.1), 15.6, 0.32, 5.9, 'loft');
+    WORLD.add(wx(3.5), 1.55, wz(5.8), 0.5, 3.1, 0.5, 'post');
+    WORLD.add(wx(12.5), 1.55, wz(5.8), 0.5, 3.1, 0.5, 'post');
+    WORLD.add(wx(6.5), 3.85, wz(5.8), 12.2, 1.0, 0.35, 'railing');
+
+    parent.add(g);
+    return g;
+  }
+
+  /* A plank workbench: top, four legs, one collider. */
+  function workbench(parent, x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.04);
+    wb.box(2.8, 0.14, 0.9, 0, 0.92, 0, 0, 0, 0.01, 0.02);
+    [[-1.25, 0.35], [1.25, 0.35], [-1.25, -0.35], [1.25, -0.35]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
+    wb.build(g);
+    parent.add(g);
+    WORLD.addFloor(x, 0, z, 2.8, 1.0, 0.9, 'bench');
+    return g;
+  }
+
+  /* A pitchfork leaning where someone left it. No collider -- it never had
+     one, and giving it one now would change where players can stand. */
+  function pitchfork(parent, x, z) {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.rotation.z = 0.22; g.rotation.y = 0.5;
+    PRIM.cyl(0.05, 0.05, 2.2, 8, MAT.toon(PAL.rustDeep), { pos: [0, 1.1, 0], parent: g, outline: 0.028 });
+    const tb = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.028);
+    tb.box(0.5, 0.08, 0.08, 0, 2.2, 0);
+    [-0.2, 0, 0.2].forEach(o => tb.box(0.06, 0.5, 0.06, o, 2.45, 0));
+    tb.build(g);
+    parent.add(g);
+    return g;
+  }
+
   return { barrel, crate, plank, can, bottle, hayBale, signPost, lantern, rock, tree, stump, ruin,
-           siloTower, siloSmall, blobShadow, registerBoil, registerWobble };
+           siloTower, siloSmall, barnShell, workbench, pitchfork,
+           blobShadow, registerBoil, registerWobble };
 })();
 
 /* ============================== [LEVEL] ============================== */
@@ -7775,168 +7919,13 @@ const LEVEL = (() => {
   }
 
   /* ---------------- the barn ---------------- */
+  /* The map layer builds the barn. LEVEL holds none of it -- shell, hay,
+     crates, lanterns, workbench, pitchfork and both spawn markers are live
+     instances the editor owns. */
   function buildBarn(parent) {
-    const X0 = 6, X1 = 22, Z0 = -15, Z1 = -1;
-    const WALL = 0.42, TOP = 6, RIDGE = 9.4;
-    const red = MAT.toon(PAL.rust, { map: TEX.wood(PAL.rust, PAL.rustDeep, 3), finish: 'wood' });
-    const b = new PRIM.Batch(red, 0.05);
-
-    // --- west wall (main door faces the yard) ---
-    b.box(WALL, TOP, 5.6, X0, TOP / 2, -12.2, 0, 0, 0, 0.03);
-    b.box(WALL, TOP, 4.4, X0, TOP / 2, -3.2, 0, 0, 0, 0.03);
-    b.box(WALL, 1.4, 4.0, X0, 5.3, -7.4, 0, 0, 0, 0.03);
-    WORLD.add(X0, TOP / 2, -12.2, WALL + .2, TOP, 5.6, 'barn');
-    WORLD.add(X0, TOP / 2, -3.2, WALL + .2, TOP, 4.4, 'barn');
-
-    // --- east wall, split around a doorway into the basement-stair vestibule ---
-    b.box(WALL, TOP, 0.5, X1, TOP / 2, -14.75, 0, 0, 0, 0.03);
-    b.box(WALL, TOP, 10.5, X1, TOP / 2, -6.25, 0, 0, 0, 0.03);
-    WORLD.add(X1, TOP / 2, -14.75, WALL + .2, TOP, 0.5, 'barn');
-    WORLD.add(X1, TOP / 2, -6.25, WALL + .2, TOP, 10.5, 'barn');
-
-    // --- basement vestibule: the east-side bump-out remains a secondary
-    // hatch landing even though v0.31 moves the gated main staircase into the
-    // original barn's center aisle. ---
-    b.box(WALL, TOP, 3.4 + WALL, 24.8, TOP / 2, -13.0, 0, 0, 0, 0.03);
-    b.box(2.8 + WALL, TOP, WALL, 23.4, TOP / 2, -14.7, 0, 0, 0, 0.03);
-    b.box(2.8 + WALL, TOP, WALL, 23.4, TOP / 2, -11.3, 0, 0, 0, 0.03);
-    WORLD.add(24.8, TOP / 2, -13.0, WALL + .2, TOP, 3.4 + WALL, 'barn');
-    WORLD.add(23.4, TOP / 2, -14.7, 2.8 + WALL, TOP, WALL + .2, 'barn');
-    WORLD.add(23.4, TOP / 2, -11.3, 2.8 + WALL, TOP, WALL + .2, 'barn');
-
-    // --- north gable wall: ground door + hay door ---
-    b.box(5.0, TOP, WALL, 8.5, TOP / 2, Z0, 0, 0, 0, 0.03);
-    b.box(3.0, 3.0, WALL, 12.5, 4.5, Z0, 0, 0, 0, 0.03);
-    b.box(2.0, TOP, WALL, 15.0, TOP / 2, Z0, 0, 0, 0, 0.03);
-    b.box(3.0, 3.5, WALL, 17.5, 1.75, Z0, 0, 0, 0, 0.03);
-    b.box(3.0, 0.3, WALL, 17.5, 5.85, Z0, 0, 0, 0, 0.03);
-    b.box(3.0, TOP, WALL, 20.5, TOP / 2, Z0, 0, 0, 0, 0.03);
-    WORLD.add(8.5, TOP / 2, Z0, 5.0, TOP, WALL + .2, 'barn');
-    WORLD.add(15.0, TOP / 2, Z0, 2.0, TOP, WALL + .2, 'barn');
-    WORLD.add(17.5, 1.75, Z0, 3.0, 3.5, WALL + .2, 'barn');
-    WORLD.add(20.5, TOP / 2, Z0, 3.0, TOP, WALL + .2, 'barn');
-    // wall above the ground door and above the hay door, so the loft is enclosed
-    // everywhere except the hay opening itself
-    WORLD.add(12.5, 4.5, Z0, 3.0, 3.0, WALL + .2, 'barn');
-    WORLD.add(17.5, 5.85, Z0, 3.0, 0.3, WALL + .2, 'barn');
-
-    // --- south gable wall with a window ---
-    b.box(5.5, TOP, WALL, 8.75, TOP / 2, Z1, 0, 0, 0, 0.03);
-    b.box(3.5, 2.2, WALL, 13.25, 1.1, Z1, 0, 0, 0, 0.03);
-    b.box(3.5, 2.2, WALL, 13.25, 4.9, Z1, 0, 0, 0, 0.03);
-    b.box(7.0, TOP, WALL, 18.5, TOP / 2, Z1, 0, 0, 0, 0.03);
-    WORLD.add(8.75, TOP / 2, Z1, 5.5, TOP, WALL + .2, 'barn');
-    WORLD.add(13.25, 1.1, Z1, 3.5, 2.2, WALL + .2, 'barn');
-    WORLD.add(18.5, TOP / 2, Z1, 7.0, TOP, WALL + .2, 'barn');
-
-    // --- gable triangles, stacked into a stepped cartoon peak ---
-    const rise = RIDGE - TOP, steps = 6;
-    for (let i = 0; i < steps; i++) {
-      const w = 16 * (1 - (i + 0.4) / steps);
-      const y = TOP + (i + 0.5) * (rise / steps);
-      b.box(w, rise / steps + 0.02, WALL, 14, y, Z0, 0, 0, 0, 0.02);
-      b.box(w, rise / steps + 0.02, WALL, 14, y, Z1, 0, 0, 0, 0.02);
-    }
-    b.build(parent);
-
-    // --- roof ---
-    const roofMat = MAT.toon(PAL.charcoal, { map: TEX.wood(PAL.charcoal, PAL.ink, 4), finish: 'wood' });
-    const rb = new PRIM.Batch(roofMat, 0.055);
-    const ang = Math.atan2(rise, 8);
-    rb.box(9.4, 0.36, 15.4, 10, 7.72, -8, 0, 0, ang, 0.03);
-    rb.box(9.4, 0.36, 15.4, 18, 7.72, -8, 0, 0, -ang, 0.03);
-    rb.box(0.7, 0.5, 15.8, 14, 9.5, -8, 0, 0, 0, 0.03);
-    // Flat lean-to cap over the basement-stair vestibule bump-out.
-    rb.box(3.4, 0.36, 3.8, 23.6, TOP + 0.18, -13.0, 0, 0, 0, 0.02);
-    rb.build(parent);
-
-    // --- big sliding doors, cracked open ---
-    const doorMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rust, 2), finish: 'wood' });
-    const db = new PRIM.Batch(doorMat, 0.045);
-    db.box(0.16, 4.4, 1.5, X0 - 0.16, 2.25, -9.9, 0, 0, 0.02, 0.03);
-    db.box(0.16, 4.4, 1.1, X0 - 0.16, 2.2, -5.2, 0, 0, -0.03, 0.03);
-    // X bracing
-    db.box(0.1, 0.22, 1.9, X0 - 0.3, 2.25, -9.9, 0.62, 0, 0);
-    db.box(0.1, 0.22, 1.9, X0 - 0.3, 2.25, -9.9, -0.62, 0, 0);
-    db.box(0.16, 0.2, 4.6, X0 - 0.2, 4.62, -7.6, 0, 0, 0);
-    db.build(parent);
-    WORLD.add(X0 - 0.16, 2.25, -9.9, 0.5, 4.4, 1.5, 'door');
-    WORLD.add(X0 - 0.16, 2.2, -5.2, 0.5, 4.4, 1.1, 'door');
-
-    // --- interior floor boards + loft ---
-    const floorMat = MAT.toon(PAL.dirtDeep, { map: TEX.wood(PAL.dirtDeep, PAL.charcoal, 5), finish: 'wood' });
-    const fb = new PRIM.Batch(floorMat, 0);
-    fb.plane(15.6, 13.6, 14, 0.03, -8, -Math.PI / 2, 0, 0);
-    fb.build(parent, { ray: false });
-
-    const loftMat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 4), finish: 'wood' });
-    const lb = new PRIM.Batch(loftMat, 0.045);
-    lb.box(15.6, 0.32, 5.9, 14, 3.24, -11.9, 0, 0, 0, 0.02);
-    // support posts + beam
-    lb.box(0.3, 3.1, 0.3, 9.5, 1.55, -9.2);
-    lb.box(0.3, 3.1, 0.3, 18.5, 1.55, -9.2);
-    // Stop the cross-beam and railing well before the stair head. Their old
-    // ends visually and physically pinched the final two steps.
-    lb.box(12.4, 0.3, 0.34, 12.4, 3.0, -9.15);
-    for (let x = 6.6; x < 18.7; x += 1.6) lb.box(0.14, 0.9, 0.14, x, 3.85, -9.2, 0, 0, UTIL.rng(-.05, .05));
-    lb.box(12.2, 0.12, 0.12, 12.5, 4.28, -9.2);
-    // A wider flight leaves enough steering room for two players to pass
-    // without scraping the east wall or having to align perfectly.
-    for (let i = 0; i < 9; i++) {
-      const top = (i + 1) * 0.34;
-      lb.box(2.3, top, 0.72, 20.4, top / 2, -3.0 - i * 0.72, 0, 0, 0, 0.012);
-      WORLD.addFloor(20.4, 0, -3.0 - i * 0.72, 2.3, top, 0.72, 'stair');
-    }
-    lb.build(parent);
-    WORLD.addFloor(14, 3.08, -11.9, 15.6, 0.32, 5.9, 'loft');
-    WORLD.add(9.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
-    WORLD.add(18.5, 1.55, -9.2, 0.5, 3.1, 0.5, 'post');
-    WORLD.add(12.5, 3.85, -9.2, 12.2, 1.0, 0.35, 'railing');
-
-    // --- interior dressing ---
-    PROPS.hayBale(parent, 9.4, 0, -4.2, 0.2);
-    PROPS.hayBale(parent, 9.6, 0.85, -4.4, -0.15);
-    PROPS.hayBale(parent, 11.0, 0, -3.6, -0.5);
-    PROPS.hayBale(parent, 16.5, 3.4, -12.6, 0.1);
-    PROPS.hayBale(parent, 12.2, 3.4, -13.0, -0.3);
-    // Keep the barrel under the loft and clear of the rotated center stair.
-    PROPS.barrel(parent, 20.0, -10.8);
-    PROPS.crate(parent, 8.2, 0, -13.4, 1.0);
-    PROPS.crate(parent, 8.4, 1.0, -13.2, 0.85, 0.4);
-    PROPS.crate(parent, 9.4, 0, -12.6, 0.9, -0.3);
-    PROPS.can(parent, 8.4, 1.85, -13.2);
-    PROPS.can(parent, 9.4, 0.9, -12.6);
-    PROPS.bottle(parent, 20.0, 1.25, -10.8);
-    PROPS.lantern(parent, 12.5, 4.6, -6.5, 0.9);
-    PROPS.lantern(parent, 15.0, 3.9, -12.4, 0.5);
-    PROPS.lantern(parent, 23.6, 2.4, -13.0, 0);
-
-    // Workbench stays along the south wall, outside the gated stair footprint.
-    const wb = new PRIM.Batch(MAT.toon(PAL.rustDeep, { map: TEX.wood(PAL.rustDeep, PAL.charcoal, 2), finish: 'wood' }), 0.04);
-    wb.box(2.8, 0.14, 0.9, 16.6, 0.92, -1.9, 0, 0, 0.01, 0.02);
-    [[15.35, -1.55], [17.85, -1.55], [15.35, -2.25], [17.85, -2.25]].forEach(p => wb.box(0.14, 0.9, 0.14, p[0], 0.45, p[1]));
-    wb.build(parent);
-    WORLD.addFloor(16.6, 0, -1.9, 2.8, 1.0, 0.9, 'bench');
-    PROPS.can(parent, 15.8, 1.0, -1.9);
-    PROPS.bottle(parent, 17.2, 1.0, -2.0);
-
-    // Pitchfork still leans on the east wall, away from both stair routes.
-    const pf = new THREE.Group();
-    pf.position.set(21.4, 0, -12.4);
-    pf.rotation.z = 0.22; pf.rotation.y = 0.5;
-    PRIM.cyl(0.05, 0.05, 2.2, 8, MAT.toon(PAL.rustDeep), { pos: [0, 1.1, 0], parent: pf, outline: 0.028 });
-    const tb = new PRIM.Batch(MAT.toon(PAL.blueGrayDk), 0.028);
-    tb.box(0.5, 0.08, 0.08, 0, 2.2, 0);
-    [-0.2, 0, 0.2].forEach(o => tb.box(0.06, 0.5, 0.06, o, 2.45, 0));
-    tb.build(pf);
-    parent.add(pf);
-
-    // [SPAWN] Phase 2 hooks. Data only — nothing is created from these.
-    WORLD.addSpawn(14, 0, -6, 'barn_floor');
-    WORLD.addSpawn(14, 3.4, -12, 'barn_loft');
+    CAMPAIGN.open('barn', parent).build();
   }
 
-  /* ---------------- water tower with a climbable overlook ---------------- */
   function buildTower(parent) {
     const CX = -17, CZ = -6.75;
     const wood = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 3), finish: 'wood' });
@@ -31935,8 +31924,42 @@ const REGISTRY = (() => {
       color: { type: 'text', label: 'Colour (hex, blank = random)', def: '' }
     }
   });
-  prop('prop_crate',   'Crate',     (g, d) => PROPS.crate(g, 0, 0, 0, 0.85, 0, placedY(d)));
-  prop('prop_haybale', 'Hay Bale',  (g, d) => PROPS.hayBale(g, 0, 0, 0, 0, placedY(d)));
+  /* Crates vary in size across the farm (0.85 on the silo deck, 1.0 and 0.9
+     in the barn), so size is transform.scale and the builder takes it.
+     `spin: random` makes the builder pick its own yaw, which is not a
+     flourish: PROPS.crate draws from the seeded RNG only when rotY is
+     undefined, and the barn has one crate authored that way. Expressing it
+     any other way would consume a different number of numbers. */
+  register({
+    id: 'prop_crate', name: 'Crate', category: 'Props', collides: true,
+    scaleInBuilder: true,
+    build: (ctx, d) => {
+      const g = new THREE.Group();
+      const t = (d && d.transform) || {};
+      const p = (d && d.properties) || {};
+      const random = String(p.spin || '').trim().toLowerCase() === 'random';
+      PROPS.crate(g, 0, 0, 0, t.scale === undefined ? 1 : t.scale,
+        random ? undefined : 0, placedY(d));
+      return g;
+    },
+    properties: {
+      spin: { type: 'text', label: 'Yaw ("random" to let it pick)', def: '' }
+    }
+  });
+  /* rotationInBuilder: hayBale reads `rotY || UTIL.rng(-0.4, 0.4)`, so an
+     authored rotation skips a draw and a zero does not. The rotation has to
+     reach the builder or the seeded stream shifts. */
+  register({
+    id: 'prop_haybale', name: 'Hay Bale', category: 'Props', collides: true,
+    rotationInBuilder: true,
+    build: (ctx, d) => {
+      const g = new THREE.Group();
+      const t = (d && d.transform) || {};
+      PROPS.hayBale(g, 0, 0, 0, t.rotation || 0, placedY(d));
+      return g;
+    },
+    properties: {}
+  });
   /* --- props whose builder takes a size ------------------------------
      transform.scale is passed INTO the builder rather than applied to the
      returned group afterwards, and SANDBOX is told so with scaleInBuilder.
@@ -31992,17 +32015,28 @@ const REGISTRY = (() => {
   });
   prop('prop_can',     'Tin Can',   g => PROPS.can(g, 0, 0, 0), false);
   prop('prop_bottle',  'Bottle',    g => PROPS.bottle(g, 0, 0, 0), false);
+  /* `hang` is the cable it dangles from, not a rotation -- PROPS.lantern's
+     fourth argument draws a cylinder when it is non-zero, so it is geometry
+     and has to be authored. The barn's three lanterns use 0.9, 0.5 and 0. */
   register({
     id: 'prop_lantern', name: 'Lantern', category: 'Props', collides: false,
     build: (ctx, d) => {
       const g = new THREE.Group();
-      PROPS.lantern(g, 0, lanternH(d), 0, 0);
+      const p = (d && d.properties) || {};
+      const hang = parseFloat(p.hang);
+      PROPS.lantern(g, 0, lanternH(d), 0, Number.isFinite(hang) ? hang : 0);
       return g;
     },
     properties: {
-      height: { type: 'text', label: 'Hangs above placement', def: '1.2' }
+      height: { type: 'text', label: 'Hangs above placement', def: '1.2' },
+      hang:   { type: 'text', label: 'Cable length (0 = none)', def: '0' }
     }
   });
+  prop('prop_barn_shell', 'Barn Shell', g => PROPS.barnShell(g, 0, 0));
+  prop('prop_workbench', 'Workbench', g => PROPS.workbench(g, 0, 0));
+  // No collider by design: the pitchfork never had one, and giving it one
+  // now would change where a player can stand.
+  prop('prop_pitchfork', 'Pitchfork', g => PROPS.pitchfork(g, 0, 0), false);
 
   register({
     id: 'prop_sign', name: 'Sign Post', category: 'Props', collides: true,
@@ -32212,7 +32246,13 @@ const SANDBOX = (() => {
 
     const t = data.transform;
     object3D.position.set(t.position.x, t.position.y, t.position.z);
-    object3D.rotation.y = t.rotation || 0;
+    /* rotationInBuilder is the twin of scaleInBuilder, and it exists for the
+       same reason: some builders take rotation as an ARGUMENT and branch on
+       it. PROPS.hayBale does `rotY || UTIL.rng(-0.4, 0.4)` -- an authored
+       rotation skips a random draw that a zero does not. Rotating the group
+       afterwards would look right and consume a different number of numbers
+       from the seeded stream, which moves every prop built after it. */
+    object3D.rotation.y = entry.rotationInBuilder ? 0 : (t.rotation || 0);
     const s = t.scale === undefined ? 1 : t.scale;
     // A scaleInBuilder entry already sized its geometry AND its collider from
     // transform.scale, so scaling the group as well would double it.
@@ -32325,8 +32365,14 @@ const SANDBOX = (() => {
       translate(inst.handle, dx, dy, dz);
     }
     if (rotation !== undefined && rotation !== null) {
-      o.rotation.y = rotation;
+      const wasRot = t.rotation || 0;
       t.rotation = rotation;
+      if (inst.entry.rotationInBuilder) {
+        // Geometry depends on it, same as a scaleInBuilder size change.
+        if (rotation !== wasRot) return rebuild(inst);
+      } else {
+        o.rotation.y = rotation;
+      }
     }
     if (scale !== undefined && scale !== null) {
       const was = t.scale === undefined ? 1 : t.scale;
@@ -32628,14 +32674,14 @@ const CAMPAIGN = (() => {
   /* One authored object, for the pieces that are not a repeated row of the
      same type. `y` and `rotation` are last because most objects sit on the
      dirt facing north and never pass them. */
-  function obj(id, type, x, z, properties, y, rotation) {
+  function obj(id, type, x, z, properties, y, rotation, scale) {
     return {
-      id: 'scatter_' + id,
+      id: id,
       type: type,
       transform: {
         position: { x: x, y: y || 0, z: z },
         rotation: rotation || 0,
-        scale: 1
+        scale: scale === undefined ? 1 : scale
       },
       properties: properties || {}
     };
@@ -32672,13 +32718,13 @@ const CAMPAIGN = (() => {
        there is nothing left inline, and CAMPAIGN.open().build() no longer
        needs a type filter to interleave with LEVEL's own code. */
     [
-      obj('ruin_01',   'prop_ruin',  -25,   -25),
-      obj('barrel_01', 'prop_barrel', -22.4, -23.2, { color: '5C7E99' }),
-      obj('can_01',    'prop_can',    -22.4, -23.2, {}, 1.28),
-      obj('sign_01',   'prop_sign',   -21.4, -20.4,
+      obj('scatter_ruin_01',   'prop_ruin',  -25,   -25),
+      obj('scatter_barrel_01', 'prop_barrel', -22.4, -23.2, { color: '5C7E99' }),
+      obj('scatter_can_01',    'prop_can',    -22.4, -23.2, {}, 1.28),
+      obj('scatter_sign_01',   'prop_sign',   -21.4, -20.4,
         { text: 'CONDEMNED', w: '1.9', h: '0.7', postH: '1.6', bg: 'A85A3C', fg: 'F6E9D2' },
         0, 0.6),
-      obj('spawn_01',  'spawn_enemy', -19,   -22,   { kind: 'ruins' })
+      obj('scatter_spawn_01',  'spawn_enemy', -19,   -22,   { kind: 'ruins' })
     ],
     expand('prop_stump', 'scatter_stump', [
       [-11, 9], [8, 20], [-16, -16]
@@ -32700,13 +32746,50 @@ const CAMPAIGN = (() => {
     obj('silo_east',   'prop_silo_small', 10.5, -72,   { height: '7.2' }),
     // On the deck: the crate carries no ground shadow at 8.2, which is why
     // PROPS.crate had to learn where it lands.
-    obj('silo_crate',  'prop_crate',      -0.6, -65.8, {}, 8.2, 0.3),
+    obj('silo_crate',  'prop_crate',      -0.6, -65.8, {}, 8.2, 0.3, 0.85),
     obj('silo_lantern','prop_lantern',    4.5,  -65.4, { height: '0.7' }, 8.2),
     obj('silo_sign',   'prop_sign',       3.8,  -64.7,
       { text: 'HIGHEST|GROUND', w: '1.6', h: '0.8', postH: '0.7', bg: 'F6E9D2', fg: '5C7E99' },
       0, Math.PI),
     obj('silo_spawn_base', 'spawn_enemy', 2,    -72,   { kind: 'silo_base' }),
     obj('silo_spawn_deck', 'spawn_enemy', 2,    -68,   { kind: 'silo_deck' }, 8.2)
+  ]);
+
+  /* ---- barn: the main barn and everything in it -------------------------
+     Migrated out of LEVEL.buildBarn, in that function's drawing order --
+     shell, hay, barrel, crates, cans, bottle, lanterns, workbench and its
+     two items, pitchfork, spawns. The shell's loft railing and every hay
+     bale draw from the seeded RNG, so the order is the content.
+
+     Two rotations here are load-bearing rather than cosmetic. The hay bales
+     carry theirs as transform.rotation with prop_haybale marked
+     rotationInBuilder, because PROPS.hayBale reads `rotY || rng(...)` and a
+     zero would take a random draw the authored farm never took. The first
+     crate is the opposite case: buildBarn passed it no rotation at all, so
+     it DOES draw -- `spin: random` is how that is said in data. */
+  define('barn', 'Campaign — Barn', [
+    obj('barn_shell',   'prop_barn_shell', 6,    -15),
+    obj('barn_hay_1',   'prop_haybale',    9.4,  -4.2,  {}, 0,    0.2),
+    obj('barn_hay_2',   'prop_haybale',    9.6,  -4.4,  {}, 0.85, -0.15),
+    obj('barn_hay_3',   'prop_haybale',    11.0, -3.6,  {}, 0,    -0.5),
+    obj('barn_hay_4',   'prop_haybale',    16.5, -12.6, {}, 3.4,  0.1),
+    obj('barn_hay_5',   'prop_haybale',    12.2, -13.0, {}, 3.4,  -0.3),
+    obj('barn_barrel',  'prop_barrel',     20.0, -10.8),
+    obj('barn_crate_1', 'prop_crate',      8.2,  -13.4, { spin: 'random' }, 0,   0,    1.0),
+    obj('barn_crate_2', 'prop_crate',      8.4,  -13.2, {},                 1.0, 0.4,  0.85),
+    obj('barn_crate_3', 'prop_crate',      9.4,  -12.6, {},                 0,   -0.3, 0.9),
+    obj('barn_can_1',   'prop_can',        8.4,  -13.2, {}, 1.85),
+    obj('barn_can_2',   'prop_can',        9.4,  -12.6, {}, 0.9),
+    obj('barn_bottle',  'prop_bottle',     20.0, -10.8, {}, 1.25),
+    obj('barn_lamp_1',  'prop_lantern',    12.5, -6.5,  { height: '0', hang: '0.9' }, 4.6),
+    obj('barn_lamp_2',  'prop_lantern',    15.0, -12.4, { height: '0', hang: '0.5' }, 3.9),
+    obj('barn_lamp_3',  'prop_lantern',    23.6, -13.0, { height: '0', hang: '0' },   2.4),
+    obj('barn_bench',   'prop_workbench',  16.6, -1.9),
+    obj('barn_can_3',   'prop_can',        15.8, -1.9,  {}, 1.0),
+    obj('barn_bottle_2','prop_bottle',     17.2, -2.0,  {}, 1.0),
+    obj('barn_fork',    'prop_pitchfork',  21.4, -12.4),
+    obj('barn_spawn_floor', 'spawn_enemy', 14,   -6,    { kind: 'barn_floor' }),
+    obj('barn_spawn_loft',  'spawn_enemy', 14,   -12,   { kind: 'barn_loft' }, 3.4)
   ]);
 
   function has(id) { return !!fragments[id]; }
