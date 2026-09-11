@@ -939,3 +939,39 @@ hold `THREE.Group` references, and a fixture's position is already in its
 collider's box, which the digest compares exactly. The suite asserts the four
 by name instead of by count, so a future migration cannot silently drop or
 swap one.
+
+### Verified
+
+Farm **byte-identical** to the regions commit: `8749ca8da68b7c30`, 7/7 on the
+comparison, 1335 solids, 15 ladders, 1 portal, 58 spawn markers, 3169 meshes.
+Four interactive records changed homes and nothing in the world moved.
+
+Migration suite **65/65** (51 + 14 fixture checks). All three editor suites
+green: `editor-test` 40/40, `editor-mode-test` 25/25, `editor-mouse-test`
+22/22.
+
+`editor-test` failed its first run with a bare `TimeoutError`, and the commit
+went out saying so with the cause unresolved. It was contention, not code:
+that run was first in a chain that overlapped the migration suite, so three
+headless browsers were sharing one ~1 fps software rasteriser against a 90 s
+boot wait. The other two suites started after the migration run finished and
+both passed. Re-run alone — 0 Chrome processes on the machine at launch — it
+returns 40/40.
+
+Two process notes, since both cost real time:
+
+- The chain used `... | tail -4` per suite, which truncated the exception and
+  left "name: 'TimeoutError'" with no stack and nothing saying what it was
+  waiting for. A failing run is exactly when the output matters most; do not
+  tail a suite that might throw.
+- Do not run suites concurrently on this machine to save wall clock. Two
+  browsers is the practical ceiling and even that starves; at three, a pass
+  and a timeout are indistinguishable.
+
+### What is left
+
+`buildNorthBarn` (316 lines) and `buildBasement` (881 lines). Neither is
+gated on engine work any more — regions and fixtures were the two blockers,
+and both are cleared. The basement still needs one decision this phase
+deliberately did not make: its hatches are a list with two named pointers
+into it, so a list-valued fixture has to be designed rather than assumed.
