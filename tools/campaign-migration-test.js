@@ -91,9 +91,20 @@ if (compareArg !== -1) {
   check('collision data is byte-identical', A.collisionHash === B.collisionHash,
     A.collisionHash + ' vs ' + B.collisionHash);
   if (A.collisionHash !== B.collisionHash) {
+    /* A region line serialises a whole navigation graph -- the corn maze's is
+       about 6 KB of booleans. Printed raw it scrolls every other differing
+       line off the screen, which is the opposite of what a diff is for. Show
+       the head, and say how much was cut so nobody mistakes it for the whole
+       line. */
+    const brief = l => l.length <= 160 ? l
+      : l.slice(0, 160) + ' ...[' + (l.length - 160) + ' more chars]';
     const sa = new Set(A.fixed), sb = new Set(B.fixed);
-    A.fixed.filter(l => !sb.has(l)).slice(0, 6).forEach(l => console.log('   only in base: ' + l));
-    B.fixed.filter(l => !sa.has(l)).slice(0, 6).forEach(l => console.log('   only in new : ' + l));
+    const onlyA = A.fixed.filter(l => !sb.has(l)), onlyB = B.fixed.filter(l => !sa.has(l));
+    onlyA.slice(0, 6).forEach(l => console.log('   only in base: ' + brief(l)));
+    onlyB.slice(0, 6).forEach(l => console.log('   only in new : ' + brief(l)));
+    if (onlyA.length > 6) console.log('   ...and ' + (onlyA.length - 6) + ' more only in base');
+    if (onlyB.length > 6) console.log('   ...and ' + (onlyB.length - 6) + ' more only in new');
+    console.log('   (' + onlyA.length + ' line(s) only in base, ' + onlyB.length + ' only in new)');
   }
   ['solids', 'ladders', 'portals', 'spawns', 'meshes'].forEach(k => {
     check('same ' + k + ' count', A.counts[k] === B.counts[k],
@@ -238,9 +249,33 @@ if (compareArg !== -1) {
           '|' + (l.enabled ? 'on' : 'off') +
           (l.oneWayDown ? '|oneway' : '') + (l.playerOnly ? '|playeronly' : ''));
     });
-    (WORLD.portals || []).forEach(p => lines.push('portal|' + (p.id || '')));
+    /* The ladder fix above was not swept across the other kinds, and all
+       three had the same disease -- fields named from memory rather than
+       from the constructor. `portal|p.id` ignored the box, the layers and
+       the enabled flag, so a migration could move a portal or leave one
+       switched on and still compare equal. The spawn line was worse: a
+       marker is `{position: Vector3, kind, layerId}`, so `m.x/m.y/m.z` were
+       all undefined and `m.tag || m.id` was undefined too -- every marker
+       in the farm digested to the same constant string. That is 58 markers
+       whose positions and load-bearing kind tags no comparison ever saw. */
+    (WORLD.portals || []).forEach(p => {
+      lines.push('portal|' + [p.minX, p.maxX, p.minY, p.maxY, p.minZ, p.maxZ,
+        p.normalX, p.normalZ].map(n).join(',') +
+        '|' + (p.id || '') + '|' + (p.from || '') + '/' + (p.to || '') +
+        '|' + (p.enabled ? 'on' : 'off'));
+    });
     (WORLD.spawnMarkers || []).forEach(m => {
-      lines.push('spawn|' + [m.x, m.y, m.z].map(n).join(',') + '|' + (m.tag || m.id || ''));
+      const p = m.position || {};
+      lines.push('spawn|' + [p.x, p.y, p.z].map(n).join(',') +
+        '|' + (m.kind || '') + '|' + (m.layerId || ''));
+    });
+    /* Region records -- the navigation data ENEMY steers by. Serialised
+       whole, because a region is whatever shape its builder chose and the
+       interesting part is often not a coordinate: the corn maze's value is
+       its grid of openings, and a shifted RNG stream would regenerate that
+       grid differently while every bounding number stayed put. */
+    Object.keys(WORLD.regions || {}).sort().forEach(name => {
+      lines.push('region|' + name + '|' + JSON.stringify(WORLD.regions[name]));
     });
     return {
       lines: lines,
@@ -248,7 +283,8 @@ if (compareArg !== -1) {
         solids: WORLD.solids.length,
         ladders: (WORLD.ladders || []).length,
         portals: (WORLD.portals || []).length,
-        spawns: (WORLD.spawnMarkers || []).length
+        spawns: (WORLD.spawnMarkers || []).length,
+        regions: Object.keys(WORLD.regions || {}).length
       }
     };
   });
@@ -577,6 +613,72 @@ if (compareArg !== -1) {
     kinds.typedKind);
   check('deleting the spawns releases their markers', kinds.releasedCleanly,
     kinds.after + ' vs ' + (kinds.after - (kinds.releasedCleanly ? 0 : 1)));
+
+  /* ---- regions: the fifth captured kind -------------------------------
+     The farm's two regions (cornMaze, northBarnStair) belong to builders
+     that have not migrated, so nothing in the shipped game exercises
+     capture, release or translate on one. That is exactly the state the
+     ladder branch of SANDBOX.translate was in when its digest turned out
+     to be blind to ladders, so these drive the mechanism directly. */
+  const regions = await page.evaluate(() => {
+    const out = {};
+    out.farmRegions = Object.keys(WORLD.regions).sort();
+
+    // Capture -> release, through the public API only.
+    const h = WORLD.beginCapture();
+    WORLD.addRegion('__probe', {
+      x: 10, z: 20, baseY: 1,
+      cols: 7, entrance: { c: 3, r: 4 },
+      bounds: { minX: 0, maxX: 100, minZ: -50, maxZ: 50 }
+    }, {
+      x: ['x', 'bounds.minX', 'bounds.maxX'],
+      y: ['baseY'],
+      z: ['z', 'bounds.minZ', 'bounds.maxZ', 'nope.missing']
+    });
+    WORLD.endCapture();
+    out.registered = !!WORLD.region('__probe');
+    out.readBack = WORLD.region('__probe').x;
+
+    // Translate: named fields move, unnamed ones must not.
+    SANDBOX._translate(h, 5, 2, -3);
+    const p = WORLD.region('__probe');
+    out.moved = [p.x, p.baseY, p.z, p.bounds.minX, p.bounds.maxX, p.bounds.minZ, p.bounds.maxZ];
+    // cols and the entrance cell are indices, not positions.
+    out.indicesUntouched = p.cols === 7 && p.entrance.c === 3 && p.entrance.r === 4;
+    // A path that resolves to nothing must not invent a field.
+    out.noPhantomField = !('nope' in p);
+
+    WORLD.release(h);
+    out.releasedProbe = !WORLD.region('__probe');
+    // ...and releasing a handle must not take the farm's regions with it.
+    out.farmIntact = Object.keys(WORLD.regions).sort().join(',') === out.farmRegions.join(',');
+
+    // A name replaced by a later builder belongs to whoever captured that
+    // one -- releasing the first handle must not delete the second record.
+    const h1 = WORLD.beginCapture();
+    WORLD.addRegion('__dup', { x: 1 }, { x: ['x'] });
+    WORLD.endCapture();
+    const h2 = WORLD.beginCapture();
+    WORLD.addRegion('__dup', { x: 2 }, { x: ['x'] });
+    WORLD.endCapture();
+    WORLD.release(h1);
+    out.replacementSurvives = !!WORLD.region('__dup') && WORLD.region('__dup').x === 2;
+    WORLD.release(h2);
+    out.bothReleased = !WORLD.region('__dup');
+    return out;
+  });
+  check('the farm registers both of its regions', regions.farmRegions.length === 2,
+    regions.farmRegions.join(','));
+  check('a region can be captured and read back', regions.registered && regions.readBack === 10);
+  check('translate moves every field the axes name',
+    JSON.stringify(regions.moved) === JSON.stringify([15, 3, 17, 5, 105, -53, 47]),
+    JSON.stringify(regions.moved));
+  check('translate leaves cell indices alone', regions.indicesUntouched);
+  check('an axis path that resolves to nothing creates nothing', regions.noPhantomField);
+  check('release drops the region it captured', regions.releasedProbe);
+  check("release does not touch regions it did not capture", regions.farmIntact);
+  check('releasing a replaced name spares the replacement', regions.replacementSurvives);
+  check('releasing the replacement does remove it', regions.bothReleased);
 
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 

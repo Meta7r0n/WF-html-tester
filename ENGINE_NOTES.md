@@ -658,3 +658,178 @@ engine blockers from section 15 — the registry contract cannot express a door
 that owns its collider, and `WORLD.cornMaze`/`WORLD.northBarnStair` are
 ad-hoc properties the capture scope cannot see. Those are engine work, not
 content work.
+
+---
+
+## 18. Phase 8: regions become a captured kind
+
+First of the two engine blockers from section 15, and the smaller one. No
+content moved in this phase — this is the engine work that has to exist
+before the North Barn can move at all.
+
+### The constraint
+
+`WORLD` captures four kinds: solids, ladders, portals and spawn markers. A
+builder wraps its work in `beginCapture()/endCapture()`, and `release(handle)`
+un-registers exactly what it added. That is what makes deletion possible, and
+`SANDBOX.translate` is what makes moving possible.
+
+Two builders wrote outside all of it:
+
+```js
+WORLD.cornMaze       = { ... }   // buildCornMaze  -> ENEMY navigation graph
+WORLD.northBarnStair = { ... }   // buildNorthBarn -> ENEMY stair pursuit
+```
+
+Plain properties on `WORLD`, set by assignment. Not a captured kind, so
+nothing releases them and nothing moves them. Migrate the North Barn with
+that still true and you get a barn you can delete in the editor whose stair
+record still names coordinates inside it, with `ENEMY` steering grunts up a
+staircase that is no longer there — silently, because a stale record looks
+exactly like a live one.
+
+The asymmetry was already visible: `reset()` cleared `cornMaze` and not
+`northBarnStair`. Harmless only because nothing calls `reset()` today.
+
+### The shape
+
+`regions` is now the fifth captured kind:
+
+```js
+WORLD.addRegion(name, data, axes)   // register, and capture
+WORLD.region(name)                  // read
+```
+
+`data` is whatever record the builder wants — a region is not a box, and
+forcing one into a min/max shape would lose the corn maze's entire point.
+`axes` names which of its own fields are world coordinates, so
+`SANDBOX.translate` can move it without knowing anything about it:
+
+```js
+{ x: ['x', 'bounds.minX', 'bounds.maxX'],
+  y: ['baseY', 'topY'],
+  z: ['baseZ', 'topZ', 'bounds.minZ', 'bounds.maxZ'] }
+```
+
+Dotted paths reach nested fields. Anything unnamed stays put, which is the
+important half: the maze's `open` grid and its entrance cell indices are not
+positions, and a translate that bumped every number it found would corrupt
+them. A path that does not resolve to a number is skipped rather than
+created, so a typo in an axis list leaves the record alone instead of
+writing `NaN` into it.
+
+Release handles a map rather than a list, and drops a name only if it is
+still holding the record that was captured — a later builder may have
+replaced it, and that replacement belongs to whoever captured *it*.
+
+### One hardcoded box moved into its region
+
+`northBarnStairPursuitActive` carried the barn's own footprint as a literal:
+
+```js
+const inBarn = (x, z) => x > 32 && x < 64 && z > -79 && z < -54;
+```
+
+That is a hardcoded world assumption of exactly the kind the brief says to
+find before breaking. Left there, moving a migrated North Barn would move
+the stair run and leave the "am I in the barn" test behind — a half-migration
+that reads as an AI bug, not a data bug. It is `bounds` on the region now, so
+the whole record travels together.
+
+### The digest was under-recording three kinds out of four
+
+Phase 6 found that the ladder line named fields a ladder does not have. That
+fix was never swept across the rest, and the rest had the same disease —
+fields written from memory instead of from the constructor:
+
+```js
+lines.push('portal|' + (p.id || ''));                                  // the box, layers and enabled flag: not recorded
+lines.push('spawn|' + [m.x, m.y, m.z] ... + (m.tag || m.id || ''));    // a marker has none of x, y, z, tag or id
+```
+
+A spawn marker is `{ position: Vector3, kind, layerId }`. So every one of the
+farm's 58 markers digested to the identical string
+`spawn|undefined,undefined,undefined|`, and the digest could not have seen a
+marker move, a marker vanish, or a `kind` tag change — the tags section 15
+established are load-bearing identity, where a duplicate silently costs you
+an enemy. Both lines now record what the constructors actually produce, and
+regions serialise whole, because the interesting part of a region is usually
+not a coordinate: a shifted RNG stream would regenerate the maze's opening
+grid differently while every bounding number stayed exactly where it was.
+
+### Verified
+
+Control first: the base build digested twice compares clean, so the tool's
+output means something.
+
+Base vs new is **not** byte-identical, and that is the correct result — the
+new build records two region lines the old build had no concept of. What
+matters is that they are the *only* difference:
+
+```
+only in new : region|cornMaze|{...}
+only in new : region|northBarnStair|{...}
+(0 line(s) only in base, 2 only in new)
+PASS  same solids count    1335 vs 1335
+PASS  same ladders count   15 vs 15
+PASS  same portals count   1 vs 1
+PASS  same spawns count    58 vs 58
+PASS  same meshes count    3169 vs 3169
+PASS  every built mesh matches in geometry and scale   3169 meshes
+```
+
+**Zero** lines only in base is the claim that matters: nothing was removed
+and nothing moved. Two lines were added. And the digest is now genuinely
+watching portals and spawn markers while it says so.
+
+Negative control: a build identical to the new one except
+`northBarnStair.bounds.minX: 32 -> 33` — one character, in a field no
+geometry reads. It fails on exactly that line and nothing else:
+
+```
+only in base: region|northBarnStair|{..."bounds":{"minX":32,...}}
+only in new : region|northBarnStair|{..."bounds":{"minX":33,...}}
+(1 line(s) only in base, 1 only in new)
+```
+
+The `_translate` test hook was added to SANDBOX after the first digest, so
+the whole digest was retaken with it present: `8749ca8da68b7c30` both
+times, identical. Inert by measurement rather than by argument.
+
+Migration suite **51/51** — the existing 42 plus nine that drive the region
+mechanism directly, because no shipped builder does. They cover capture,
+read-back, translate (asserting the exact vector `[15,3,17,5,105,-53,47]`
+across three dotted paths), indices left alone, an axis path resolving to
+nothing creating nothing, release, release *not* touching regions it did
+not capture, and a name replaced by a second builder surviving the first
+handle's release.
+
+### Blocker 1 was misdiagnosed in section 15
+
+Section 15 said the registry contract `build(ctx, d) -> Object3D` "cannot
+express an interactive object" and would have to be extended. Working
+through the region case shows that is the wrong diagnosis, and acting on it
+would have meant changing a contract that is fine.
+
+A door does not need the contract to carry it out. It needs to *register*
+itself the way a collider does — during `build()`, into a captured kind, so
+the capture scope SANDBOX already opens records it and release/translate
+handle it for free. The contract stays exactly as it is; what was missing
+was a kind, not a return type. Blocker 1 is therefore the same shape as
+blocker 2 with a different consumer, which is also why it is worth doing
+next while the mechanism is fresh.
+
+Two facts found while confirming this, both in its favour:
+
+- All 30 call sites for the interactive records live inside `LEVEL`'s own
+  IIFE. Everything outside goes through exported functions
+  (`LEVEL.setBarnStairGate`, `LEVEL.setNorthBarnRailing`).
+- `animated` is on LEVEL's export list but nothing reads `LEVEL.animated`.
+
+So the refactor is contained to one module.
+
+### What this does not do
+
+Nothing is migrated. `buildNorthBarn` is still 316 lines of authored
+construction. This phase only makes it possible for the region half not to
+break when that happens.

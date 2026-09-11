@@ -6612,10 +6612,33 @@ const WORLD = {
   portals: [],
   /* [SPAWN] Phase 2 reads these. Nothing renders or spawns from them today. */
   spawnMarkers: [],
-  // Populated by LEVEL.buildCornMaze. ENEMY reads this compact navigation
-  // graph so grunts can follow the real open lanes instead of steering
-  // straight into a wall of corn.
-  cornMaze: null,
+
+  /* ---------------------------- regions -----------------------------
+     [ENGINE] Named records that describe a *place* rather than a surface:
+     the corn maze's navigation graph, the North Barn's stair run. ENEMY
+     reads them to steer through geometry that direct-line chasing gets
+     stuck on.
+
+     These used to be ad-hoc properties (`WORLD.cornMaze = {...}`) written
+     straight onto WORLD by whichever builder happened to make them. That
+     works exactly as long as the level is built once and never touched.
+     It is not a captured kind, so nothing releases it and nothing moves
+     it -- delete a North Barn in the editor and the stair record still
+     names coordinates inside a barn that is gone, with ENEMY still
+     steering grunts up it. The asymmetry showed: `reset()` cleared
+     cornMaze and not northBarnStair, harmless only because nothing calls
+     reset() today. A named kind cannot drift like that.
+
+     `axes` declares which fields are world coordinates, so a region can
+     travel with the object that owns it. Dotted paths reach nested
+     fields. Anything not named stays put -- cell indices and the maze's
+     opening grid are not positions. */
+  regions: {},
+  addRegion(name, data, axes) {
+    this.regions[name] = data;
+    return this._capture('regions', { name: name, data: data, axes: axes || null });
+  },
+  region(name) { return this.regions[name] || null; },
 
   /* ---------------------- registration capture ----------------------
      [ENGINE] WORLD was append-only: four flat arrays, no ownership, no way
@@ -6637,7 +6660,7 @@ const WORLD = {
      opened one -- every existing caller is completely unaffected. */
   _captureStack: [],
   beginCapture() {
-    const handle = { solids: [], ladders: [], portals: [], spawnMarkers: [] };
+    const handle = { solids: [], ladders: [], portals: [], spawnMarkers: [], regions: [] };
     this._captureStack.push(handle);
     return handle;
   },
@@ -6658,6 +6681,14 @@ const WORLD = {
       }
       owned.length = 0;
     });
+    // Regions are a map, not a list. Drop one only if it is still the
+    // record we registered -- a later builder may have replaced it, and
+    // that replacement belongs to whoever captured it.
+    const owned = handle.regions || [];
+    for (let i = 0; i < owned.length; i++) {
+      if (this.regions[owned[i].name] === owned[i].data) delete this.regions[owned[i].name];
+    }
+    owned.length = 0;
   },
 
   add(cx, cy, cz, w, h, d, tag) {
@@ -6802,7 +6833,7 @@ const WORLD = {
     this.layers = { surface: { id: 'surface', floorY: 0 } };
     this.portals.length = 0;
     this.spawnMarkers.length = 0;
-    this.cornMaze = null;
+    this.regions = {};
   },
 
   /* ---- shared actor collision ----
@@ -8477,13 +8508,13 @@ const LEVEL = (() => {
     // Preserve the exact generated openings as a lightweight navigation
     // graph. The maze stays deterministic because this is captured only
     // after the same seeded generation above has completed.
-    WORLD.cornMaze = {
+    WORLD.addRegion('cornMaze', {
       x0: X0, z0: Z0, cell: CELL, cols: cols, rows: rows,
       x1: X0 + cols * CELL, z1: Z0 + rows * CELL,
       open: open.map(directions => directions.slice()),
       westEntrance: { c: 0, r: WEST_ENTRANCE_ROW },
       northEntrance: { c: NORTH_STABLE_EXIT_COL, r: 0 }
-    };
+    }, { x: ['x0', 'x1'], z: ['z0', 'z1'] });
 
     const corn = cornBatches();
     const litter = new PRIM.Batch(MAT.toon(PAL.oliveDeep, { finish: 'leaf' }), 0.02);
@@ -8796,7 +8827,19 @@ const LEVEL = (() => {
     // setNorthBarnStairWaypoint. baseZ/topZ sit just clear of the first and
     // last step so a funneled approach always lines up with the run before
     // stepping onto it.
-    WORLD.northBarnStair = { x: 59.0, baseZ: -55.6, topZ: -66.0, baseY: 0, topY: UPPER_Y };
+    // `bounds` is the barn's own footprint, which the pursuit test used to
+    // carry as a hardcoded literal inside ENEMY. It lives here so the whole
+    // record travels together -- a stair that moved while the "am I in the
+    // barn" box stayed behind is the half-migration this capture exists to
+    // prevent.
+    WORLD.addRegion('northBarnStair', {
+      x: 59.0, baseZ: -55.6, topZ: -66.0, baseY: 0, topY: UPPER_Y,
+      bounds: { minX: 32, maxX: 64, minZ: -79, maxZ: -54 }
+    }, {
+      x: ['x', 'bounds.minX', 'bounds.maxX'],
+      y: ['baseY', 'topY'],
+      z: ['baseZ', 'topZ', 'bounds.minZ', 'bounds.maxZ']
+    });
 
     // West edge of the stair opening: continuous rail, open at both ends.
     // Its own group (not the shared `upper` batch above) so QUEST can pull
@@ -27140,7 +27183,7 @@ const ENEMY = (() => {
   }
 
   function setCornMazeChaseWaypoint(e, target) {
-    const m = WORLD.cornMaze;
+    const m = WORLD.region('cornMaze');
     if (!m) { e.mazeHasWaypoint = false; e.mazeEntranceCommitted = false; return false; }
     const start = cornMazeCell(m, e.pos.x, e.pos.z);
     const actualGoal = cornMazeCell(m, target.x, target.z);
@@ -27227,7 +27270,7 @@ const ENEMY = (() => {
   }
 
   function cornMazePursuitActive(e) {
-    const m = WORLD.cornMaze;
+    const m = WORLD.region('cornMaze');
     return !!m && (!!cornMazeCell(m, e.pos.x, e.pos.z) ||
       !!cornMazeCell(m, PLAYER.position.x, PLAYER.position.z));
   }
@@ -27242,7 +27285,7 @@ const ENEMY = (() => {
      mouth -- so the walk stays inside the run long enough for the shared
      step-up physics (WORLD.moveActor) to actually climb it. */
   function northBarnStairPursuitActive(e) {
-    const s = WORLD.northBarnStair;
+    const s = WORLD.region('northBarnStair');
     if (!s) return false;
     // Strictly between the two mouths -- not past either one -- so this
     // releases the instant the climb (or descent) actually completes,
@@ -27251,13 +27294,14 @@ const ENEMY = (() => {
     const onRun = Math.abs(e.pos.x - s.x) < 3.5 &&
       e.pos.z < s.baseZ && e.pos.z > s.topZ;
     if (onRun) return true;
-    const inBarn = (x, z) => x > 32 && x < 64 && z > -79 && z < -54;
+    const b = s.bounds;
+    const inBarn = (x, z) => x > b.minX && x < b.maxX && z > b.minZ && z < b.maxZ;
     return Math.abs(e.pos.y - PLAYER.position.y) > 1.2 &&
       (inBarn(e.pos.x, e.pos.z) || inBarn(PLAYER.position.x, PLAYER.position.z));
   }
 
   function setNorthBarnStairWaypoint(e, target) {
-    const s = WORLD.northBarnStair;
+    const s = WORLD.region('northBarnStair');
     if (!s) { e.mazeHasWaypoint = false; return false; }
     const goingUp = Math.abs(target.y - s.topY) < Math.abs(target.y - s.baseY);
     const mouthZ = goingUp ? s.baseZ : s.topZ;
@@ -32219,6 +32263,31 @@ const SANDBOX = (() => {
     (handle.spawnMarkers || []).forEach(m => {
       if (m.position) { m.position.x += dx; m.position.y += dy; m.position.z += dz; }
     });
+    // A region is a plain record of whatever shape its builder wanted, so it
+    // says which of its own fields are world coordinates. Everything it does
+    // not name -- cell indices, the maze's opening grid -- is not a position
+    // and must not be touched.
+    (handle.regions || []).forEach(r => {
+      if (!r.axes) return;
+      bumpFields(r.data, r.axes.x, dx);
+      bumpFields(r.data, r.axes.y, dy);
+      bumpFields(r.data, r.axes.z, dz);
+    });
+  }
+
+  /* Add `delta` to each named field of `data`. Names may be dotted paths so
+     a region can nest (northBarnStair.bounds.minX). A path that does not
+     resolve to a number is skipped rather than creating one -- a typo in an
+     axis list should leave the record alone, not scribble NaN into it. */
+  function bumpFields(data, paths, delta) {
+    if (!paths || !delta) return;
+    for (let i = 0; i < paths.length; i++) {
+      const parts = paths[i].split('.');
+      let o = data;
+      for (let p = 0; p < parts.length - 1 && o; p++) o = o[parts[p]];
+      const key = parts[parts.length - 1];
+      if (o && typeof o[key] === 'number') o[key] += delta;
+    }
   }
 
   /* Build one instance from map-data. The WORLD capture scope around
@@ -32479,6 +32548,11 @@ const SANDBOX = (() => {
     FORMAT_VERSION,
     ensureGroup, add, remove, clear, clearLayer, find, findByObject, setTransform, rebuild,
     serialize, load, instantiate, activateGameplay, deactivateGameplay, setMarkersVisible, playerSpawn,
+    /* Test hook. Region translation has no caller in the shipped game yet --
+       the two regions belong to builders that have not migrated -- and the
+       last thing written with nothing exercising it was the ladder branch of
+       this same function, whose digest turned out to be blind. */
+    _translate: translate,
     /* TWO VIEWS, and the short name is the safe one on purpose.
 
        `instances` is the PLAYER'S objects, and `count` is its length --

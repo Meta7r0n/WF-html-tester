@@ -113,6 +113,45 @@ local bounding-box size + scale), compared as a multiset over `LEVEL.root`.
 build; the comparison must fail and name the collider. A migration test that
 cannot fail is not evidence.
 
+### The digest has been blind three times. Check your field names.
+
+Every line in the collision digest is built by naming fields on a record. Three
+of the four kinds named fields the record does not have, and each one passed a
+migration it should have caught:
+
+| line | what it read | what the record actually has |
+|---|---|---|
+| `ladder` | `l.x`, `l.z`, `l.id` | `minX/maxX`, `snapX/snapZ`, `topExit*`, `bottomExit*`, `tag` |
+| `spawn` | `m.x`, `m.y`, `m.z`, `m.tag`, `m.id` | `position` (a `Vector3`), `kind`, `layerId` |
+| `portal` | `p.id` only | a full box, `from`/`to`, `normalX/Z`, `enabled` |
+
+The spawn line is the instructive one: all five names were wrong, so every
+marker in the farm digested to the identical string
+`spawn|undefined,undefined,undefined|`, and 58 markers compared equal to each
+other. A whole kind can be silently absent from the comparison while the
+summary line still prints a confident hash and a plausible count.
+
+If you add a kind, or touch one of these lines, read the constructor in
+`WORLD` — not your memory of it — and then prove the line can fail with a
+negative control aimed at that kind specifically.
+
+### Regions
+
+`WORLD.regions` is the fifth captured kind: named records describing a place
+(`cornMaze`, `northBarnStair`) that `ENEMY` steers by. They are serialised
+whole into the digest, because the interesting part of a region is usually not
+a coordinate — a shifted RNG stream regenerates the maze's grid of openings
+while every bounding number stays put.
+
+A region declares `axes` naming which of its own fields are world coordinates,
+so `SANDBOX.translate` can move it. Anything unnamed must not move: cell
+indices and the opening grid are not positions. The suite drives capture,
+release and translate directly (including a dotted path that resolves to
+nothing, and a name replaced by a second builder), because no shipped builder
+exercises them yet — the two regions belong to clusters that have not
+migrated, which is the same "written with nothing using it" state the ladder
+branch was in when its digest turned out to be blind.
+
 ### A trap, and the rename that closed it
 
 `SANDBOX.instances` is the **player's** objects, and `count` is its length —
