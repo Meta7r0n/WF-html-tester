@@ -501,3 +501,90 @@ animated objects, and — usefully — is the only near-term candidate with a
 
 The North Barn and the basement come last, and only after blockers 1 and 2
 are cleared, because both are gated on engine work rather than on content.
+
+---
+
+## 16. Phase 6: Silo Row, and the first ladder to move
+
+Taken next on the audit's recommendation: smallest cluster, no animated
+objects, and the only near-term candidate with a **ladder**. `buildSilo` went
+from 118 lines to one:
+
+```js
+CAMPAIGN.open('silo', parent).build();
+```
+
+Eight objects: the tower, two flanking silos, the deck crate, lantern and
+sign, and both spawn markers.
+
+### Decomposition
+
+The tower is **one object**, not a kit. Legs, bracing, deck, rails, ladder
+and tank ship together because nothing there is separately placeable — you
+would never move the rails without the deck they stand on. The flanking
+silos, the deck dressing and the spawns are separate, because you might.
+
+`prop_silo_tower` is deliberately **not** `sized`. Its ladder exit points and
+deck height are authored constants the rest of the farm's traversal depends
+on; a scaled one would be a climbable structure whose ladder no longer lands
+on its own deck.
+
+### Two builders had to learn where they land
+
+`PROPS.crate` and `PROPS.hayBale` both do:
+
+```js
+if (y < 0.05) blobShadow(...)
+```
+
+A registry builder works at the local origin, so `y` is 0 even for a crate
+destined for the silo deck at 8.2 — and the crate would have grown a ground
+shadow eight metres in the air. Both now take an explicit `groundY`, and the
+registry entries feed it `transform.position.y`. `prop_lantern` gained a
+`height` property for the same class of reason: the registry baked in 1.2,
+and the deck lantern wants 0.7.
+
+### The digest was blind exactly where it mattered
+
+The first run came back byte-identical, and that result was worthless. The
+ladder line read:
+
+```js
+lines.push('ladder|' + [l.x, l.z, l.minY, l.maxY] ... + (l.id || ''));
+```
+
+A ladder has none of `x`, `z` or `id` — `WORLD.addLadder` produces
+`minX/maxX`, `snapX/snapZ`, `topExit*`, `bottomExit*` and `tag`. So the
+digest recorded `undefined,undefined` and compared the vertical extent alone.
+It passed the first migration ever to move a ladder without once looking at
+where the ladder went.
+
+Fixed to record all sixteen positional fields plus tag, layers and flags. The
+comparison then still passed — and a negative control proves it means
+something now. Moving the tower 0.5 m shifts every x-coordinate on the ladder
+by exactly 0.5:
+
+```
+base : minX 1.1  maxX 2.9  snapX 2.0  topExitX 2.0  bottomExitX 2.0
+moved: minX 1.6  maxX 3.4  snapX 2.5  topExitX 2.5  bottomExitX 2.5
+```
+
+That is `SANDBOX.translate`'s ladder branch working — the box, the snap point
+and both exit points all travelling with the object. It was written in phase
+5 with nothing exercising it; this is the first thing that does.
+
+The collision hash changed from `f195dbadd6f09853` to `e8f24fc989c41b3f` for
+this reason alone: the digest now records more. Both builds agree on the new
+value, which is the claim that matters.
+
+### The suite no longer counts by hand
+
+Seven assertions hardcoded "34 objects" and broke the moment a second cluster
+migrated. They now derive the expectation from `CAMPAIGN` itself — every
+authored object in every live fragment should be a live instance, checked per
+fragment. That is the real invariant, and it does not need editing next time.
+
+### Verified
+
+Farm byte-identical: `e8f24fc989c41b3f`, 1335 solids, 15 ladders, 58 spawn
+markers, 3169 meshes. Migration suite 42/42 across both clusters.

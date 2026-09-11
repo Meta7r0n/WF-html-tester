@@ -221,7 +221,22 @@ if (compareArg !== -1) {
         '|' + (s.tag || '') + '|' + (s.layer || ''));
     });
     (WORLD.ladders || []).forEach(l => {
-      lines.push('ladder|' + [l.x, l.z, l.minY, l.maxY].map(n).join(',') + '|' + (l.id || ''));
+        /* Every positional field, because the first version of this line read
+           l.x, l.z and l.id -- none of which a ladder has. WORLD.addLadder
+           produces minX/maxX, snapX/snapZ, topExit*, bottomExit* and `tag`,
+           so the digest was recording "undefined,undefined" and checking the
+           vertical extent alone. It passed the silo migration, which is the
+           first migration to move a ladder at all, without ever looking at
+           where the ladder went. */
+        lines.push('ladder|' + [
+          l.minX, l.maxX, l.minY, l.maxY, l.minZ, l.maxZ,
+          l.snapX, l.snapZ, l.bottomY, l.topY,
+          l.topExitX, l.topExitZ, l.bottomExitX, l.bottomExitZ,
+          l.normalX, l.normalZ
+        ].map(n).join(',') +
+          '|' + (l.tag || '') + '|' + (l.topLayer || '') + '/' + (l.bottomLayer || '') +
+          '|' + (l.enabled ? 'on' : 'off') +
+          (l.oneWayDown ? '|oneway' : '') + (l.playerOnly ? '|playeronly' : ''));
     });
     (WORLD.portals || []).forEach(p => lines.push('portal|' + (p.id || '')));
     (WORLD.spawnMarkers || []).forEach(m => {
@@ -294,6 +309,12 @@ if (compareArg !== -1) {
 
     // Scale is authored, not implied: a fragment with every scale at 1 would
     // mean the sizes were lost in the move.
+    out.siloTypes = {};
+    const silo = CAMPAIGN.fragment('silo');
+    (silo ? silo.objects : []).forEach(o => {
+      out.siloTypes[o.type] = (out.siloTypes[o.type] || 0) + 1;
+    });
+
     const scales = (CAMPAIGN.fragment('scatter').objects || [])
       .map(o => o.transform.scale);
     out.distinctScales = scales.filter((s, i) => scales.indexOf(s) === i).length;
@@ -315,6 +336,10 @@ if (compareArg !== -1) {
     fragChecks.byType.prop_stump === 3);
   // The cluster is finished: the ruin and its dressing are data too, which is
   // what let buildScatter drop its type filter.
+  check('Silo Row migrated as its own fragment',
+    fragChecks.siloTypes && fragChecks.siloTypes.prop_silo_tower === 1 &&
+    fragChecks.siloTypes.prop_silo_small === 2,
+    JSON.stringify(fragChecks.siloTypes));
   check('the ruin and its dressing migrated too',
     fragChecks.byType.prop_ruin === 1 && fragChecks.byType.prop_barrel === 1 &&
     fragChecks.byType.prop_can === 1 && fragChecks.byType.prop_sign === 1 &&
@@ -339,11 +364,23 @@ if (compareArg !== -1) {
   const own = await page.evaluate(async () => {
     const out = {};
     out.isLive = CAMPAIGN.isLive('scatter');
+    /* Expected total is derived, not hardcoded: every authored object in
+       every live fragment should be a live instance. That is the invariant
+       worth asserting, and unlike a literal it does not need editing each
+       time a cluster migrates. */
+    out.fragmentIds = CAMPAIGN.ids();
+    out.expected = 0;
+    out.perFragment = {};
+    CAMPAIGN.ids().forEach(id => {
+      const n = CAMPAIGN.fragment(id).objects.length;
+      out.perFragment[id] = { authored: n, live: SANDBOX.all.filter(i => i.fragment === id).length };
+      if (CAMPAIGN.isLive(id)) out.expected += n;
+    });
     const campaign = SANDBOX.all.filter(i => i.layer === 'campaign');
     out.campaignCount = campaign.length;
     out.campaignTypes = {};
     campaign.forEach(i => { out.campaignTypes[i.type] = (out.campaignTypes[i.type] || 0) + 1; });
-    out.allTaggedToFragment = campaign.every(i => i.fragment === 'scatter');
+    out.allTaggedToFragment = campaign.every(i => out.fragmentIds.indexOf(i.fragment) !== -1);
     out.sandboxCount = SANDBOX.count;
 
     // The farm's objects live under LEVEL's root, not the sandbox group, so
@@ -385,11 +422,14 @@ if (compareArg !== -1) {
   });
 
   check('the scatter is live in the map layer', own.isLive);
-  check('all 34 objects are campaign-layer instances', own.campaignCount === 34,
-    JSON.stringify(own.campaignTypes));
+  check('every authored object in every fragment is live',
+    own.campaignCount === own.expected, JSON.stringify(own.perFragment));
+  check('each fragment built exactly what it authored',
+    Object.keys(own.perFragment).every(k => own.perFragment[k].authored === own.perFragment[k].live),
+    JSON.stringify(own.perFragment));
   check('each one knows which fragment it came from', own.allTaggedToFragment);
-  check('they sit under LEVEL.root, not the sandbox group', own.underLevelRoot === 34,
-    own.underLevelRoot + '/34');
+  check('they sit under LEVEL.root, not the sandbox group',
+    own.underLevelRoot === own.expected, own.underLevelRoot + '/' + own.expected);
   check("the player's map starts empty", own.sandboxCount === 0, String(own.sandboxCount));
   check("a farm tree's collider is the world's, not a copy", own.colliderIsInWorld);
   check('moving a farm tree moves the farm collider',
@@ -405,6 +445,7 @@ if (compareArg !== -1) {
   /* ---- the farm must survive the player's map operations -------------- */
   const isolation = await page.evaluate(async () => {
     const out = {};
+    out.expected = SANDBOX.campaignCount;
     EDITOR.enter();
     await new Promise(r => requestAnimationFrame(r));
 
@@ -433,14 +474,14 @@ if (compareArg !== -1) {
   });
 
   check("placing an object does not disturb the farm",
-    isolation.afterPlace.mine === 1 && isolation.afterPlace.farm === 34,
+    isolation.afterPlace.mine === 1 && isolation.afterPlace.farm === isolation.expected,
     JSON.stringify(isolation.afterPlace));
   check("a saved map contains only the player's objects",
     isolation.savedCount === 1 && !isolation.savedHasFarm, isolation.savedCount + ' objects');
   check('"New map" clears the player\'s map and spares the farm',
-    isolation.afterNew.mine === 0 && isolation.afterNew.farm === 34,
+    isolation.afterNew.mine === 0 && isolation.afterNew.farm === isolation.expected,
     JSON.stringify(isolation.afterNew));
-  check('revert rebuilds the whole cluster', isolation.afterRevert.farm === 34,
+  check('revert rebuilds the whole cluster', isolation.afterRevert.farm === isolation.expected,
     JSON.stringify(isolation.afterRevert));
   check('revert puts the moved tree back', Math.abs(isolation.revertedX - -27) < 0.001,
     String(isolation.revertedX));
@@ -484,8 +525,9 @@ if (compareArg !== -1) {
   }));
   check('editor released everything it added', !after.editorActive && after.sandboxCount === 0,
     'solids now ' + after.solids);
-  check('the farm still stands', after.campaignCount === 34 &&
-    after.solids === world.counts.solids, after.solids + ' vs ' + world.counts.solids);
+  check('the farm still stands', after.campaignCount === own.expected &&
+    after.solids === world.counts.solids,
+    after.campaignCount + ' objects, ' + after.solids + ' vs ' + world.counts.solids + ' solids');
 
   /* ---- spawn kind tags are identity, not labels ----------------------
      ENEMY.spawnAdditional filters markers with !usedMarkerKinds.has(m.kind)
