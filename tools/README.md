@@ -38,6 +38,7 @@ shared harness as `./render-audit/harness`.
 | `editor-mouse-test.js` | The editor as a *person* drives it: real clicks, drags, wheel, hit-testing. Exists because the editor once passed every programmatic check while being completely unclickable. Takes a full URL. |
 | `editor-mode-test.js` | The editor as a *mode*: can it be found from the menu, and can you get back out? Covers menu/pause entry, grid snap, framing, Exit, and a playtest that has to start a run first. Exists because for two commits the editor was reachable only by an undocumented F2. |
 | `campaign-migration-test.js` | Campaign content migration and ownership: proves a cluster moved into map data without changing what the farm is, and that the map layer now *owns* it — moving a farm tree moves the farm's collider, "New map" spares the farm, revert restores it. See below. |
+| `match-test.js` | Authored matches: a blank map, placeable bosses, and the per-boss kill threshold that decides when each one appears. Covers the shareable file round trip. See below. |
 | `render-audit/` | Exposure/tonal capture harness and the quality gate. Has its own README covering three silent measurement failures worth reading before trusting any number it prints. |
 | `viewmodel/` | Weapon viewmodel capture. |
 | `make-preview.js` | Builds the served, CDN-free copy the harnesses need. |
@@ -197,3 +198,29 @@ command you are typing it in — **kills your own shell**, which surfaces as
 exit code 144 and looks like the test crashed. It has happened four times in
 this project. Serve each build on its own port and let the servers be; do not
 try to tidy them up mid-run.
+
+## Authored matches: `match-test.js`
+
+Covers the three things a player needs to build their own match and share it:
+a blank map, bosses placed on it, and a per-boss kill threshold.
+
+```sh
+node tools/match-test.js 8964          # 26 checks
+```
+
+Two of its checks exist because the bug they catch is invisible when present:
+
+- **A threshold is stored as a NUMBER in the file, not the input's string.**
+  `"25" >= 25` is true by coercion, so a string breaks nothing today — the
+  boss still spawns at the right kill count. It breaks the first time
+  anything sorts or sums thresholds, long after the cause is forgotten.
+- **An unknown `environment.terrain` is rejected, not silently treated as
+  farm.** A typo that falls back to a default hands the author the wrong
+  world instead of an error.
+
+`campaign-migration-test.js` covers the other half — that switching to blank
+ground and back restores the farm *exactly*. That is the sharp edge in this
+feature: `enabled` is not uniformly true to begin with, so a naive restore
+writes `true` everywhere and quietly shuts every open door and opens the
+basement stair portal, which ships disabled. The suite opens a door first, on
+purpose, so the restore has real non-default state to get wrong.

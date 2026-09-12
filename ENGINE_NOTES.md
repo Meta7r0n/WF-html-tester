@@ -975,3 +975,201 @@ gated on engine work any more — regions and fixtures were the two blockers,
 and both are cleared. The basement still needs one decision this phase
 deliberately did not make: its hatches are a list with two named pointers
 into it, so a list-valued fixture has to be designed rather than assumed.
+
+---
+
+## 20. Phase 10: blank maps, placeable bosses, and authored match rules
+
+Three connected features, asked for together: a blank map to build on, bosses
+you can place, and a separately adjustable kill count for each boss so an
+author can shape their own match and hand it to a friend.
+
+### Blank map: why it is not "build a different level"
+
+`LEVEL.build(scene)` runs **exactly once**, at boot, from `GAME.init`.
+Nothing rebuilds it — `GAME.restart()` resets PLAYER, WEAPON, QUEST, ENEMY
+and PICKUP and never touches the world. And it cannot casually be made to
+rebuild, because three things are snapshotted from the scene at that moment:
+
+- `ENEMY.init(scene)` takes a line-of-sight snapshot, deliberately after the
+  level and deliberately before any enemy or viewmodel exists;
+- `RENDERCORE.tagScene(scene)` classifies every material once;
+- `RAY_TARGETS` collects the ground plane and friends.
+
+So a blank map is the farm **switched off**, not absent. The farm's whole
+construction is wrapped in a `WORLD.beginCapture()` handle, and
+`WORLD.setCaptureEnabled(handle, false)` makes every collider, ladder,
+portal, spawn marker, region and fixture it registered inert in one call.
+Every collision query in the game already skips `enabled === false`; this is
+the state those arrays were built to have.
+
+The sky and the ground plane belong to both terrains and sit outside either
+group. Everything else the farm builds goes into a `farm` group under
+`LEVEL.root`, so hiding it is one flag.
+
+### The restore is the hard half, and I nearly shipped it wrong
+
+`enabled` is **not uniformly true**. An open door's collider is off because
+the door is open. The basement stair portal ships `enabled: false` and stays
+shut until the gate above it opens. A restore that writes `true` everywhere
+would shut open doors and open a sealed portal — a world subtly rearranged
+by visiting the editor.
+
+So each entry's own value is remembered on the way out and restored on the
+way in (`_enabledBefore`), and `setTerrain` is idempotent — setting the
+terrain it already has returns early rather than running the restore again.
+
+I wrote that comment and then immediately introduced the bug it describes:
+`build()` ended with `setTerrain('farm')`, which runs the restore path over
+1,335 entries whose `_enabledBefore` is undefined — forcing on every collider
+a builder had deliberately shipped disabled. Caught by re-reading the diff,
+not by a test. The fix is that `build()` enters farm state directly, because
+the farm is already live: it was just built.
+
+### The arena
+
+A clean rectangle at `CONFIG.map`'s limits (west −85 → east 65, north −80 →
+south 32.6), fenced with the farm's own `fenceRun` so an author gets real
+collision and something to see, rather than an invisible wall they discover
+by walking into it.
+
+Deliberately **not** a copy of the farm's boundary, which is bowed and
+stepped around two wing extensions. Reproducing that irregularity would only
+make an author guess where their buildable ground actually ends.
+
+Built last and bracketed by the RNG stream position — `UTIL` gained
+`getSeed()` for this — so it cannot shift a single number the farm or
+`ENEMY.init` draws. Its own seed is fixed so two peers build the same fence.
+Its collision lives in a second capture handle, because a fence at the map's
+outer limits left live in farm mode would wall the player in a second time.
+
+### Bosses: position was hardcoded in three places
+
+`spawnBoss`, `spawnBoss2` and `spawnBoss3` each built their spawn marker
+from `CONFIG.<boss>.spawn`, a fixed campaign coordinate. All three now take
+`options.position` and fall through to that coordinate when it is absent, so
+every existing caller is unchanged. `QUEST.spawnGardener` gained the same.
+Without it, a boss placed on a blank map appears a hundred metres from
+whatever the author built.
+
+The network ghost paths (`createBossGhost` and friends) keep the fixed
+coordinate: a join client's placeholder is driven by host snapshots and
+never decides where anything is.
+
+### Thresholds are per marker, and they are numbers
+
+`wilted` is a property of each placed boss, not one global setting, because
+the thing worth authoring is the ladder — Beat Slayer at 10, Bear Claw at 25,
+the Warden at 40. That is four numbers. `0` means "from the start", which is
+how a boss rush gets built.
+
+Two supporting fixes:
+
+- The registry's documented property schema has always been
+  `{type, label, min, max, step, options}`, but `renderInspector` rendered
+  every property as `<input type="text">` regardless. `type: 'number'` was an
+  intended contract nobody had implemented.
+- The value is **stored as a number**, not the input's string. `"25" >= 25`
+  is true by coercion, so a string here breaks nothing today and breaks
+  silently the first time anything sorts or sums thresholds. It is also
+  clamped on the way in, because `min`/`max` on the element is advisory —
+  typing past it still fires `change` with the out-of-range value.
+
+### MATCH, and why it supersedes QUEST
+
+A boss marker is not like other placeables. A barrel is a barrel the moment
+a run starts; an enemy marker spawns its grunt. A boss appears *partway
+through, on a condition*, and that condition is the thing the author is
+designing. So the marker stays a marker and `MATCH` watches the kill count.
+
+`MATCH` supersedes `QUEST`'s `ENCOUNTERS` chain rather than running
+alongside it. That chain is welded to the campaign's buildings — Barn Key,
+North Barn workbench, Portal Gun cutscene — so on a blank map it can never
+be completed and its encounters would never fire. When a map declares its own
+bosses, `QUEST.updateProgress` stands down. **A map that declares no bosses
+changes nothing at all**; the campaign runs exactly as before, which is why
+arming is `SANDBOX.activateGameplay`'s decision and not a global check for
+"are there boss markers anywhere".
+
+`GAME.restart()` re-arms, because otherwise dying once on a player's map
+means no boss ever appears again — the `spawned` flags have to clear with
+the kill count they are compared against.
+
+### Sharing
+
+`environment.terrain` rides in the map file, so a map mailed to a friend
+opens as the world it was built in. Validated as `'farm' | 'blank'`: an
+unknown value is an error rather than a silent fall-back to farm, and a file
+with no `environment` block at all is fine and means farm — that is every map
+written before this existed.
+
+There is still no backend, per the brief. Sharing is `MAPIO.exportFile` and
+Import, which already existed.
+
+### The bug the suite caught: the farm handle did not contain the farm
+
+The terrain assertions failed on their first run, and the failure was worth
+more than the feature:
+
+```
+*FAIL*  blank terrain switches the farm off   290 live, 202 of them arena fence
+*FAIL*  blank terrain stops the farm spawning enemies   5 markers still live
+```
+
+`WORLD._capture` records into the **innermost** open capture scope only:
+
+```js
+const top = this._captureStack[this._captureStack.length - 1];
+if (top) top[kind].push(entry);
+```
+
+Nesting is safe in the direction it was designed for — an inner capture
+cannot corrupt an outer one. But an outer handle does not contain what an
+inner one caught, and that is the direction this feature needed. LEVEL wraps
+the whole farm in one handle; scatter, Silo Row and the barn are built
+through `SANDBOX.instantiate`, which opens its own capture per instance
+*inside* that scope. So their registrations went to the per-instance handles
+and were invisible to the farm-wide one.
+
+The numbers name it exactly: 290 − 202 = 88 solids, and 5 markers — scatter
+1, Silo Row 2, barn 2. On blank ground, 64 farm objects were still solid and
+still spawning enemies while their meshes were correctly hidden by the group
+flag. You would have walked into trees that were not there.
+
+The irony is worth recording: **the clusters migrated in phases 5–7 are
+exactly the ones the farm handle misses, and migrating them is what made it
+miss them.** Every un-migrated builder still registers directly into the
+farm's scope and switches off correctly.
+
+Fixed with `SANDBOX.setCampaignEnabled(on)`, which walks the campaign-layer
+instances and switches their own handles. The alternative — making
+`_capture` write into every open scope — would change `release` semantics
+across the whole engine to solve a problem with exactly one owner. The
+nesting rule is now documented at `_capture` itself with this as the worked
+example.
+
+And the check now names what leaked. "290 live, 202 of them arena fence" says
+a switch leaked without saying what, when *what* was the whole answer; it
+lists the leftover collider tags and marker kinds instead.
+
+### Verified
+
+| check | result |
+|---|---|
+| migration + terrain suite | **77/77** |
+| `match-test.js` (new) | **26/26** |
+| farm collision vs `de9527f` | **0 lines removed**, 202 added — all `fence`, all disabled |
+| farm meshes vs `de9527f` | **3169 unchanged**, 2 added (the arena fence batch + its outline) |
+
+The terrain numbers are the ones to read: on blank ground `202 live, 202
+arena fence` and `0 markers still live` — the farm is entirely off and the
+only collision in the world is the arena's own boundary. Switching back
+restores every collider exactly, with an open door left open.
+
+`match-test.js` proves the authored side end to end: the ladder sorts by
+threshold rather than click order (`1,5,12,30`), each boss spawns at the
+position it was placed at rather than its campaign coordinate (`12,0`), the
+threshold is a number in the file, an unknown terrain is rejected, a
+pre-terrain file with no `environment` block still loads as farm, QUEST's
+chain stands down for an authored match, and a map with no bosses leaves the
+campaign alone.

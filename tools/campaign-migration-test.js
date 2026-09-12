@@ -114,16 +114,29 @@ if (compareArg !== -1) {
   // WHAT was built: an exact multiset over the invariant key. Sorting makes
   // it order-independent, so this survives a builder being reordered while
   // still failing if anything is added, removed or resized.
-  const ma = A.meshes.slice().sort();
-  const mb = B.meshes.slice().sort();
-  let firstDiff = -1;
-  for (let i = 0; i < Math.min(ma.length, mb.length); i++) {
-    if (ma[i] !== mb[i]) { firstDiff = i; break; }
-  }
-  check('every built mesh matches in geometry and scale',
-    ma.length === mb.length && firstDiff === -1,
-    firstDiff === -1 ? ma.length + ' meshes' :
-      'first differs at #' + firstDiff + ': ' + ma[firstDiff] + ' vs ' + mb[firstDiff]);
+  /* Compared as a multiset difference rather than index by index. Both
+     answers matter and they are not the same question: "did anything the
+     base built stop being built, or change size" is the regression, while
+     "does the new build make things the base did not" is often the whole
+     point of the change. A positional walk conflates them -- inserting two
+     meshes reports "first differs at #3125" and says nothing about whether
+     the other 3,169 survived. */
+  const tally = arr => {
+    const m = new Map();
+    arr.forEach(k => m.set(k, (m.get(k) || 0) + 1));
+    return m;
+  };
+  const ta = tally(A.meshes), tb = tally(B.meshes);
+  let gone = 0, added = 0, goneExample = '';
+  ta.forEach((n, k) => {
+    const got = tb.get(k) || 0;
+    if (got < n) { gone += n - got; if (!goneExample) goneExample = k; }
+  });
+  tb.forEach((n, k) => { added += Math.max(0, n - (ta.get(k) || 0)); });
+  check('every mesh the base built is still built, unchanged', gone === 0,
+    gone === 0 ? A.meshes.length + ' meshes' : gone + ' missing, e.g. ' + goneExample);
+  check('the new build adds no meshes', added === 0,
+    added === 0 ? 'none added' : added + ' added (expected only if this change builds something new)');
 
   const passed = results.filter(r => r.pass).length;
   console.log('\n' + passed + '/' + results.length + ' comparison checks passed');
@@ -228,8 +241,15 @@ if (compareArg !== -1) {
     const n = v => (typeof v === 'number' && isFinite(v)) ? v.toFixed(5) : String(v);
     const lines = [];
     WORLD.solids.forEach(s => {
+      /* `enabled` is recorded because it is real, switchable state, not a
+         constant: doors drive their own collider, the basement stair portal
+         ships shut, and LEVEL.setTerrain switches the farm's entire
+         registration off for a blank map. Without it here, a terrain switch
+         that forgot to restore a collider -- or forced one on that was
+         meant to stay off -- would compare equal. */
       lines.push('solid|' + [s.minX, s.minY, s.minZ, s.maxX, s.maxY, s.maxZ].map(n).join(',') +
-        '|' + (s.tag || '') + '|' + (s.layer || ''));
+        '|' + (s.tag || '') + '|' + (s.layer || '') +
+        '|' + (s.enabled === false ? 'off' : 'on'));
     });
     (WORLD.ladders || []).forEach(l => {
         /* Every positional field, because the first version of this line read
@@ -267,7 +287,8 @@ if (compareArg !== -1) {
     (WORLD.spawnMarkers || []).forEach(m => {
       const p = m.position || {};
       lines.push('spawn|' + [p.x, p.y, p.z].map(n).join(',') +
-        '|' + (m.kind || '') + '|' + (m.layerId || ''));
+        '|' + (m.kind || '') + '|' + (m.layerId || '') +
+        '|' + (m.enabled === false ? 'off' : 'on'));
     });
     /* Region records -- the navigation data ENEMY steers by. Serialised
        whole, because a region is whatever shape its builder chose and the
@@ -776,6 +797,88 @@ if (compareArg !== -1) {
   check('translate leaves fixture state alone', fixtures.stateUntouched);
   check('release drops the fixture it captured', fixtures.probeReleased);
   check("release spares the farm's own fixtures", fixtures.farmFixturesIntact);
+
+  /* ---- terrain: the farm switched off, and put back exactly -----------
+     A blank map does not rebuild the level -- LEVEL.build runs once at boot
+     and ENEMY's line-of-sight snapshot, RENDERCORE.tagScene and RAY_TARGETS
+     all derive from that moment. It switches the farm's whole registration
+     off instead. The regression that matters is the restore: `enabled` is
+     not uniformly true to begin with (an open door's collider is off, the
+     basement stair portal ships shut), so a naive restore would force
+     everything on and silently shut open doors and open a sealed portal. */
+  const terrain = await page.evaluate(async () => {
+    const out = {};
+    const snap = () => WORLD.solids.map(s => (s.enabled === false ? '0' : '1')).join('') +
+      '|' + WORLD.ladders.map(l => (l.enabled === false ? '0' : '1')).join('') +
+      '|' + WORLD.portals.map(p => (p.enabled === false ? '0' : '1')).join('') +
+      '|' + WORLD.spawnMarkers.map(m => (m.enabled === false ? '0' : '1')).join('');
+
+    out.startsOnFarm = LEVEL.terrain === 'farm';
+    // Open a door and shut a portal first, so the restore has real non-default
+    // state to get wrong.
+    LEVEL.setNorthBarnDoor(true, true);
+    const door = WORLD.fixture('northBarnDoor');
+    out.doorOpenClearedCollider = door.collider.enabled === false;
+    const before = snap();
+    out.farmSolidsBefore = WORLD.solids.filter(s => s.enabled !== false).length;
+    out.regionsBefore = Object.keys(WORLD.regions).length;
+    out.fixturesBefore = Object.keys(WORLD.fixtures).length;
+
+    LEVEL.setTerrain('blank');
+    out.nowBlank = LEVEL.terrain === 'blank';
+    out.farmSolidsLive = WORLD.solids.filter(s => s.enabled !== false).length;
+    out.markersLive = WORLD.spawnMarkers.filter(m => m.enabled !== false).length;
+    out.regionsGone = Object.keys(WORLD.regions).length === 0;
+    out.fixturesGone = Object.keys(WORLD.fixtures).length === 0;
+    // The arena fence is the only collision left, and it is real.
+    out.arenaSolids = WORLD.solids.filter(s => s.enabled !== false && s.tag === 'fence').length;
+    /* Name whatever else is still standing. The first version of this check
+       reported only "290 live, 202 of them arena fence", which says a switch
+       leaked without saying what leaked -- and the answer was the whole
+       point: the farm's own migrated clusters, whose collision lives in
+       SANDBOX's per-instance handles rather than LEVEL's farm-wide one. */
+    const strays = {};
+    WORLD.solids.forEach(s => {
+      if (s.enabled === false || s.tag === 'fence') return;
+      strays[s.tag || '(untagged)'] = (strays[s.tag || '(untagged)'] || 0) + 1;
+    });
+    out.strays = Object.keys(strays).sort().map(k => k + '×' + strays[k]).join(' ');
+    out.strayMarkers = WORLD.spawnMarkers.filter(m => m.enabled !== false)
+      .map(m => m.kind).join(',');
+
+    LEVEL.setTerrain('farm');
+    out.backOnFarm = LEVEL.terrain === 'farm';
+    out.restoredExactly = snap() === before;
+    out.doorStillOpen = door.collider.enabled === false && LEVEL.isNorthBarnDoorOpen();
+    out.regionsBack = Object.keys(WORLD.regions).length === out.regionsBefore;
+    out.fixturesBack = Object.keys(WORLD.fixtures).length === out.fixturesBefore;
+
+    // Setting the terrain it already has must be inert, not a second restore.
+    LEVEL.setTerrain('farm');
+    out.idempotent = snap() === before;
+
+    LEVEL.setNorthBarnDoor(false, true);
+    return out;
+  });
+  check('the game starts on farm terrain', terrain.startsOnFarm);
+  check('an open door clears its collider (setup for the restore)',
+    terrain.doorOpenClearedCollider);
+  check('blank terrain switches the farm off',
+    terrain.nowBlank && terrain.farmSolidsLive === terrain.arenaSolids,
+    terrain.farmSolidsLive + ' live, ' + terrain.arenaSolids + ' arena fence' +
+      (terrain.strays ? ' — still standing: ' + terrain.strays : ''));
+  check('blank terrain leaves a real arena fence', terrain.arenaSolids > 0,
+    String(terrain.arenaSolids));
+  check('blank terrain stops the farm spawning enemies', terrain.markersLive === 0,
+    terrain.markersLive + ' markers still live' +
+      (terrain.strayMarkers ? ': ' + terrain.strayMarkers : ''));
+  check("blank terrain takes the farm's regions out of play", terrain.regionsGone);
+  check("blank terrain takes the farm's fixtures out of play", terrain.fixturesGone);
+  check('switching back restores every collider EXACTLY', terrain.restoredExactly);
+  check('...including leaving an open door open', terrain.doorStillOpen);
+  check('regions come back', terrain.regionsBack);
+  check('fixtures come back', terrain.fixturesBack);
+  check('setting the same terrain twice is inert', terrain.idempotent);
 
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 

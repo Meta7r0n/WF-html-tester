@@ -1796,7 +1796,7 @@
     font:700 11px/1 "Rockwell",Georgia,serif;color:var(--ink);
   }
   .ed-snap input{cursor:pointer;}
-  #edSnapSize{
+  #edSnapSize,#edTerrain{
     padding:4px 6px;cursor:pointer;background:var(--peach);border:2px solid var(--ink);
     border-radius:6px;font:700 11px/1 "Rockwell",Georgia,serif;color:var(--ink);
   }
@@ -2448,6 +2448,12 @@
         <button data-tool="export">Export</button>
         <label class="ed-file" for="edImportFile">Import</label>
         <input id="edImportFile" type="file" accept="application/json,.json" />
+        <span class="ed-sep"></span>
+        <label class="ed-snap" for="edTerrain" title="Farm: build on the campaign world. Blank: same ground and size, nothing on it.">Ground</label>
+        <select id="edTerrain" title="Farm: build on the campaign world. Blank: same ground and size, nothing on it.">
+          <option value="farm" selected>Farm</option>
+          <option value="blank">Blank</option>
+        </select>
         <span class="ed-sep"></span>
         <label class="ed-snap"><input type="checkbox" id="edSnapOn" checked /> Snap</label>
         <select id="edSnapSize" title="Grid snap size">
@@ -3724,7 +3730,13 @@ const UTIL = (() => {
   function damp(a, b, lambda, dt) { return lerp(a, b, 1 - Math.exp(-lambda * dt)); }
   function wobble(t, f, a) { return Math.sin(t * f) * a; }
   function setSeed(s) { seed = s; }
-  return { rand, rng, rint, pick, clamp, lerp, damp, wobble, setSeed };
+  /* The stream position, so a builder can run without moving it. LEVEL builds
+     the blank arena after the farm, and anything drawing afterwards -- most
+     importantly ENEMY.init picking its spawn markers -- would shift if the
+     arena consumed numbers. Bracketing it with getSeed/setSeed makes it
+     provably RNG-neutral instead of only apparently so. */
+  function getSeed() { return seed; }
+  return { rand, rng, rint, pick, clamp, lerp, damp, wobble, setSeed, getSeed };
 })();
 
 /* ================================ [TEX] ============================== */
@@ -6703,6 +6715,16 @@ const WORLD = {
     return handle;
   },
   endCapture() { return this._captureStack.pop() || null; },
+  /* NOTE, because it has bitten once: this records into the INNERMOST open
+     scope only. Nesting is safe -- an inner capture cannot corrupt an outer
+     one -- but an outer handle does not contain what an inner one caught.
+
+     LEVEL wraps the whole farm in a capture so a blank map can switch it
+     off, and the farm's migrated clusters (scatter, Silo Row, the barn) are
+     built through SANDBOX.instantiate, which opens its own capture per
+     instance. So 88 colliders and 5 spawn markers belonging to the farm sat
+     outside the farm's own handle, and stayed live on blank ground.
+     SANDBOX.setCampaignEnabled reaches them; see LEVEL.setTerrain. */
   _capture(kind, entry) {
     const top = this._captureStack[this._captureStack.length - 1];
     if (top) top[kind].push(entry);
@@ -6731,6 +6753,42 @@ const WORLD = {
     });
   },
 
+  /* ------------------- switching a capture off and on ------------------
+     [ENGINE] `release` is permanent: it splices entries out and forgets
+     them. A blank map needs the opposite -- the farm's 1,300-odd colliders
+     inert while the player builds their own world, and back exactly as they
+     were when they switch home. Every collision query already skips
+     `enabled === false`, so this is the state the arrays were built to have.
+
+     The subtlety is that `enabled` is not always true to begin with. An open
+     door's collider is off because the door is open; the basement stair
+     portal ships disabled. Forcing everything to `true` on the way back
+     would shut open doors and open a sealed portal -- so each entry's own
+     value is remembered on the way out and restored on the way in.
+
+     Regions and fixtures have no enabled flag: for them, absence *is* off.
+     They come out of the map and go back under the same name. */
+  setCaptureEnabled(handle, on) {
+    if (!handle) return;
+    ['solids', 'ladders', 'portals', 'spawnMarkers'].forEach(kind => {
+      (handle[kind] || []).forEach(e => {
+        if (on) {
+          e.enabled = e._enabledBefore === undefined ? true : e._enabledBefore;
+          delete e._enabledBefore;
+        } else if (e._enabledBefore === undefined) {
+          e._enabledBefore = e.enabled !== false;
+          e.enabled = false;
+        }
+      });
+    });
+    ['regions', 'fixtures'].forEach(kind => {
+      (handle[kind] || []).forEach(r => {
+        if (on) this[kind][r.name] = r.data;
+        else if (this[kind][r.name] === r.data) delete this[kind][r.name];
+      });
+    });
+  },
+
   add(cx, cy, cz, w, h, d, tag) {
     const s = {
       minX: cx - w / 2, maxX: cx + w / 2,
@@ -6750,7 +6808,11 @@ const WORLD = {
     const m = {
       position: new THREE.Vector3(x, y, z),
       kind: kind || 'generic',
-      layerId: layerId || (y < -0.2 ? 'basement' : 'surface')
+      layerId: layerId || (y < -0.2 ? 'basement' : 'surface'),
+      // Markers are the only captured kind that had no enabled flag, which
+      // made them the one thing setCaptureEnabled could not switch off --
+      // a blank map would have kept spawning enemies into the hidden farm.
+      enabled: true
     };
     this.spawnMarkers.push(m);
     return this._capture('spawnMarkers', m);
@@ -12380,12 +12442,66 @@ const LEVEL = (() => {
     frame.build(parent);
   }
 
+  /* Two terrains share one built world.
+
+     `LEVEL.build` runs exactly once, at boot, and nothing rebuilds it --
+     ENEMY's line-of-sight snapshot, RENDERCORE.tagScene and RAY_TARGETS are
+     all derived from the scene at that moment. So "blank map" cannot mean
+     "build a different level"; it means the farm is switched off and an
+     empty arena of the same extents is switched on.
+
+     The sky and the ground plane belong to both and sit outside either
+     group. Everything the farm builders make goes into `farm`, wrapped in a
+     capture handle so WORLD.setCaptureEnabled can make its collision inert
+     in one call. */
+  let farm = null;
+  let arena = null;
+  let farmCollision = null;
+  let arenaCollision = null;
+  let terrain = 'farm';
+
   function build(scene) {
     UTIL.setSeed(90210);
     root = new THREE.Group();
     scene.add(root);
     buildSky(scene);
     buildGround(root);
+    farm = new THREE.Group();
+    farm.name = 'LEVEL:farm';
+    root.add(farm);
+    farmCollision = WORLD.beginCapture();
+    buildFarm(farm);
+    WORLD.endCapture();
+
+    /* The arena is built last and bracketed by the RNG stream position, so
+       it cannot shift a single number the farm or ENEMY.init draws. Its own
+       seed is fixed, so both peers in a multiplayer match build the same
+       fence. */
+    const after = UTIL.getSeed();
+    UTIL.setSeed(40401);
+    arenaCollision = WORLD.beginCapture();
+    arena = buildArena(root);
+    WORLD.endCapture();
+    UTIL.setSeed(after);
+
+    /* Enter farm state directly rather than via setTerrain. The farm is
+       already live -- it was just built -- and setTerrain's restore path
+       would write `enabled = true` over every entry whose _enabledBefore is
+       undefined, which at this point is all of them. That would switch on
+       the colliders builders deliberately ship disabled: the basement stair
+       portal, most of all, which is supposed to stay shut until the gate
+       above it opens.
+
+       The arena does need switching off. Its fence is real collision at the
+       map's outer limits; left live in farm mode it would wall the player in
+       a second time, just outside the farm's own boundary. */
+    arena.visible = false;
+    WORLD.setCaptureEnabled(arenaCollision, false);
+    terrain = 'farm';
+    return root;
+  }
+
+  function buildFarm(root) {
     buildPaths(root);
     buildGate(root);
     buildFences(root);
@@ -12419,6 +12535,53 @@ const LEVEL = (() => {
     // thing meets the dirt. Adds no colliders of its own.
     buildGroundDetail(root);
     return root;
+  }
+
+  /* ------------------------------ the arena ---------------------------
+     A blank map is the same ground and the same extents as the farm, with
+     nothing standing on it. The perimeter uses the farm's own fenceRun, so
+     an author gets a real fence with real collision rather than an
+     invisible wall they discover by walking into it.
+
+     Deliberately a clean rectangle at CONFIG.map's limits. The farm's own
+     boundary is bowed and stepped around two wing extensions, and
+     reproducing that irregularity would only make an author guess where
+     their buildable ground actually ends. */
+  function buildArena(parent) {
+    const g = new THREE.Group();
+    g.name = 'LEVEL:arena';
+    parent.add(g);
+    const M = CONFIG.map;
+    const mat = MAT.toon(PAL.creamDim, { map: TEX.wood(PAL.creamDim, PAL.rustDeep, 2), finish: 'wood' });
+    const b = new PRIM.Batch(mat, 0.04);
+    fenceRun(b, M.west, M.south, M.east, M.south, { bow: 0, wall: true });
+    fenceRun(b, M.east, M.south, M.east, M.north, { bow: 0, wall: true });
+    fenceRun(b, M.east, M.north, M.west, M.north, { bow: 0, wall: true });
+    fenceRun(b, M.west, M.north, M.west, M.south, { bow: 0, wall: true });
+    b.build(g);
+    return g;
+  }
+
+  /* 'farm' or 'blank'. Switching is cheap and symmetric: one visibility flag
+     per group, and one call that makes the farm's whole registration inert
+     and restores it exactly -- including colliders a door had already
+     switched off for its own reasons. */
+  function setTerrain(mode) {
+    const next = mode === 'blank' ? 'blank' : 'farm';
+    // Idempotent on purpose. Setting the terrain it already has must not run
+    // the restore path again -- that is what would clobber an open door's
+    // collider back to blocking.
+    if (next === terrain) return terrain;
+    const blank = next === 'blank';
+    terrain = next;
+    if (farm) farm.visible = !blank;
+    if (arena) arena.visible = blank;
+    WORLD.setCaptureEnabled(farmCollision, !blank);
+    WORLD.setCaptureEnabled(arenaCollision, blank);
+    // The migrated clusters are SANDBOX's, in their own capture handles --
+    // farmCollision never saw them. See SANDBOX.setCampaignEnabled.
+    if (typeof SANDBOX !== 'undefined') SANDBOX.setCampaignEnabled(!blank);
+    return terrain;
   }
 
   function nearBarnStairGate(position, layerId) {
@@ -12682,6 +12845,10 @@ const LEVEL = (() => {
 
   return {
     build, update, animated, tryInteract, interactionHint,
+    /* 'farm' (the campaign world) or 'blank' (the same ground and extents,
+       empty, for a map an author builds themselves). */
+    setTerrain,
+    get terrain() { return terrain; },
     setBarnStairGate, worldState, applyWorldState,
     nearNorthBarnDoor, setNorthBarnDoor, isNorthBarnDoorOpen,
     nearNorthBarnWestDoor, setNorthBarnWestDoor, isNorthBarnWestDoorOpen,
@@ -21796,9 +21963,16 @@ const QUEST = (() => {
     if (COMPONENTS.every(key => state.components[key])) UI.toast('ALL COMPONENTS FOUND — USE THE SECOND-FLOOR WORKBENCH', 3.2);
     return true;
   }
-  function spawnGardener(devSpawn, announcement) {
+  /* `at` is an optional world position, for an authored map that placed a
+     Gardener marker of its own. The campaign coordinate below is a point in
+     the north pasture; on a blank map it is empty ground nowhere near what
+     the author built. Ground-resolved either way. */
+  function spawnGardener(devSpawn, announcement, at) {
     if (gardener && gardener.alive) return gardener;
-    const p = new THREE.Vector3(48, WORLD.groundAt(48, -52, 2, 'surface'), -52);
+    const gx = at ? at.x : 48;
+    const gz = at ? at.z : -52;
+    const probeY = (at && Number.isFinite(at.y) ? at.y : 0) + 2;
+    const p = new THREE.Vector3(gx, WORLD.groundAt(gx, gz, probeY, 'surface'), gz);
     gardener = ENEMY.spawnGrunt('gardener', p);
     gardener.isGardener = true; gardener.devSpawn = !!devSpawn;
     gardener.def = Object.assign({}, gardener.def, { name: 'The Gardener', stats: Object.assign({}, gardener.def.stats, {
@@ -21832,6 +22006,11 @@ const QUEST = (() => {
     return spawnGardener(false, announcement);
   }
   function updateProgress(wilted) {
+    // An authored map owns its own encounters (see MATCH). The campaign
+    // chain below is welded to the farm's buildings -- Barn Key, workbench,
+    // Portal Gun -- so on a player's map it could never be completed and
+    // its encounters would never fire.
+    if (typeof MATCH !== 'undefined' && MATCH.active) return false;
     if (!isSinglePlayer() || state.encounterSpawned) return false;
     const encounter = encounterForStage(state.stage);
     if (!encounter || wilted < encounter.threshold) return false;
@@ -22874,6 +23053,13 @@ const GAME = (() => {
     QUEST.reset();
     ENEMY.reset();
     PICKUP.reset();
+    /* Re-read the authored boss ladder so its "already spawned" flags clear
+       along with the kill count they are compared against -- otherwise dying
+       once on a player's map means no boss ever appears again. Guarded on
+       `active` because arming is SANDBOX.activateGameplay's decision: a
+       campaign run started from the menu must not pick up boss markers left
+       lying in the editor. */
+    if (typeof MATCH !== 'undefined' && MATCH.active) MATCH.arm();
     UI.setKills(0);
     UI.hideDead();
     UI.hideEndGame();
@@ -26888,12 +27074,20 @@ const ENEMY = (() => {
     return e;
   }
 
+  /* `options.position` lets an authored map decide where a boss appears.
+     Without it the fight is nailed to CONFIG's coordinate, which is a point
+     inside the campaign farm -- on a blank map that is open ground a hundred
+     metres from wherever the author built their arena. Falls through to the
+     campaign spawn when absent, so every existing caller is unchanged.
+     `home.y` is ground-resolved just below either way, so a marker dropped
+     at y=0 lands on whatever it is standing over. */
   function spawnBoss(options) {
     options = options || {};
     if (bossState !== 'inactive') return boss;
+    const at = options.position || B.spawn;
     const marker = {
       layerId: 'surface', kind: 'mini_boss',
-      position: new THREE.Vector3(B.spawn.x, B.spawn.y, B.spawn.z)
+      position: new THREE.Vector3(at.x, at.y || 0, at.z)
     };
     if (!boss) create(B.id, marker, { isBoss: true });
     boss.home.copy(marker.position);
@@ -26936,9 +27130,10 @@ const ENEMY = (() => {
     // and keeps the existing 0 -> 1 -> 2 sequence untouched.
     if (Number(requestedAppearance) >= 2 && bearClawAppearances < 1) bearClawAppearances = 1;
     if (bearClawAppearances >= 2) return boss2;
+    const at2 = options.position || B2.spawn;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_2',
-      position: new THREE.Vector3(B2.spawn.x, B2.spawn.y, B2.spawn.z)
+      position: new THREE.Vector3(at2.x, at2.y || 0, at2.z)
     };
     if (!boss2) create(B2.id, marker, { isBoss2: true });
     boss2.home.copy(marker.position);
@@ -26992,9 +27187,10 @@ const ENEMY = (() => {
   function spawnBoss3(options) {
     options = options || {};
     if (bossState3 !== 'inactive') return boss3;
+    const at3 = options.position || B3.spawn;
     const marker = {
       layerId: 'surface', kind: 'mini_boss_3',
-      position: new THREE.Vector3(B3.spawn.x, B3.spawn.y, B3.spawn.z)
+      position: new THREE.Vector3(at3.x, at3.y || 0, at3.z)
     };
     if (!boss3) create(B3.id, marker, { isBoss3: true });
     boss3.home.copy(marker.position);
@@ -27033,7 +27229,8 @@ const ENEMY = (() => {
   function spawnAdditional(targetTotal, roster) {
     const need = targetTotal - nonBossList().length;
     if (need <= 0) return;
-    const eligible = WORLD.spawnMarkers.filter(m => m.kind !== 'yard' && !usedMarkerKinds.has(m.kind));
+    const eligible = WORLD.spawnMarkers.filter(m =>
+      m.enabled !== false && m.kind !== 'yard' && !usedMarkerKinds.has(m.kind));
     const basementMarkers = eligible.filter(m => (m.layerId || 'surface') === 'basement');
     const mazeMarkers = eligible.filter(m => /^corn_maze_/.test(m.kind));
     const northBarnMarkers = eligible.filter(m => /^north_barn_/.test(m.kind));
@@ -30053,9 +30250,15 @@ const ENEMY = (() => {
       updateGhosts(dt, t);
       return;
     }
+    /* An authored map brings its own boss ladder and supersedes both of the
+       branches below -- QUEST's campaign chain (which needs buildings a
+       blank map does not have) and the multiplayer thresholds. */
+    if (typeof MATCH !== 'undefined' && MATCH.active) {
+      MATCH.update(kills);
+    }
     // Single-player owns an explicit, non-skippable quest sequence (QUEST).
     // Preserve the established kill-threshold encounters for multiplayer.
-    if (typeof GAME === 'undefined' || GAME.mode !== 'single') {
+    else if (typeof GAME === 'undefined' || GAME.mode !== 'single') {
       if (bossState === 'inactive' && kills >= CONFIG.progress.bossWiltThreshold) spawnBoss();
       if (bossState2 === 'inactive' && kills >= CONFIG.progress.bearClawThreshold) spawnBoss2();
       else if (bossState2 === 'defeated' && bearClawAppearances < 2 && kills >= CONFIG.progress.bearClawThreshold2) spawnBoss2();
@@ -32187,6 +32390,39 @@ const REGISTRY = (() => {
     });
   });
 
+  /* --- bosses --------------------------------------------------------
+     A boss marker is not an object that exists during play. It says two
+     things about the match: WHERE this boss appears, and HOW MANY regular
+     enemies have to be wilted first. MATCH reads the placed markers when a
+     run starts and drives the spawns off the kill count.
+
+     `wilted` is per marker rather than one global setting, because the
+     interesting thing to author is the ladder -- Beat Slayer at 10, Bear
+     Claw at 25, the Warden at 40 -- and that is four numbers, not one. 0
+     means "at the start of the match", which is how you build a boss rush.
+
+     Bear Claw appears twice in the campaign (a fight and a tougher rematch
+     that drops a different weapon), so both are placeable separately. The
+     rematch refuses to spawn unless the first one has happened, which is
+     ENEMY's own rule and worth leaving alone. */
+  const BOSS_TYPES = [
+    { id: 'carrot_warden', name: 'Carrot Warden', encounter: 'carrotWarden', wilted: 40 },
+    { id: 'bear_claw',     name: 'Bear Claw',     encounter: 'bearClaw',     wilted: 25 },
+    { id: 'bear_claw_2',   name: 'Bear Claw (Rematch)', encounter: 'bearClaw2', wilted: 60 },
+    { id: 'beat_slayer',   name: 'Beat Slayer',   encounter: 'beatSlayer',   wilted: 10 },
+    { id: 'gardener',      name: 'The Gardener',  encounter: 'gardener',     wilted: 75 }
+  ];
+  BOSS_TYPES.forEach(b => {
+    register({
+      id: 'boss_' + b.id, name: b.name, category: 'Bosses', collides: false,
+      build: () => marker(0xE8A33D, true),
+      bossEncounter: b.encounter,
+      properties: {
+        wilted: { type: 'number', label: 'Wilted needed', def: b.wilted, min: 0, max: 999, step: 1 }
+      }
+    });
+  });
+
   /* --- pickups -------------------------------------------------------
      Built from PICKUP.definitions rather than hand-listed, so a pickup added
      to the game becomes placeable with no edit here. */
@@ -32476,6 +32712,46 @@ const SANDBOX = (() => {
     instances.filter(i => i.layer === layer).forEach(remove);
   }
 
+  /* ------------------------- terrain, via LEVEL -----------------------
+     Which world the player's objects stand on. SANDBOX owns it because it
+     is a property of the *map*, not of the level -- it saves, loads and
+     round-trips with everything else in the file. LEVEL owns the switching.
+
+     Guarded because SANDBOX is reachable before LEVEL.build has run (the
+     editor opens from the main menu), and a terrain request that arrives
+     early should be a no-op rather than a crash. */
+  /* The farm's migrated clusters are map-layer instances of this module, and
+     each one's collision lives in its OWN capture handle -- WORLD._capture
+     records into the innermost open scope, so LEVEL's farm-wide capture does
+     not contain them. A terrain switch therefore has to reach them here.
+
+     Their meshes need nothing: they are parented under LEVEL's farm group,
+     which the switch already hides. */
+  function setCampaignEnabled(on) {
+    instances.forEach(i => {
+      if (i.layer === 'campaign') WORLD.setCaptureEnabled(i.handle, on);
+    });
+  }
+
+  function currentTerrain() {
+    return (typeof LEVEL !== 'undefined' && LEVEL.terrain) || 'farm';
+  }
+  function setTerrain(mode) {
+    if (typeof LEVEL === 'undefined' || !LEVEL.setTerrain) return 'farm';
+    return LEVEL.setTerrain(mode === 'blank' ? 'blank' : 'farm');
+  }
+
+  /* "New map". `terrain` picks the ground it starts on, so "New blank map"
+     is the same operation with a different backdrop rather than a separate
+     code path that could drift from this one. */
+  function newMap(terrain) {
+    clear();
+    metadata.name = 'Untitled Farm';
+    nextId = 1;
+    setTerrain(terrain);
+    return currentTerrain();
+  }
+
   /* Transform edits go through here so the collider follows the mesh. The
      collider is rebuilt by delta rather than recomputed, because only the
      builder knows the box's original extents. */
@@ -32540,7 +32816,11 @@ const SANDBOX = (() => {
     return {
       formatVersion: FORMAT_VERSION,
       metadata: { name: metadata.name, savedAt: new Date().toISOString() },
-      environment: {},
+      /* `terrain` is the one thing about a map that is not an object: does
+         it stand on the campaign farm, or on empty ground of the same
+         extents. It rides in the file so a map a player mails to a friend
+         opens as the world they built it in. */
+      environment: { terrain: currentTerrain() },
       objects: instances.filter(i => i.layer !== 'campaign')
         .map(i => JSON.parse(JSON.stringify(i.data)))
     };
@@ -32551,6 +32831,8 @@ const SANDBOX = (() => {
     if (!report.ok) return report;
     clear();
     metadata.name = (mapData.metadata && mapData.metadata.name) || 'Untitled Farm';
+    const env = mapData.environment || {};
+    setTerrain(env.terrain === 'blank' ? 'blank' : 'farm');
     nextId = 1;
     let placed = 0;
     mapData.objects.forEach(o => { if (instantiate(o)) placed++; });
@@ -32582,6 +32864,10 @@ const SANDBOX = (() => {
   function activateGameplay() {
     activated = [];
     setMarkersVisible(false);
+    // Boss markers are rules, not entities -- MATCH reads them here and
+    // drives the spawns off the kill count. They have no `activate`, so the
+    // loop below skips them on its own.
+    if (typeof MATCH !== 'undefined') MATCH.arm();
     instances.forEach(inst => {
       if (!inst.entry.activate) return;
       try {
@@ -32597,6 +32883,7 @@ const SANDBOX = (() => {
   function deactivateGameplay() {
     activated = [];
     setMarkersVisible(true);
+    if (typeof MATCH !== 'undefined') MATCH.disarm();
   }
 
   function playerSpawn() {
@@ -32609,6 +32896,8 @@ const SANDBOX = (() => {
   return {
     FORMAT_VERSION,
     ensureGroup, add, remove, clear, clearLayer, find, findByObject, setTransform, rebuild,
+    newMap, setTerrain, setCampaignEnabled,
+    get terrain() { return currentTerrain(); },
     serialize, load, instantiate, activateGameplay, deactivateGameplay, setMarkersVisible, playerSpawn,
     /* Test hook. Region translation has no caller in the shipped game yet --
        the two regions belong to builders that have not migrated -- and the
@@ -32670,6 +32959,18 @@ const MAPIO = (() => {
     if (!Array.isArray(mapData.objects)) {
       errors.push('objects must be an array.');
       return { ok: false, errors: errors, warnings: warnings };
+    }
+
+    /* environment.terrain decides which world the objects stand on, so a
+       typo here silently hands the author the wrong map rather than an
+       error. A file with no environment block at all is fine and means the
+       farm -- that is every map written before terrain existed. */
+    const env = mapData.environment;
+    if (env !== undefined && (env === null || typeof env !== 'object' || Array.isArray(env))) {
+      errors.push('environment must be an object.');
+    } else if (env && env.terrain !== undefined && env.terrain !== 'farm' && env.terrain !== 'blank') {
+      errors.push('environment.terrain must be "farm" or "blank", got ' +
+        JSON.stringify(env.terrain) + '.');
     }
 
     const seen = {};
@@ -33070,6 +33371,121 @@ const CAMPAIGN = (() => {
            open, release, snapshot, revert, isLive };
 })();
 
+/* ============================== [MATCH] ==============================
+   [ENGINE] The rules half of an authored map.
+
+   A map is two things: objects standing somewhere, and the shape of the
+   fight. SANDBOX owns the first. This owns the second -- which bosses are
+   in the match, where each one appears, and how many regular enemies have
+   to be wilted before it does.
+
+   WHY THIS IS NOT JUST A REGISTRY `activate`. Every other placeable turns
+   into an entity the moment a run starts: a barrel is a barrel, an enemy
+   marker spawns its grunt. A boss is not like that. It appears partway
+   through, on a condition, and the condition is the interesting thing the
+   author is designing. So a boss marker stays a marker, and MATCH watches
+   the kill count.
+
+   WHY IT SUPERSEDES QUEST. Single-player boss encounters are QUEST's
+   ENCOUNTERS chain, which is welded to the campaign: the Barn Key, the
+   North Barn workbench, the Portal Gun cutscene. On a blank map none of
+   those buildings exist, so that chain cannot be completed and its
+   encounters would never fire. When a map declares its own bosses, MATCH
+   drives them instead and QUEST's chain stands down. A map that declares
+   none changes nothing at all -- the campaign runs exactly as it did.
+   ==================================================================== */
+const MATCH = (() => {
+  let rules = [];
+  let armed = false;
+
+  /* Reads the boss markers out of the player's map. Called when a run
+     starts, not continuously: an author editing thresholds mid-playtest is
+     not a thing that can happen, since editing means leaving the run. */
+  /* Reads the boss markers the player has placed. Shared by arm() and by the
+     editor's read-only summary, so what an author sees while building is
+     produced by the same code that runs the match -- not a second listing
+     that can disagree with it. */
+  function collect() {
+    const out = [];
+    if (typeof SANDBOX === 'undefined') return out;
+    SANDBOX.instances.forEach(inst => {
+      const encounter = inst.entry && inst.entry.bossEncounter;
+      if (!encounter) return;
+      const p = inst.data.transform.position;
+      const raw = (inst.data.properties || {}).wilted;
+      const n = Number(raw);
+      // A blank or unparseable threshold is 0 -- present from the start --
+      // rather than dropping the boss out of the match silently.
+      const wilted = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+      out.push({
+        encounter: encounter,
+        name: inst.entry.name,
+        wilted: wilted,
+        position: { x: p.x, y: p.y, z: p.z },
+        spawned: false
+      });
+    });
+    // Lowest threshold first, so a boss rush at 0 comes out in a stable
+    // order rather than whatever order the author happened to click in.
+    out.sort((a, b) => a.wilted - b.wilted);
+    return out;
+  }
+
+  function arm() {
+    rules = collect();
+    armed = rules.length > 0;
+    return rules.length;
+  }
+
+  function disarm() { rules = []; armed = false; }
+
+  /* One spawn per marker per run. The guard is set before the spawn call so
+     a boss that refuses to appear -- Bear Claw's rematch will not spawn
+     before the first fight has happened -- does not retry every frame for
+     the rest of the match. */
+  function update(kills) {
+    if (!armed) return;
+    for (let i = 0; i < rules.length; i++) {
+      const r = rules[i];
+      if (r.spawned || kills < r.wilted) continue;
+      r.spawned = true;
+      spawn(r);
+    }
+  }
+
+  function spawn(rule) {
+    const at = rule.position;
+    const said = rule.wilted > 0 ? rule.wilted + ' WILTED — ' : '';
+    if (typeof ENEMY === 'undefined') return;
+    if (rule.encounter === 'beatSlayer') {
+      ENEMY.spawnBoss3({ announcement: said + 'BEAT SLAYER DROPS IN', position: at });
+    } else if (rule.encounter === 'bearClaw') {
+      ENEMY.spawnBoss2(1, { announcement: said + 'BEAR CLAW EMERGES', position: at });
+    } else if (rule.encounter === 'bearClaw2') {
+      ENEMY.spawnBoss2(2, { announcement: said + 'BEAR CLAW RETURNS', position: at });
+    } else if (rule.encounter === 'carrotWarden') {
+      ENEMY.spawnBoss({ announcement: said + 'CARROT WARDEN AWAKES', position: at });
+    } else if (rule.encounter === 'gardener' && typeof QUEST !== 'undefined') {
+      QUEST.spawnGardener(false, said + 'THE GARDENER TAKES ROOT', at);
+    }
+  }
+
+  return {
+    arm, disarm, update,
+    /* What the map currently declares, read fresh. The editor calls this
+       while building, when nothing is armed. */
+    preview: collect,
+    get active() { return armed; },
+    // A read-only view of the match in progress, for the editor and tests.
+    get rules() {
+      return rules.map(r => ({
+        encounter: r.encounter, name: r.name, wilted: r.wilted, spawned: r.spawned,
+        position: { x: r.position.x, y: r.position.y, z: r.position.z }
+      }));
+    }
+  };
+})();
+
 /* ============================= [EDITOR] ==============================
    [ENGINE] The first consumer of the engine layer above.
 
@@ -33346,6 +33762,7 @@ const EDITOR = (() => {
     renderBrowser();
     renderToolbar();
     renderInspector();
+    syncTerrain();
     refreshStatus();
   }
 
@@ -33498,10 +33915,27 @@ const EDITOR = (() => {
       const spec = props[key];
       const val = (selection.data.properties && selection.data.properties[key] !== undefined)
         ? selection.data.properties[key] : (spec.def === undefined ? '' : spec.def);
+      /* Every property was a text box until a boss threshold needed to be a
+         count. A number input gets the spinner, the numeric keypad on a
+         phone, and a range the browser enforces before the value ever
+         reaches us. Anything without an explicit type stays text. */
+      const num = spec.type === 'number';
+      const attrs = num
+        ? ' type="number" step="' + (spec.step === undefined ? 1 : spec.step) + '"' +
+          (spec.min === undefined ? '' : ' min="' + spec.min + '"') +
+          (spec.max === undefined ? '' : ' max="' + spec.max + '"')
+        : ' type="text"';
       html += '<label class="ed-row"><span>' + (spec.label || key) + '</span>' +
-        '<input type="text" data-prop="' + key + '" value="' + String(val).replace(/"/g, '&quot;') + '" /></label>';
+        '<input' + attrs + ' data-prop="' + key + '" value="' +
+        String(val).replace(/"/g, '&quot;') + '" /></label>';
     });
     host.innerHTML = html;
+  }
+  function bossLadder() {
+    if (typeof MATCH === 'undefined') return '';
+    const rules = MATCH.preview();
+    if (!rules.length) return '';
+    return ' · bosses @ ' + rules.map(r => r.wilted).join('/');
   }
   // parseFloat strips the trailing zeros toFixed leaves behind, so 6 shows as
   // "6" rather than "6.000" while 6.5851 still shows as "6.585".
@@ -33517,7 +33951,11 @@ const EDITOR = (() => {
     // player's map, and mixing the two makes the number meaningless.
     s.textContent = SANDBOX.count + ' object' + (SANDBOX.count === 1 ? '' : 's') +
       ' · ' + SANDBOX.name +
-      ' · farm ' + SANDBOX.campaignCount +
+      ' · ' + (SANDBOX.terrain === 'blank' ? 'blank ground' : 'farm ' + SANDBOX.campaignCount) +
+      // The authored boss ladder, in the order it will actually fire. The
+      // single most useful number to see while balancing a match, and the
+      // one thing you cannot read off the viewport.
+      bossLadder() +
       (selection ? ' · selected ' + selection.entry.name +
         (selection.layer === 'campaign' ? ' (farm)' : '') : '') +
       ' · undo ' + historyAt + '/' + history.length;
@@ -33548,16 +33986,28 @@ const EDITOR = (() => {
     SANDBOX.name = name;
     select(null);
     history.length = 0; historyAt = 0;
-    notify('Loaded "' + name + '" — ' + out.placed + ' objects' +
+    syncTerrain();
+    notify('Loaded "' + name + '" — ' + out.placed + ' objects, ' +
+      (SANDBOX.terrain === 'blank' ? 'blank ground' : 'farm ground') +
       (out.warnings.length ? ' (' + out.warnings[0] + ')' : ''));
     refreshStatus();
   }
+  /* The toolbar select is a view of SANDBOX.terrain, never the other way
+     round -- loading a map changes the terrain underneath it, and a control
+     showing "Farm" over blank ground is worse than no control. */
+  function syncTerrain() {
+    const sel = el('edTerrain');
+    if (sel) sel.value = SANDBOX.terrain;
+  }
+  /* Keeps the ground you are working on. Starting a blank map is the same
+     "New" with the Ground select already on Blank, rather than a second
+     button that means almost the same thing. */
   function newMap() {
-    SANDBOX.clear();
+    SANDBOX.newMap(SANDBOX.terrain);
     select(null);
     history.length = 0; historyAt = 0;
-    SANDBOX.name = 'Untitled Farm';
-    notify('New map.');
+    syncTerrain();
+    notify('New map — ' + (SANDBOX.terrain === 'blank' ? 'blank ground' : 'farm ground'));
     refreshStatus();
   }
   /* Campaign fragments are not loaded here any more, and that is the point of
@@ -33708,6 +34158,20 @@ const EDITOR = (() => {
       notify('Snap grid ' + snapSize + ' m');
     });
 
+    /* Switching ground does not touch the player's objects -- they keep
+       their coordinates and simply stand on a different world. That is the
+       useful behaviour: an author can lay a match out against the farm for
+       reference and then clear it away. */
+    const terrainSel = el('edTerrain');
+    if (terrainSel) terrainSel.addEventListener('change', e => {
+      const mode = SANDBOX.setTerrain(e.target.value);
+      syncTerrain();
+      notify(mode === 'blank'
+        ? 'Blank ground — the farm is switched off, its collision with it'
+        : 'Farm ground — the campaign world is back');
+      refreshStatus();
+    });
+
     const browser = el('edBrowser');
     if (browser) browser.addEventListener('click', e => {
       const b = e.target.closest('[data-place]');
@@ -33756,8 +34220,23 @@ const EDITOR = (() => {
         renderInspector();
       } else if (prop) {
         const id = selection.id;
+        const spec = (selection.entry.properties || {})[prop] || {};
         selection.data.properties = selection.data.properties || {};
-        selection.data.properties[prop] = e.target.value;
+        /* A numeric property is stored as a number, not the input's string.
+           It goes into the map file and gets compared against a kill count,
+           and "25" >= 25 only works by coercion -- which stops being true
+           the moment anything sorts or sums these. Clamped here too, because
+           min/max on the element is advisory: typing past it still fires
+           change with the out-of-range value. */
+        if (spec.type === 'number') {
+          let v = parseFloat(e.target.value);
+          if (!Number.isFinite(v)) v = spec.def === undefined ? 0 : spec.def;
+          if (spec.min !== undefined) v = Math.max(spec.min, v);
+          if (spec.max !== undefined) v = Math.min(spec.max, v);
+          selection.data.properties[prop] = v;
+        } else {
+          selection.data.properties[prop] = e.target.value;
+        }
         const rebuilt = SANDBOX.rebuild(selection);
         select(rebuilt || SANDBOX.find(id));
       }
