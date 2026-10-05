@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>The Withered Farm — v0.38</title>
+<!-- No version here on purpose. The script stamps document.title from BUILD
+     at boot, so a number typed in this literal can only ever be a second,
+     staler source: it read "v0.38" for several releases while the running
+     tab read the real one. This is what shows for the moment before the
+     script runs, and if the script ever fails to run at all. -->
+<title>The Withered Farm</title>
 <style>
   :root{
     --peach:#F2CDBB;
@@ -1248,6 +1253,7 @@
   body.touch-device #pause .alt,
   body.touch-device #options .alt,
   body.touch-device #mapView .alt,
+  body.touch-device #customLevels .alt,
   body.touch-device #aviationBuilder .alt{display:block;}
   body.touch-device #coopLobby .signal-box{touch-action:auto;user-select:text;-webkit-user-select:text;}
   /* Touch layout: the bottom third of the screen belongs to the thumb
@@ -1310,6 +1316,45 @@
   }
   .alt:hover{color:var(--rust);}
   .alt:focus-visible{outline:3px solid var(--blue-deep);outline-offset:3px;}
+
+  /* ---- Custom level list ----
+     One row per saved level: its name and what it is on the left, Play and
+     Delete on the right. Scrolls rather than growing the card, because the
+     card is already near the viewport height on a phone. */
+  #customLevels .card{max-width:min(640px,94vw);}
+  #customLevelList{
+    margin:4px 0 14px;max-height:min(46vh,340px);overflow-y:auto;
+    border:2px solid var(--ink);border-radius:8px;background:rgba(246,233,210,.6);
+  }
+  .custom-level{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:9px 11px;border-bottom:2px solid rgba(22,18,15,.18);text-align:left;
+  }
+  #customLevelList .custom-level:last-child{border-bottom:0;}
+  .custom-level-info{flex:1 1 220px;min-width:0;}
+  .custom-level-name{
+    display:block;font:700 14px/1.2 "Rockwell",Georgia,serif;color:var(--ink);
+    overflow-wrap:anywhere;
+  }
+  .custom-level-meta{
+    display:block;margin-top:3px;font:600 11px/1.35 "Rockwell",Georgia,serif;
+    color:var(--blue-deep);
+  }
+  .custom-level-meta b{color:var(--rust-deep);}
+  .custom-level button{
+    padding:6px 12px;cursor:pointer;background:var(--peach);border:2px solid var(--ink);
+    border-radius:6px;font:700 12px/1 "Rockwell",Georgia,serif;color:var(--ink);
+    box-shadow:0 2px 0 var(--ink);
+  }
+  .custom-level button:hover{background:var(--cream);}
+  .custom-level button.custom-play{background:var(--jays);}
+  .custom-level button.custom-delete{background:var(--peach-deep);}
+  .custom-level-empty{
+    padding:16px 12px;font:600 12px/1.45 "Rockwell",Georgia,serif;color:var(--ink-soft);
+  }
+  #customImportFile{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+  #customLevelNotice{min-height:1.2em;}
+  #customLevelNotice.bad{color:var(--rust-deep);}
 
   #hurt{
     position:fixed;inset:0;pointer-events:none;z-index:25;opacity:0;
@@ -2153,6 +2198,7 @@
         <button class="go" id="enterBtn">Single-player →</button>
         <button class="go mode-coop" id="coopBtn">Online multiplayer →</button>
       </div>
+      <button class="alt" id="startCustomBtn">Custom Levels</button>
       <button class="alt" id="startOptionsBtn">Options</button>
       <button class="alt" id="startMapBtn">Farm Map</button>
       <button class="alt" id="startEditorBtn">Map Editor</button>
@@ -2393,6 +2439,22 @@
         <p class="opt-hint">The browser only grants mouse-look capture from a click, so starting a run and leaving a pause still need one — everything between them is playable on the pad alone.</p>
       </div>
       <button class="go compact" id="optionsBackBtn">Back →</button>
+    </div>
+  </div>
+
+  <!-- Custom levels: the other half of the editor. Saving a level in the
+       editor puts it here, and this is where a player who did not build it
+       picks one and plays it. Import takes a .json a friend sent. -->
+  <div id="customLevels" class="veil hidden">
+    <div class="card">
+      <p class="eyebrow">Custom Levels</p>
+      <h1>Someone Else's<br/>Farm<span>Built in the editor, played for real</span></h1>
+      <p class="sub">Levels you have built or imported. Beating one means putting down every boss its author placed — a level with no bosses is endless survival. Use <b>Export</b> in the editor to send one to a friend, and <b>Import</b> below to load theirs.</p>
+      <div id="customLevelList"></div>
+      <label class="ed-file" for="customImportFile" id="customImportLabel">Import a level (.json)</label>
+      <input id="customImportFile" type="file" accept="application/json,.json" />
+      <p class="foot" id="customLevelNotice"></p>
+      <button class="alt" id="customBackBtn">Back</button>
     </div>
   </div>
 
@@ -19607,6 +19669,10 @@ const UI = (() => {
     el.pauseMapBtn = document.getElementById('pauseMapBtn');
     el.options = document.getElementById('options');
     el.mapView = document.getElementById('mapView');
+    el.customLevels = document.getElementById('customLevels');
+    el.customLevelList = document.getElementById('customLevelList');
+    el.customLevelNotice = document.getElementById('customLevelNotice');
+    el.customImportFile = document.getElementById('customImportFile');
     el.mapSurfaceCanvas = document.getElementById('mapSurfaceCanvas');
     el.mapUndergroundCanvas = document.getElementById('mapUndergroundCanvas');
     el.optMaster = document.getElementById('optMaster');
@@ -20387,6 +20453,7 @@ const UI = (() => {
     el.pause.classList.add('hidden');
     if (el.options) { el.options.classList.add('hidden'); el.options.setAttribute('aria-hidden', 'true'); }
     if (el.mapView) el.mapView.classList.add('hidden');
+    hideCustomLevels();
     el.dead.classList.add('hidden');
     hideDowned();
     // restart()/respawnAttempt() call hideDead() as part of their own reset
@@ -20563,6 +20630,7 @@ const UI = (() => {
     el.start.classList.remove('hidden');
     if (el.options) { el.options.classList.add('hidden'); el.options.setAttribute('aria-hidden', 'true'); }
     if (el.mapView) el.mapView.classList.add('hidden');
+    hideCustomLevels();
     if (el.playerSelect) el.playerSelect.classList.add('hidden');
     if (el.aviationBuilder) {
       el.aviationBuilder.classList.add('hidden');
@@ -20584,8 +20652,93 @@ const UI = (() => {
     showMobileControls(false);
     setCoopStatus('Choose Single-player or Online co-op to begin.');
   }
+  /* ---------------------- custom level chooser -------------------------
+     Renders from MAPIO's saved index. Every row is built with textContent
+     rather than interpolated HTML: a level name is player-supplied text that
+     arrives from a file someone else wrote, and it is about to be put into
+     the DOM. The rest of the card is static markup. */
+  function renderCustomLevels() {
+    const host = el.customLevelList;
+    if (!host) return 0;
+    host.textContent = '';
+    const names = MAPIO.listSaved();
+    if (!names.length) {
+      const empty = document.createElement('p');
+      empty.className = 'custom-level-empty';
+      empty.textContent = 'No custom levels yet. Build one in the Map Editor and press Save, or import a .json a friend sent you.';
+      host.appendChild(empty);
+      return 0;
+    }
+    names.forEach(name => {
+      const res = MAPIO.loadLocal(name);
+      const row = document.createElement('div');
+      row.className = 'custom-level';
+
+      const info = document.createElement('div');
+      info.className = 'custom-level-info';
+      const title = document.createElement('span');
+      title.className = 'custom-level-name';
+      title.textContent = name;
+      info.appendChild(title);
+
+      const meta = document.createElement('span');
+      meta.className = 'custom-level-meta';
+      let playable = false;
+      if (!res.ok) {
+        meta.textContent = res.errors[0];
+      } else {
+        const s = MAPIO.summarize(res.map);
+        const report = MAPIO.validate(res.map);
+        playable = report.ok;
+        const bits = [
+          s.terrain === 'blank' ? 'blank ground' : 'the farm',
+          s.objects + ' object' + (s.objects === 1 ? '' : 's'),
+          s.bosses
+            ? s.bosses + ' boss' + (s.bosses === 1 ? '' : 'es') + ' @ ' + s.thresholds.join('/') + ' wilted'
+            : 'no bosses — endless'
+        ];
+        meta.textContent = bits.join(' · ');
+        if (!playable) meta.textContent = 'Cannot be played: ' + report.errors[0];
+        else if (!s.hasPlayerSpawn) meta.textContent += ' · no spawn placed, starts at the farm gate';
+      }
+      info.appendChild(meta);
+      row.appendChild(info);
+
+      if (playable) {
+        const play = document.createElement('button');
+        play.className = 'custom-play';
+        play.setAttribute('data-play-level', name);
+        play.textContent = 'Play';
+        row.appendChild(play);
+      }
+      const del = document.createElement('button');
+      del.className = 'custom-delete';
+      del.setAttribute('data-delete-level', name);
+      del.textContent = 'Delete';
+      row.appendChild(del);
+
+      host.appendChild(row);
+    });
+    return names.length;
+  }
+  function setCustomLevelNotice(msg, bad) {
+    if (!el.customLevelNotice) return;
+    el.customLevelNotice.textContent = msg || '';
+    el.customLevelNotice.classList.toggle('bad', !!bad);
+  }
+  function showCustomLevels() {
+    renderCustomLevels();
+    setCustomLevelNotice('');
+    el.start.classList.add('hidden');
+    if (el.customLevels) el.customLevels.classList.remove('hidden');
+  }
+  function hideCustomLevels() {
+    if (el.customLevels) el.customLevels.classList.add('hidden');
+  }
+
   function showPlayerSelect() {
     el.start.classList.add('hidden');
+    hideCustomLevels();
     el.coopLobby.classList.add('hidden');
     if (el.aviationBuilder) {
       el.aviationBuilder.classList.add('hidden');
@@ -20888,6 +21041,7 @@ const UI = (() => {
     showStart, showSplash, hideSplash, showLockError, clearLockError,
     showOptions, hideOptions, syncOptionsUI, setSprayTagStatus, renderControlsList, setRebinding,
     renderPadList, setPadRebinding, refreshPadStatus, showMap, hideMap,
+    showCustomLevels, hideCustomLevels, renderCustomLevels, setCustomLevelNotice,
     updateFfaScoreboard, showFfaScoreboard, hideFfaScoreboard, showMatchOver, hideMatchOver,
     pushKillFeed, hideKillFeed, showAnnouncerBanner, hideAnnouncerBanner,
     showKillcam, hideKillcam,
@@ -22021,6 +22175,14 @@ const QUEST = (() => {
     return true;
   }
   function bossDefeated(id, entity) {
+    /* An authored match owns its own objectives, so it takes the defeat and
+       the campaign stage machine below does not run -- same supersession as
+       updateProgress. All four of ENEMY's boss death sites come through
+       here, which is why MATCH needs no hooks of its own. */
+    if (typeof MATCH !== 'undefined' && MATCH.active) {
+      if (!(entity && entity.devSpawn)) MATCH.bossDefeated(id);
+      return;
+    }
     if (!isSinglePlayer() || (entity && entity.devSpawn)) return;
     const encounter = encounterForStage(state.stage);
     if (encounter && id === encounter.id) {
@@ -22416,6 +22578,34 @@ const GAME = (() => {
     // [ENGINE] Map editor: reachable from the main menu and from pause, so it
     // is a mode a player can find rather than an undocumented F2.
     document.getElementById('startEditorBtn').addEventListener('click', e => { e.stopPropagation(); openEditor(); });
+    document.getElementById('startCustomBtn').addEventListener('click', e => { e.stopPropagation(); openCustomLevels(); });
+    document.getElementById('customBackBtn').addEventListener('click', e => { e.stopPropagation(); UI.showStart(); });
+    /* One delegated listener on the list, because the rows are rebuilt every
+       time the card opens or a level is added or removed. */
+    const customList = document.getElementById('customLevelList');
+    if (customList) customList.addEventListener('click', e => {
+      e.stopPropagation();
+      const playBtn = e.target.closest('[data-play-level]');
+      if (playBtn) { loadCustomLevel(playBtn.getAttribute('data-play-level')); return; }
+      const delBtn = e.target.closest('[data-delete-level]');
+      if (delBtn) deleteCustomLevel(delBtn.getAttribute('data-delete-level'));
+    });
+    const customImport = document.getElementById('customImportFile');
+    if (customImport) customImport.addEventListener('change', e => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        let parsed = null;
+        try { parsed = JSON.parse(reader.result); }
+        catch (err) { UI.setCustomLevelNotice('That file is not valid JSON.', true); return; }
+        importCustomLevel(parsed, f.name.replace(/\.json$/i, ''));
+      };
+      reader.onerror = () => UI.setCustomLevelNotice('Could not read that file.', true);
+      reader.readAsText(f);
+      // Clear it, or picking the same file twice in a row fires nothing.
+      e.target.value = '';
+    });
     document.getElementById('pauseEditorBtn').addEventListener('click', e => { e.stopPropagation(); openEditor(); });
     document.getElementById('optMaster').addEventListener('input', e => { SETTINGS.setMaster(e.target.value / 100); UI.syncOptionsUI(); });
     document.getElementById('optSfx').addEventListener('input', e => { SETTINGS.setSfx(e.target.value / 100); UI.syncOptionsUI(); });
@@ -22766,7 +22956,70 @@ const GAME = (() => {
   function startSingle() {
     mode = 'single';
     COOP.stop();
+    // The campaign is the campaign. Any custom level sitting in the map
+    // layer from an earlier choice has to go, or its objects would still be
+    // standing in the farm and its terrain might still be blank.
+    clearCustomLevel();
     UI.showPlayerSelect();
+  }
+
+  /* ------------------- [ENGINE] custom levels --------------------------
+     A saved level is playable from the main menu, not only from inside the
+     editor. That is the whole point of saving one: the person who plays it
+     is usually not the person who built it.
+
+     `customLevel` is the name of the loaded level, or null for the campaign.
+     It is the single flag that decides whether a run activates the map
+     layer, so there is one place to look when asking "what am I playing". */
+  let customLevel = null;
+
+  function clearCustomLevel() {
+    if (typeof SANDBOX === 'undefined') { customLevel = null; return; }
+    if (customLevel !== null) SANDBOX.newMap('farm');
+    customLevel = null;
+  }
+
+  function openCustomLevels() {
+    UI.showCustomLevels();
+  }
+
+  /* Loads the level and goes to hero select. Deliberately NOT straight into
+     the run: picking a character is part of starting any single-player game,
+     and a custom level that skipped it would be the only mode that does. */
+  function loadCustomLevel(name) {
+    if (typeof SANDBOX === 'undefined' || typeof MAPIO === 'undefined') return false;
+    const res = MAPIO.loadLocal(name);
+    if (!res.ok) { UI.setCustomLevelNotice(res.errors[0], true); return false; }
+    const out = SANDBOX.load(res.map);
+    if (!out.ok) { UI.setCustomLevelNotice('Level rejected: ' + out.errors[0], true); return false; }
+    customLevel = name;
+    SANDBOX.name = name;
+    mode = 'single';
+    COOP.stop();
+    UI.showPlayerSelect();
+    return true;
+  }
+
+  /* Takes a parsed map from a file a friend sent, saves it under its own
+     name, and leaves the player on the list so they can see it arrive. */
+  function importCustomLevel(parsed, fallbackName) {
+    const report = MAPIO.validate(parsed);
+    if (!report.ok) { UI.setCustomLevelNotice('Not a playable level: ' + report.errors[0], true); return false; }
+    const name = (parsed.metadata && parsed.metadata.name) || fallbackName || 'Imported level';
+    const saved = MAPIO.saveLocal(name, parsed);
+    if (!saved.ok) { UI.setCustomLevelNotice(saved.errors[0], true); return false; }
+    UI.renderCustomLevels();
+    UI.setCustomLevelNotice('Imported "' + name + '".');
+    return true;
+  }
+
+  function deleteCustomLevel(name) {
+    MAPIO.deleteLocal(name);
+    // Deleting the level currently loaded would otherwise leave its objects
+    // in the world with nothing naming them.
+    if (customLevel === name) clearCustomLevel();
+    UI.renderCustomLevels();
+    UI.setCustomLevelNotice('Deleted "' + name + '".');
   }
 
   /* One-time thumbnail render per hero for the select screen -- built once
@@ -22792,6 +23045,14 @@ const GAME = (() => {
     COOP.stop();
     HERO.select(id);
     restart(skipIntro);
+    // Activation, spawn and intro-skipping all live in restart(), so a
+    // retry after dying gets the same treatment as the first attempt.
+    if (customLevel !== null) {
+      const n = (typeof MATCH !== 'undefined') ? MATCH.total : 0;
+      UI.toast(n
+        ? 'CUSTOM LEVEL — PUT DOWN ' + n + ' BOSS' + (n === 1 ? '' : 'ES') + ' TO BEAT IT'
+        : 'CUSTOM LEVEL — NO BOSSES, SURVIVE AS LONG AS YOU CAN', 3.2);
+    }
   }
 
   /* ---------------------- [ENGINE] editor mode -------------------------
@@ -23053,6 +23314,16 @@ const GAME = (() => {
     QUEST.reset();
     ENEMY.reset();
     PICKUP.reset();
+    /* A custom level is meant to be retried, so every restart rebuilds it.
+       ENEMY.reset and PICKUP.reset above have just cleared the entities the
+       map layer spawned, and without this they would not come back: the
+       second attempt would be the same level with none of its enemies,
+       pickups or weapons in it.
+
+       This also covers the editor's PLAY, which activates before calling in
+       -- re-activating is the same code path, not a special case. */
+    const custom = customLevel !== null;
+    if (custom && typeof SANDBOX !== 'undefined') SANDBOX.activateGameplay();
     /* Re-read the authored boss ladder so its "already spawned" flags clear
        along with the kill count they are compared against -- otherwise dying
        once on a player's map means no boss ever appears again. Guarded on
@@ -23065,7 +23336,18 @@ const GAME = (() => {
     UI.hideEndGame();
     deathPending = false;
     endShown = false;
-    enter(skipIntro ? false : undefined);
+    /* A custom level never plays the campaign intro: it is framing for the
+       farm, and it animates the camera, so an authored spawn applied before
+       it finished would simply be overwritten. With no intro, enter() runs
+       synchronously and the spawn below lands after the player has been
+       placed at the campaign start. */
+    enter(custom || skipIntro ? false : undefined);
+    if (custom && typeof SANDBOX !== 'undefined') {
+      const spawn = SANDBOX.playerSpawn();
+      if (spawn && typeof PLAYER !== 'undefined' && PLAYER.setPosition) {
+        PLAYER.setPosition(spawn.x, spawn.y, spawn.z);
+      }
+    }
   }
 
   function complete(killsOverride) {
@@ -23099,6 +23381,18 @@ const GAME = (() => {
     QUEST.reset();
     ENEMY.reset();
     PICKUP.reset();
+    /* Leaving a run ends the map layer's gameplay. This is what disarms an
+       authored match, and it is not optional: MATCH.active left true means
+       ENEMY.update hands the boss slots to a match that is over while
+       QUEST.updateProgress stands down for it, so the NEXT campaign run gets
+       no boss encounters at all. The suite caught exactly that.
+
+       Then the campaign farm goes back, so the menu, the Farm Map and the
+       editor all show the world they are supposed to describe rather than
+       someone else's level still standing in it. Choosing the level again
+       from the list simply reloads it. */
+    if (typeof SANDBOX !== 'undefined') SANDBOX.deactivateGameplay();
+    clearCustomLevel();
     ANNOUNCER.reset();
     UI.setKills(0);
     UI.hideFfaScoreboard();
@@ -23330,6 +23624,10 @@ const GAME = (() => {
     init, complete, resumeAfterQuestCutscene,
     // [ENGINE] The editor's side of the contract; see openEditor above.
     openEditor, startPlaytest, closeEditor,
+    openCustomLevels, loadCustomLevel, importCustomLevel, deleteCustomLevel, clearCustomLevel,
+    /* Which level is live: a saved level's name, or null for the campaign.
+       The single flag that says whether a run activates the map layer. */
+    get customLevel() { return customLevel; },
     get mode() { return mode; },
     get isCoop() { return mode === 'coop'; },
     // True once a run is actually live. The editor reads it to tell a
@@ -32882,7 +33180,12 @@ const SANDBOX = (() => {
   }
   function deactivateGameplay() {
     activated = [];
-    setMarkersVisible(true);
+    /* Markers belong to the editor's view, so they come back only if the
+       editor is what we are returning to. This used to pass a flat `true`,
+       which was right while the editor was the only thing that ended a
+       run -- now leaving a custom level for the main menu does too, and
+       that must not leave posts and diamonds standing in the world. */
+    setMarkersVisible(typeof EDITOR !== 'undefined' && EDITOR.active);
     if (typeof MATCH !== 'undefined') MATCH.disarm();
   }
 
@@ -33055,7 +33358,36 @@ const MAPIO = (() => {
     }
   }
 
-  return { validate, listSaved, saveLocal, loadLocal, deleteLocal, exportFile };
+  /* What a level is, in one line, for a menu that has to describe it to
+     someone who did not build it. Reads the map data only -- no registry
+     lookups, no SANDBOX -- so it works on a file that just arrived from a
+     friend and has not been loaded yet.
+
+     `bosses` is the objective count. A level with none is survival with no
+     end, which is a legitimate thing to author and worth saying plainly
+     rather than implying a win condition that does not exist. */
+  function summarize(mapData) {
+    const objects = (mapData && Array.isArray(mapData.objects)) ? mapData.objects : [];
+    const bosses = objects.filter(o => o && /^boss_/.test(o.type));
+    const thresholds = bosses.map(o => {
+      const n = Number((o.properties || {}).wilted);
+      return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0;
+    }).sort((a, b) => a - b);
+    const env = (mapData && mapData.environment) || {};
+    return {
+      objects: objects.length,
+      terrain: env.terrain === 'blank' ? 'blank' : 'farm',
+      bosses: bosses.length,
+      thresholds: thresholds,
+      // The hardest single gate in the level, which is the one number that
+      // tells a player what they are walking into.
+      topThreshold: thresholds.length ? thresholds[thresholds.length - 1] : 0,
+      hasPlayerSpawn: objects.some(o => o && o.type === 'spawn_player'),
+      savedAt: (mapData && mapData.metadata && mapData.metadata.savedAt) || ''
+    };
+  }
+
+  return { validate, listSaved, saveLocal, loadLocal, deleteLocal, exportFile, summarize };
 })();
 
 /* ============================ [CAMPAIGN] =============================
@@ -33397,6 +33729,7 @@ const CAMPAIGN = (() => {
 const MATCH = (() => {
   let rules = [];
   let armed = false;
+  let won = false;
 
   /* Reads the boss markers out of the player's map. Called when a run
      starts, not continuously: an author editing thresholds mid-playtest is
@@ -33422,7 +33755,8 @@ const MATCH = (() => {
         name: inst.entry.name,
         wilted: wilted,
         position: { x: p.x, y: p.y, z: p.z },
-        spawned: false
+        spawned: false,
+        defeated: false
       });
     });
     // Lowest threshold first, so a boss rush at 0 comes out in a stable
@@ -33434,10 +33768,42 @@ const MATCH = (() => {
   function arm() {
     rules = collect();
     armed = rules.length > 0;
+    won = false;
     return rules.length;
   }
 
-  function disarm() { rules = []; armed = false; }
+  function disarm() { rules = []; armed = false; won = false; }
+
+  /* ------------------------- beating the level -------------------------
+     A custom level is something a friend is meant to finish, so it needs a
+     win condition, and the only one the author actually declared is the
+     bosses they placed. Every boss down = beaten.
+
+     All four boss death sites already funnel through QUEST.bossDefeated,
+     which forwards here when a match is armed, so there is one hook rather
+     than four. The ids it passes are ENEMY's, not the registry's, and one
+     of them disagrees in case ('bearclaw2'), hence the explicit map. */
+  const DEFEAT_IDS = {
+    carrotWarden: 'carrotWarden',
+    bearClaw: 'bearClaw',
+    bearclaw2: 'bearClaw2',
+    bearClaw2: 'bearClaw2',
+    beatSlayer: 'beatSlayer',
+    gardener: 'gardener'
+  };
+  function bossDefeated(id) {
+    if (!armed) return;
+    const encounter = DEFEAT_IDS[id];
+    if (!encounter) return;
+    // Mark one rule, not every rule sharing the encounter: Bear Claw and his
+    // rematch are separate placements and separate objectives.
+    const hit = rules.filter(r => r.encounter === encounter && r.spawned && !r.defeated)[0];
+    if (hit) hit.defeated = true;
+    if (!won && rules.length && rules.every(r => r.defeated)) {
+      won = true;
+      if (typeof GAME !== 'undefined' && GAME.complete) GAME.complete();
+    }
+  }
 
   /* One spawn per marker per run. The guard is set before the spawn call so
      a boss that refuses to appear -- Bear Claw's rematch will not spawn
@@ -33471,15 +33837,19 @@ const MATCH = (() => {
   }
 
   return {
-    arm, disarm, update,
+    arm, disarm, update, bossDefeated,
     /* What the map currently declares, read fresh. The editor calls this
        while building, when nothing is armed. */
     preview: collect,
     get active() { return armed; },
+    get won() { return won; },
+    get total() { return rules.length; },
+    get defeated() { return rules.filter(r => r.defeated).length; },
     // A read-only view of the match in progress, for the editor and tests.
     get rules() {
       return rules.map(r => ({
-        encounter: r.encounter, name: r.name, wilted: r.wilted, spawned: r.spawned,
+        encounter: r.encounter, name: r.name, wilted: r.wilted,
+        spawned: r.spawned, defeated: r.defeated,
         position: { x: r.position.x, y: r.position.y, z: r.position.z }
       }));
     }
@@ -33763,6 +34133,7 @@ const EDITOR = (() => {
     renderToolbar();
     renderInspector();
     syncTerrain();
+    syncName();
     refreshStatus();
   }
 
@@ -33987,6 +34358,7 @@ const EDITOR = (() => {
     select(null);
     history.length = 0; historyAt = 0;
     syncTerrain();
+    syncName();
     notify('Loaded "' + name + '" — ' + out.placed + ' objects, ' +
       (SANDBOX.terrain === 'blank' ? 'blank ground' : 'farm ground') +
       (out.warnings.length ? ' (' + out.warnings[0] + ')' : ''));
@@ -33999,6 +34371,15 @@ const EDITOR = (() => {
     const sel = el('edTerrain');
     if (sel) sel.value = SANDBOX.terrain;
   }
+  /* The name box is a view of SANDBOX.name, same as the Ground select is a
+     view of the terrain. It drifted: "New" reset the name to "Untitled Farm"
+     without touching the input, so the box showed the old name while Save
+     used the new one -- and the level landed in the Custom Levels list under
+     a name the author never saw. */
+  function syncName() {
+    const input = el('edMapName');
+    if (input) input.value = SANDBOX.name;
+  }
   /* Keeps the ground you are working on. Starting a blank map is the same
      "New" with the Ground select already on Blank, rather than a second
      button that means almost the same thing. */
@@ -34007,6 +34388,7 @@ const EDITOR = (() => {
     select(null);
     history.length = 0; historyAt = 0;
     syncTerrain();
+    syncName();
     notify('New map — ' + (SANDBOX.terrain === 'blank' ? 'blank ground' : 'farm ground'));
     refreshStatus();
   }

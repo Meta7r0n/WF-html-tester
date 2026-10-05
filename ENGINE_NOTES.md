@@ -1173,3 +1173,150 @@ threshold is a number in the file, an unknown terrain is rejected, a
 pre-terrain file with no `environment` block still loads as farm, QUEST's
 chain stands down for an authored match, and a map with no bosses leaves the
 campaign alone.
+
+---
+
+## 21. Phase 11: custom levels as a mode a player can choose
+
+Saving a level already worked. What did not exist was any way to *play* a
+saved one without going through the editor — which is the whole point of
+saving, since the person who plays a level is usually not the person who
+built it.
+
+### The shape
+
+Main menu → **Custom Levels** → a chooser listing every saved level with
+what it is, before you open it: blank ground or the farm, object count, and
+the boss ladder (`2 bosses @ 0/2 wilted`) or `no bosses — endless`. Play,
+Delete, and Import for a `.json` a friend sent. A level that fails
+`MAPIO.validate` shows the reason and gets no Play button rather than
+offering a run that cannot start.
+
+`MAPIO.summarize(map)` does the describing, and reads map data only — no
+registry lookups, no SANDBOX — so it works on a file that just arrived and
+has not been loaded.
+
+Choosing a level loads it and goes to **hero select**, not straight into the
+run. Picking a farmhand is part of every single-player start; a custom level
+that skipped it would be the only mode that does.
+
+### `GAME.customLevel` is the single flag
+
+The name of the loaded level, or `null` for the campaign. It decides whether
+a run activates the map layer, so there is one place to look when asking
+"what am I playing". Three things clear it, and each had to be found:
+
+- **Picking Single-player.** Otherwise the campaign runs with someone else's
+  objects standing in the farm, possibly on blank ground.
+- **Returning to the menu.** Otherwise the menu, the Farm Map and the editor
+  all describe a world with a stranger's level in it.
+- **Deleting the loaded level**, which would otherwise leave its objects in
+  the world with nothing naming them.
+
+### Beating a level
+
+A custom level is something a friend is meant to finish, so it needs a win
+condition, and the only one the author actually declared is the bosses they
+placed. Every boss down = beaten.
+
+All four of ENEMY's boss death sites already funnel through
+`QUEST.bossDefeated`, so MATCH needs no hooks of its own — `bossDefeated`
+forwards when a match is armed, the same supersession `updateProgress`
+already does. Two details worth keeping:
+
+- The ids ENEMY passes are its own, not the registry's, and one disagrees in
+  case (`'bearclaw2'`). Hence an explicit map rather than a string compare.
+- A defeat marks **one** rule, not every rule sharing that encounter. Bear
+  Claw and his rematch are separate placements and separate objectives.
+
+### Retrying had to move into restart()
+
+This is the part that was nearly wrong. Activation was in the start path,
+mirroring the editor's PLAY. But `restart()` calls `ENEMY.reset()` and
+`PICKUP.reset()`, which clear exactly what the map layer spawned — so a
+second attempt would have been the same level with none of its enemies,
+pickups or weapons in it. On a level built to be hard, the second attempt is
+the one that matters.
+
+So activation, the authored spawn, and intro-skipping all live in `restart()`
+now, and the start path just calls it. The editor's PLAY still activates
+before calling in; re-activating is the same code path, not a special case.
+
+The intro is skipped for custom levels on purpose, twice over: it is campaign
+framing (the phone scene, the insertion flight), and it animates the camera,
+so an authored spawn applied before it finished would simply be overwritten.
+With no intro `enter()` runs synchronously, which is what lets the spawn be
+applied straight after it.
+
+### Two bugs found while wiring it
+
+- **The editor's `New` reset the map name without updating the name box.** So
+  the box showed the old name while Save used `'Untitled Farm'` — and the
+  level landed in the Custom Levels list under a name the author never saw.
+  The name input is a view of `SANDBOX.name` now, like the Ground select is a
+  view of the terrain, and `syncName()` runs on enter, new and load.
+- **`body.touch-device .alt{display:none}`** hides those buttons behind a
+  per-container allowlist. A new card not on the list loses its Back button
+  on a phone, with no way out of the screen.
+
+### The browser tab, and a correction
+
+I reported the tab as reading `v0.38` while BUILD said `v0.40.01`. That was
+wrong: `document.title` has been stamped from BUILD at boot since the
+version-stamping fix, so the running tab was already right. I had grepped the
+static `<title>` literal in the head and reported it as what the tab shows.
+
+The literal was genuinely stale, so the version is gone from it entirely
+rather than updated to a second number that can drift again. What remains
+there is what shows for the moment before the script runs, and if the script
+ever fails to run at all.
+
+### The bug the suite caught: a finished match kept the campaign's bosses
+
+52/53 on the first run, and the one failure was the valuable one:
+
+```
+*FAIL*  and disarms its match
+```
+
+`MATCH` is disarmed by `SANDBOX.deactivateGameplay()`, and `returnToStart()`
+never called it. So leaving a custom level left `MATCH.active` true with rules
+pointing at instances that had just been cleared.
+
+That is not cosmetic. `MATCH.active` is the flag that makes an authored match
+supersede the campaign, so with it stuck on:
+
+- `ENEMY.update` routes the boss slots to `MATCH.update(kills)` — a match that
+  is over, whose rules are all `spawned`, so nothing ever fires;
+- `QUEST.updateProgress` stands down for that same dead match.
+
+Play one custom level, return to the menu, start the campaign, and **no boss
+ever appears** — not the Warden, not Bear Claw, nothing. A whole mode quietly
+broken by visiting another one.
+
+Fixing it surfaced a second thing. `deactivateGameplay` passed a flat `true`
+to `setMarkersVisible`, which was correct while the editor was the only thing
+that could end a run. Now that leaving a custom level ends one too, that would
+have left marker posts and diamonds standing in the world behind the main
+menu. It keys off `EDITOR.active` now — markers belong to the editor's view,
+so they come back only if the editor is what we are returning to.
+
+The check was then strengthened to assert the *consequence* rather than the
+flag: that QUEST is back in charge of boss encounters, plus a new check that
+no editor markers are left visible.
+
+### Verified
+
+| check | result |
+|---|---|
+| `match-test.js` | 53 checks, covering build → save → choose → play → beat → retry → leave |
+| `editor-mode-test.js` | regression check on the menu the new button lives in |
+
+The loop, in the suite's own words: saving puts the level in the saved list;
+the row describes it without opening it (`blank ground · 4 objects · 2 bosses
+@ 0/2 wilted`); choosing it loads it with its own terrain and asks which
+farmhand first; the player starts at the authored spawn; each boss comes out
+at its own threshold; putting one down counts one objective and not the level;
+putting every authored boss down beats it; retrying keeps the level, resets
+the ladder and re-places the player; leaving puts the campaign farm back; an
+imported file is saved under its own name and junk is refused with a reason.

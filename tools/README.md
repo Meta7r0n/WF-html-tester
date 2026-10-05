@@ -224,3 +224,28 @@ feature: `enabled` is not uniformly true to begin with, so a naive restore
 writes `true` everywhere and quietly shuts every open door and opens the
 basement stair portal, which ships disabled. The suite opens a door first, on
 purpose, so the restore has real non-default state to get wrong.
+
+### Custom levels, end to end
+
+`match-test.js` also covers the loop that makes the editor worth having:
+build a level, **save** it, come back to the main menu, pick it out of a list,
+play it, beat it, retry it, and leave. It drives real controls throughout —
+the `Custom Levels` button, the row's `Play`, the hero button, `Again` on the
+dead screen, `Start over` on the end card — because the failures in this area
+are wiring failures, and a test that calls internals would pass through a
+button nobody can reach.
+
+Two checks are there for bugs whose symptom appears in a *different mode* than
+the cause:
+
+- **Leaving a custom level must disarm its match.** `MATCH.active` is the flag
+  that makes an authored match supersede the campaign. Left stuck on, the next
+  campaign run gets no boss encounters at all — `ENEMY.update` hands the slots
+  to a finished match while `QUEST` stands down for it. The check asserts the
+  consequence (QUEST is back in charge), not just the flag.
+- **Leaving must not leave editor markers standing.** `deactivateGameplay`
+  used to show markers unconditionally, which was right while the editor was
+  the only thing that could end a run.
+
+The suite deletes every saved level at its start and its end, so it neither
+inherits nor leaves state in `localStorage`.

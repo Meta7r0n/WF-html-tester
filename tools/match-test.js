@@ -246,6 +246,252 @@ function check(name, pass, detail) {
   check('a map that declares no bosses leaves the campaign alone',
     plain.notArmed && plain.terrain === 'farm');
 
+  /* ============ the loop that makes custom levels a feature ============
+     Build a level, SAVE it, come back to the main menu, pick it out of a
+     list, play it, and beat it. Saving was already possible; being able to
+     choose a saved level from the menu is what turns it into something you
+     can hand to a friend. */
+  const authored = await page.evaluate(async () => {
+    const out = {};
+    // Start from a clean slate so a re-run does not inherit stored levels.
+    MAPIO.listSaved().slice().forEach(n => MAPIO.deleteLocal(n));
+
+    EDITOR.enter('menu');
+    SANDBOX.newMap('blank');
+    SANDBOX.name = 'Gauntlet';
+    const place = (type, x, z, props) => {
+      const inst = EDITOR._place(type, new THREE.Vector3(x, 0, z));
+      if (inst && props) {
+        inst.data.properties = Object.assign(inst.data.properties || {}, props);
+        return SANDBOX.rebuild(inst) || inst;
+      }
+      return inst;
+    };
+    place('spawn_player', 2, 2);
+    place('spawn_enemy', 6, 2);
+    place('boss_beat_slayer', 14, 2, { wilted: 0 });
+    place('boss_bear_claw', -14, 2, { wilted: 2 });
+    EDITOR._save();
+    out.saved = MAPIO.listSaved();
+    EDITOR.exit();
+    return out;
+  });
+  check('saving in the editor puts the level in the saved list',
+    authored.saved.join(',') === 'Gauntlet', authored.saved.join(','));
+
+  // Back at the main menu, the level has to be findable and described.
+  const listed = await page.evaluate(() => {
+    UI.showStart();
+    const btn = document.getElementById('startCustomBtn');
+    const out = { hasButton: !!btn };
+    if (btn) btn.click();
+    const card = document.getElementById('customLevels');
+    out.cardVisible = !!card && !card.classList.contains('hidden');
+    out.startHidden = document.getElementById('start').classList.contains('hidden');
+    const rows = document.querySelectorAll('#customLevelList .custom-level');
+    out.rowCount = rows.length;
+    out.rowName = rows[0] ? rows[0].querySelector('.custom-level-name').textContent : '';
+    out.rowMeta = rows[0] ? rows[0].querySelector('.custom-level-meta').textContent : '';
+    const play = rows[0] ? rows[0].querySelector('[data-play-level]') : null;
+    out.hasPlay = !!play;
+    // The Play button must actually be reachable, not merely present.
+    if (play) {
+      const r = play.getBoundingClientRect();
+      const top = document.elementFromPoint(
+        Math.round(r.left + r.width / 2), Math.round(r.top + r.height / 2));
+      out.playClickable = top === play || play.contains(top);
+    }
+    return out;
+  });
+  check('the main menu offers Custom Levels', listed.hasButton);
+  check('it opens a chooser and gets the main menu out of the way',
+    listed.cardVisible && listed.startHidden);
+  check('the saved level is listed by name', listed.rowCount === 1 && listed.rowName === 'Gauntlet',
+    listed.rowCount + ' row(s): ' + listed.rowName);
+  check('the row describes the level without opening it',
+    /blank ground/.test(listed.rowMeta) && /2 bosses @ 0\/2 wilted/.test(listed.rowMeta),
+    listed.rowMeta);
+  check('the row has a genuinely clickable Play button',
+    listed.hasPlay && listed.playClickable);
+
+  // Play it: through the real button, the real handler.
+  await page.evaluate(() => {
+    document.querySelector('#customLevelList [data-play-level]').click();
+  });
+  await frames(2);
+  const chose = await page.evaluate(() => ({
+    loaded: GAME.customLevel,
+    terrain: SANDBOX.terrain,
+    // Choosing a level goes to hero select, like every other single-player
+    // start -- not straight into the run.
+    heroSelectUp: !document.getElementById('playerSelect').classList.contains('hidden'),
+    entered: GAME.entered
+  }));
+  check('choosing a level loads it and names it', chose.loaded === 'Gauntlet', String(chose.loaded));
+  check("...and brings its own terrain with it", chose.terrain === 'blank', chose.terrain);
+  check('it asks which farmhand first, like any single-player start',
+    chose.heroSelectUp && chose.entered === false);
+
+  // Through the real hero button, the real handler.
+  await page.evaluate(() => { document.getElementById('scarfHeroBtn').click(); });
+  await page.waitForTimeout(2500);
+  await frames(4);
+  const running = await page.evaluate(() => ({
+    entered: GAME.entered,
+    armed: MATCH.active,
+    total: MATCH.total,
+    px: +PLAYER.position.x.toFixed(1),
+    pz: +PLAYER.position.z.toFixed(1),
+    terrain: LEVEL.terrain,
+    // The level's own objects are live, and the farm's are not.
+    farmLive: WORLD.solids.filter(s => s.enabled !== false && s.tag !== 'fence').length
+  }));
+  check('the run starts', running.entered === true);
+  check('its boss rules are armed', running.armed && running.total === 2, String(running.total));
+  check('the player starts at the authored spawn',
+    Math.abs(running.px - 2) < 1.5 && Math.abs(running.pz - 2) < 1.5,
+    running.px + ',' + running.pz);
+  check('the run is on the level\'s blank ground, not the farm',
+    running.terrain === 'blank', running.terrain);
+
+  /* ---------------------------- beating it ----------------------------
+     The win condition is the one the author actually declared: every boss
+     they placed. Driven through QUEST.bossDefeated, which is where all four
+     of ENEMY's boss death sites already report to. */
+  const beat = await page.evaluate(() => {
+    const out = {};
+    MATCH.update(0);                       // beat_slayer at 0
+    out.firstOut = MATCH.rules.filter(r => r.spawned).length;
+    QUEST.bossDefeated('beatSlayer', ENEMY.boss3);
+    out.afterFirst = { defeated: MATCH.defeated, won: MATCH.won };
+    MATCH.update(2);                       // bear_claw at 2
+    out.bothOut = MATCH.rules.every(r => r.spawned);
+    QUEST.bossDefeated('bearClaw', ENEMY.boss2);
+    out.afterSecond = { defeated: MATCH.defeated, won: MATCH.won };
+    return out;
+  });
+  check('the first boss comes out at its threshold', beat.firstOut === 1, String(beat.firstOut));
+  check('putting it down counts one objective, not the level',
+    beat.afterFirst.defeated === 1 && beat.afterFirst.won === false,
+    JSON.stringify(beat.afterFirst));
+  check('the second boss comes out at its own threshold', beat.bothOut);
+  check('putting every authored boss down BEATS the level',
+    beat.afterSecond.defeated === 2 && beat.afterSecond.won === true,
+    JSON.stringify(beat.afterSecond));
+
+  const ended = await page.evaluate(() => ({
+    endCardUp: !document.getElementById('endGame').classList.contains('hidden')
+  }));
+  check('beating it shows the end card', ended.endCardUp);
+
+  /* --------- retrying, and getting back to the campaign ---------------- */
+  const retry = await page.evaluate(async () => {
+    const out = {};
+    const liveBefore = SANDBOX.instances.length;
+    // "Again" is the button a player presses after dying — the retry that
+    // matters for a level someone built to be hard.
+    document.getElementById('againBtn').click();
+    await new Promise(r => requestAnimationFrame(r));
+    out.stillCustom = GAME.customLevel === 'Gauntlet';
+    out.objectsIntact = SANDBOX.instances.length === liveBefore;
+    // A retry has to re-arm, or the second attempt is a level with no bosses.
+    out.rearmed = MATCH.active && MATCH.defeated === 0 && MATCH.won === false;
+    out.spawnAgain = [+PLAYER.position.x.toFixed(1), +PLAYER.position.z.toFixed(1)];
+    return out;
+  });
+  check('retrying keeps the level loaded', retry.stillCustom && retry.objectsIntact);
+  check('retrying resets the boss ladder', retry.rearmed);
+  check('retrying puts the player back at the authored spawn',
+    Math.abs(retry.spawnAgain[0] - 2) < 1.5 && Math.abs(retry.spawnAgain[1] - 2) < 1.5,
+    retry.spawnAgain.join(','));
+
+  const backToCampaign = await page.evaluate(() => {
+    const out = {};
+    // "Start over" on the end card is the way back to the menu.
+    document.getElementById('startOverBtn').click();
+    out.clearedOnExit = GAME.customLevel === null;
+    out.terrainBack = LEVEL.terrain === 'farm';
+    out.mapEmpty = SANDBOX.count === 0;
+    // And the farm is a farm again.
+    out.farmLive = WORLD.solids.filter(s => s.enabled !== false).length > 1000;
+    out.disarmed = MATCH.active === false;
+    /* The consequence, which is the reason this matters: with MATCH still
+       armed, ENEMY.update hands the boss slots to a finished match while
+       QUEST stands down for it, so the next campaign run would have no boss
+       encounters at all. */
+    out.questBackInCharge = QUEST.updateProgress(0) === false && MATCH.active === false;
+    // And no editor markers left standing in the world behind the menu.
+    out.noStrayMarkers = SANDBOX.all.every(i =>
+      !(i.object3D && i.object3D.userData.editorMarker && i.object3D.visible));
+    return out;
+  });
+  check('leaving a custom level puts the campaign farm back',
+    backToCampaign.clearedOnExit && backToCampaign.terrainBack &&
+    backToCampaign.mapEmpty && backToCampaign.farmLive,
+    JSON.stringify(backToCampaign));
+  check('and disarms its match, handing bosses back to the campaign',
+    backToCampaign.disarmed && backToCampaign.questBackInCharge);
+  check('and leaves no editor markers standing in the world',
+    backToCampaign.noStrayMarkers);
+
+  const campaign = await page.evaluate(() => {
+    const out = {};
+    // Choosing Single-player must clear any level left loaded, or the
+    // campaign would run with someone else's objects standing in it.
+    GAME.loadCustomLevel('Gauntlet');
+    out.loaded = GAME.customLevel === 'Gauntlet';
+    document.getElementById('enterBtn').click();
+    out.clearedByCampaign = GAME.customLevel === null;
+    out.terrain = LEVEL.terrain;
+    out.mapEmpty = SANDBOX.count === 0;
+    return out;
+  });
+  check('picking Single-player clears a loaded custom level',
+    campaign.loaded && campaign.clearedByCampaign && campaign.terrain === 'farm' &&
+    campaign.mapEmpty, JSON.stringify(campaign));
+
+  /* ------------------------ import and delete -------------------------- */
+  const manage = await page.evaluate(() => {
+    const out = {};
+    UI.showStart();
+    document.getElementById('startCustomBtn').click();
+    // A file from a friend: validated, then saved under its own name.
+    const wire = {
+      formatVersion: 1,
+      metadata: { name: "Friend's Gauntlet" },
+      environment: { terrain: 'blank' },
+      objects: [
+        { id: 'a', type: 'spawn_player', transform: { position: { x: 0, y: 0, z: 0 } } },
+        { id: 'b', type: 'boss_gardener', transform: { position: { x: 8, y: 0, z: 0 } },
+          properties: { wilted: 7 } }
+      ]
+    };
+    out.imported = GAME.importCustomLevel(wire, 'fallback');
+    out.names = MAPIO.listSaved().slice().sort();
+
+    // Junk is refused with a reason, not stored.
+    out.junkRefused = GAME.importCustomLevel({ nope: true }, 'junk') === false;
+    out.namesAfterJunk = MAPIO.listSaved().length;
+    out.notice = document.getElementById('customLevelNotice').textContent;
+
+    GAME.deleteCustomLevel('Gauntlet');
+    out.afterDelete = MAPIO.listSaved().slice().sort();
+    return out;
+  });
+  check('a level imported from a file is saved under its own name',
+    manage.imported && manage.names.join('|') === "Friend's Gauntlet|Gauntlet",
+    manage.names.join('|'));
+  check('an invalid file is refused with a reason, not stored',
+    manage.junkRefused && manage.namesAfterJunk === 2, manage.notice);
+  check('deleting a level removes it from the list',
+    manage.afterDelete.join('|') === "Friend's Gauntlet", manage.afterDelete.join('|'));
+
+  // Clean up so a second run of this suite starts from nothing.
+  await page.evaluate(() => {
+    MAPIO.listSaved().slice().forEach(n => MAPIO.deleteLocal(n));
+    UI.showStart();
+  });
+
   check('no page errors', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
   await browser.close();
