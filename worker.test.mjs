@@ -1,144 +1,95 @@
+import assert from "node:assert/strict";
 import worker from "./worker.js";
 
+const requests = [];
 const env = {
-  LAB_PIN: "test-only-1234",
-  SESSION_SECRET: "test-only-session-secret-32-bytes-minimum",
   ASSETS: {
     async fetch(request) {
+      requests.push(request);
       const path = new URL(request.url).pathname;
-      const type = path.endsWith(".glb")
-        ? "model/gltf-binary"
-        : "text/html; charset=UTF-8";
-      return new Response(path.endsWith(".glb") ? "MODEL" : "GAME", {
-        status: 200,
-        headers: { "Content-Type": type },
-      });
+      if (path === "/missing") {
+        return new Response("Not found", { status: 404 });
+      }
+      const model = path.endsWith(".glb");
+      return new Response(
+        request.method === "HEAD" ? null : model ? "MODEL" : "GAME",
+        {
+          status: request.headers.has("Range") ? 206 : 200,
+          headers: {
+            "Content-Type": model
+              ? "model/gltf-binary"
+              : "text/html; charset=UTF-8",
+            ...(request.headers.has("Range")
+              ? { "Content-Range": "bytes 0-4/5" }
+              : {}),
+          },
+        }
+      );
     },
   },
 };
-
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
 const base = "https://alpha.lobsterlabz.com";
 
-const noSecrets = await worker.fetch(new Request(`${base}/`), {
-  ASSETS: env.ASSETS,
-});
-assert(noSecrets.status === 503, "gate must fail closed without secrets");
-
-const anonymousHome = await worker.fetch(new Request(`${base}/`), env);
-assert(anonymousHome.status === 200, "anonymous home must show login");
-assert((await anonymousHome.text()).includes("Alpha Lab"), "login page missing");
+const anonymousHome = await worker.fetch(new Request(base), env);
+assert.equal(anonymousHome.status, 200);
+assert.equal(await anonymousHome.text(), "GAME", "game must open without secrets or a cookie");
+assert.equal(anonymousHome.headers.get("Set-Cookie"), null);
+assert.equal(anonymousHome.headers.get("Vary"), null);
+assert.equal(anonymousHome.headers.get("X-Frame-Options"), "DENY");
+assert.equal(anonymousHome.headers.get("X-Robots-Tag"), "noindex, nofollow, noarchive");
+assert.match(anonymousHome.headers.get("Cache-Control"), /no-store/);
 
 const anonymousAsset = await worker.fetch(
   new Request(`${base}/assets/skeleton_lobster.glb`),
   env
 );
-assert(
-  anonymousAsset.headers.get("Content-Type").startsWith("text/html"),
-  "anonymous direct asset request bypassed gate"
-);
+assert.equal(await anonymousAsset.text(), "MODEL", "assets must load without a cookie");
+assert.equal(anonymousAsset.headers.get("Content-Type"), "model/gltf-binary");
 
-const wrongLogin = await worker.fetch(
-  new Request(`${base}/__alpha/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: base,
-    },
-    body: "pin=wrong",
-  }),
+const staleSession = await worker.fetch(
+  new Request(base, { headers: { Cookie: "llz_alpha_session=expired" } }),
   env
 );
-assert(wrongLogin.status === 401, "wrong PIN must be rejected");
+assert.equal(await staleSession.text(), "GAME", "old cookies must not block access");
 
-const crossOriginLogin = await worker.fetch(
-  new Request(`${base}/__alpha/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: "https://example.com",
-      "Sec-Fetch-Site": "cross-site",
-    },
-    body: "pin=test-only-1234",
-  }),
+const oldSecrets = await worker.fetch(new Request(base), {
+  ...env,
+  LAB_PIN: "unused-old-pin",
+  SESSION_SECRET: "unused-old-secret",
+});
+assert.equal(await oldSecrets.text(), "GAME", "old configured secrets must not restore the gate");
+
+for (const path of ["/__alpha/login", "/__alpha/logout"]) {
+  for (const method of ["GET", "POST"]) {
+    const response = await worker.fetch(
+      new Request(`${base}${path}`, { method }),
+      env
+    );
+    assert.equal(response.status, 303);
+    assert.equal(response.headers.get("Location"), "/");
+    assert.match(response.headers.get("Set-Cookie"), /llz_alpha_session=; Max-Age=0/);
+  }
+}
+
+const head = new Request(`${base}/assets/skeleton_lobster.glb`, { method: "HEAD" });
+const headResponse = await worker.fetch(head, env);
+assert.equal(requests.at(-1), head, "original method and headers must reach the asset binding");
+assert.equal(await headResponse.text(), "");
+
+const rangeResponse = await worker.fetch(
+  new Request(`${base}/assets/skeleton_lobster.glb`, { headers: { Range: "bytes=0-4" } }),
   env
 );
-assert(crossOriginLogin.status === 403, "cross-origin login must be rejected");
+assert.equal(rangeResponse.status, 206);
+assert.equal(rangeResponse.headers.get("Content-Range"), "bytes 0-4/5");
 
-const customDomainLogin = await worker.fetch(
-  new Request("https://internal-worker.example/__alpha/login", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: base,
-      "Sec-Fetch-Site": "same-origin",
-    },
-    body: "pin=test-only-1234",
-  }),
-  env
-);
-assert(
-  customDomainLogin.status === 303,
-  "same-origin custom-domain login must be accepted"
-);
+const missingAsset = await worker.fetch(new Request(`${base}/missing`), env);
+assert.equal(missingAsset.status, 404);
+assert.equal(await missingAsset.text(), "Not found");
 
-const privacyModeLogin = await worker.fetch(
-  new Request(`${base}/__alpha/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: "null",
-    },
-    body: "pin=test-only-1234",
-  }),
-  env
-);
-assert(
-  privacyModeLogin.status === 303,
-  "privacy-mode login must be accepted"
-);
+const missingBinding = await worker.fetch(new Request(base), {});
+assert.equal(missingBinding.status, 503);
+assert.equal(await missingBinding.text(), "Alpha asset binding is not configured.");
+assert.match(missingBinding.headers.get("Cache-Control"), /no-store/);
 
-const acceptedLogin = await worker.fetch(
-  new Request(`${base}/__alpha/login`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Origin: base,
-    },
-    body: "pin=test-only-1234",
-  }),
-  env
-);
-assert(acceptedLogin.status === 303, "correct PIN must redirect");
-const setCookie = acceptedLogin.headers.get("Set-Cookie");
-assert(setCookie?.includes("Max-Age=86400"), "session must last 24 hours");
-assert(setCookie?.includes("HttpOnly"), "session cookie must be HttpOnly");
-assert(setCookie?.includes("Secure"), "session cookie must be Secure");
-const cookie = setCookie.split(";")[0];
-
-const authenticatedHome = await worker.fetch(
-  new Request(`${base}/`, { headers: { Cookie: cookie } }),
-  env
-);
-assert((await authenticatedHome.text()) === "GAME", "game did not unlock");
-assert(
-  authenticatedHome.headers.get("X-Frame-Options") === "DENY",
-  "game must not be embedded in an iframe"
-);
-
-const authenticatedAsset = await worker.fetch(
-  new Request(`${base}/assets/skeleton_lobster.glb`, {
-    headers: { Cookie: cookie },
-  }),
-  env
-);
-assert((await authenticatedAsset.text()) === "MODEL", "asset did not unlock");
-assert(
-  authenticatedAsset.headers.get("Cache-Control").includes("private"),
-  "asset must not enter a shared cache"
-);
-
-console.log("Worker gate tests passed");
+console.log("Password-free alpha Worker tests passed");

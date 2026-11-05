@@ -1,6 +1,6 @@
 # Cloudflare Alpha Deployment
 
-This branch is the protected Cloudflare Worker build for Lobster Labz alpha testing.
+This branch serves the Lobster Labz alpha build directly, without a password.
 
 ## Production layout
 
@@ -11,16 +11,9 @@ This branch is the protected Cloudflare Worker build for Lobster Labz alpha test
 - Static game files: `public/`
 - Worker entry point: `worker.js`
 
-The Worker runs before every static request. Visitors without a valid signed session receive only the PIN form; direct requests for HTML, models, images, and audio are protected by the same gate.
-
-## Required encrypted secrets
-
-Add both values as Cloudflare **Secret** variables, never plaintext variables:
-
-- `LAB_PIN`: the current shared tester PIN
-- `SESSION_SECRET`: a separate random signing value of at least 32 bytes
-
-Do not commit `.dev.vars`, `.env`, either secret, or screenshots containing their values.
+The Worker serves the game and its assets to every visitor. No PIN, login, or
+session cookie is required, so anyone with the alpha URL can open the build.
+The existing `noindex, nofollow, noarchive` response header remains in place.
 
 ## Cloudflare build settings
 
@@ -30,17 +23,21 @@ Do not commit `.dev.vars`, `.env`, either secret, or screenshots containing thei
 - Production branch: `CFP-V0.39.05-stable`
 - Non-production branch builds: off
 
-The `workers.dev` hostname and preview URLs are disabled in `wrangler.jsonc`. Keep `alpha.lobsterlabz.com` as the Worker's Custom Domain.
+The `workers.dev` hostname and preview URLs are disabled in `wrangler.jsonc`.
+Keep `alpha.lobsterlabz.com` as the Worker's Custom Domain.
 
 ## Deployment checkpoint
 
-- Protected build: `v0.39.05`
-- Source commit: `f09f06cfe3badcf249890e6c29bc7441091aaccf`
-- Prepared: `2026-08-16`
+- Game build: `v0.39.05`
+- Source gameplay commit: `f09f06cfe3badcf249890e6c29bc7441091aaccf`
+- Password requirement removed: `2026-11-05`
 
-## Session behavior
+The game files are unchanged by the access update.
 
-A successful login creates a signed, `HttpOnly`, `Secure`, host-only cookie lasting 24 hours. The tester can keep playing for hours without interruption. Rotating `LAB_PIN` blocks new logins; rotating `SESSION_SECRET` also invalidates all existing sessions immediately.
+## Legacy authentication settings
 
-Logout endpoint: `/__alpha/logout`
+`LAB_PIN` and `SESSION_SECRET` are no longer used or required. Existing values
+do not affect access. They may be removed from the Cloudflare Worker settings.
 
+Old `/__alpha/login` and `/__alpha/logout` links redirect to the game and clear
+the previous session cookie.
